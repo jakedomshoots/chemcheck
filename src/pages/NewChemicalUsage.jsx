@@ -114,7 +114,7 @@ export default function NewChemicalUsage() {
                 </SelectTrigger>
                 <SelectContent>
                   {customers.map(customer => (
-                    <SelectItem key={customer.id} value={customer.id}>
+                    <SelectItem key={customer._id} value={customer._id}>
                       {customer.full_name}
                     </SelectItem>
                   ))}
