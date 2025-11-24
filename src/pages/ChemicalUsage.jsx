@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useChemicalUsage, useCustomersFilter, useCurrentUser, useChemicalUsageDelete } from "@/api/convexHooks";
+import { useChemicalUsage, useCustomersFilter, useCurrentUser, useChemicalUsageDelete, useChemicalUsageUpdate } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Plus, Beaker, ChevronDown, Trash2 } from "lucide-react";
+import { Plus, Beaker, ChevronDown, Trash2, Edit2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,12 +26,16 @@ export default function ChemicalUsagePage() {
   const allCustomers = useCustomersFilter({ created_by: user.email });
   const allRecords = useChemicalUsage("-created_date");
   const deleteChemicalUsage = useChemicalUsageDelete();
+  const updateChemicalUsage = useChemicalUsageUpdate();
 
   const [usageRecords, setUsageRecords] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedCustomers, setExpandedCustomers] = useState(new Set());
   const [deleteRecord, setDeleteRecord] = useState(null);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingNoteValue, setEditingNoteValue] = useState("");
+  const [savingNoteId, setSavingNoteId] = useState(null);
 
   useEffect(() => {
     if (allCustomers && allRecords) {
@@ -57,6 +62,34 @@ export default function ChemicalUsagePage() {
     }
     setExpandedCustomers(newExpanded);
   };
+
+  const handleEditNote = (record) => {
+    setEditingNoteId(record._id);
+    setEditingNoteValue(record.notes || "");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingNoteId(null);
+    setEditingNoteValue("");
+  };
+
+  const handleSaveNote = async (recordId) => {
+    setSavingNoteId(recordId);
+    try {
+      await updateChemicalUsage({
+        id: recordId,
+        notes: editingNoteValue,
+      });
+      toast.success("Notes updated successfully");
+      setEditingNoteId(null);
+      setEditingNoteValue("");
+    } catch (error) {
+      toast.error("Failed to update notes");
+    } finally {
+      setSavingNoteId(null);
+    }
+  };
+
 
   // Group records by customer
   const recordsByCustomer = useMemo(() => {
@@ -187,9 +220,64 @@ export default function ChemicalUsagePage() {
                               <div className="text-xs text-slate-600 mb-1">
                                 {format(parseISO(record.created_date), "MMM dd, yyyy 'at' h:mm a")}
                               </div>
-                              {record.notes && (
-                                <p className="text-xs text-slate-600 mt-1">{record.notes}</p>
-                              )}
+
+                              {/* Notes Section */}
+                              <div className="mt-2">
+                                {editingNoteId === record._id ? (
+                                  <div className="space-y-2">
+                                    <Textarea
+                                      value={editingNoteValue}
+                                      onChange={(e) => setEditingNoteValue(e.target.value)}
+                                      placeholder="Add notes..."
+                                      rows={2}
+                                      className="text-xs border-2 focus:border-purple-500 rounded-lg"
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleSaveNote(record._id)}
+                                        disabled={savingNoteId === record._id}
+                                        className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
+                                      >
+                                        {savingNoteId === record._id ? (
+                                          <>Saving...</>
+                                        ) : (
+                                          <>
+                                            <Save className="w-3 h-3 mr-1" />
+                                            Save
+                                          </>
+                                        )}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleCancelEdit}
+                                        disabled={savingNoteId === record._id}
+                                        className="h-7 text-xs"
+                                      >
+                                        <X className="w-3 h-3 mr-1" />
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-start justify-between gap-2">
+                                    {record.notes ? (
+                                      <p className="text-xs text-slate-600 flex-1">{record.notes}</p>
+                                    ) : (
+                                      <p className="text-xs text-slate-400 italic flex-1">No notes</p>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleEditNote(record)}
+                                      className="h-6 w-6 p-0 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <Button
                               variant="ghost"
