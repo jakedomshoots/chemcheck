@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+import { toast } from "sonner";
+
 const chemicalTypes = [
   "Liquid Chlorine",
   "Chlorine Tablets",
@@ -55,9 +57,22 @@ export default function NewChemicalUsage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!formData.customer_id) {
+      toast.error("Please select a customer");
+      return;
+    }
+
     setSaving(true);
-    await createChemicalUsage(formData);
-    navigate(createPageUrl("ChemicalUsage"));
+    try {
+      await createChemicalUsage(formData);
+      toast.success("Chemical usage recorded");
+      navigate(createPageUrl("ChemicalUsage"));
+    } catch (error) {
+      console.error("Failed to save chemical usage:", error);
+      toast.error("Failed to save chemical usage. Please try again.");
+      setSaving(false);
+    }
   };
 
   return (
