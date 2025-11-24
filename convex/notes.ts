@@ -82,7 +82,8 @@ export const create = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        const today = new Date().toISOString();
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
         const noteId = await ctx.db.insert("notes", {
             ...args,
