@@ -1,0 +1,66 @@
+
+> base44-app@0.0.0 test
+> vitest --run
+
+
+[1m[46m RUN [49m[22m [36mv4.0.10 [39m[90m/Users/jakedominick/Downloads/chemcheck-main[39m
+
+ [32m✓[39m src/pages/WeeklyReport.test.jsx [2m([22m[2m3 tests[22m[2m)[22m[32m 219[2mms[22m[39m
+ [32m✓[39m src/pages/Clients.test.jsx [2m([22m[2m2 tests[22m[2m)[22m[32m 237[2mms[22m[39m
+ [31m❯[39m src/pages/CustomerDetail.test.jsx [2m([22m[2m2 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 192[2mms[22m[39m
+     [32m✓[39m renders customer details[32m 105[2mms[22m[39m
+[31m     [31m×[31m renders service history[39m[32m 86[2mms[22m[39m
+[90mstderr[2m | src/pages/History.test.jsx[2m > [22m[2mHistory Page[2m > [22m[2mrenders service history list
+[22m[39mWarning: Each child in a list should have a unique "key" prop.
+
+Check the render method of `History`. See https://reactjs.org/link/warning-keys for more information.
+    at default (/Users/jakedominick/Downloads/chemcheck-main/src/pages/History.test.jsx:11:15)
+    at History (/Users/jakedominick/Downloads/chemcheck-main/src/pages/History.jsx:14:57)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+ [32m✓[39m src/pages/History.test.jsx [2m([22m[2m1 test[22m[2m)[22m[33m 497[2mms[22m[39m
+     [33m[2m✓[22m[39m renders service history list [33m 496[2mms[22m[39m
+ [31m❯[39m src/pages/NewClient.test.jsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 1054[2mms[22m[39m
+[31m     [31m×[31m renders the new client form[39m[33m 1053[2mms[22m[39m
+ [32m✓[39m src/pages/ChemicalUsage.test.jsx [2m([22m[2m1 test[22m[2m)[22m[33m 553[2mms[22m[39m
+     [33m[2m✓[22m[39m renders usage list [33m 552[2mms[22m[39m
+[90mstderr[2m | src/pages/Notes.test.jsx[2m > [22m[2mNotes Page[2m > [22m[2mrenders notes list
+[22m[39mWarning: Each child in a list should have a unique "key" prop.
+
+Check the render method of `Notes`. See https://reactjs.org/link/warning-keys for more information.
+    at /Users/jakedominick/Downloads/chemcheck-main/src/components/ui/card.jsx:10:50
+    at Notes (/Users/jakedominick/Downloads/chemcheck-main/src/pages/Notes.jsx:42:57)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+ [31m❯[39m src/pages/Notes.test.jsx [2m([22m[2m2 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 559[2mms[22m[39m
+[31m     [31m×[31m renders notes list[39m[33m 539[2mms[22m[39m
+     [32m✓[39m displays customer name for note[32m 19[2mms[22m[39m
+[90mstderr[2m | src/pages/NewChemicalUsage.test.jsx[2m > [22m[2mNew Chemical Usage Page[2m > [22m[2mrenders the form
+[22m[39mWarning: Each child in a list should have a unique "key" prop.
+
+Check the render method of `NewChemicalUsage`. See https://reactjs.org/link/warning-keys for more information.
+    at /Users/jakedominick/Downloads/chemcheck-main/src/components/ui/select.jsx:166:56
+    at NewChemicalUsage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewChemicalUsage.jsx:35:71)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+Warning: Each child in a list should have a unique "key" prop.
+
+Check the render method of `Select`. It was passed a child from SelectItemText. See https://reactjs.org/link/warning-keys for more information.
+    at option
+    at Select (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/@radix-ui/react-select/dist/index.mjs:42:5)
+    at div
+    at div
+    at div
+    at /Users/jakedominick/Downloads/chemcheck-main/src/components/ui/card.jsx:10:50
+    at form
+    at div
+    at NewChemicalUsage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewChemicalUsage.jsx:35:71)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+ [31m❯[39m src/pages/NewChemicalUsage.test.jsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 1338[2mms[22m[39m
+[31m     [31m×[31m renders the form[39m[33m 1337[2mms[22m[39m
+ [32m✓[39m src/pages/NewServiceLog.test.jsx [2m([22m[2m2 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+ [32m✓[39m src/pages/Home.test.jsx [2m([22m[2m3 tests[22m[2m)[22m[32m 73[2mms[22m[39m
