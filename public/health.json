@@ -1,0 +1,9 @@
+{
+  "status": "healthy",
+  "timestamp": "2024-12-13T20:30:00Z",
+  "version": "1.0.0",
+  "services": {
+    "frontend": "operational",
+    "convex": "operational"
+  }
+}

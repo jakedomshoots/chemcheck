@@ -1,0 +1,66 @@
+{
+    "name": "ChemCheck - Pool Service Manager",
+    "short_name": "ChemCheck",
+    "description": "Professional pool service management app with offline support",
+    "start_url": "/",
+    "display": "standalone",
+    "orientation": "portrait-primary",
+    "background_color": "#ffffff",
+    "theme_color": "#3b82f6",
+    "categories": ["business", "productivity", "utilities"],
+    "lang": "en-US",
+    "scope": "/",
+    "icons": [
+        {
+            "src": "/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Today's Route",
+            "short_name": "Route",
+            "description": "View today's scheduled customers",
+            "url": "/",
+            "icons": [
+                {
+                    "src": "/icon-192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        },
+        {
+            "name": "Add Customer",
+            "short_name": "New Customer", 
+            "description": "Add a new customer",
+            "url": "/NewClient",
+            "icons": [
+                {
+                    "src": "/icon-192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        },
+        {
+            "name": "Service Log",
+            "short_name": "Log Service",
+            "description": "Log a service visit", 
+            "url": "/NewServiceLog",
+            "icons": [
+                {
+                    "src": "/icon-192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        }
+    ],
+    "prefer_related_applications": false
+}

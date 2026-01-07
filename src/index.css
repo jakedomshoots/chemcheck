@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Bradenton Pool Pro Theme - Clean Blues */
+    --background: 210 40% 98%; /* Soft blue-white */
+    --foreground: 222 47% 11%; /* Deep navy */
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    
+    --primary: 199 89% 48%; /* Cyan 500 */
+    --primary-foreground: 210 40% 98%;
+    
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47% 11%;
+    
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+    
+    --accent: 199 89% 96%; /* Cyan 50 */
+    --accent-foreground: 199 89% 48%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 199 89% 48%;
+    
+    --radius: 0.75rem; /* Larger radius for modern feel */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image: 
+      radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.05) 0%, transparent 20%),
+      radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 20%),
+      radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.03) 0%, transparent 30%);
+    background-attachment: fixed;
+  }
+  
+  /* Ensure all form inputs have proper text contrast */
+  input, textarea, select {
+    color: hsl(var(--foreground));
+  }
+  
+  input::placeholder, textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+/* Chemical Gradient Animations */
+@keyframes gradient-xy {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-xy 3s ease infinite;
+}
+
+/* Beaker Fill Animation */
+@keyframes fill-up {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0%); }
+}
+
+@keyframes bubble-rise {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(-20px) scale(1.5); opacity: 0; }
+}
+
+/* Glassmorphism Utilities */
+.glass {
+  @apply bg-white/70 backdrop-blur-md border-white/20 shadow-lg;
+}
