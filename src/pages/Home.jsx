@@ -317,52 +317,47 @@ export default function Home() {
       {missedServices.length > 0 && (
         <Card className="p-4 mb-4 border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 shadow-lg">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-amber-500 rounded-lg">
+            <div className="p-2 bg-amber-500 rounded-lg shrink-0">
               <AlertTriangle className="w-5 h-5 text-white stroke-[1.75]" />
             </div>
-            <div className="flex-1">
-              <h3 className="font-bold tracking-tight text-amber-900 mb-1">
-                ⚠️ Missed Services This Week
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold tracking-tight text-amber-900 mb-1 text-base">
+                Missed Services
               </h3>
               <p className="text-sm font-medium text-amber-800 mb-3">
-                {missedServices.length} customer{missedServices.length !== 1 ? 's' : ''} haven't been serviced on their scheduled day:
+                {missedServices.length} {missedServices.length === 1 ? 'customer needs' : 'customers need'} service
               </p>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {missedServices.map(customer => (
                   <div
                     key={customer._id}
-                    className="flex items-center justify-between p-3 bg-white rounded-lg border-2 border-amber-200"
+                    className="p-3 bg-white rounded-lg border-2 border-amber-200"
                   >
                     <div
-                      className="flex items-center gap-2 flex-1 cursor-pointer hover:opacity-80"
+                      className="cursor-pointer hover:opacity-80 mb-3"
                       onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
                     >
-                      <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        {(customer.full_name || 'C').charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900 text-sm">{customer.full_name || 'Customer'}</p>
-                        <p className="text-xs font-medium text-slate-600">
-                          Scheduled: {customer.scheduledDay} • {customer.address}
-                        </p>
-                      </div>
+                      <p className="font-semibold text-slate-900 text-base">{customer.full_name || 'Customer'}</p>
+                      <p className="text-sm text-slate-600 mt-0.5">
+                        {customer.scheduledDay} · {customer.address}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 text-xs font-semibold border-slate-300 text-slate-600 hover:bg-slate-100"
+                        className="flex-1 h-9 text-sm font-semibold border-slate-300 text-slate-600 hover:bg-slate-100"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleSkipCustomer(customer);
                         }}
                       >
-                        <SkipForward className="w-3 h-3 mr-1" />
+                        <SkipForward className="w-4 h-4 mr-1.5" />
                         Skip
                       </Button>
                       <Button
                         size="sm"
-                        className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white h-8 text-xs font-semibold"
+                        className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white h-9 text-sm font-semibold"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`);
