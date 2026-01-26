@@ -190,10 +190,15 @@ export default function WeeklyReport() {
               color: #94a3b8;
               font-style: italic;
             }
-            .close-button {
+            .button-container {
               position: fixed;
               top: 20px;
               right: 20px;
+              display: flex;
+              gap: 10px;
+              z-index: 1000;
+            }
+            .close-button, .back-button {
               background: #0891b2;
               color: white;
               border: none;
@@ -203,20 +208,28 @@ export default function WeeklyReport() {
               font-weight: bold;
               cursor: pointer;
               box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-              z-index: 1000;
             }
-            .close-button:hover {
+            .close-button:hover, .back-button:hover {
               background: #0e7490;
+            }
+            .back-button {
+              background: #64748b;
+            }
+            .back-button:hover {
+              background: #475569;
             }
             @media print {
               body { padding: 10px; }
               .day-section { page-break-inside: avoid; }
-              .close-button { display: none; }
+              .button-container { display: none; }
             }
           </style>
         </head>
         <body>
-          <button class="close-button" onclick="window.print(); setTimeout(() => window.close(), 500);">🖨️ Print Report</button>
+          <div class="button-container">
+            <button class="back-button" onclick="window.close();">← Close & Go Back</button>
+            <button class="close-button" onclick="window.print();">🖨️ Print Report</button>
+          </div>
           <div class="header">
             <h1>🌊 Weekly Service Report</h1>
             <p><strong>Week of:</strong> ${format(currentWeekStart, "MMMM dd")} - ${format(currentWeekEnd, "MMMM dd, yyyy")}</p>

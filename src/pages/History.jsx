@@ -3,9 +3,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser, useServiceLogDelete } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl, parseLocalDate } from "@/utils";
-import { BarChart3, Calendar, Filter, Camera, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { BarChart3, Calendar, Filter, Camera, Clock, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,7 +30,11 @@ const filterIcons = {
 
 export default function History() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useCurrentUser();
+
+  // Get customerId from URL query params for filtered view
+  const filteredCustomerId = searchParams.get("customerId");
 
   // Get business settings for working days
   const convexBusiness = useQuery(api.businesses.getCurrent);
@@ -44,6 +48,17 @@ export default function History() {
   const [loading, setLoading] = useState(true);
   const [activeDay, setActiveDay] = useState("Monday");
   const [proofFilter, setProofFilter] = useState("all");
+
+  // Find the filtered customer if customerId is provided
+  const filteredCustomer = useMemo(() => {
+    if (!filteredCustomerId || !customers.length) return null;
+    return customers.find(c => c._id === filteredCustomerId);
+  }, [filteredCustomerId, customers]);
+
+  // Clear customer filter function
+  const clearCustomerFilter = () => {
+    setSearchParams({});
+  };
 
   // Get working days from business settings, with fallback to default weekdays
   const daysOfWeek = useMemo(() => {
@@ -66,6 +81,13 @@ export default function History() {
       setActiveDay(daysOfWeek[0]);
     }
   }, [daysOfWeek, activeDay]);
+
+  // Auto-switch to filtered customer's service day
+  useEffect(() => {
+    if (filteredCustomer && filteredCustomer.service_day && daysOfWeek.includes(filteredCustomer.service_day)) {
+      setActiveDay(filteredCustomer.service_day);
+    }
+  }, [filteredCustomer, daysOfWeek]);
 
   useEffect(() => {
     if (allCustomers && allLogs) {
@@ -98,13 +120,31 @@ export default function History() {
     const dayCustomers = customers.filter(c => c.service_day === day);
 
     // For each customer, get their filtered logs from the past month
-    return dayCustomers.map(customer => {
+    let result = dayCustomers.map(customer => {
       const customerLogs = filteredLogs.filter(log => log.customer_id === customer._id);
       return {
         customer,
         logs: customerLogs
       };
     }).filter(item => item.logs.length > 0); // Only show customers with logs
+
+    // If filtering by customerId, ensure that customer is shown first and included even with no logs
+    if (filteredCustomerId) {
+      const filteredCustomerData = dayCustomers.find(c => c._id === filteredCustomerId);
+      if (filteredCustomerData) {
+        // Get all logs for this customer (not filtered by proof-of-service)
+        const allLogsForCustomer = logs.filter(log => log.customer_id === filteredCustomerId);
+
+        // Remove from result if already there, then prepend
+        result = result.filter(item => item.customer._id !== filteredCustomerId);
+        result.unshift({
+          customer: filteredCustomerData,
+          logs: allLogsForCustomer
+        });
+      }
+    }
+
+    return result;
   };
 
   const handleDeleteLog = async (logId) => {
@@ -178,6 +218,32 @@ export default function History() {
             </Select>
           </div>
         </div>
+
+        {/* Customer Filter Indicator */}
+        {filteredCustomer && (
+          <div className="mt-3 p-3 bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-200 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+                {filteredCustomer.full_name?.charAt(0)?.toUpperCase() || '?'}
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-slate-900">
+                  {filteredCustomer.full_name}
+                </span>
+                <p className="text-xs text-slate-600">
+                  Viewing chemical history · {filteredCustomer.service_day}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={clearCustomerFilter}
+              className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white/80 rounded-lg transition-colors"
+              aria-label="Clear customer filter"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Active Filter Indicator */}
         {proofFilter !== 'all' && (

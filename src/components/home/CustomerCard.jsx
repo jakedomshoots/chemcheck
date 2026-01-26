@@ -1,16 +1,16 @@
 import React, { useState, memo } from "react";
-import { MapPin, Phone, Mail, Droplets, ChevronDown, CheckCircle2, Clock, FileText } from "lucide-react";
+import { MapPin, Phone, Mail, Droplets, ChevronDown, CheckCircle2, Clock, FileText, History } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatServiceDate } from "@/utils";
 
-const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWeekLog, onClick }) {
+const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWeekLog, onClick, onHistoryClick }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <Card className={`overflow-hidden transition-all duration-200 border-2 ${isCompleted
-        ? 'bg-gradient-to-r from-emerald-50/90 to-teal-50/90 border-emerald-200'
-        : 'bg-white/60 border-slate-200/60 hover:border-cyan-300 active:border-cyan-400 hover:bg-white/80'
+      ? 'bg-gradient-to-r from-emerald-50/90 to-teal-50/90 border-emerald-200'
+      : 'bg-white/60 border-slate-200/60 hover:border-cyan-300 active:border-cyan-400 hover:bg-white/80'
       }`}>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
@@ -30,8 +30,8 @@ const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWee
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${isCompleted
-              ? 'bg-emerald-100/80 text-emerald-700'
-              : 'bg-cyan-100/80 text-cyan-700'
+            ? 'bg-emerald-100/80 text-emerald-700'
+            : 'bg-cyan-100/80 text-cyan-700'
             }`}>
             {isCompleted ? 'Done' : 'Pending'}
           </span>
@@ -109,15 +109,15 @@ const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWee
               </div>
             )}
 
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
                   onClick();
                 }}
                 className={`w-full text-sm h-9 ${isCompleted
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700'
-                    : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700'
+                  : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
                   } text-white`}
               >
                 {isCompleted ? (
@@ -132,6 +132,20 @@ const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWee
                   </>
                 )}
               </Button>
+
+              {onHistoryClick && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onHistoryClick(customer);
+                  }}
+                  variant="outline"
+                  className="w-full text-sm h-9 border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                >
+                  <History className="w-4 h-4 mr-2" />
+                  View History
+                </Button>
+              )}
             </div>
           </div>
         </div>

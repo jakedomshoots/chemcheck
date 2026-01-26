@@ -260,6 +260,11 @@ export default function Home() {
     }
   };
 
+  const handleHistoryClick = (customer) => {
+    // Navigate to History page with customer ID for filtered view
+    navigate(createPageUrl("History") + `?customerId=${customer._id}`);
+  };
+
   const stats = useMemo(() => {
     const completed = customers.filter((c) => isCompleted(c._id)).length;
     return {
@@ -413,6 +418,7 @@ export default function Home() {
                 isCompleted={isCompleted(customer._id)}
                 lastWeekLog={getLastWeekLog(customer._id)}
                 onClick={() => handleCustomerClick(customer)}
+                onHistoryClick={handleHistoryClick}
               />
             </motion.div>
           ))}
