@@ -393,47 +393,48 @@ export default function CustomerDetail() {
 
       {/* Customer Info Card */}
       <Card className="p-4 mb-3 border-2 shadow-lg">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-slate-900 mb-1">
-              {customer.full_name}
-            </h2>
-            <div className="flex items-start gap-1.5 text-slate-900 mb-2">
-              <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
-              <p className="text-xs leading-relaxed">{customer.address}</p>
-            </div>
+        {/* Customer Name and Address */}
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-900 mb-1">
+            {customer.full_name}
+          </h2>
+          <div className="flex items-start gap-1.5 text-slate-900">
+            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
+            <p className="text-xs leading-relaxed">{customer.address}</p>
           </div>
-          <div className="flex gap-2 ml-2">
-            {logs && logs.length >= 3 && (
-              <Button
-                size="sm"
-                onClick={() => setShowAnalysis(true)}
-                variant="outline"
-                className="border-2 border-purple-200 text-purple-700 hover:bg-purple-50 h-8"
-              >
-                <BarChart3 className="w-3.5 h-3.5 mr-1" />
-                Analysis
-              </Button>
-            )}
+        </div>
+
+        {/* Action Buttons - separate row to prevent overlap on mobile */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {logs && logs.length >= 3 && (
             <Button
               size="sm"
-              onClick={handleOpenReportSettings}
+              onClick={() => setShowAnalysis(true)}
               variant="outline"
-              className="border-2 border-slate-200 text-slate-700 hover:bg-slate-50 h-8"
-              title="Customize what customers see on reports"
+              className="border-2 border-purple-200 text-purple-700 hover:bg-purple-50 h-8"
             >
-              <Settings className="w-3.5 h-3.5 mr-1" />
-              Report Settings
+              <BarChart3 className="w-3.5 h-3.5 mr-1" />
+              Analysis
             </Button>
-            <Button
-              size="sm"
-              onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
-              className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg h-8"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Log
-            </Button>
-          </div>
+          )}
+          <Button
+            size="sm"
+            onClick={handleOpenReportSettings}
+            variant="outline"
+            className="border-2 border-slate-200 text-slate-700 hover:bg-slate-50 h-8"
+            title="Customize what customers see on reports"
+          >
+            <Settings className="w-3.5 h-3.5 mr-1" />
+            Report Settings
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
+            className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg h-8"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" />
+            Log
+          </Button>
         </div>
 
         {(customer.phone || customer.email) && (

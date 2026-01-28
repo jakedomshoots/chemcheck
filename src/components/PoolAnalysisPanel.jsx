@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Minus, 
-  AlertTriangle, 
-  CheckCircle2, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  AlertTriangle,
+  CheckCircle2,
   AlertCircle,
   XCircle,
   Lightbulb,
@@ -74,7 +74,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
     try {
       setLoading(true);
       setError(null);
-      
+
       if (!serviceLogs || serviceLogs.length === 0) {
         throw new Error('No service history available for analysis');
       }
@@ -99,7 +99,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
         includeCosts: true,
         includeLearning: true
       });
-      
+
       setAnalysis(result);
     } catch (err) {
       setError(err.message);
@@ -123,9 +123,9 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
   const handleShare = async () => {
     if (!analysis?.customerReport?.shareableText) return;
-    
+
     const shareText = analysis.customerReport.shareableText;
-    
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -180,7 +180,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
   const { healthScore, predictiveInsights, chemicalTrends, problems, recommendations, customerReport, professionalSummary } = analysis || {};
   const gradeStyle = gradeColors[healthScore?.grade] || gradeColors.C;
-  
+
   // Safe date parsing helper
   const safeFormatDate = (dateStr, formatStr) => {
     if (!dateStr) return 'N/A';
@@ -195,27 +195,28 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <Card className="p-6">
-          {/* Header with Actions */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl">
+          {/* Header with Actions - Mobile Optimized */}
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex-shrink-0">
                 <BarChart3 className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">AI Pool Analysis</h2>
-                <p className="text-sm text-slate-600">{customer.full_name} • {analysis?.totalServices || 0} services analyzed</p>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 truncate">AI Pool Analysis</h2>
+                <p className="text-xs sm:text-sm text-slate-600 truncate">{customer.full_name} • {analysis?.totalServices || 0} services analyzed</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1">
+            {/* Action buttons - separate row for mobile */}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1 h-9">
                 <Download className="w-4 h-4" />
                 PDF
               </Button>
-              <Button onClick={handleShare} variant="outline" size="sm" className="gap-1">
+              <Button onClick={handleShare} variant="outline" size="sm" className="gap-1 h-9">
                 {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
                 {copied ? 'Copied!' : 'Share'}
               </Button>
-              <Button onClick={onClose} variant="outline" size="sm">
+              <Button onClick={onClose} variant="outline" size="sm" className="h-9">
                 Close
               </Button>
             </div>
@@ -223,7 +224,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Health Score Card - Requirement 1.2 */}
           <Card className={`mb-6 border-2 ${gradeStyle.border}`}>
-            <div 
+            <div
               className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
               onClick={() => toggleSection('healthScore')}
             >
@@ -231,12 +232,12 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 <Star className="w-5 h-5 text-cyan-600" />
                 <h3 className="text-lg font-semibold text-slate-900">Pool Health Score</h3>
               </div>
-              {expandedSections.healthScore ? 
-                <ChevronUp className="w-5 h-5 text-slate-400" /> : 
+              {expandedSections.healthScore ?
+                <ChevronUp className="w-5 h-5 text-slate-400" /> :
                 <ChevronDown className="w-5 h-5 text-slate-400" />
               }
             </div>
-            
+
             {expandedSections.healthScore && healthScore && (
               <div className="px-4 pb-4">
                 <div className="flex items-center justify-center gap-6 mb-4">
@@ -247,7 +248,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       <div className={`text-lg font-semibold ${gradeStyle.text}`}>Grade {healthScore.grade}</div>
                     </div>
                   </div>
-                  
+
                   {/* Score Details */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -264,7 +265,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Chemical Breakdown */}
                 {healthScore.breakdown && healthScore.breakdown.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -284,43 +285,40 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           {/* Predictive Insights - Requirement 2.1 */}
           {predictiveInsights && (
             <Card className="mb-6 border-2">
-              <div 
+              <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('predictions')}
               >
                 <div className="flex items-center gap-2">
                   <Eye className="w-5 h-5 text-purple-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Predictive Insights</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    predictiveInsights.overallOutlook === 'stable' ? 'bg-green-100 text-green-700' :
-                    predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.overallOutlook === 'stable' ? 'bg-green-100 text-green-700' :
+                      predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                    }`}>
                     {predictiveInsights.overallOutlook.replace('-', ' ')}
                   </span>
                 </div>
-                {expandedSections.predictions ? 
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> : 
+                {expandedSections.predictions ?
+                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
                   <ChevronDown className="w-5 h-5 text-slate-400" />
                 }
               </div>
-              
+
               {expandedSections.predictions && (
                 <div className="px-4 pb-4 space-y-4">
                   {/* Next Service Recommendation */}
-                  <div className={`p-4 rounded-lg border ${
-                    predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-50 border-red-200' :
-                    predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-50 border-yellow-200' :
-                    'bg-green-50 border-green-200'
-                  }`}>
+                  <div className={`p-4 rounded-lg border ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-50 border-red-200' :
+                      predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-50 border-yellow-200' :
+                        'bg-green-50 border-green-200'
+                    }`}>
                     <div className="flex items-center gap-2 mb-2">
                       <Calendar className="w-4 h-4" />
                       <span className="font-medium">Next Service</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-200 text-red-800' :
-                        predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-200 text-yellow-800' :
-                        'bg-green-200 text-green-800'
-                      }`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-200 text-red-800' :
+                          predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-200 text-yellow-800' :
+                            'bg-green-200 text-green-800'
+                        }`}>
                         {predictiveInsights.nextServiceRecommendation.urgency}
                       </span>
                     </div>
@@ -329,7 +327,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       Suggested: {safeFormatDate(predictiveInsights.nextServiceRecommendation?.suggestedDate, 'MMM d, yyyy')}
                     </p>
                   </div>
-                  
+
                   {/* Chemical Predictions */}
                   {predictiveInsights.predictions && predictiveInsights.predictions.length > 0 && (
                     <div className="space-y-2">
@@ -355,7 +353,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       ))}
                     </div>
                   )}
-                  
+
                   {/* Seasonal Factors */}
                   {predictiveInsights.seasonalFactors && predictiveInsights.seasonalFactors.length > 0 && (
                     <div className="text-sm text-slate-600">
@@ -371,7 +369,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           {/* Chemical Trends */}
           {chemicalTrends && chemicalTrends.length > 0 && (
             <Card className="mb-6 border-2">
-              <div 
+              <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('trends')}
               >
@@ -379,18 +377,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   <TrendingUp className="w-5 h-5 text-cyan-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Chemical Trends</h3>
                 </div>
-                {expandedSections.trends ? 
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> : 
+                {expandedSections.trends ?
+                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
                   <ChevronDown className="w-5 h-5 text-slate-400" />
                 }
               </div>
-              
+
               {expandedSections.trends && (
                 <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                   {chemicalTrends.map((trend) => {
                     const config = trendIcons[trend.trend] || trendIcons.stable;
                     const TrendIcon = config.icon;
-                    
+
                     return (
                       <div key={trend.chemical} className={`p-3 rounded-lg border ${config.bg} ${config.border}`}>
                         <div className="flex items-center justify-between mb-2">
@@ -401,11 +399,10 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                           <span className="text-xs text-slate-600">{Math.round(trend.confidence)}% confidence</span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                          <span className={`capitalize ${
-                            trend.currentStatus === 'good' ? 'text-green-600' :
-                            trend.currentStatus === 'critical' ? 'text-red-600' :
-                            'text-yellow-600'
-                          }`}>
+                          <span className={`capitalize ${trend.currentStatus === 'good' ? 'text-green-600' :
+                              trend.currentStatus === 'critical' ? 'text-red-600' :
+                                'text-yellow-600'
+                            }`}>
                             Current: {trend.currentStatus}
                           </span>
                           <span className={`capitalize ${config.color}`}>{trend.trend}</span>
@@ -421,7 +418,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           {/* Problems */}
           {problems && problems.length > 0 && (
             <Card className="mb-6 border-2">
-              <div 
+              <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('problems')}
               >
@@ -432,18 +429,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                     {problems.length} found
                   </span>
                 </div>
-                {expandedSections.problems ? 
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> : 
+                {expandedSections.problems ?
+                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
                   <ChevronDown className="w-5 h-5 text-slate-400" />
                 }
               </div>
-              
+
               {expandedSections.problems && (
                 <div className="px-4 pb-4 space-y-3">
                   {problems.map((problem) => {
                     const config = severityConfig[problem.severity] || severityConfig.low;
                     const SeverityIcon = config.icon;
-                    
+
                     return (
                       <div key={problem.id} className={`p-4 rounded-lg border ${config.bg}`}>
                         <div className="flex items-start gap-3">
@@ -474,7 +471,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           {/* Recommendations */}
           {recommendations && (
             <Card className="mb-6 border-2">
-              <div 
+              <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('recommendations')}
               >
@@ -482,12 +479,12 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   <Lightbulb className="w-5 h-5 text-yellow-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Recommendations</h3>
                 </div>
-                {expandedSections.recommendations ? 
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> : 
+                {expandedSections.recommendations ?
+                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
                   <ChevronDown className="w-5 h-5 text-slate-400" />
                 }
               </div>
-              
+
               {expandedSections.recommendations && (
                 <div className="px-4 pb-4 space-y-4">
                   {recommendations.immediate && recommendations.immediate.length > 0 && (
@@ -571,7 +568,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           {/* Customer Report - Requirement 4.1 */}
           {customerReport && (
             <Card className="mb-6 border-2 border-green-200">
-              <div 
+              <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('customerReport')}
               >
@@ -582,18 +579,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                     Ready to share
                   </span>
                 </div>
-                {expandedSections.customerReport ? 
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> : 
+                {expandedSections.customerReport ?
+                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
                   <ChevronDown className="w-5 h-5 text-slate-400" />
                 }
               </div>
-              
+
               {expandedSections.customerReport && (
                 <div className="px-4 pb-4">
                   <div className="bg-green-50 p-4 rounded-lg border border-green-200 mb-4">
                     <p className="font-medium text-slate-900 mb-2">{customerReport.greeting}</p>
                     <p className="text-sm text-slate-700 mb-3">{customerReport.healthSummary}</p>
-                    
+
                     {customerReport.whatWeDid && customerReport.whatWeDid.length > 0 && (
                       <div className="mb-3">
                         <p className="text-sm font-medium text-slate-900 mb-1">What We Did:</p>
@@ -604,9 +601,9 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                         </ul>
                       </div>
                     )}
-                    
+
                     <p className="text-sm text-slate-700 mb-3">{customerReport.whatToExpect}</p>
-                    
+
                     {customerReport.recommendations && customerReport.recommendations.length > 0 && (
                       <div className="mb-3">
                         <p className="text-sm font-medium text-slate-900 mb-1">Recommendations:</p>
@@ -617,17 +614,17 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                         </ul>
                       </div>
                     )}
-                    
+
                     <p className="text-sm text-green-700 italic">{customerReport.closingNote}</p>
                   </div>
-                  
+
                   {/* Shareable Text */}
                   <div className="bg-slate-100 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-slate-700">Shareable Text (SMS/Email)</span>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => copyToClipboard(customerReport.shareableText)}
                         className="gap-1"
                       >
@@ -651,19 +648,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 <div className="flex items-center gap-2 mb-3">
                   <BarChart3 className="w-5 h-5 text-cyan-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Summary</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    professionalSummary.tone === 'positive' ? 'bg-green-100 text-green-700' :
-                    professionalSummary.tone === 'neutral' ? 'bg-slate-100 text-slate-700' :
-                    professionalSummary.tone === 'concerned' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${professionalSummary.tone === 'positive' ? 'bg-green-100 text-green-700' :
+                      professionalSummary.tone === 'neutral' ? 'bg-slate-100 text-slate-700' :
+                        professionalSummary.tone === 'concerned' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                    }`}>
                     {professionalSummary.tone}
                   </span>
                 </div>
-                
+
                 <h4 className="font-medium text-slate-900 mb-2">{professionalSummary.headline}</h4>
                 <p className="text-sm text-slate-700 mb-4">{professionalSummary.paragraph}</p>
-                
+
                 {professionalSummary.bulletPoints && professionalSummary.bulletPoints.length > 0 && (
                   <ul className="text-sm text-slate-700 space-y-1 mb-4">
                     {professionalSummary.bulletPoints.map((point, idx) => (
@@ -674,7 +670,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                     ))}
                   </ul>
                 )}
-                
+
                 {professionalSummary.callToAction && (
                   <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-200">
                     <p className="text-sm font-medium text-cyan-800">{professionalSummary.callToAction}</p>

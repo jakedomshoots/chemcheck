@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton, CustomerCardSkeleton } from "@/components/ui/skeleton";
-import { subMonths, isAfter } from "date-fns";
+// date-fns imports removed - no longer filtering by date
 import CustomerHistoryCard from "../components/history/CustomerHistoryCard";
 import {
   filterByProofOfService,
@@ -93,15 +93,8 @@ export default function History() {
     if (allCustomers && allLogs) {
       setCustomers(allCustomers);
 
-      // Get logs from the past month
-      const oneMonthAgo = subMonths(new Date(), 1);
-      const recentLogs = allLogs.filter(log => {
-        // Use parseLocalDate to avoid timezone issues with YYYY-MM-DD strings
-        const logDate = parseLocalDate(log.service_date);
-        return logDate && isAfter(logDate, oneMonthAgo);
-      });
-
-      setLogs(recentLogs);
+      // Show all logs (no month filter) to sync with CustomerDetail page
+      setLogs(allLogs);
       setLoading(false);
     }
   }, [allCustomers, allLogs]);
@@ -161,7 +154,7 @@ export default function History() {
             </div>
             <div>
               <h2 className="text-2xl font-bold text-slate-900">Service History</h2>
-              <p className="text-sm text-slate-600">Past month's service logs by day</p>
+              <p className="text-sm text-slate-600">All service logs by day</p>
             </div>
           </div>
         </div>
@@ -187,7 +180,7 @@ export default function History() {
             </div>
             <div>
               <h2 className="text-2xl font-bold text-slate-900">Service History</h2>
-              <p className="text-sm text-slate-600">Past month's service logs by day</p>
+              <p className="text-sm text-slate-600">All service logs by day</p>
             </div>
           </div>
 
