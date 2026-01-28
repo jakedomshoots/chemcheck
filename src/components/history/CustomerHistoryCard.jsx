@@ -57,7 +57,7 @@ function LogEntry({ log, onDelete }) {
   const [isOpen, setIsOpen] = useState(false);
   const [photos, setPhotos] = useState([]);
   const [photosLoaded, setPhotosLoaded] = useState(false);
-  
+
   const status = getLogStatus(log);
   const statusConfig = levelConfig[status];
   const StatusIcon = statusConfig.icon;
@@ -69,26 +69,26 @@ function LogEntry({ log, onDelete }) {
   // Load photos when component mounts (not just when expanded)
   React.useEffect(() => {
     if (photosLoaded) return;
-    
+
     const abortController = new AbortController();
-    
+
     const loadPhotos = async () => {
       if (!log._id && !log.id) return;
-      
+
       const serviceLogId = String(log._id || log.id);
       console.log('[CustomerHistoryCard LogEntry] Loading photos for service log:', serviceLogId);
-      
+
       try {
         const fetchedPhotos = await getPhotosByServiceLog(serviceLogId);
-        
+
         // Check if request was aborted before updating state
         if (abortController.signal.aborted) {
           console.log('[CustomerHistoryCard LogEntry] Photo loading aborted');
           return;
         }
-        
+
         console.log('[CustomerHistoryCard LogEntry] Fetched photos:', fetchedPhotos.length);
-        
+
         // Transform to ServicePhoto format expected by gallery
         const transformedPhotos = fetchedPhotos.map(photo => ({
           id: photo.id,
@@ -96,7 +96,7 @@ function LogEntry({ log, onDelete }) {
           category: photo.category,
           timestamp: photo.timestamp,
         }));
-        
+
         console.log('[CustomerHistoryCard LogEntry] Transformed photos:', transformedPhotos.length);
         setPhotos(transformedPhotos);
         setPhotosLoaded(true);
@@ -111,7 +111,7 @@ function LogEntry({ log, onDelete }) {
     };
 
     loadPhotos();
-    
+
     // Cleanup function to abort in-flight requests
     return () => {
       abortController.abort();
@@ -139,13 +139,13 @@ function LogEntry({ log, onDelete }) {
           ) : (
             <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
           )}
-          
+
           <CalendarIcon className="w-4 h-4 text-cyan-600 flex-shrink-0" />
-          
+
           <span className="font-medium text-sm text-slate-900">
             {formatServiceDateFull(log.service_date)}
           </span>
-          
+
           {/* Status Badge */}
           <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${statusConfig.bg} ${statusConfig.border} border`}>
             <StatusIcon className={`w-3 h-3 ${statusConfig.color}`} />
@@ -160,17 +160,16 @@ function LogEntry({ log, onDelete }) {
           <div className="flex items-center gap-2 mr-2">
             {/* Photo Count Indicator */}
             <div
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${
-                hasPhotos 
-                  ? 'bg-cyan-50 text-cyan-700' 
-                  : 'bg-slate-50 text-slate-400'
-              }`}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${hasPhotos
+                ? 'bg-cyan-50 text-cyan-700'
+                : 'bg-slate-50 text-slate-400'
+                }`}
               title={hasPhotos ? `${photoCount} photo${photoCount !== 1 ? 's' : ''}` : 'No photos'}
             >
               <Camera className="w-3 h-3" />
               <span className="text-[10px] font-medium">{photoCount}</span>
             </div>
-            
+
             {/* Chemical Status Dots */}
             {readings.slice(0, 3).map((reading) => {
               if (reading.type === "number") return null;
@@ -277,10 +276,13 @@ function LogEntry({ log, onDelete }) {
   );
 }
 
-export default function CustomerHistoryCard({ customer, logs, onDeleteLog, onClick }) {
+export default function CustomerHistoryCard({ customer, logs, totalLogCount, onDeleteLog, onClick }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [deleteLogId, setDeleteLogId] = useState(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+
+  // Use totalLogCount if provided, otherwise fall back to logs.length
+  const displayLogCount = totalLogCount ?? logs.length;
 
   const handleDeleteConfirm = () => {
     if (deleteLogId) {
@@ -310,7 +312,7 @@ export default function CustomerHistoryCard({ customer, logs, onDeleteLog, onCli
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs px-2 py-0.5 bg-cyan-100/80 text-cyan-700 rounded-md font-medium">
-                  {logs.length} log{logs.length !== 1 ? 's' : ''}
+                  {displayLogCount} log{displayLogCount !== 1 ? 's' : ''}
                 </span>
                 <span className="text-xs text-slate-600">
                   Last: {formatServiceDate(logs[0].service_date)}
@@ -328,10 +330,10 @@ export default function CustomerHistoryCard({ customer, logs, onDeleteLog, onCli
             {/* Service Logs - Collapsible List */}
             <div className="space-y-2 mb-4 max-h-[400px] overflow-y-auto">
               {logs.map((log) => (
-                <LogEntry 
-                  key={log.id} 
-                  log={log} 
-                  onDelete={(id) => setDeleteLogId(id)} 
+                <LogEntry
+                  key={log.id}
+                  log={log}
+                  onDelete={(id) => setDeleteLogId(id)}
                 />
               ))}
             </div>

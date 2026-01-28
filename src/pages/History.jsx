@@ -112,14 +112,18 @@ export default function History() {
   const getCustomersForDay = (day) => {
     const dayCustomers = customers.filter(c => c.service_day === day);
 
-    // For each customer, get their filtered logs from the past month
+    // For each customer, get their logs
     let result = dayCustomers.map(customer => {
+      // Get ALL logs for this customer (for accurate total count)
+      const allCustomerLogs = logs.filter(log => log.customer_id === customer._id);
+      // Get filtered logs (for display based on proof-of-service filter)
       const customerLogs = filteredLogs.filter(log => log.customer_id === customer._id);
       return {
         customer,
-        logs: customerLogs
+        logs: customerLogs,
+        totalLogCount: allCustomerLogs.length
       };
-    }).filter(item => item.logs.length > 0); // Only show customers with logs
+    }).filter(item => item.logs.length > 0 || item.totalLogCount > 0); // Show if has any logs
 
     // If filtering by customerId, ensure that customer is shown first and included even with no logs
     if (filteredCustomerId) {
@@ -132,7 +136,8 @@ export default function History() {
         result = result.filter(item => item.customer._id !== filteredCustomerId);
         result.unshift({
           customer: filteredCustomerData,
-          logs: allLogsForCustomer
+          logs: allLogsForCustomer,
+          totalLogCount: allLogsForCustomer.length
         });
       }
     }
@@ -292,11 +297,12 @@ export default function History() {
                 </Card>
               ) : (
                 <div className="space-y-3">
-                  {dayData.map(({ customer, logs }) => (
+                  {dayData.map(({ customer, logs, totalLogCount }) => (
                     <CustomerHistoryCard
                       key={customer.id}
                       customer={customer}
                       logs={logs}
+                      totalLogCount={totalLogCount}
                       onDeleteLog={handleDeleteLog}
                       onClick={() => navigate(createPageUrl("CustomerDetail") + `?id=${customer.id}`)}
                     />

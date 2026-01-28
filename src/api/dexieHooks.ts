@@ -2,12 +2,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useMemo } from 'react';
 import { db, getTodayDate, getTimestamp, DEFAULT_USER } from '@/db/chemcheck-db';
 import type { Customer, ServiceLog, ChemicalUsage, Note, SyncableRecord } from '@/db/chemcheck-db';
-import { 
-  validateCustomer, 
-  validateServiceLog, 
-  validateChemicalUsage, 
-  validateNote,
-  checkRateLimit 
+import {
+    validateCustomer,
+    validateServiceLog,
+    validateChemicalUsage,
+    validateNote,
+    checkRateLimit
 } from '@/lib/validation';
 import { measureDatabaseOperation, reportError } from '@/lib/monitoring';
 
@@ -25,12 +25,12 @@ const idAliasCache = new WeakMap();
 
 function addIdAlias<T extends { id?: number }>(record: T): T & { _id: number } {
     if (!record.id) return record as T & { _id: number };
-    
+
     // Check cache first
     if (idAliasCache.has(record)) {
         return idAliasCache.get(record);
     }
-    
+
     // Create new object with _id alias
     const aliased = { ...record, _id: record.id };
     idAliasCache.set(record, aliased);
@@ -48,7 +48,7 @@ function addIdAliasToArray<T extends { id?: number }>(records: T[]): (T & { _id:
 
 export function useCustomers() {
     const data = useLiveQuery(
-        () => measureDatabaseOperation('customers_list', () => 
+        () => measureDatabaseOperation('customers_list', () =>
             db.customers.where('created_by').equals(DEFAULT_USER).toArray()
         ),
         [],
@@ -119,7 +119,7 @@ export function useCustomerUpdate() {
         if (!id) throw new Error('Customer id required');
 
         const { id: _idField, _id: _idAlias, ...updates } = data as any;
-        
+
         // Validate update data (partial validation)
         if (Object.keys(updates).length > 0) {
             const validation = validateCustomer({ ...updates, full_name: updates.full_name || 'temp', address: updates.address || 'temp', service_day: updates.service_day || 'Monday', pool_type: updates.pool_type || 'Chlorine', surface_type: updates.surface_type || 'Plaster' });
@@ -151,14 +151,14 @@ export function useCustomerDelete() {
 // ServiceLog Hooks
 // ============================================
 
-export function useServiceLogs(order = '-service_date', limit = 100) {
+export function useServiceLogs(order = '-service_date', limit?: number) {
     const data = useLiveQuery(
         async () => {
             let collection = db.serviceLogs.orderBy('service_date');
             if (order === '-service_date') {
                 collection = collection.reverse();
             }
-            return collection.limit(limit).toArray();
+            return limit ? collection.limit(limit).toArray() : collection.toArray();
         },
         [order, limit],
         []
@@ -191,7 +191,7 @@ export function useServiceLogsByCustomer(customerId: number | undefined) {
         [customerId],
         []
     );
-    
+
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
