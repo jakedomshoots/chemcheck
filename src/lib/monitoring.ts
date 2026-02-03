@@ -256,15 +256,34 @@ class MonitoringService {
       localStorage.setItem('monitoring_metrics', JSON.stringify(this.metrics.slice(-50)));
       localStorage.setItem('monitoring_errors', JSON.stringify(this.errors.slice(-50)));
     } catch (error) {
-      console.warn('Failed to persist monitoring data:', error);
+      // Handle quota exceeded error specifically
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        console.warn('LocalStorage quota exceeded, clearing old monitoring data');
+        this.clearOldData();
+        // Retry once with reduced data
+        try {
+          localStorage.setItem('monitoring_metrics', JSON.stringify(this.metrics.slice(-25)));
+          localStorage.setItem('monitoring_errors', JSON.stringify(this.errors.slice(-25)));
+        } catch (retryError) {
+          console.warn('Still failed to persist after clearing, using memory-only mode');
+        }
+      } else {
+        console.warn('Failed to persist monitoring data:', error);
+      }
     }
+  }
+
+  private clearOldData(): void {
+    // Reduce stored items by half to clear space
+    this.metrics = this.metrics.slice(-Math.floor(this.maxStoredItems / 2));
+    this.errors = this.errors.slice(-Math.floor(this.maxStoredItems / 2));
   }
 
   private loadStoredData(): void {
     try {
       const storedMetrics = localStorage.getItem('monitoring_metrics');
       const storedErrors = localStorage.getItem('monitoring_errors');
-      
+
       if (storedMetrics) {
         this.metrics = JSON.parse(storedMetrics);
       }
@@ -341,16 +360,41 @@ class MonitoringService {
 export const monitoring = new MonitoringService();
 
 // Convenience functions
-export const reportError = (error: Omit<ErrorReport, 'id' | 'timestamp' | 'userAgent' | 'url' | 'userId'>) => 
+export const reportError = (error: Omit<ErrorReport, 'id' | 'timestamp' | 'userAgent' | 'url' | 'userId'>) =>
   monitoring.reportError(error);
 
-export const recordMetric = (name: string, value: number, metadata?: Record<string, any>) => 
+export const recordMetric = (name: string, value: number, metadata?: Record<string, any>) =>
   monitoring.recordMetric(name, value, metadata);
 
-export const measureDatabaseOperation = <T>(operation: string, fn: () => Promise<T>) => 
+export const measureDatabaseOperation = <T>(operation: string, fn: () => Promise<T>) =>
   monitoring.measureDatabaseOperation(operation, fn);
 
+// Memory monitoring interval reference
+let memoryMonitorIntervalId: ReturnType<typeof setInterval> | null = null;
+
 // Start memory monitoring
-setInterval(() => {
+memoryMonitorIntervalId = setInterval(() => {
   monitoring.checkMemoryUsage();
 }, 30000); // Check every 30 seconds
+
+/**
+ * Stop memory monitoring and clean up interval.
+ * Call this during component unmount or page cleanup.
+ */
+export function stopMemoryMonitoring(): void {
+  if (memoryMonitorIntervalId) {
+    clearInterval(memoryMonitorIntervalId);
+    memoryMonitorIntervalId = null;
+  }
+}
+
+/**
+ * Restart memory monitoring if it was stopped.
+ */
+export function startMemoryMonitoring(): void {
+  if (!memoryMonitorIntervalId) {
+    memoryMonitorIntervalId = setInterval(() => {
+      monitoring.checkMemoryUsage();
+    }, 30000);
+  }
+}

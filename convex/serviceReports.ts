@@ -326,6 +326,7 @@ export const getServiceLogWithCustomer = internalQuery({
 /**
  * Internal mutation to get or create report (bypasses auth for action use)
  * Uses generateUniqueToken for consistent collision checking across all token generation
+ * Sets token expiration to 30 days from creation
  */
 export const getOrCreateReportInternal = internalMutation({
   args: {
@@ -349,12 +350,17 @@ export const getOrCreateReportInternal = internalMutation({
     // Capture timestamp once for consistency between DB and return value
     const createdAt = Date.now();
 
+    // Token expires in 30 days
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const expiresAt = createdAt + THIRTY_DAYS_MS;
+
     // Create new report
     const reportId = await ctx.db.insert("serviceReports", {
       service_log_id: args.service_log_id,
       customer_id: args.customer_id,
       report_token: token,
       created_at: createdAt,
+      expires_at: expiresAt,
     });
 
     return {
@@ -363,6 +369,7 @@ export const getOrCreateReportInternal = internalMutation({
       customer_id: args.customer_id,
       report_token: token,
       created_at: createdAt,
+      expires_at: expiresAt,
       sent_at: undefined as number | undefined,
       sent_to_phone: undefined as string | undefined,
       send_count: undefined as number | undefined,
@@ -372,16 +379,76 @@ export const getOrCreateReportInternal = internalMutation({
 
 /**
  * Helper: Escape HTML to prevent XSS attacks
+ * 
+ * SECURITY: This function escapes all HTML special characters to prevent XSS.
+ * It covers:
+ * - Standard HTML entities (&, <, >, ", ')
+ * - Backticks (used in template literals)
+ * - Forward slashes (to prevent </script> injection)
+ * - Equals signs in attribute contexts
  */
-export function escapeHtml(text: string): string {
+export function escapeHtml(text: string | null | undefined): string {
+  if (text === null || text === undefined) {
+    return '';
+  }
+  if (typeof text !== 'string') {
+    return String(text);
+  }
+
   const map: Record<string, string> = {
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
     '"': '&quot;',
     "'": '&#039;',
+    '`': '&#x60;',
+    '/': '&#x2F;',
   };
-  return text.replace(/[&<>"']/g, (char) => map[char]);
+  return text.replace(/[&<>"'`\/]/g, (char) => map[char]);
+}
+
+/**
+ * Helper: Escape a URL for safe use in href attributes
+ * Validates the URL is safe and escapes it for HTML attribute context
+ */
+export function escapeUrlForHtml(url: string | null | undefined): string {
+  if (!url) return '';
+
+  // Validate URL uses safe protocol
+  if (!isValidReportLink(url)) {
+    return ''; // Return empty for unsafe URLs
+  }
+
+  // Escape for HTML attribute context
+  return escapeHtml(url);
+}
+
+/**
+ * Helper: Create safe email content by escaping all user-controlled fields
+ * This wrapper ensures no field is missed during template generation
+ */
+export interface SafeEmailFields {
+  customerName: string;
+  serviceDate: string;
+  customNote: string;
+  businessName: string;
+  reportLink: string;
+}
+
+export function createSafeEmailFields(params: {
+  customerName?: string | null;
+  serviceDate?: string | null;
+  customNote?: string | null;
+  businessName?: string | null;
+  reportLink?: string | null;
+}): SafeEmailFields {
+  return {
+    customerName: escapeHtml(params.customerName || 'Valued Customer'),
+    serviceDate: escapeHtml(params.serviceDate || 'Unknown Date'),
+    customNote: escapeHtml(params.customNote || ''),
+    businessName: escapeHtml(params.businessName || 'Dominick Pool Solutions'),
+    reportLink: escapeUrlForHtml(params.reportLink),
+  };
 }
 
 /**
@@ -400,9 +467,12 @@ export function isValidReportLink(url: string): boolean {
 /**
  * Helper: Sanitize string for use in email subject line
  * Removes newlines to prevent email header injection attacks
+ * Also removes other control characters that could cause issues
  */
-export function sanitizeForSubject(text: string): string {
-  return text.replace(/[\r\n]/g, ' ');
+export function sanitizeForSubject(text: string | null | undefined): string {
+  if (!text) return '';
+  // Remove newlines, carriage returns, and other control characters
+  return text.replace(/[\r\n\x00-\x1F\x7F]/g, ' ').trim().slice(0, 200);
 }
 
 /**
@@ -433,19 +503,33 @@ export interface GeneratedEmailContent {
  * - Good status: Simple notification that pool is in perfect condition
  * - Needs attention: Includes custom note or generic attention message
  * 
+ * SECURITY: All user-controlled fields are escaped via createSafeEmailFields
+ * to prevent XSS attacks in email clients.
+ * 
  * Requirements: 1.1, 1.2, 3.2, 3.6, 3.7
  */
 export function generateSimpleEmailContent(params: EmailContentParams): GeneratedEmailContent {
   const { customerName, serviceDate, poolStatus, customNote, businessName: inputBusinessName, reportLink } = params;
 
-  // Escape user input to prevent XSS (only for HTML content)
-  const safeCustomerName = escapeHtml(customerName);
-  const safeServiceDate = escapeHtml(serviceDate);
-  const safeCustomNote = customNote ? escapeHtml(customNote) : '';
+  // SECURITY: Centralized escaping for all user-controlled fields
+  // This ensures no field is missed during template generation
+  const safeFields = createSafeEmailFields({
+    customerName,
+    serviceDate,
+    customNote,
+    businessName: inputBusinessName,
+    reportLink,
+  });
 
-  // Use provided business name or default
+  // Shorthand for safe values
+  const safeCustomerName = safeFields.customerName;
+  const safeServiceDate = safeFields.serviceDate;
+  const safeCustomNote = safeFields.customNote;
+  const safeBusinessName = safeFields.businessName;
+  const safeReportLink = safeFields.reportLink;
+
+  // Use provided business name or default (unescaped for text content)
   const businessName = inputBusinessName || "Dominick Pool Solutions";
-  const safeBusinessName = escapeHtml(businessName);
   const footerText = "This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions";
 
   // Subject line: sanitize to prevent email header injection, use unescaped values (plain text)
@@ -477,9 +561,10 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   }
 
   // Generate report link section if provided and URL is safe
-  const reportLinkHtml = reportLink && isValidReportLink(reportLink) ? `
+  // Note: safeReportLink is already validated and escaped via createSafeEmailFields
+  const reportLinkHtml = safeReportLink ? `
         <div style="text-align: center; margin: 25px 0;">
-          <a href="${escapeHtml(reportLink)}" style="display: inline-block; background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">View Full Report</a>
+          <a href="${safeReportLink}" style="display: inline-block; background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">View Full Report</a>
         </div>
   ` : '';
 
@@ -958,12 +1043,131 @@ async function sendViaEmail(
   }
 }
 
+/**
+ * Internal mutation to log report access attempts
+ * Used for audit trail and security monitoring
+ */
+export const logReportAccess = internalMutation({
+  args: {
+    report_token: v.string(),
+    ip_address: v.optional(v.string()),
+    user_agent: v.optional(v.string()),
+    success: v.boolean(),
+    failure_reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("reportAccessLogs", {
+      report_token: args.report_token,
+      ip_address: args.ip_address,
+      user_agent: args.user_agent,
+      success: args.success,
+      failure_reason: args.failure_reason,
+      accessed_at: Date.now(),
+    });
+  },
+});
+
+/**
+ * Internal query to check rate limit for report access
+ * Returns whether access should be allowed based on IP-based rate limiting
+ */
+export const checkReportAccessRateLimit = internalQuery({
+  args: {
+    ip_address: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!args.ip_address) {
+      // Without IP, we can't rate limit effectively
+      return { allowed: true, remaining: 100, reset_time: 0 };
+    }
+
+    const key = `report_access:${args.ip_address}`;
+    const now = Date.now();
+    const windowMs = 60 * 1000; // 1 minute window
+    const maxRequests = 30; // 30 requests per minute per IP
+
+    const existing = await ctx.db
+      .query("rateLimits")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .first();
+
+    if (!existing) {
+      return { allowed: true, remaining: maxRequests - 1, reset_time: now + windowMs };
+    }
+
+    // Check if window has expired
+    if (now >= existing.reset_time) {
+      return { allowed: true, remaining: maxRequests - 1, reset_time: now + windowMs };
+    }
+
+    // Check if within limit
+    if (existing.count >= maxRequests) {
+      return {
+        allowed: false,
+        remaining: 0,
+        reset_time: existing.reset_time,
+        error: "Too many requests. Please try again in a minute."
+      };
+    }
+
+    return { allowed: true, remaining: maxRequests - existing.count - 1, reset_time: existing.reset_time };
+  },
+});
+
+/**
+ * Internal mutation to update rate limit counter for report access
+ */
+export const updateReportAccessRateLimit = internalMutation({
+  args: {
+    ip_address: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const key = `report_access:${args.ip_address}`;
+    const now = Date.now();
+    const windowMs = 60 * 1000; // 1 minute window
+
+    const existing = await ctx.db
+      .query("rateLimits")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .first();
+
+    if (!existing || now >= existing.reset_time) {
+      // Create new or reset expired window
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          count: 1,
+          reset_time: now + windowMs,
+          updated_at: now,
+        });
+      } else {
+        await ctx.db.insert("rateLimits", {
+          key,
+          count: 1,
+          reset_time: now + windowMs,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+    } else {
+      // Increment counter
+      await ctx.db.patch(existing._id, {
+        count: existing.count + 1,
+        updated_at: now,
+      });
+    }
+  },
+});
 
 /**
  * Get a service report by token for the public report page
  * 
- * This query is PUBLIC (no authentication required) to allow customers
+ * This action is PUBLIC (no authentication required) to allow customers
  * to view their service reports via the link sent in SMS.
+ * 
+ * SECURITY FEATURES:
+ * - Rate limiting: 30 requests per minute per IP
+ * - Token expiration: Reports expire 30 days after creation
+ * - Audit logging: All access attempts are logged
  * 
  * Returns all data needed for the public report page:
  * - Service date and technician name
@@ -973,14 +1177,105 @@ async function sendViaEmail(
  * 
  * Requirements: 3.1
  */
-export const getReportByToken = query({
+export const getReportByToken = action({
+  args: {
+    token: v.string(),
+    ip_address: v.optional(v.string()),
+    user_agent: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{
+    found: boolean;
+    error?: string;
+    rate_limited?: boolean;
+    failure_reason?: string;
+    report?: {
+      businessName: string;
+      serviceDate: string;
+      technicianName: string;
+      customerName: string;
+      chemicalReadings: {
+        ph: string | null;
+        chlorine: string | null;
+        alkalinity: string | null;
+        stabilizer: string | null;
+        salt: number | null;
+      };
+      notes: string | null;
+      overallStatus: "good" | "needs_attention";
+      photos: {
+        before: Array<{ id: string; category: string; timestamp: string; url: string | null }>;
+        after: Array<{ id: string; category: string; timestamp: string; url: string | null }>;
+      };
+      serviceDuration: number | null;
+      startTime: string | null;
+      endTime: string | null;
+      settings: {
+        show_chemical_readings: boolean;
+        show_photos: boolean;
+        show_service_notes: boolean;
+        show_technician_name: boolean;
+        show_service_duration: boolean;
+        show_overall_status: boolean;
+      };
+    };
+  }> => {
+    // SECURITY: Check rate limit for this IP
+    const rateLimitCheck: { allowed: boolean; remaining: number; reset_time: number; error?: string } =
+      await ctx.runQuery(internal.serviceReports.checkReportAccessRateLimit, {
+        ip_address: args.ip_address,
+      });
+
+    if (!rateLimitCheck.allowed) {
+      // Log rate-limited access attempt
+      await ctx.runMutation(internal.serviceReports.logReportAccess, {
+        report_token: args.token,
+        ip_address: args.ip_address,
+        user_agent: args.user_agent,
+        success: false,
+        failure_reason: "rate_limited",
+      });
+
+      return {
+        found: false,
+        error: rateLimitCheck.error || "Too many requests. Please try again later.",
+        rate_limited: true,
+      };
+    }
+
+    // Update rate limit counter
+    if (args.ip_address) {
+      await ctx.runMutation(internal.serviceReports.updateReportAccessRateLimit, {
+        ip_address: args.ip_address,
+      });
+    }
+
+    // Get the report data
+    const result: any = await ctx.runQuery(internal.serviceReports.getReportByTokenInternal, {
+      token: args.token,
+    });
+
+    // Log the access attempt
+    await ctx.runMutation(internal.serviceReports.logReportAccess, {
+      report_token: args.token,
+      ip_address: args.ip_address,
+      user_agent: args.user_agent,
+      success: result.found,
+      failure_reason: result.found ? undefined : result.failure_reason,
+    });
+
+    return result;
+  },
+});
+
+/**
+ * Internal query to get report data by token
+ * Used by the public getReportByToken action
+ */
+export const getReportByTokenInternal = internalQuery({
   args: {
     token: v.string(),
   },
   handler: async (ctx, args) => {
-    // Note: This query is intentionally public (no auth check)
-    // Security relies on unguessable tokens (122-bit entropy)
-
     // Find report by token
     const report = await ctx.db
       .query("serviceReports")
@@ -991,6 +1286,17 @@ export const getReportByToken = query({
       return {
         found: false,
         error: "Report not found. The link may be invalid.",
+        failure_reason: "not_found",
+      };
+    }
+
+    // SECURITY: Check token expiration (30 days)
+    const now = Date.now();
+    if (report.expires_at && now > report.expires_at) {
+      return {
+        found: false,
+        error: "This report link has expired. Please request a new report from your service provider.",
+        failure_reason: "expired",
       };
     }
 
@@ -1000,6 +1306,7 @@ export const getReportByToken = query({
       return {
         found: false,
         error: "This service report is no longer available.",
+        failure_reason: "service_log_deleted",
       };
     }
 
@@ -1009,6 +1316,7 @@ export const getReportByToken = query({
       return {
         found: false,
         error: "This service report is no longer available.",
+        failure_reason: "customer_deleted",
       };
     }
 

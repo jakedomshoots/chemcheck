@@ -76,8 +76,8 @@ export const uploadPhoto = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    // Enforce rate limiting
-    enforceRateLimit(identity.email!, 'serviceLog.create');
+    // Enforce rate limiting (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
 
     // Verify ownership of service log and customer
     await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
@@ -254,8 +254,8 @@ export const deletePhoto = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    // Enforce rate limiting
-    enforceRateLimit(identity.email!, 'serviceLog.delete');
+    // Enforce rate limiting (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'serviceLog.delete');
 
     const photo = await ctx.db.get(args.photo_id);
     if (!photo) {

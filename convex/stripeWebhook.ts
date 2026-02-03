@@ -2,6 +2,96 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 /**
+ * SECURITY: Webhook error types for structured logging
+ */
+type WebhookErrorType =
+  | 'SIGNATURE_MISSING'
+  | 'SIGNATURE_INVALID'
+  | 'SECRET_NOT_CONFIGURED'
+  | 'JSON_PARSE_ERROR'
+  | 'HANDLER_ERROR'
+  | 'ORIGIN_VALIDATION_FAILED';
+
+/**
+ * Structured error logger for webhook events
+ * Logs detailed information securely without exposing to clients
+ */
+function logWebhookError(
+  errorType: WebhookErrorType,
+  details: Record<string, unknown>,
+  error?: unknown
+): void {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    service: 'stripe-webhook',
+    errorType,
+    ...details,
+    // Include error message but not stack trace for remote errors
+    ...(error instanceof Error ? {
+      errorMessage: error.message,
+      // Only log stack trace in development
+      ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
+    } : {}),
+  };
+
+  console.error('[Webhook Error]', JSON.stringify(logEntry));
+}
+
+/**
+ * SECURITY: Validate origin for defense-in-depth CSRF protection
+ * Stripe webhooks should only come from Stripe's infrastructure
+ */
+function validateStripeOrigin(request: Request): boolean {
+  const userAgent = request.headers.get('user-agent');
+
+  // SECURITY: Block requests with browser-like user-agents
+  // Legitimate Stripe webhooks never come from browsers
+  // Common browser patterns: Mozilla/, Chrome/, Safari/, Firefox/, Edge/
+  const browserPatterns = [
+    /^Mozilla\//i,
+    /Chrome\//i,
+    /Safari\//i,
+    /Firefox\//i,
+    /Edg\//i,
+    /Opera\//i,
+    /Trident\//i,  // IE
+  ];
+
+  if (userAgent) {
+    const isBrowserLike = browserPatterns.some(pattern => pattern.test(userAgent));
+
+    if (isBrowserLike && !userAgent.includes('Stripe')) {
+      logWebhookError('ORIGIN_VALIDATION_FAILED', {
+        reason: 'browser_user_agent',
+        userAgent: userAgent.slice(0, 100),
+      });
+      return false;
+    }
+
+    // Log unexpected non-Stripe user agents for monitoring
+    if (!userAgent.includes('Stripe')) {
+      console.debug('[Webhook Security] Non-Stripe user-agent (allowed):', userAgent.slice(0, 100));
+    }
+  }
+
+  // Check for suspicious headers that shouldn't be on server-to-server requests
+  const referer = request.headers.get('referer');
+  const browserHeaders = request.headers.get('sec-ch-ua') ||
+    request.headers.get('sec-fetch-mode');
+
+  if (referer || browserHeaders) {
+    logWebhookError('ORIGIN_VALIDATION_FAILED', {
+      hasReferer: !!referer,
+      hasBrowserHeaders: !!browserHeaders,
+      userAgent: userAgent?.slice(0, 100),
+    });
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Verify Stripe webhook signature using HMAC-SHA256
  * This is a pure implementation that doesn't require the Stripe SDK
  */
@@ -33,7 +123,11 @@ async function verifyStripeSignature(
   const tolerance = 5 * 60; // 5 minutes in seconds
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - timestamp) > tolerance) {
-    console.error(`Webhook timestamp too old: ${now - timestamp} seconds`);
+    logWebhookError('SIGNATURE_INVALID', {
+      reason: 'timestamp_expired',
+      ageDelta: now - timestamp,
+      tolerance,
+    });
     return { verified: false };
   }
 
@@ -47,7 +141,7 @@ async function verifyStripeSignature(
     false,
     ["sign"]
   );
-  
+
   const signatureBuffer = await crypto.subtle.sign(
     "HMAC",
     key,
@@ -74,41 +168,57 @@ async function verifyStripeSignature(
 
 /**
  * Stripe webhook handler with signature verification
- * Configure this URL in your Stripe dashboard: https://your-convex-url.convex.site/stripe-webhook
+ * Configure this URL in your Stripe Dashboard: https://your-deployment.convex.site/stripe-webhook
+ * 
+ * SECURITY FEATURES:
+ * - HMAC-SHA256 signature verification
+ * - Timestamp validation (5-minute tolerance)
+ * - Origin validation for defense-in-depth
+ * - Structured error logging (no secrets in client responses)
  */
 export const handleStripeWebhook = httpAction(async (ctx, request) => {
+  // SECURITY: Defense-in-depth origin validation
+  if (!validateStripeOrigin(request)) {
+    return new Response("Invalid request", { status: 403 });
+  }
+
   // Get the raw body for signature verification
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
 
   if (!signature) {
-    console.error("Missing stripe-signature header");
-    return new Response("Missing stripe-signature header", { status: 400 });
+    logWebhookError('SIGNATURE_MISSING', {
+      ip: request.headers.get('x-forwarded-for') || 'unknown',
+    });
+    return new Response("Missing signature", { status: 400 });
   }
 
   // Get webhook secret from environment
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("STRIPE_WEBHOOK_SECRET not configured");
-    return new Response("Webhook secret not configured", { status: 500 });
+    logWebhookError('SECRET_NOT_CONFIGURED', {});
+    // Don't reveal this is a configuration issue to attackers
+    return new Response("Service unavailable", { status: 503 });
   }
 
   // Verify the webhook signature
   const { verified, timestamp } = await verifyStripeSignature(body, signature, webhookSecret);
   if (!verified) {
-    console.error("Invalid webhook signature");
+    logWebhookError('SIGNATURE_INVALID', {
+      signaturePrefix: signature.slice(0, 20) + '...',
+    });
     return new Response("Invalid signature", { status: 401 });
   }
 
-  console.log(`Verified webhook with timestamp: ${timestamp}`);
+  console.log(`[Webhook] Verified request with timestamp: ${timestamp}`);
 
   // Parse the event after signature verification
   let event;
   try {
     event = JSON.parse(body);
   } catch (err) {
-    console.error("Invalid JSON in webhook body");
-    return new Response("Invalid JSON", { status: 400 });
+    logWebhookError('JSON_PARSE_ERROR', {}, err);
+    return new Response("Invalid payload", { status: 400 });
   }
 
   // Handle the event
@@ -128,6 +238,7 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
           cancel_at_period_end: subscription.cancel_at_period_end,
           trial_end: subscription.trial_end ? subscription.trial_end * 1000 : undefined,
         });
+        console.log(`[Webhook] Processed ${event.type} for subscription:`, subscription.id);
         break;
       }
 
@@ -144,24 +255,25 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
           cancel_at_period_end: true,
           trial_end: undefined,
         });
+        console.log(`[Webhook] Processed subscription deletion:`, subscription.id);
         break;
       }
 
       case "invoice.payment_succeeded": {
         // Payment successful - subscription is active
-        console.log("Payment succeeded for invoice:", event.data.object.id);
+        console.log("[Webhook] Payment succeeded for invoice:", event.data.object.id);
         break;
       }
 
       case "invoice.payment_failed": {
         // Payment failed - may need to notify user
-        console.log("Payment failed for invoice:", event.data.object.id);
+        console.log("[Webhook] Payment failed for invoice:", event.data.object.id);
         // TODO: Send notification to user about failed payment
         break;
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        console.log(`[Webhook] Unhandled event type: ${event.type}`);
     }
 
     return new Response(JSON.stringify({ received: true }), {
@@ -169,8 +281,13 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Webhook handler error:", err);
-    return new Response("Webhook handler failed", { status: 500 });
+    // SECURITY: Log detailed error internally, return generic message to client
+    logWebhookError('HANDLER_ERROR', {
+      eventType: event.type,
+      eventId: event.id,
+    }, err);
+
+    // Generic error message - don't reveal internal details
+    return new Response("Processing error", { status: 500 });
   }
 });
-

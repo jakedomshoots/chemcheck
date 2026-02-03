@@ -195,7 +195,45 @@ export default defineSchema({
     send_count: v.optional(v.number()), // Number of times sent (for re-sends)
     last_delivery_method: v.optional(v.string()), // 'sms' or 'email'
     created_at: v.number(),
+    expires_at: v.optional(v.number()), // Token expiration timestamp (30 days from creation)
   })
     .index("by_service_log", ["service_log_id"])
-    .index("by_token", ["report_token"]),
+    .index("by_token", ["report_token"])
+    .index("by_expires_at", ["expires_at"]),
+
+  // Audit logging for public report access
+  // Tracks all attempts to access reports for security monitoring
+  reportAccessLogs: defineTable({
+    report_token: v.string(), // Token that was accessed (or attempted)
+    ip_address: v.optional(v.string()), // Client IP address if available
+    user_agent: v.optional(v.string()), // Client user agent
+    success: v.boolean(), // Whether access was granted
+    failure_reason: v.optional(v.string()), // Reason for denial (expired, not_found, rate_limited)
+    accessed_at: v.number(), // Timestamp of access attempt
+  })
+    .index("by_token", ["report_token"])
+    .index("by_ip", ["ip_address"])
+    .index("by_accessed_at", ["accessed_at"]),
+
+  // Rate limiting tables for persistent, distributed rate limiting
+  // Replaces in-memory rate limiting that resets on deployment
+  rateLimits: defineTable({
+    key: v.string(), // Format: "userId:action" or "ip:ipAddress:action"
+    count: v.number(), // Current request count in window
+    reset_time: v.number(), // Unix timestamp when window resets
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_reset_time", ["reset_time"]),
+
+  // Track rate limit violations for exponential backoff
+  rateLimitViolations: defineTable({
+    key: v.string(), // Same format as rateLimits key
+    count: v.number(), // Number of violations in window
+    last_violation_at: v.number(), // Unix timestamp of last violation
+    expires_at: v.number(), // When this violation record expires
+  })
+    .index("by_key", ["key"])
+    .index("by_expires_at", ["expires_at"]),
 });

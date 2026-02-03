@@ -181,8 +181,8 @@ export const create = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'note.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'note.create');
 
         // Validate category and priority
         validateCategory(args.category);
@@ -225,8 +225,8 @@ export const update = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'note.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'note.create');
 
         // Verify note access (tenant isolation)
         const note = await ctx.db.get(args.id);
@@ -260,8 +260,8 @@ export const remove = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'note.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'note.create');
 
         // Verify note access (tenant isolation)
         const note = await ctx.db.get(args.id);

@@ -118,8 +118,8 @@ export const create = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'chemical.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'chemical.create');
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
@@ -152,8 +152,8 @@ export const update = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'chemical.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'chemical.create');
 
         // Verify record belongs to user's customer (tenant isolation)
         const record = await ctx.db.get(args.id);
@@ -178,8 +178,8 @@ export const remove = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'chemical.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'chemical.create');
 
         // Verify record belongs to user's customer (tenant isolation)
         const record = await ctx.db.get(args.id);

@@ -159,9 +159,9 @@ export class ChemCheckDB extends Dexie {
             console.log('Database migration to version 2 completed');
         });
 
-        // Version 3: Add salt cell logs table
+        // Version 3: Add salt cell logs table and composite index for common query pattern
         this.version(3).stores({
-            customers: '++id, created_by, service_day, sort_order, sync_status, convex_id',
+            customers: '++id, created_by, service_day, sort_order, sync_status, convex_id, [created_by+service_day]',
             serviceLogs: '++id, customer_id, service_date, [customer_id+service_date], sync_status, convex_id, convex_customer_id',
             chemicalUsage: '++id, customer_id, created_date, sync_status, convex_id, convex_customer_id',
             notes: '++id, customer_id, completed, created_date, category, sync_status, convex_id, convex_customer_id',
@@ -433,7 +433,50 @@ export function getTimestamp(): string {
 }
 
 /**
- * @deprecated Use actual user email from authentication context.
- * Hardcoding 'local' bypasses multi-tenant isolation.
+ * @deprecated SECURITY WARNING: Using DEFAULT_USER bypasses multi-tenant isolation!
+ * 
+ * This constant should NEVER be used in production with real user data.
+ * It exists only for:
+ * 1. Local development/demo purposes
+ * 2. Backwards compatibility with legacy local-only data
+ * 
+ * In production, ALWAYS use the authenticated user's email from:
+ * - Clerk: useUser().user?.emailAddresses[0].emailAddress
+ * - Or your auth provider's equivalent
+ * 
+ * Multi-tenant isolation is critical for:
+ * - Customer data privacy
+ * - GDPR/CCPA compliance  
+ * - Preventing data leaks between users
  */
 export const DEFAULT_USER = 'local';
+
+/**
+ * Get the current user context for database operations.
+ * 
+ * @param authEmail - Email from authenticated user (e.g., from Clerk)
+ * @returns The user identifier to use for database queries
+ * 
+ * @example
+ * // In a component with Clerk authentication:
+ * const { user } = useUser();
+ * const userEmail = getUserContext(user?.emailAddresses[0]?.emailAddress);
+ * 
+ * // Use userEmail for database queries:
+ * db.customers.where('created_by').equals(userEmail)
+ */
+export function getUserContext(authEmail?: string | null): string {
+    if (authEmail) {
+        return authEmail;
+    }
+
+    // SECURITY: Log warning in development when falling back to DEFAULT_USER
+    if (process.env.NODE_ENV === 'development') {
+        console.warn(
+            '[SECURITY] getUserContext falling back to DEFAULT_USER. ' +
+            'Pass authenticated user email for proper tenant isolation.'
+        );
+    }
+
+    return DEFAULT_USER;
+}

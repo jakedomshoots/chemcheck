@@ -21,6 +21,7 @@ import type * as serviceReports from "../serviceReports.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as sync from "../sync.js";
+import type * as validation from "../validation.js";
 
 import type {
   ApiFromModules,
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   stripeWebhook: typeof stripeWebhook;
   subscriptions: typeof subscriptions;
   sync: typeof sync;
+  validation: typeof validation;
 }>;
 
 /**

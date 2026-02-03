@@ -47,8 +47,8 @@ export const syncCustomer = mutation({
       throw new Error("Not authenticated");
     }
 
-    // SECURITY: Enforce rate limiting
-    enforceRateLimit(identity.email!, 'customer.update');
+    // SECURITY: Enforce rate limiting (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'customer.update');
 
     const { local_id, data, local_updated_at, convex_id } = args;
 
@@ -153,8 +153,8 @@ export const syncServiceLog = mutation({
       throw new Error("Not authenticated");
     }
 
-    // SECURITY: Enforce rate limiting
-    enforceRateLimit(identity.email!, 'serviceLog.update');
+    // SECURITY: Enforce rate limiting (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'serviceLog.update');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
 
@@ -255,8 +255,8 @@ export const syncChemicalUsage = mutation({
       throw new Error("Not authenticated");
     }
 
-    // SECURITY: Enforce rate limiting
-    enforceRateLimit(identity.email!, 'chemical.create');
+    // SECURITY: Enforce rate limiting (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'chemical.create');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
 
@@ -359,8 +359,8 @@ export const syncNote = mutation({
       throw new Error("Not authenticated");
     }
 
-    // SECURITY: Enforce rate limiting
-    enforceRateLimit(identity.email!, 'note.create');
+    // SECURITY: Enforce rate limiting (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'note.create');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
 
@@ -463,8 +463,8 @@ export const syncSaltCellLog = mutation({
       throw new Error("Not authenticated");
     }
 
-    // SECURITY: Enforce rate limiting
-    enforceRateLimit(identity.email!, 'customer.update');
+    // SECURITY: Enforce rate limiting (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'customer.update');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
 
@@ -580,8 +580,8 @@ export const batchSyncCustomers = mutation({
       throw new Error("Not authenticated");
     }
 
-    // SECURITY: Enforce rate limiting for batch operations
-    enforceRateLimit(identity.email!, 'customer.create');
+    // SECURITY: Enforce rate limiting for batch operations (database-backed for distributed rate limiting)
+    await enforceRateLimit(ctx, identity.email!, 'customer.create');
 
     const results = [];
 

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
+import { PoolAnalysisSkeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import {
   TrendingUp,
@@ -24,7 +25,8 @@ import {
   Star,
   Eye,
   Copy,
-  Check
+  Check,
+  RefreshCw
 } from 'lucide-react';
 import { analyzePool, exportPoolAnalysis, downloadExport } from '@/lib/ai-summarizer';
 import { format, parseISO } from 'date-fns';
@@ -51,6 +53,125 @@ const gradeColors = {
   F: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' }
 };
 
+// Simple cache for analysis results (persists during session)
+const analysisCache = new Map();
+
+// Sparkline component for chemical trends
+function ChemicalSparkline({ readings, color = '#0ea5e9' }) {
+  if (!readings || readings.length < 2) return null;
+
+  const width = 60;
+  const height = 24;
+  const padding = 2;
+
+  // Normalize readings to 0-100 scale
+  const normalizedReadings = readings.map(r => {
+    if (r === 'good') return 100;
+    if (r === 'low' || r === 'high') return 50;
+    if (r === 'critical') return 0;
+    return 50;
+  });
+
+  const points = normalizedReadings.slice(-8).map((val, i, arr) => {
+    const x = padding + (i / (arr.length - 1)) * (width - padding * 2);
+    const y = height - padding - (val / 100) * (height - padding * 2);
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <svg width={width} height={height} className="inline-block mt-1">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Animated score ring component
+function AnimatedScoreRing({ score, grade, gradeStyle }) {
+  const [animatedScore, setAnimatedScore] = useState(0);
+  const [strokeDashoffset, setStrokeDashoffset] = useState(352);
+  const animationRef = useRef(null);
+
+  useEffect(() => {
+    const duration = 1200;
+    const startTime = Date.now();
+    const targetOffset = 352 - (score / 100) * 352;
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      setAnimatedScore(Math.round(score * eased));
+      setStrokeDashoffset(352 - (score / 100) * 352 * eased);
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [score]);
+
+  // Get stroke color based on grade
+  const strokeColor = {
+    A: '#22c55e',
+    B: '#3b82f6',
+    C: '#eab308',
+    D: '#f97316',
+    F: '#ef4444'
+  }[grade] || '#0ea5e9';
+
+  return (
+    <div className="relative w-32 h-32">
+      <svg className="w-32 h-32 -rotate-90" viewBox="0 0 128 128">
+        {/* Background circle */}
+        <circle
+          cx="64"
+          cy="64"
+          r="56"
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth="8"
+        />
+        {/* Animated progress circle */}
+        <circle
+          cx="64"
+          cy="64"
+          r="56"
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray="352"
+          strokeDashoffset={strokeDashoffset}
+          style={{ transition: 'stroke 0.3s ease' }}
+        />
+      </svg>
+      {/* Score text overlay */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <div className={`text-4xl font-bold ${gradeStyle.text}`}>{animatedScore}</div>
+          <div className={`text-lg font-semibold ${gradeStyle.text}`}>Grade {grade}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -66,9 +187,21 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
     customerReport: false
   });
 
+  // Cache key based on customer ID and log count/latest date
+  const cacheKey = useMemo(() => {
+    const latestLog = serviceLogs?.[0]?.service_date || '';
+    return `${customer._id}-${serviceLogs?.length || 0}-${latestLog}`;
+  }, [customer._id, serviceLogs]);
+
   useEffect(() => {
+    // Check cache first
+    if (analysisCache.has(cacheKey)) {
+      setAnalysis(analysisCache.get(cacheKey));
+      setLoading(false);
+      return;
+    }
     generateAnalysis();
-  }, [customer, serviceLogs]);
+  }, [customer, serviceLogs, cacheKey]);
 
   const generateAnalysis = async () => {
     try {
@@ -100,6 +233,8 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
         includeLearning: true
       });
 
+      // Cache the result
+      analysisCache.set(cacheKey, result);
       setAnalysis(result);
     } catch (err) {
       setError(err.message);
@@ -151,14 +286,22 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
     }
   };
 
+  // Force refresh analysis (clears cache)
+  const handleRefresh = () => {
+    analysisCache.delete(cacheKey);
+    setLoading(true);
+    setAnalysis(null);
+    generateAnalysis();
+  };
+
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <Card className="w-full max-w-md p-6 text-center">
-          <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">AI Analysis in Progress</h3>
-          <p className="text-sm text-slate-600">Generating intelligent insights from service history...</p>
-        </Card>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <Card className="p-6">
+            <PoolAnalysisSkeleton />
+          </Card>
+        </div>
       </div>
     );
   }
@@ -216,6 +359,10 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
                 {copied ? 'Copied!' : 'Share'}
               </Button>
+              <Button onClick={handleRefresh} variant="outline" size="sm" className="gap-1 h-9">
+                <RefreshCw className="w-4 h-4" />
+                Refresh
+              </Button>
               <Button onClick={onClose} variant="outline" size="sm" className="h-9">
                 Close
               </Button>
@@ -241,13 +388,12 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
             {expandedSections.healthScore && healthScore && (
               <div className="px-4 pb-4">
                 <div className="flex items-center justify-center gap-6 mb-4">
-                  {/* Score Circle */}
-                  <div className={`relative w-32 h-32 rounded-full ${gradeStyle.bg} flex items-center justify-center border-4 ${gradeStyle.border}`}>
-                    <div className="text-center">
-                      <div className={`text-4xl font-bold ${gradeStyle.text}`}>{Math.round(healthScore.score)}</div>
-                      <div className={`text-lg font-semibold ${gradeStyle.text}`}>Grade {healthScore.grade}</div>
-                    </div>
-                  </div>
+                  {/* Animated Score Ring */}
+                  <AnimatedScoreRing
+                    score={healthScore.score}
+                    grade={healthScore.grade}
+                    gradeStyle={gradeStyle}
+                  />
 
                   {/* Score Details */}
                   <div className="space-y-2">
@@ -255,7 +401,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       {React.createElement(trendIcons[healthScore.trend]?.icon || Minus, {
                         className: `w-5 h-5 ${trendIcons[healthScore.trend]?.color || 'text-slate-600'}`
                       })}
-                      <span className="text-sm font-medium capitalize">{healthScore.trend} trend</span>
+                      <span className="text-sm font-medium capitalize">{healthScore.trend} Trend</span>
                     </div>
                     <div className="text-sm text-slate-600">
                       Confidence: {healthScore.confidence}%
@@ -266,16 +412,22 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   </div>
                 </div>
 
-                {/* Chemical Breakdown */}
+                {/* Chemical Breakdown with Sparklines */}
                 {healthScore.breakdown && healthScore.breakdown.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {healthScore.breakdown.map((item) => (
-                      <div key={item.chemical} className="bg-slate-50 p-3 rounded-lg text-center">
-                        <div className="text-xs text-slate-600 capitalize mb-1">{item.chemical}</div>
-                        <div className="text-xl font-bold text-slate-900">{Math.round(item.score)}</div>
-                        <div className="text-xs text-slate-500">Weight: {Math.round(item.weight * 100)}%</div>
-                      </div>
-                    ))}
+                    {healthScore.breakdown.map((item) => {
+                      // Get readings history for this chemical from service logs
+                      const readings = serviceLogs?.slice(0, 8).map(log => log[item.chemical]).reverse() || [];
+                      const sparkColor = item.score >= 80 ? '#22c55e' : item.score >= 50 ? '#eab308' : '#ef4444';
+
+                      return (
+                        <div key={item.chemical} className="bg-slate-50 p-3 rounded-lg text-center">
+                          <div className="text-xs text-slate-600 capitalize mb-1">{item.chemical}</div>
+                          <div className="text-xl font-bold text-slate-900">{Math.round(item.score)}</div>
+                          <ChemicalSparkline readings={readings} color={sparkColor} />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -293,8 +445,8 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   <Eye className="w-5 h-5 text-purple-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Predictive Insights</h3>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.overallOutlook === 'stable' ? 'bg-green-100 text-green-700' :
-                      predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
+                    predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
                     }`}>
                     {predictiveInsights.overallOutlook.replace('-', ' ')}
                   </span>
@@ -309,15 +461,15 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 <div className="px-4 pb-4 space-y-4">
                   {/* Next Service Recommendation */}
                   <div className={`p-4 rounded-lg border ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-50 border-red-200' :
-                      predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-50 border-yellow-200' :
-                        'bg-green-50 border-green-200'
+                    predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-50 border-yellow-200' :
+                      'bg-green-50 border-green-200'
                     }`}>
                     <div className="flex items-center gap-2 mb-2">
                       <Calendar className="w-4 h-4" />
                       <span className="font-medium">Next Service</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-200 text-red-800' :
-                          predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-200 text-yellow-800' :
-                            'bg-green-200 text-green-800'
+                        predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-200 text-yellow-800' :
+                          'bg-green-200 text-green-800'
                         }`}>
                         {predictiveInsights.nextServiceRecommendation.urgency}
                       </span>
@@ -400,8 +552,8 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                         </div>
                         <div className="flex items-center justify-between text-sm">
                           <span className={`capitalize ${trend.currentStatus === 'good' ? 'text-green-600' :
-                              trend.currentStatus === 'critical' ? 'text-red-600' :
-                                'text-yellow-600'
+                            trend.currentStatus === 'critical' ? 'text-red-600' :
+                              'text-yellow-600'
                             }`}>
                             Current: {trend.currentStatus}
                           </span>
@@ -649,9 +801,9 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   <BarChart3 className="w-5 h-5 text-cyan-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Summary</h3>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${professionalSummary.tone === 'positive' ? 'bg-green-100 text-green-700' :
-                      professionalSummary.tone === 'neutral' ? 'bg-slate-100 text-slate-700' :
-                        professionalSummary.tone === 'concerned' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-red-100 text-red-700'
+                    professionalSummary.tone === 'neutral' ? 'bg-slate-100 text-slate-700' :
+                      professionalSummary.tone === 'concerned' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
                     }`}>
                     {professionalSummary.tone}
                   </span>
@@ -681,6 +833,6 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           )}
         </Card>
       </div>
-    </div>
+    </div >
   );
 }

@@ -40,13 +40,25 @@ export default defineConfig({
         manualChunks: {
           // Vendor chunks - split large dependencies
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-radix': [
+          // Core Radix components (frequently used)
+          'vendor-radix-core': [
             '@radix-ui/react-dialog',
             '@radix-ui/react-dropdown-menu',
             '@radix-ui/react-select',
+          ],
+          // Secondary Radix components (less frequently used)
+          'vendor-radix-ui': [
             '@radix-ui/react-tabs',
             '@radix-ui/react-tooltip',
             '@radix-ui/react-popover',
+          ],
+          // Other Radix components (lazy loaded on demand)
+          'vendor-radix-extra': [
+            '@radix-ui/react-accordion',
+            '@radix-ui/react-alert-dialog',
+            '@radix-ui/react-checkbox',
+            '@radix-ui/react-switch',
+            '@radix-ui/react-slider',
           ],
           'vendor-charts': ['recharts'],
           'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],

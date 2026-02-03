@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
 
 // Get all customers for the current user
 export const list = query({
@@ -79,11 +80,15 @@ export const create = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'customer.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'customer.create');
+
+        // SECURITY: Server-side validation and sanitization
+        // This cannot be bypassed by attackers sending data directly to Convex
+        const validatedData = validateCustomerCreate(args);
 
         const customerId = await ctx.db.insert("customers", {
-            ...args,
+            ...validatedData,
             created_by: identity.email!,
         });
 
@@ -118,8 +123,8 @@ export const update = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'customer.update');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'customer.update');
 
         // Verify ownership (tenant isolation)
         const customer = await ctx.db.get(args.id);
@@ -128,16 +133,49 @@ export const update = mutation({
             throw new Error("Access denied");
         }
 
-        const { id, ...updates } = args;
-        
-        // Merge report_settings to avoid replacing the entire object
-        if (updates.report_settings && customer.report_settings) {
-            updates.report_settings = {
-                ...customer.report_settings,
-                ...updates.report_settings,
+        const { id, report_settings, ...otherArgs } = args;
+
+        // SECURITY: Server-side validation and sanitization for update fields
+        const validatedData = validateCustomerUpdate(otherArgs);
+
+        // Handle report_settings separately with proper type safety
+        let mergedReportSettings: {
+            show_chemical_readings: boolean;
+            show_photos: boolean;
+            show_service_notes: boolean;
+            show_technician_name: boolean;
+            show_service_duration: boolean;
+            show_overall_status: boolean;
+        } | undefined;
+
+        if (report_settings) {
+            // Default settings
+            const defaults = {
+                show_chemical_readings: true,
+                show_photos: true,
+                show_service_notes: true,
+                show_technician_name: true,
+                show_service_duration: true,
+                show_overall_status: true,
+            };
+
+            // Merge with existing settings or defaults
+            const existingSettings = customer.report_settings || defaults;
+
+            mergedReportSettings = {
+                show_chemical_readings: report_settings.show_chemical_readings ?? existingSettings.show_chemical_readings,
+                show_photos: report_settings.show_photos ?? existingSettings.show_photos,
+                show_service_notes: report_settings.show_service_notes ?? existingSettings.show_service_notes,
+                show_technician_name: report_settings.show_technician_name ?? existingSettings.show_technician_name,
+                show_service_duration: report_settings.show_service_duration ?? existingSettings.show_service_duration,
+                show_overall_status: report_settings.show_overall_status ?? existingSettings.show_overall_status,
             };
         }
-        
+
+        const updates = mergedReportSettings
+            ? { ...validatedData, report_settings: mergedReportSettings }
+            : validatedData;
+
         await ctx.db.patch(id, updates);
 
         return id;
@@ -151,8 +189,8 @@ export const remove = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'customer.delete');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'customer.delete');
 
         // Verify ownership (tenant isolation)
         const customer = await ctx.db.get(args.id);

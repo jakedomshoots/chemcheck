@@ -103,3 +103,89 @@ export function CustomerDetailSkeleton() {
     </div>
   );
 }
+
+/**
+ * Skeleton for Pool Analysis Panel - matches the analysis layout
+ */
+export function PoolAnalysisSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Header skeleton */}
+      <div className="flex items-center gap-3 mb-3">
+        <Skeleton className="w-10 h-10 rounded-xl" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-3 w-48" />
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 mb-6">
+        <Skeleton className="h-9 w-16 rounded-md" />
+        <Skeleton className="h-9 w-16 rounded-md" />
+        <Skeleton className="h-9 w-16 rounded-md" />
+      </div>
+
+      {/* Health Score Card skeleton */}
+      <div className="rounded-xl border-2 border-slate-200 p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Skeleton className="w-5 h-5 rounded" />
+          <Skeleton className="h-5 w-32" />
+        </div>
+        <div className="flex items-center justify-center gap-6 mb-4">
+          {/* Score circle */}
+          <Skeleton className="w-32 h-32 rounded-full" />
+          {/* Score details */}
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-4 w-28" />
+          </div>
+        </div>
+        {/* Chemical breakdown grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-slate-50 p-3 rounded-lg text-center space-y-2">
+              <Skeleton className="h-3 w-16 mx-auto" />
+              <Skeleton className="h-6 w-10 mx-auto" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Predictive Insights skeleton */}
+      <div className="rounded-xl border-2 border-slate-200 p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Skeleton className="w-5 h-5 rounded" />
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+        <div className="p-4 bg-slate-50 rounded-lg space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      </div>
+
+      {/* Trends skeleton */}
+      <div className="rounded-xl border-2 border-slate-200 p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Skeleton className="w-5 h-5 rounded" />
+          <Skeleton className="h-5 w-32" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="p-3 bg-slate-50 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+              <Skeleton className="h-3 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

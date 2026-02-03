@@ -213,8 +213,8 @@ export const create = mutation({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Enforce rate limiting
-        enforceRateLimit(identity.email!, 'serviceLog.create');
+        // Enforce rate limiting (database-backed for distributed rate limiting)
+        await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
