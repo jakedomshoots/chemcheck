@@ -15,7 +15,11 @@ import {
   Shield,
   AlertCircle,
   CheckCircle,
-  Info
+  Info,
+  Sparkles,
+  CircuitBoard,
+  Gauge,
+  X
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
@@ -30,6 +34,8 @@ const POOL_SCHOOL_DATA = {
       title: "What's Wrong?",
       icon: 'AlertTriangle',
       description: 'Diagnose and fix common water problems',
+      gradient: 'from-red-500 via-rose-500 to-pink-500',
+      bgGlow: 'bg-red-500/20',
       topics: [
         {
           id: 'green-water',
@@ -206,6 +212,8 @@ const POOL_SCHOOL_DATA = {
       title: 'Equipment Quick-Fixes',
       icon: 'Wrench',
       description: 'Get it running again without a service call',
+      gradient: 'from-blue-500 via-indigo-500 to-violet-500',
+      bgGlow: 'bg-blue-500/20',
       topics: [
         {
           id: 'pump-issues',
@@ -348,6 +356,8 @@ const POOL_SCHOOL_DATA = {
       title: 'Florida Factors',
       icon: 'ThermometerSun',
       description: 'Dealing with our unique climate challenges',
+      gradient: 'from-orange-500 via-amber-500 to-yellow-500',
+      bgGlow: 'bg-orange-500/20',
       topics: [
         {
           id: 'uv-chlorine',
@@ -512,6 +522,8 @@ const POOL_SCHOOL_DATA = {
       title: 'Hurricane Prep',
       icon: 'CloudRain',
       description: 'Protect your pool before and after storms',
+      gradient: 'from-slate-600 via-slate-500 to-zinc-500',
+      bgGlow: 'bg-slate-500/20',
       topics: [
         {
           id: 'before-hurricane',
@@ -612,6 +624,259 @@ const POOL_SCHOOL_DATA = {
           }
         }
       ]
+    },
+    {
+      id: 'equipment-guide',
+      title: 'Equipment Guide',
+      icon: 'Wrench',
+      description: 'Complete specs for Jandy, Pentair & Hayward equipment',
+      gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
+      bgGlow: 'bg-emerald-500/20',
+      topics: [
+        {
+          id: 'pool-pumps',
+          title: 'Pool Pumps',
+          tags: ['pump', 'motor', 'variable speed', 'VS', 'IntelliFlo', 'TriStar', 'FloPro', 'SuperFlo', 'WhisperFlo', 'Jandy', 'Pentair', 'Hayward'],
+          severity: 'low',
+          content: {
+            summary: "Compare variable speed, single speed, and booster pumps from all major brands.",
+            floridaNote: "FL law requires variable speed pumps for new construction and replacements over 1 HP. VS pumps save 70-80% on energy costs in our year-round climate.",
+            sections: [
+              {
+                title: 'Pentair Variable Speed Pumps',
+                steps: [
+                  '**IntelliFlo 3 VSF** - Top tier, 3.2 THP, built-in automation, flow sensor, WiFi ready.',
+                  '**IntelliFlo VSF** - Variable speed + flow, 3.0 THP, drop-in retrofit.',
+                  '**SuperFlo VS** - Budget-friendly, 1.5 THP, great for smaller pools.',
+                  'All use EC motors - no capacitor or seal replacements.',
+                  'Compatible with **IntelliCenter, EasyTouch, SunTouch** automation.',
+                  'Error codes: E01=Flow, E02=Overload, E04=Overheat, E06=Current fault.'
+                ]
+              },
+              {
+                title: 'Hayward Variable Speed Pumps',
+                steps: [
+                  '**TriStar VS 950** - 2.7 THP, OmniDirect compatible, quiet operation.',
+                  '**TriStar VS 900** - 2.0 THP, union fittings, drop-in replacement.',
+                  '**MaxFlo VS 500** - Entry level, 1.65 THP, great retrofit option.',
+                  '**Super Pump VS 700** - Most popular, 1.65 THP, fits Super Pump footprint.',
+                  'Compatible with **OmniLogic, OmniHub, ProLogic, Aqua Plus** systems.',
+                  'Uses **RS-485** communication protocol for automation.'
+                ]
+              },
+              {
+                title: 'Jandy Variable Speed Pumps',
+                steps: [
+                  '**VS FloPro 2.7** - Premium, 2.7 THP, built-in JEP-R controller.',
+                  '**VS FloPro 1.85** - Mid-range, 1.85 THP, fits legacy footprints.',
+                  '**ePump** - Classic variable speed with external controls.',
+                  'Native integration with **iAquaLink, AquaLink RS, PDA** systems.',
+                  'Modbus/RS-485 communication for seamless automation.',
+                  'Speed range: 600-3450 RPM with 8 programmable speeds.'
+                ]
+              },
+              {
+                title: 'Booster Pumps (Pressure Cleaners)',
+                steps: [
+                  '**Pentair PB4-60** - 60 GPM, for Polaris 280/380/3900.',
+                  '**Hayward W36060** - 6060 model, for Tigershark/Phantom cleaners.',
+                  '**Jandy PB460** - Reliable, long-lasting motor.',
+                  'All create 30+ PSI boost for pressure-side cleaners.',
+                  'Run only when cleaner is operating to save energy.'
+                ]
+              }
+            ]
+          }
+        },
+        {
+          id: 'pool-filters',
+          title: 'Pool Filters',
+          tags: ['filter', 'sand', 'cartridge', 'DE', 'diatomaceous', 'Jandy', 'Pentair', 'Hayward', 'clean', 'backwash'],
+          severity: 'low',
+          content: {
+            summary: "Sand, cartridge, and DE filters - sizing, maintenance, and brand comparisons.",
+            floridaNote: "FL pools run 8-12 hours/day year-round. Cartridge filters need cleaning every 2-4 weeks. DE grids typically last 5-7 years here.",
+            sections: [
+              {
+                title: 'Pentair Filters',
+                steps: [
+                  '**Clean & Clear Plus (Cartridge)** - 320/420/520 sq ft, easy-open lid.',
+                  '**Quad DE** - 60/80/100 sq ft, 4-grid design, easy cleaning.',
+                  '**Triton II (Sand)** - 3.14 sq ft filter area, top-mount multiport.',
+                  '**FNS Plus (DE)** - 24-60 sq ft, vertical grid, bump handle optional.',
+                  'Clean pressure gauge: 8-10 PSI. Clean at +10 PSI above baseline.',
+                  'Cartridge replacement: Every 1-2 years with proper maintenance.'
+                ]
+              },
+              {
+                title: 'Hayward Filters',
+                steps: [
+                  '**SwimClear (Cartridge)** - C2030/C3030/C4030/C5030 (225-525 sq ft).',
+                  '**ProGrid DE** - 24-72 sq ft, quick-release clamp, easy service.',
+                  '**Pro-Series (Sand)** - 1.75-3.14 sq ft, side or top mount.',
+                  '**Star-Clear Plus (Cartridge)** - Budget option, 90-175 sq ft.',
+                  'Uses standard 7" x 30" cartridges (C2030).',
+                  'DE requirement: 1 lb per 5 sq ft of filter area.'
+                ]
+              },
+              {
+                title: 'Jandy Filters',
+                steps: [
+                  '**CL/CV Series (Cartridge)** - 340/460/580 sq ft, top-load design.',
+                  '**DEL Series (DE)** - 36-60 sq ft, large capacity grids.',
+                  '**JS Series (Sand)** - 50/75/100 GPM, top-mount multiport.',
+                  'Quick-release collar makes cleaning fast.',
+                  'Optional Versa Plumb for 360° rotation during install.'
+                ]
+              },
+              {
+                title: 'Filter Sizing Guide',
+                steps: [
+                  '**Rule of thumb**: 1 sq ft cartridge per 10,000 gallons.',
+                  'Sand filters: Size for pool GPM ÷ 15 = required sq ft.',
+                  'DE filters: Most efficient, 1 sq ft per 5,000 gallons.',
+                  'Oversizing = longer filter cycles, less maintenance.',
+                  'Check flow rates match pump output for optimal performance.'
+                ]
+              }
+            ]
+          }
+        },
+        {
+          id: 'salt-chlorinators',
+          title: 'Salt Chlorine Generators',
+          tags: ['salt', 'cell', 'chlorinator', 'generator', 'IntelliChlor', 'AquaRite', 'AquaPure', 'Jandy', 'Pentair', 'Hayward', 'SCG'],
+          severity: 'low',
+          content: {
+            summary: "Compare salt systems, cell life, and maintenance across all brands.",
+            floridaNote: "FL hard water (300+ ppm calcium) scales cells fast. Clean every 3 months minimum. Target 3200 ppm salt, pH 7.2-7.4 for maximum cell life.",
+            sections: [
+              {
+                title: 'Pentair IntelliChlor',
+                steps: [
+                  '**IC20** - Up to 20,000 gallons, 0.70 lbs chlorine/day.',
+                  '**IC40** - Up to 40,000 gallons, 1.40 lbs chlorine/day.',
+                  '**IC60** - Up to 60,000 gallons, 2.0 lbs chlorine/day.',
+                  'Cell life: **10,000 hours** (~5 years typical).',
+                  'Salt range: **2700-3400 ppm** (ideal 3200 ppm).',
+                  'Self-cleaning via reverse polarity every 10 hours.',
+                  'Integrates with **IntelliCenter, EasyTouch, ScreenLogic**.',
+                  'Flow switch included - prevents dry running.'
+                ]
+              },
+              {
+                title: 'Hayward AquaRite Series',
+                steps: [
+                  '**AquaRite S3** - WiFi enabled, app control, any pool size.',
+                  '**AquaRite 900** - Standard model, up to 25,000 gallons.',
+                  '**AquaRite 925/940** - Mid-tier, 25K/40K gallons.',
+                  '**AquaTrol** - Above-ground pool version, plug-and-play.',
+                  'T-Cell-15 for 40K gal, T-Cell-9 for 25K gal, T-Cell-3 for 15K.',
+                  'Cell life: **10,000 hours**, 5-year limited warranty.',
+                  'Works with **OmniLogic, OmniHub, ProLogic, AquaPlus**.',
+                  'Diagnostics: Check Cell, Inspect Cell, Low Salt, High Salt LED indicators.'
+                ]
+              },
+              {
+                title: 'Jandy AquaPure Series',
+                steps: [
+                  '**AquaPure 1400** - Up to 40,000 gallons, 1.4 lbs/day.',
+                  '**AquaPure 700** - Up to 25,000 gallons, 0.7 lbs/day.',
+                  '**TruClear** - Compact, up to 28,000 gallons.',
+                  'PureLink (older model) - Still widely installed.',
+                  'Salt range: **2700-3400 ppm** (ideal 3000-3200 ppm).',
+                  'Cell life: **10,000+ hours** with proper maintenance.',
+                  'Native **iAquaLink** and **AquaLink** integration.',
+                  'Reverse polarity self-cleaning every 8 hours.'
+                ]
+              },
+              {
+                title: 'Salt Cell Maintenance',
+                steps: [
+                  '**Inspect monthly** - Look for white scale buildup.',
+                  '**Clean every 3-4 months** in FL (more often with hard water).',
+                  'Use 4:1 water to muriatic acid solution (NEVER stronger).',
+                  'Soak 5-10 minutes max, rinse thoroughly.',
+                  'Over-cleaning shortens cell life - only clean when needed.',
+                  '**Check salt weekly** - Salt depletes through splash-out, rain.',
+                  'Replace cells when output drops below 60% at max production.'
+                ]
+              }
+            ]
+          }
+        },
+        {
+          id: 'control-panels',
+          title: 'Control Panels & Automation',
+          tags: ['automation', 'control', 'IntelliCenter', 'OmniLogic', 'AquaLink', 'iAquaLink', 'ScreenLogic', 'WiFi', 'app', 'Jandy', 'Pentair', 'Hayward'],
+          severity: 'low',
+          content: {
+            summary: "Automation systems, compatibility, and communication protocols for smart pool control.",
+            floridaNote: "WiFi-enabled panels let you control your pool from anywhere - great for snowbirds who need to maintain pools remotely during FL summers.",
+            sections: [
+              {
+                title: 'Pentair Automation',
+                steps: [
+                  '**IntelliCenter** - Top tier, touchscreen, up to 100 devices.',
+                  '**EasyTouch** - Popular mid-range, up to 8 circuits + aux.',
+                  '**SunTouch** - Entry level, single body of water.',
+                  '**ScreenLogic** - Add-on for WiFi/app control on older systems.',
+                  'Uses RS-485 protocol for all IntelliFlo, IntelliChlor devices.',
+                  'Firmware updates available via ScreenLogic app.',
+                  'Compatible equipment: All Pentair pumps, salt cells, heaters, lights.'
+                ]
+              },
+              {
+                title: 'Hayward Automation',
+                steps: [
+                  '**OmniLogic** - Premium, color touchscreen, 40+ devices.',
+                  '**OmniHub** - Smart upgrade for existing ProLogic/PS systems.',
+                  '**ProLogic** - Proven reliability, PS-4/PS-8/PS-16 options.',
+                  '**AquaPlus** - Standalone salt cell controller with relay outputs.',
+                  'Uses RS-485 communication, OmniDirect for smart pumps.',
+                  'Native Alexa, Google Home, Apple HomeKit support.',
+                  'Compatible: All Hayward pumps, AquaRite cells, heaters, LED lights.'
+                ]
+              },
+              {
+                title: 'Jandy Automation',
+                steps: [
+                  '**iAquaLink 3.0** - Latest web-enabled, full app control.',
+                  '**AquaLink RS** - Classic system, OneTouch/PDA/Combo.',
+                  '**AquaLink PDA** - Palm-size wireless controller.',
+                  '**AquaPalm** - Handheld wireless remote option.',
+                  'Modbus/RS-485 protocol for all Jandy devices.',
+                  'Native integration with ePump, VS FloPro, AquaPure.',
+                  'Web Connect for remote monitoring and control.'
+                ]
+              },
+              {
+                title: 'Cross-Brand Compatibility',
+                warning: 'Mixing brands is possible but NOT recommended. Automation features may be limited.',
+                steps: [
+                  '**Pentair + Hayward/Jandy**: Use relay outputs only, no RS-485.',
+                  '**Hayward + Pentair/Jandy**: OmniHub relay mode, basic on/off.',
+                  '**Jandy + Pentair/Hayward**: AquaLink relay control only.',
+                  'Smart features (variable speeds, diagnostics) require matched brands.',
+                  'Salt cells from different brands won\'t communicate pool data.',
+                  'Rule: Match automation to your primary equipment brand.'
+                ]
+              },
+              {
+                title: 'Common Automation Issues',
+                steps: [
+                  '**No communication**: Check RS-485 wiring, A/B polarity.',
+                  '**Pump not responding**: Verify address settings match panel.',
+                  '**WiFi disconnects**: Update firmware, check router 2.4GHz band.',
+                  '**App not syncing**: Power cycle panel, refresh app registration.',
+                  '**Lost schedules after power outage**: Backup programming regularly.',
+                  '**Check service manual** for brand-specific error codes.'
+                ]
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 };
@@ -628,29 +893,38 @@ const iconMap = {
   CloudRain,
   Droplets,
   Bug,
-  Leaf
+  Leaf,
+  CircuitBoard,
+  Gauge
 };
 
 // ============================================
-// COMPONENTS
+// COMPONENTS - MODERN REDESIGN
 // ============================================
 
 function WarningBox({ children }) {
   return (
-    <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg my-3">
-      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-      <p className="text-sm text-red-800 font-medium">{children}</p>
+    <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-red-500/10 to-rose-500/10 border border-red-300/50 rounded-xl my-4 backdrop-blur-sm">
+      <div className="p-1.5 bg-red-500 rounded-lg shadow-lg shadow-red-500/30">
+        <AlertCircle className="w-4 h-4 text-white" />
+      </div>
+      <p className="text-sm text-red-800 font-medium leading-relaxed">{children}</p>
     </div>
   );
 }
 
 function FloridaNote({ children }) {
   return (
-    <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg my-3">
-      <ThermometerSun className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-      <div>
-        <span className="text-xs font-bold text-amber-700 uppercase">Florida Factor</span>
-        <p className="text-sm text-amber-800">{children}</p>
+    <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-yellow-500/10 border border-amber-300/50 rounded-xl my-4 backdrop-blur-sm">
+      <div className="p-1.5 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg shadow-lg shadow-amber-500/30">
+        <ThermometerSun className="w-4 h-4 text-white" />
+      </div>
+      <div className="flex-1">
+        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 uppercase tracking-wide">
+          <Sparkles className="w-3 h-3" />
+          Florida Factor
+        </span>
+        <p className="text-sm text-amber-800 mt-1 leading-relaxed">{children}</p>
       </div>
     </div>
   );
@@ -658,13 +932,18 @@ function FloridaNote({ children }) {
 
 function StepList({ steps }) {
   return (
-    <ul className="space-y-2 mt-2">
+    <ul className="space-y-2.5 mt-3">
       {steps.map((step, idx) => (
-        <li key={idx} className="flex items-start gap-2 text-sm text-slate-700">
-          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-          <span dangerouslySetInnerHTML={{ 
-            __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900">$1</strong>') 
-          }} />
+        <li key={idx} className="flex items-start gap-3 text-sm text-slate-700 group">
+          <div className="mt-0.5 p-0.5 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 shadow-sm group-hover:shadow-emerald-500/30 transition-shadow">
+            <CheckCircle className="w-3.5 h-3.5 text-white" />
+          </div>
+          <span
+            className="leading-relaxed"
+            dangerouslySetInnerHTML={{
+              __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>')
+            }}
+          />
         </li>
       ))}
     </ul>
@@ -672,57 +951,96 @@ function StepList({ steps }) {
 }
 
 function TopicCard({ topic, isExpanded, onToggle }) {
-  const severityColors = {
-    high: 'border-l-red-500 bg-red-50/30',
-    medium: 'border-l-amber-500 bg-amber-50/30',
-    low: 'border-l-green-500 bg-green-50/30'
+  const severityConfig = {
+    high: {
+      border: 'border-red-400/50',
+      bg: 'bg-gradient-to-br from-red-50/80 to-rose-50/80',
+      badge: 'bg-red-500 text-white',
+      glow: 'hover:shadow-red-200/50'
+    },
+    medium: {
+      border: 'border-amber-400/50',
+      bg: 'bg-gradient-to-br from-amber-50/80 to-yellow-50/80',
+      badge: 'bg-amber-500 text-white',
+      glow: 'hover:shadow-amber-200/50'
+    },
+    low: {
+      border: 'border-emerald-400/50',
+      bg: 'bg-gradient-to-br from-emerald-50/80 to-teal-50/80',
+      badge: 'bg-emerald-500 text-white',
+      glow: 'hover:shadow-emerald-200/50'
+    }
   };
 
+  const config = severityConfig[topic.severity] || severityConfig.low;
+
   return (
-    <Card className={`overflow-hidden border-l-4 ${severityColors[topic.severity] || 'border-l-slate-300'}`}>
+    <div
+      className={`
+        rounded-2xl border-2 ${config.border} ${config.bg} 
+        backdrop-blur-sm overflow-hidden 
+        transition-all duration-300 ease-out
+        hover:shadow-xl ${config.glow}
+        ${isExpanded ? 'shadow-lg' : 'shadow-sm'}
+      `}
+    >
       <button
         onClick={onToggle}
-        className="w-full p-3 sm:p-4 flex items-center justify-between text-left hover:bg-slate-50 active:bg-slate-100 transition-colors touch-manipulation"
+        className="w-full p-4 sm:p-5 flex items-center justify-between text-left transition-colors touch-manipulation"
       >
-        <div className="flex-1 min-w-0 pr-2">
-          <h3 className="font-semibold text-slate-900 text-sm sm:text-base">{topic.title}</h3>
-          <p className="text-xs sm:text-sm text-slate-600 mt-0.5 line-clamp-2">{topic.content.summary}</p>
+        <div className="flex-1 min-w-0 pr-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <h3 className="font-bold text-slate-900 text-base sm:text-lg">{topic.title}</h3>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${config.badge}`}>
+              {topic.severity}
+            </span>
+          </div>
+          <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">{topic.content.summary}</p>
         </div>
-        <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-          {isExpanded ? (
-            <ChevronUp className="w-5 h-5 text-slate-400" />
-          ) : (
-            <ChevronDown className="w-5 h-5 text-slate-400" />
-          )}
+        <div className={`
+          flex-shrink-0 w-10 h-10 flex items-center justify-center 
+          rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200/50
+          shadow-sm transition-all duration-300
+          ${isExpanded ? 'rotate-180 bg-slate-100' : ''}
+        `}>
+          <ChevronDown className="w-5 h-5 text-slate-500" />
         </div>
       </button>
-      
-      {isExpanded && (
-        <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-slate-100">
+
+      <div className={`
+        overflow-hidden transition-all duration-300 ease-out
+        ${isExpanded ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}
+      `}>
+        <div className="px-4 sm:px-5 pb-5 border-t border-slate-200/50 pt-4">
           {topic.content.floridaNote && (
             <FloridaNote>{topic.content.floridaNote}</FloridaNote>
           )}
-          
-          {topic.content.sections.map((section, idx) => (
-            <div key={idx} className="mt-3 sm:mt-4">
-              <h4 className="font-medium text-slate-900 text-sm">{section.title}</h4>
-              {section.warning && <WarningBox>{section.warning}</WarningBox>}
-              <StepList steps={section.steps} />
-            </div>
-          ))}
+
+          <div className="space-y-5">
+            {topic.content.sections.map((section, idx) => (
+              <div key={idx} className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-slate-200/50">
+                <h4 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500" />
+                  {section.title}
+                </h4>
+                {section.warning && <WarningBox>{section.warning}</WarningBox>}
+                <StepList steps={section.steps} />
+              </div>
+            ))}
+          </div>
         </div>
-      )}
-    </Card>
+      </div>
+    </div>
   );
 }
 
-function CategorySection({ category, searchQuery, expandedTopics, toggleTopic }) {
+function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, isActiveCategory }) {
   const IconComponent = iconMap[category.icon] || AlertTriangle;
-  
+
   const filteredTopics = useMemo(() => {
     if (!searchQuery) return category.topics;
     const query = searchQuery.toLowerCase();
-    return category.topics.filter(topic => 
+    return category.topics.filter(topic =>
       topic.title.toLowerCase().includes(query) ||
       topic.tags.some(tag => tag.includes(query)) ||
       topic.content.summary.toLowerCase().includes(query)
@@ -732,18 +1050,23 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic })
   if (filteredTopics.length === 0) return null;
 
   return (
-    <div className="mb-6 sm:mb-8">
-      <div className="flex items-center gap-3 mb-3 sm:mb-4">
-        <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex-shrink-0">
-          <IconComponent className="w-4 sm:w-5 h-4 sm:h-5 text-white" />
+    <div className={`transition-all duration-500 ${isActiveCategory ? 'opacity-100' : 'opacity-0 absolute pointer-events-none'}`}>
+      {/* Category Header - More Prominent */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className={`p-3 bg-gradient-to-br ${category.gradient} rounded-2xl shadow-lg`}>
+          <IconComponent className="w-6 h-6 text-white" />
         </div>
-        <div className="min-w-0">
-          <h2 className="text-base sm:text-lg font-bold text-slate-900">{category.title}</h2>
-          <p className="text-xs sm:text-sm text-slate-600 truncate">{category.description}</p>
+        <div className="flex-1">
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900">{category.title}</h2>
+          <p className="text-sm text-slate-600">{category.description}</p>
         </div>
+        <span className="px-3 py-1.5 bg-slate-100 rounded-full text-sm font-medium text-slate-600">
+          {filteredTopics.length} {filteredTopics.length === 1 ? 'topic' : 'topics'}
+        </span>
       </div>
-      
-      <div className="space-y-2 sm:space-y-3">
+
+      {/* Topics Grid */}
+      <div className="space-y-4">
         {filteredTopics.map(topic => (
           <TopicCard
             key={topic.id}
@@ -758,12 +1081,13 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic })
 }
 
 // ============================================
-// MAIN COMPONENT
+// MAIN COMPONENT - MODERN REDESIGN
 // ============================================
 
 export default function PoolSchool() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedTopics, setExpandedTopics] = useState(new Set());
+  const [activeCategory, setActiveCategory] = useState(POOL_SCHOOL_DATA.categories[0].id);
 
   const toggleTopic = (topicId) => {
     setExpandedTopics(prev => {
@@ -778,14 +1102,23 @@ export default function PoolSchool() {
   };
 
   const expandAll = () => {
-    const allIds = POOL_SCHOOL_DATA.categories.flatMap(cat => 
-      cat.topics.map(t => t.id)
-    );
-    setExpandedTopics(new Set(allIds));
+    const currentCat = POOL_SCHOOL_DATA.categories.find(c => c.id === activeCategory);
+    if (currentCat) {
+      const catTopicIds = currentCat.topics.map(t => t.id);
+      setExpandedTopics(prev => new Set([...prev, ...catTopicIds]));
+    }
   };
 
   const collapseAll = () => {
-    setExpandedTopics(new Set());
+    const currentCat = POOL_SCHOOL_DATA.categories.find(c => c.id === activeCategory);
+    if (currentCat) {
+      const catTopicIds = new Set(currentCat.topics.map(t => t.id));
+      setExpandedTopics(prev => {
+        const next = new Set(prev);
+        catTopicIds.forEach(id => next.delete(id));
+        return next;
+      });
+    }
   };
 
   const totalTopics = POOL_SCHOOL_DATA.categories.reduce(
@@ -804,117 +1137,193 @@ export default function PoolSchool() {
     }, 0);
   }, [searchQuery, totalTopics]);
 
+  // When searching, show all categories
+  const showAllCategories = searchQuery.length > 0;
+
   return (
-    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24">
-      {/* Header */}
-      <div className="mb-4 sm:mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg">
-            <BookOpen className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Pool School</h1>
-            <p className="text-xs sm:text-sm text-slate-600">Florida tech's field guide</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50/30 to-blue-50/30">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-28">
+
+        {/* Hero Header */}
+        <div className="relative mb-8">
+          <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-teal-500/20 rounded-3xl blur-3xl" />
+          <div className="relative bg-white/70 backdrop-blur-xl rounded-3xl border border-white/50 shadow-xl p-6 sm:p-8">
+            <div className="flex items-start gap-4">
+              <div className="p-3 sm:p-4 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 rounded-2xl shadow-lg shadow-teal-500/30">
+                <BookOpen className="w-7 sm:w-8 h-7 sm:h-8 text-white" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
+                  Pool School
+                </h1>
+                <p className="text-slate-600 mt-1 text-sm sm:text-base">
+                  Florida pool tech's complete field guide
+                </p>
+                <div className="flex items-center gap-3 mt-3">
+                  <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
+                    {totalTopics} Topics
+                  </span>
+                  <span className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                    {POOL_SCHOOL_DATA.categories.length} Categories
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Search Bar */}
-      <div className="sticky top-0 z-10 bg-gradient-to-b from-slate-50 via-slate-50 to-transparent pb-3 sm:pb-4 -mx-3 sm:-mx-4 px-3 sm:px-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search problems, equipment..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-base text-slate-900 placeholder-slate-400"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded-full"
-            >
-              ×
-            </button>
+        {/* Search Bar - Floating */}
+        <div className="sticky top-2 z-20 mb-6">
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/50 shadow-lg p-2">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search problems, equipment, brands..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-12 py-3.5 bg-slate-50/80 border-0 rounded-xl text-base text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 focus:bg-white transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            {!searchQuery && (
+              <div className="flex items-center justify-between mt-2 px-2">
+                <span className="text-xs text-slate-500">
+                  {filteredCount} topics available
+                </span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={expandAll}
+                    className="text-xs text-cyan-600 hover:text-cyan-700 font-medium px-3 py-1.5 hover:bg-cyan-50 rounded-lg transition-colors"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    onClick={collapseAll}
+                    className="text-xs text-slate-500 hover:text-slate-700 font-medium px-3 py-1.5 hover:bg-slate-50 rounded-lg transition-colors"
+                  >
+                    Collapse
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {searchQuery && (
+              <div className="mt-2 px-2">
+                <span className="text-xs text-slate-500">
+                  Found {filteredCount} {filteredCount === 1 ? 'topic' : 'topics'} matching "{searchQuery}"
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Category Tabs - Horizontal Scroll */}
+        {!searchQuery && (
+          <div className="mb-8 -mx-4 px-4">
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {POOL_SCHOOL_DATA.categories.map(cat => {
+                const IconComponent = iconMap[cat.icon] || AlertTriangle;
+                const isActive = activeCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`
+                      flex-shrink-0 flex items-center gap-2.5 px-4 py-3 rounded-xl
+                      font-medium text-sm transition-all duration-300
+                      ${isActive
+                        ? `bg-gradient-to-r ${cat.gradient} text-white shadow-lg`
+                        : 'bg-white/80 text-slate-700 hover:bg-white hover:shadow-md border border-slate-200/50'
+                      }
+                    `}
+                  >
+                    <IconComponent className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                    <span className="whitespace-nowrap">{cat.title}</span>
+                    <span className={`
+                      px-1.5 py-0.5 rounded-md text-xs font-bold
+                      ${isActive ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}
+                    `}>
+                      {cat.topics.length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Content Area */}
+        <div className="relative min-h-[400px]">
+          {showAllCategories ? (
+            // Search results mode - show all matching categories
+            <div className="space-y-10">
+              {POOL_SCHOOL_DATA.categories.map(category => (
+                <div key={category.id}>
+                  <CategorySection
+                    category={category}
+                    searchQuery={searchQuery}
+                    expandedTopics={expandedTopics}
+                    toggleTopic={toggleTopic}
+                    isActiveCategory={true}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Tab mode - show active category only
+            POOL_SCHOOL_DATA.categories.map(category => (
+              <CategorySection
+                key={category.id}
+                category={category}
+                searchQuery={searchQuery}
+                expandedTopics={expandedTopics}
+                toggleTopic={toggleTopic}
+                isActiveCategory={activeCategory === category.id}
+              />
+            ))
           )}
         </div>
-        
-        {/* Quick Actions */}
-        <div className="flex items-center justify-between mt-2 sm:mt-3">
-          <span className="text-xs sm:text-sm text-slate-500">
-            {filteredCount} topic{filteredCount !== 1 ? 's' : ''} 
-            {searchQuery && <span className="hidden sm:inline"> matching "{searchQuery}"</span>}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={expandAll}
-              className="text-xs text-cyan-600 hover:text-cyan-700 font-medium px-2 py-1 active:bg-cyan-50 rounded"
-            >
-              Expand All
-            </button>
-            <span className="text-slate-300">|</span>
-            <button
-              onClick={collapseAll}
-              className="text-xs text-cyan-600 hover:text-cyan-700 font-medium px-2 py-1 active:bg-cyan-50 rounded"
-            >
-              Collapse All
-            </button>
-          </div>
-        </div>
-      </div>
 
-      {/* Quick Links */}
-      {!searchQuery && (
-        <div className="grid grid-cols-2 gap-2 mb-4 sm:mb-6">
-          {POOL_SCHOOL_DATA.categories.map(cat => {
-            const IconComponent = iconMap[cat.icon] || AlertTriangle;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  document.getElementById(cat.id)?.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="flex items-center gap-2 p-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors text-left touch-manipulation"
-              >
-                <IconComponent className="w-4 h-4 text-cyan-600 flex-shrink-0" />
-                <span className="text-xs sm:text-sm font-medium text-slate-700 truncate">{cat.title}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Content */}
-      {POOL_SCHOOL_DATA.categories.map(category => (
-        <div key={category.id} id={category.id}>
-          <CategorySection
-            category={category}
-            searchQuery={searchQuery}
-            expandedTopics={expandedTopics}
-            toggleTopic={toggleTopic}
-          />
-        </div>
-      ))}
-
-      {/* No Results */}
-      {filteredCount === 0 && (
-        <div className="text-center py-12">
-          <Search className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">No topics found</h3>
-          <p className="text-slate-600">Try different keywords or browse categories above.</p>
-        </div>
-      )}
-
-      {/* Footer Tip */}
-      <div className="mt-6 sm:mt-8 p-3 sm:p-4 bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-200 rounded-xl">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs sm:text-sm font-medium text-cyan-900">Pro Tip</p>
-            <p className="text-xs sm:text-sm text-cyan-700">
-              Bookmark this page for quick access in the field. Works offline once loaded.
+        {/* No Results */}
+        {filteredCount === 0 && (
+          <div className="text-center py-16">
+            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-slate-100 to-slate-200 rounded-3xl flex items-center justify-center">
+              <Search className="w-10 h-10 text-slate-400" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">No topics found</h3>
+            <p className="text-slate-600 max-w-md mx-auto">
+              Try different keywords like "pump", "algae", or brand names like "Pentair" or "Hayward".
             </p>
+          </div>
+        )}
+
+        {/* Footer Tip - Enhanced */}
+        <div className="mt-10">
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-2xl blur-2xl" />
+            <div className="relative bg-gradient-to-r from-cyan-50/80 via-blue-50/80 to-teal-50/80 backdrop-blur-sm border border-cyan-200/50 rounded-2xl p-5">
+              <div className="flex items-start gap-4">
+                <div className="p-2.5 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-xl shadow-lg shadow-cyan-500/30">
+                  <Info className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-semibold text-cyan-900">Pro Tip</p>
+                  <p className="text-sm text-cyan-700 mt-0.5">
+                    Bookmark this page for quick access in the field. Works offline once loaded!
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
