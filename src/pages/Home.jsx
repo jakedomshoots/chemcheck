@@ -2,9 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl, parseLocalDate } from "@/utils";
-import { Calendar, Plus, AlertTriangle, SkipForward } from "lucide-react";
+import { Calendar, Plus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { format, subWeeks, startOfWeek, endOfWeek } from "date-fns";
 import CustomerCard from "../components/home/CustomerCard";
 import QuickStats from "../components/home/QuickStats";
@@ -66,6 +65,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [skippedCustomers, setSkippedCustomers] = useState(() => getSkippedCustomers());
   const [hasCheckedDefaultView, setHasCheckedDefaultView] = useState(false);
+  const [missedExpanded, setMissedExpanded] = useState(false);
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const dayOfWeek = useMemo(() => format(new Date(), "EEEE"), []);
@@ -291,63 +291,63 @@ export default function Home() {
 
       {/* Missed Services Alert */}
       {missedServices.length > 0 && (
-        <Card className="p-4 mb-4 border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 shadow-lg">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-amber-500 rounded-lg shrink-0">
-              <AlertTriangle className="w-5 h-5 text-white stroke-[1.75]" />
+        <div className="mb-4 bg-white rounded-xl shadow-sm border border-slate-200/60 border-l-4 border-l-amber-400 overflow-hidden">
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500 stroke-[2]" />
+              <span className="text-sm font-semibold text-slate-800">
+                {missedServices.length} Missed
+              </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold tracking-tight text-amber-900 mb-1 text-base">
-                Missed Services
-              </h3>
-              <p className="text-sm font-medium text-amber-800 mb-3">
-                {missedServices.length} {missedServices.length === 1 ? 'customer needs' : 'customers need'} service
-              </p>
-              <div className="space-y-3">
-                {missedServices.map(customer => (
-                  <div
-                    key={customer._id}
-                    className="p-3 bg-white rounded-lg border-2 border-amber-200"
-                  >
-                    <div
-                      className="cursor-pointer hover:opacity-80 mb-3"
-                      onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
-                    >
-                      <p className="font-semibold text-slate-900 text-base">{customer.full_name || 'Customer'}</p>
-                      <p className="text-sm text-slate-600 mt-0.5">
-                        {customer.scheduledDay} · {customer.address}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 h-9 text-sm font-semibold border-slate-300 text-slate-600 hover:bg-slate-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSkipCustomer(customer);
-                        }}
-                      >
-                        <SkipForward className="w-4 h-4 mr-1.5" />
-                        Skip
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white h-9 text-sm font-semibold"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`);
-                        }}
-                      >
-                        Service Now
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {missedServices.length > 2 && (
+              <button
+                onClick={() => setMissedExpanded(!missedExpanded)}
+                className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                {missedExpanded ? 'Show less' : `+${missedServices.length - 2} more`}
+              </button>
+            )}
           </div>
-        </Card>
+          <div className="divide-y divide-slate-100">
+            {(missedExpanded ? missedServices : missedServices.slice(0, 2)).map(customer => (
+              <div
+                key={customer._id}
+                className="px-4 py-2.5 flex items-center justify-between gap-3"
+              >
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
+                >
+                  <p className="text-sm font-medium text-slate-800 truncate">{customer.full_name || 'Customer'}</p>
+                  <p className="text-xs text-slate-400 truncate">
+                    {customer.scheduledDay} · {customer.address}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors px-2 py-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSkipCustomer(customer);
+                    }}
+                  >
+                    Skip
+                  </button>
+                  <Button
+                    size="sm"
+                    className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white h-7 text-xs font-medium rounded-lg px-3"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`);
+                    }}
+                  >
+                    Service Now
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       <QuickStats total={stats.total} completed={stats.completed} pending={stats.pending} />

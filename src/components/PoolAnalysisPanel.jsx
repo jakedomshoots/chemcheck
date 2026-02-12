@@ -26,7 +26,10 @@ import {
   Eye,
   Copy,
   Check,
-  RefreshCw
+  RefreshCw,
+  Mail,
+  Edit,
+  Save
 } from 'lucide-react';
 import { analyzePool, exportPoolAnalysis, downloadExport } from '@/lib/ai-summarizer';
 import { format, parseISO } from 'date-fns';
@@ -186,6 +189,8 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
     recommendations: true,
     customerReport: false
   });
+  const [isEditingReport, setIsEditingReport] = useState(false);
+  const [editedReport, setEditedReport] = useState(null);
 
   // Cache key based on customer ID and log count/latest date
   const cacheKey = useMemo(() => {
@@ -341,12 +346,12 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           {/* Header with Actions - Mobile Optimized */}
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex-shrink-0">
-                <BarChart3 className="w-6 h-6 text-white" />
+              <div className="p-2 bg-slate-800 rounded-lg flex-shrink-0">
+                <BarChart3 className="w-5 h-5 text-white" />
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="text-lg sm:text-xl font-bold text-slate-900 truncate">AI Pool Analysis</h2>
-                <p className="text-xs sm:text-sm text-slate-600 truncate">{customer.full_name} • {analysis?.totalServices || 0} services analyzed</p>
+                <p className="text-xs sm:text-sm text-slate-500 truncate">{customer.full_name} • {analysis?.totalServices || 0} services analyzed</p>
               </div>
             </div>
             {/* Action buttons - separate row for mobile */}
@@ -370,7 +375,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           </div>
 
           {/* Health Score Card - Requirement 1.2 */}
-          <Card className={`mb-6 border-2 ${gradeStyle.border}`}>
+          <Card className="mb-6 border border-slate-200">
             <div
               className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
               onClick={() => toggleSection('healthScore')}
@@ -436,7 +441,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Predictive Insights - Requirement 2.1 */}
           {predictiveInsights && (
-            <Card className="mb-6 border-2">
+            <Card className="mb-6 border border-slate-200">
               <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('predictions')}
@@ -444,9 +449,9 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 <div className="flex items-center gap-2">
                   <Eye className="w-5 h-5 text-purple-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Predictive Insights</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.overallOutlook === 'stable' ? 'bg-green-100 text-green-700' :
-                    predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.overallOutlook === 'stable' ? 'bg-slate-100 text-green-600' :
+                    predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-slate-100 text-yellow-600' :
+                      'bg-slate-100 text-red-600'
                     }`}>
                     {predictiveInsights.overallOutlook.replace('-', ' ')}
                   </span>
@@ -460,22 +465,19 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
               {expandedSections.predictions && (
                 <div className="px-4 pb-4 space-y-4">
                   {/* Next Service Recommendation */}
-                  <div className={`p-4 rounded-lg border ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-50 border-red-200' :
-                    predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-50 border-yellow-200' :
-                      'bg-green-50 border-green-200'
-                    }`}>
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                     <div className="flex items-center gap-2 mb-2">
-                      <Calendar className="w-4 h-4" />
-                      <span className="font-medium">Next Service</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-red-200 text-red-800' :
-                        predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-yellow-200 text-yellow-800' :
-                          'bg-green-200 text-green-800'
+                      <Calendar className="w-4 h-4 text-slate-500" />
+                      <span className="font-medium text-sm">Next Service</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-slate-100 text-red-600' :
+                        predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-slate-100 text-yellow-600' :
+                          'bg-slate-100 text-green-600'
                         }`}>
                         {predictiveInsights.nextServiceRecommendation.urgency}
                       </span>
                     </div>
-                    <p className="text-sm text-slate-700">{predictiveInsights.nextServiceRecommendation.reason}</p>
-                    <p className="text-sm font-medium mt-1">
+                    <p className="text-sm text-slate-600">{predictiveInsights.nextServiceRecommendation.reason}</p>
+                    <p className="text-sm font-medium text-slate-700 mt-1">
                       Suggested: {safeFormatDate(predictiveInsights.nextServiceRecommendation?.suggestedDate, 'MMM d, yyyy')}
                     </p>
                   </div>
@@ -520,7 +522,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Chemical Trends */}
           {chemicalTrends && chemicalTrends.length > 0 && (
-            <Card className="mb-6 border-2">
+            <Card className="mb-6 border border-slate-200">
               <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('trends')}
@@ -569,7 +571,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Problems */}
           {problems && problems.length > 0 && (
-            <Card className="mb-6 border-2">
+            <Card className="mb-6 border border-slate-200">
               <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('problems')}
@@ -577,7 +579,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-orange-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Detected Issues</h3>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-orange-600">
                     {problems.length} found
                   </span>
                 </div>
@@ -622,7 +624,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Recommendations */}
           {recommendations && (
-            <Card className="mb-6 border-2">
+            <Card className="mb-6 border border-slate-200">
               <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('recommendations')}
@@ -647,11 +649,11 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       </div>
                       <div className="space-y-2">
                         {recommendations.immediate.map((rec) => (
-                          <div key={rec.id} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                          <div key={rec.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 border-l-2 border-l-red-500">
                             <p className="text-sm font-medium text-slate-900">{rec.action}</p>
                             <p className="text-xs text-slate-600 mt-1">{rec.reason}</p>
                             {rec.dosage && (
-                              <p className="text-xs text-red-700 mt-1 font-medium">Dosage: {rec.dosage}</p>
+                              <p className="text-xs text-red-600 mt-1 font-medium">Dosage: {rec.dosage}</p>
                             )}
                           </div>
                         ))}
@@ -667,11 +669,11 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       </div>
                       <div className="space-y-2">
                         {recommendations.thisVisit.map((rec) => (
-                          <div key={rec.id} className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                          <div key={rec.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 border-l-2 border-l-orange-500">
                             <p className="text-sm font-medium text-slate-900">{rec.action}</p>
                             <p className="text-xs text-slate-600 mt-1">{rec.reason}</p>
                             {rec.dosage && (
-                              <p className="text-xs text-orange-700 mt-1 font-medium">Dosage: {rec.dosage}</p>
+                              <p className="text-xs text-orange-600 mt-1 font-medium">Dosage: {rec.dosage}</p>
                             )}
                           </div>
                         ))}
@@ -687,7 +689,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       </div>
                       <div className="space-y-2">
                         {recommendations.nextVisit.map((rec) => (
-                          <div key={rec.id} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <div key={rec.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 border-l-2 border-l-blue-500">
                             <p className="text-sm font-medium text-slate-900">{rec.action}</p>
                             <p className="text-xs text-slate-600 mt-1">{rec.reason}</p>
                           </div>
@@ -719,7 +721,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Customer Report - Requirement 4.1 */}
           {customerReport && (
-            <Card className="mb-6 border-2 border-green-200">
+            <Card className="mb-6 border border-slate-200">
               <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => toggleSection('customerReport')}
@@ -727,7 +729,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-green-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Customer Report</h3>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-green-600">
                     Ready to share
                   </span>
                 </div>
@@ -739,35 +741,171 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
               {expandedSections.customerReport && (
                 <div className="px-4 pb-4">
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-200 mb-4">
-                    <p className="font-medium text-slate-900 mb-2">{customerReport.greeting}</p>
-                    <p className="text-sm text-slate-700 mb-3">{customerReport.healthSummary}</p>
-
-                    {customerReport.whatWeDid && customerReport.whatWeDid.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-sm font-medium text-slate-900 mb-1">What We Did:</p>
-                        <ul className="text-sm text-slate-700 space-y-1">
-                          {customerReport.whatWeDid.map((item, idx) => (
-                            <li key={idx}>• {item}</li>
-                          ))}
-                        </ul>
-                      </div>
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 mb-4">
+                    {!isEditingReport ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditedReport({
+                              greeting: customerReport.greeting,
+                              healthSummary: customerReport.healthSummary,
+                              whatWeDid: [...(customerReport.whatWeDid || [])],
+                              whatToExpect: customerReport.whatToExpect,
+                              recommendations: [...(customerReport.recommendations || [])],
+                              closingNote: customerReport.closingNote
+                            });
+                            setIsEditingReport(true);
+                          }}
+                          className="gap-1"
+                        >
+                          <Edit className="w-3 h-3" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="gap-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                          onClick={() => {
+                            const subject = `Pool Service Report - ${customer.full_name}`;
+                            const body = customerReport.shareableText;
+                            window.location.href = `mailto:${customer.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                          }}
+                        >
+                          <Mail className="w-3 h-3" />
+                          Email Report
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          className="gap-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                          onClick={() => {
+                            // Save changes back to analysis object
+                            customerReport.greeting = editedReport.greeting;
+                            customerReport.healthSummary = editedReport.healthSummary;
+                            customerReport.whatWeDid = editedReport.whatWeDid;
+                            customerReport.whatToExpect = editedReport.whatToExpect;
+                            customerReport.recommendations = editedReport.recommendations;
+                            customerReport.closingNote = editedReport.closingNote;
+                            setIsEditingReport(false);
+                          }}
+                        >
+                          <Save className="w-3 h-3" />
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setIsEditingReport(false);
+                            setEditedReport(null);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </>
                     )}
+                  </div>
 
-                    <p className="text-sm text-slate-700 mb-3">{customerReport.whatToExpect}</p>
+                  {/* Report Content */}
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
+                    {!isEditingReport ? (
+                      <>
+                        <p className="font-medium text-slate-900 mb-2">{customerReport.greeting}</p>
+                        <p className="text-sm text-slate-700 mb-3">{customerReport.healthSummary}</p>
 
-                    {customerReport.recommendations && customerReport.recommendations.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-sm font-medium text-slate-900 mb-1">Recommendations:</p>
-                        <ul className="text-sm text-slate-700 space-y-1">
-                          {customerReport.recommendations.map((rec, idx) => (
-                            <li key={idx}>• {rec}</li>
-                          ))}
-                        </ul>
-                      </div>
+                        {customerReport.whatWeDid && customerReport.whatWeDid.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-sm font-medium text-slate-900 mb-1">What We Did:</p>
+                            <ul className="text-sm text-slate-700 space-y-1">
+                              {customerReport.whatWeDid.map((item, idx) => (
+                                <li key={idx}>• {item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        <p className="text-sm text-slate-700 mb-3">{customerReport.whatToExpect}</p>
+
+                        {customerReport.recommendations && customerReport.recommendations.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-sm font-medium text-slate-900 mb-1">Recommendations:</p>
+                            <ul className="text-sm text-slate-700 space-y-1">
+                              {customerReport.recommendations.map((rec, idx) => (
+                                <li key={idx}>• {rec}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        <p className="text-sm text-green-700 italic">{customerReport.closingNote}</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-3">
+                          <label className="text-xs font-medium text-slate-600 mb-1 block">Greeting</label>
+                          <input
+                            type="text"
+                            value={editedReport.greeting}
+                            onChange={(e) => setEditedReport({ ...editedReport, greeting: e.target.value })}
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="text-xs font-medium text-slate-600 mb-1 block">Health Summary</label>
+                          <textarea
+                            value={editedReport.healthSummary}
+                            onChange={(e) => setEditedReport({ ...editedReport, healthSummary: e.target.value })}
+                            rows={2}
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="text-xs font-medium text-slate-600 mb-1 block">What We Did (one per line)</label>
+                          <textarea
+                            value={editedReport.whatWeDid.join('\n')}
+                            onChange={(e) => setEditedReport({ ...editedReport, whatWeDid: e.target.value.split('\n').filter(Boolean) })}
+                            rows={3}
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="text-xs font-medium text-slate-600 mb-1 block">What to Expect</label>
+                          <textarea
+                            value={editedReport.whatToExpect}
+                            onChange={(e) => setEditedReport({ ...editedReport, whatToExpect: e.target.value })}
+                            rows={2}
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="text-xs font-medium text-slate-600 mb-1 block">Recommendations (one per line)</label>
+                          <textarea
+                            value={editedReport.recommendations.join('\n')}
+                            onChange={(e) => setEditedReport({ ...editedReport, recommendations: e.target.value.split('\n').filter(Boolean) })}
+                            rows={3}
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium text-slate-600 mb-1 block">Closing Note</label>
+                          <input
+                            type="text"
+                            value={editedReport.closingNote}
+                            onChange={(e) => setEditedReport({ ...editedReport, closingNote: e.target.value })}
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                      </>
                     )}
-
-                    <p className="text-sm text-green-700 italic">{customerReport.closingNote}</p>
                   </div>
 
                   {/* Shareable Text */}
@@ -795,15 +933,15 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Professional Summary */}
           {professionalSummary && (
-            <Card className="border-2">
+            <Card className="border border-slate-200">
               <div className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <BarChart3 className="w-5 h-5 text-cyan-600" />
                   <h3 className="text-lg font-semibold text-slate-900">Summary</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${professionalSummary.tone === 'positive' ? 'bg-green-100 text-green-700' :
-                    professionalSummary.tone === 'neutral' ? 'bg-slate-100 text-slate-700' :
-                      professionalSummary.tone === 'concerned' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${professionalSummary.tone === 'positive' ? 'bg-slate-100 text-green-600' :
+                    professionalSummary.tone === 'neutral' ? 'bg-slate-100 text-slate-600' :
+                      professionalSummary.tone === 'concerned' ? 'bg-slate-100 text-yellow-600' :
+                        'bg-slate-100 text-red-600'
                     }`}>
                     {professionalSummary.tone}
                   </span>
