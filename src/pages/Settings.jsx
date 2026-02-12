@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { 
-  Settings as SettingsIcon, 
-  Building2, 
-  User, 
-  Bell, 
-  Shield, 
+import {
+  Settings as SettingsIcon,
+  Building2,
+  User,
+  Bell,
+  Shield,
   Database,
   ChevronRight,
   Save,
@@ -26,32 +26,39 @@ import {
   Trash2,
   Eye,
   BarChart3,
-  LogOut
+  LogOut,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { userManager } from '@/lib/userManager';
+import { autoBackup } from '@/lib/backup';
+import { notificationManager } from '@/lib/notifications';
 import { AdminDashboard } from '@/components/AdminDashboard';
 import { BackupManager } from '@/components/BackupManager';
 import { downloadUserData, deleteAllUserData, getDataRetentionSummary } from '@/lib/gdpr';
 import { optOutAnalytics, optInAnalytics, hasOptedOut } from '@/lib/analytics';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
 
-// Account Section Component with Logout
+// Account Section Component with Logout and Delete Account
 function AccountSection({ userData, setUserData }) {
   const auth = useAuthContext();
+  const deleteAccountData = useMutation(api.account.deleteMyAccount);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const handleLogout = async () => {
     if (!auth?.logout) {
       setLogoutError('Authentication service is not available');
       return;
     }
-    
+
     setIsLoggingOut(true);
     setLogoutError('');
-    
+
     try {
       await auth.logout();
     } catch (error) {
@@ -61,13 +68,48 @@ function AccountSection({ userData, setUserData }) {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+
+    try {
+      // Delete all cloud data when authenticated through Clerk/Convex.
+      // In simulator/dev bypass modes, this is skipped and local data is cleared.
+      if (auth?.isSignedIn && auth?.clerkUser) {
+        await deleteAccountData({});
+      }
+
+      // Delete local user data (IndexedDB/localStorage)
+      await deleteAllUserData();
+
+      // Delete identity from Clerk for true account deletion
+      if (auth?.clerkUser && typeof auth.clerkUser.delete === 'function') {
+        await auth.clerkUser.delete();
+      }
+
+      // Sign out and clear app session state
+      if (auth?.logout) {
+        await auth.logout();
+      }
+
+      // In simulator/dev bypass modes logout may not redirect immediately.
+      setShowDeleteConfirm(false);
+      setIsDeleting(false);
+    } catch (error) {
+      console.error('Account deletion failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setDeleteError(`Failed to delete account: ${errorMessage}`);
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-slate-900 mb-1">Account Settings</h2>
         <p className="text-sm text-slate-600">Manage your personal account</p>
       </div>
-      
+
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -81,7 +123,7 @@ function AccountSection({ userData, setUserData }) {
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
           />
         </div>
-        
+
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Email Address
@@ -130,9 +172,78 @@ function AccountSection({ userData, setUserData }) {
           </div>
         </div>
       </div>
+
+      {/* Delete Account Section (required for App Store compliance) */}
+      <div className="pt-6 border-t border-red-200">
+        {deleteError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-700">{deleteError}</p>
+          </div>
+        )}
+
+        {!showDeleteConfirm ? (
+          <div className="p-4 bg-red-50/50 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-red-800">Delete Account</p>
+                <p className="text-sm text-red-600">Permanently delete your account and all data</p>
+              </div>
+              <Button
+                onClick={() => setShowDeleteConfirm(true)}
+                variant="outline"
+                className="border-red-400 text-red-700 hover:bg-red-100 hover:border-red-500"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-red-50 border-2 border-red-300 rounded-lg space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-100 rounded-full flex-shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-red-800">Are you sure?</p>
+                <p className="text-sm text-red-700 mt-1">
+                  This will permanently delete your account, all customer data, service logs, photos, and settings. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button
+                onClick={() => setShowDeleteConfirm(false)}
+                variant="outline"
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteAccount}
+                disabled={isDeleting}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Yes, Delete My Account
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState('business');
@@ -140,24 +251,24 @@ export default function Settings() {
   const [showBackupManager, setShowBackupManager] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
-  
+
   // Convex hooks for business data
   const convexBusiness = useQuery(api.businesses.getCurrent);
   const updateBusiness = useMutation(api.businesses.update);
   const updateBusinessSettings = useMutation(api.businesses.updateSettings);
-  
+
   const [businessData, setBusinessData] = useState({
     name: '',
     address: '',
     phone: '',
     email: ''
   });
-  
+
   const [userData, setUserData] = useState({
     name: '',
     email: ''
   });
-  
+
   const [preferences, setPreferences] = useState({
     language: 'en',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -169,7 +280,8 @@ export default function Settings() {
     defaultView: 'route',
     autoBackup: true
   });
-  
+  const showPlaceholderLabels = import.meta.env.VITE_SHOW_PLACEHOLDERS === 'true';
+
   const [businessSettings, setBusinessSettings] = useState({
     workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
     workingHours: { start: '08:00', end: '17:00' },
@@ -198,9 +310,9 @@ export default function Settings() {
       if (convexBusiness.settings) {
         setBusinessSettings({
           workingDays: convexBusiness.settings.working_days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-          workingHours: { 
-            start: convexBusiness.settings.working_hours_start || '08:00', 
-            end: convexBusiness.settings.working_hours_end || '17:00' 
+          workingHours: {
+            start: convexBusiness.settings.working_hours_start || '08:00',
+            end: convexBusiness.settings.working_hours_end || '17:00'
           },
           serviceTypes: convexBusiness.settings.service_types || ['Regular Cleaning', 'Chemical Balance', 'Equipment Check', 'Repair'],
           chemicalTypes: convexBusiness.settings.chemical_types || ['Chlorine Tablets', 'Liquid Chlorine', 'pH Up', 'pH Down', 'Alkalinity Up', 'Stabilizer'],
@@ -217,8 +329,29 @@ export default function Settings() {
   const loadSettings = () => {
     const currentUser = userManager.getCurrentUser();
     const currentBusiness = userManager.getCurrentBusiness();
-    
+    const defaultNotifications = {
+      serviceReminders: true,
+      lowChemicals: true,
+      customerUpdates: true
+    };
+
     if (currentUser) {
+      let syncedNotifications = currentUser.preferences?.notifications || defaultNotifications;
+      try {
+        const storedNotificationConfig = localStorage.getItem('notification_config');
+        if (storedNotificationConfig) {
+          const parsed = JSON.parse(storedNotificationConfig);
+          syncedNotifications = {
+            ...syncedNotifications,
+            serviceReminders: parsed.serviceReminders ?? syncedNotifications.serviceReminders,
+            lowChemicals: parsed.lowChemicals ?? syncedNotifications.lowChemicals,
+            customerUpdates: parsed.customerUpdates ?? syncedNotifications.customerUpdates
+          };
+        }
+      } catch (error) {
+        console.error('Failed to load notification config:', error);
+      }
+
       setUserData({
         name: currentUser.name || '',
         email: currentUser.email || ''
@@ -226,23 +359,67 @@ export default function Settings() {
       setPreferences({
         language: currentUser.preferences?.language || 'en',
         timezone: currentUser.preferences?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        notifications: currentUser.preferences?.notifications || {
-          serviceReminders: true,
-          lowChemicals: true,
-          customerUpdates: true
-        },
+        notifications: syncedNotifications,
         defaultView: currentUser.preferences?.defaultView || 'route',
         autoBackup: currentUser.preferences?.autoBackup ?? true
       });
+    } else {
+      try {
+        const rawFallback = localStorage.getItem('chemcheck_settings_fallback');
+        if (rawFallback) {
+          const fallback = JSON.parse(rawFallback);
+          if (fallback?.userData?.name || fallback?.userData?.email) {
+            setUserData({
+              name: fallback.userData?.name || '',
+              email: fallback.userData?.email || ''
+            });
+          }
+          if (fallback?.preferences) {
+            setPreferences(prev => ({
+              ...prev,
+              ...fallback.preferences,
+              notifications: {
+                ...prev.notifications,
+                ...(fallback.preferences.notifications || {})
+              }
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load fallback settings:', error);
+      }
     }
-    
-    // Business data is now loaded from Convex via useEffect above
+
+    // Fallback for offline/dev flows when Convex business is unavailable
+    if (currentBusiness) {
+      const settings = currentBusiness.settings || {};
+      setBusinessData({
+        name: currentBusiness.name || '',
+        address: currentBusiness.address || '',
+        phone: currentBusiness.phone || '',
+        email: currentBusiness.email || ''
+      });
+      setBusinessSettings({
+        workingDays: settings.workingDays || settings.working_days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+        workingHours: {
+          start: settings.workingHours?.start || settings.working_hours_start || '08:00',
+          end: settings.workingHours?.end || settings.working_hours_end || '17:00'
+        },
+        serviceTypes: settings.serviceTypes || settings.service_types || ['Regular Cleaning', 'Chemical Balance', 'Equipment Check', 'Repair'],
+        chemicalTypes: settings.chemicalTypes || settings.chemical_types || ['Chlorine Tablets', 'Liquid Chlorine', 'pH Up', 'pH Down', 'Alkalinity Up', 'Stabilizer'],
+        defaultPoolTypes: settings.defaultPoolTypes || ['Chlorine', 'Salt'],
+        defaultSurfaceTypes: settings.defaultSurfaceTypes || ['Plaster', 'Vinyl', 'Fiberglass', 'Tile'],
+        routeOptimization: settings.routeOptimization ?? settings.route_optimization ?? true,
+        requirePhotos: settings.requirePhotos ?? settings.require_photos ?? false,
+        requireSignatures: settings.requireSignatures ?? settings.require_signatures ?? false
+      });
+    }
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     setSaveMessage('');
-    
+
     try {
       // Only update Convex if business exists
       if (convexBusiness) {
@@ -253,7 +430,7 @@ export default function Settings() {
           phone: businessData.phone,
           email: businessData.email,
         });
-        
+
         // Update business settings in Convex
         await updateBusinessSettings({
           working_days: businessSettings.workingDays,
@@ -269,7 +446,7 @@ export default function Settings() {
         // Fallback to localStorage if no Convex business
         const businesses = JSON.parse(localStorage.getItem('chemcheck_businesses') || '[]');
         const currentBusiness = userManager.getCurrentBusiness();
-        
+
         if (currentBusiness) {
           const businessIndex = businesses.findIndex(b => b.id === currentBusiness.id);
           if (businessIndex >= 0) {
@@ -284,17 +461,40 @@ export default function Settings() {
             localStorage.setItem('chemcheck_businesses', JSON.stringify(businesses));
             localStorage.setItem('chemcheck_current_business', JSON.stringify(businesses[businessIndex]));
           }
+
+          // Keep in-memory business settings synced for immediate cross-page updates.
+          await userManager.updateBusinessSettings(businessSettings);
         }
       }
-      
-      // Update user preferences (still using userManager for now)
-      await userManager.updateUserPreferences(preferences);
-      
-      // Update user name in localStorage (still using userManager for now)
-      const users = JSON.parse(localStorage.getItem('chemcheck_users') || '[]');
+
       const currentUser = userManager.getCurrentUser();
-      
+
+      // Update user preferences in active user profile when available.
+      // Otherwise store a local fallback so simulator/dev bypass can still persist settings.
       if (currentUser) {
+        await userManager.updateUserPreferences(preferences);
+      } else {
+        localStorage.setItem('chemcheck_settings_fallback', JSON.stringify({
+          userData,
+          preferences,
+          savedAt: Date.now(),
+        }));
+      }
+
+      notificationManager.updateConfig({
+        serviceReminders: preferences.notifications.serviceReminders,
+        lowChemicals: preferences.notifications.lowChemicals,
+        customerUpdates: preferences.notifications.customerUpdates,
+      });
+      if (preferences.autoBackup) {
+        autoBackup.start();
+      } else {
+        autoBackup.stop();
+      }
+
+      // Update active user name in localStorage (when a user profile exists)
+      if (currentUser) {
+        const users = JSON.parse(localStorage.getItem('chemcheck_users') || '[]');
         const userIndex = users.findIndex(u => u.id === currentUser.id);
         if (userIndex >= 0) {
           users[userIndex] = {
@@ -305,7 +505,7 @@ export default function Settings() {
           localStorage.setItem('chemcheck_current_user', JSON.stringify(users[userIndex]));
         }
       }
-      
+
       setSaveMessage('Settings saved successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (error) {
@@ -358,11 +558,10 @@ export default function Settings() {
             <button
               key={section.id}
               onClick={() => setActiveSection(section.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                activeSection === section.id
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
-                  : 'bg-white text-slate-700 border border-slate-200'
-              }`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${activeSection === section.id
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
+                : 'bg-white text-slate-700 border border-slate-200'
+                }`}
             >
               <section.icon className="w-4 h-4" />
               <span>{section.label}</span>
@@ -380,11 +579,10 @@ export default function Settings() {
                 <button
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
-                    activeSection === section.id
-                      ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${activeSection === section.id
+                    ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
+                    : 'text-slate-700 hover:bg-slate-100'
+                    }`}
                 >
                   <section.icon className="w-5 h-5" />
                   <span className="font-medium">{section.label}</span>
@@ -405,7 +603,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Business Information</h2>
                   <p className="text-sm text-slate-600">Update your business details</p>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -420,7 +618,7 @@ export default function Settings() {
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       <MapPin className="w-4 h-4 inline mr-2" />
@@ -434,7 +632,7 @@ export default function Settings() {
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
                     />
                   </div>
-                  
+
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -469,7 +667,7 @@ export default function Settings() {
 
             {/* Account Section */}
             {activeSection === 'account' && (
-              <AccountSection 
+              <AccountSection
                 userData={userData}
                 setUserData={setUserData}
               />
@@ -482,7 +680,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Preferences</h2>
                   <p className="text-sm text-slate-600">Customize your app experience</p>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -497,9 +695,11 @@ export default function Settings() {
                     >
                       <option value="en">English</option>
                     </select>
-                    <p className="text-xs text-slate-500 mt-1">Additional languages coming soon</p>
+                    {showPlaceholderLabels && (
+                      <p className="text-xs text-slate-500 mt-1">Additional languages coming soon</p>
+                    )}
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Default View
@@ -512,7 +712,9 @@ export default function Settings() {
                       <option value="route">Route View</option>
                       <option value="customers">Customer List</option>
                     </select>
-                    <p className="text-xs text-slate-500 mt-1">Calendar view coming soon</p>
+                    {showPlaceholderLabels && (
+                      <p className="text-xs text-slate-500 mt-1">Calendar view coming soon</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -525,7 +727,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Notifications</h2>
                   <p className="text-sm text-slate-600">Configure notification preferences</p>
                 </div>
-                
+
                 <div className="space-y-3">
                   {[
                     { key: 'serviceReminders', label: 'Service Reminders', desc: 'Get reminded about upcoming services' },
@@ -562,7 +764,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Work Schedule</h2>
                   <p className="text-sm text-slate-600">Set your business working hours</p>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-3">
@@ -573,11 +775,10 @@ export default function Settings() {
                       {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
                         <label
                           key={day}
-                          className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${
-                            businessSettings.workingDays.includes(day)
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                          }`}
+                          className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${businessSettings.workingDays.includes(day)
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            }`}
                         >
                           <input
                             type="checkbox"
@@ -602,7 +803,7 @@ export default function Settings() {
                       ))}
                     </div>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-3">
                       <Clock className="w-4 h-4 inline mr-2" />
@@ -646,7 +847,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Service Configuration</h2>
                   <p className="text-sm text-slate-600">Configure service types, chemicals, and requirements</p>
                 </div>
-                
+
                 <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-3">
@@ -681,9 +882,9 @@ export default function Settings() {
                       ))}
                       <Button
                         onClick={() => {
-                          setBusinessSettings(prev => ({ 
-                            ...prev, 
-                            serviceTypes: [...prev.serviceTypes, 'New Service Type'] 
+                          setBusinessSettings(prev => ({
+                            ...prev,
+                            serviceTypes: [...prev.serviceTypes, 'New Service Type']
                           }));
                         }}
                         variant="outline"
@@ -694,7 +895,7 @@ export default function Settings() {
                       </Button>
                     </div>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-3">
                       Chemical Types
@@ -727,9 +928,9 @@ export default function Settings() {
                       ))}
                       <Button
                         onClick={() => {
-                          setBusinessSettings(prev => ({ 
-                            ...prev, 
-                            chemicalTypes: [...prev.chemicalTypes, 'New Chemical'] 
+                          setBusinessSettings(prev => ({
+                            ...prev,
+                            chemicalTypes: [...prev.chemicalTypes, 'New Chemical']
                           }));
                         }}
                         variant="outline"
@@ -740,7 +941,7 @@ export default function Settings() {
                       </Button>
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 gap-4">
                     <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg">
                       <div className="flex-1 min-w-0">
@@ -760,7 +961,7 @@ export default function Settings() {
                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
                       </label>
                     </div>
-                    
+
                     <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
@@ -796,26 +997,28 @@ export default function Settings() {
                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
                       </label>
                     </div>
-                    
-                    <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg opacity-60">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
-                          <FileSignature className="w-4 h-4" />
-                          Require Signatures
-                          <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">Coming Soon</span>
-                        </p>
-                        <p className="text-xs sm:text-sm text-slate-600">Require customer signatures for services</p>
+
+                    {showPlaceholderLabels && (
+                      <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg opacity-60">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                            <FileSignature className="w-4 h-4" />
+                            Require Signatures
+                            <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">Coming Soon</span>
+                          </p>
+                          <p className="text-xs sm:text-sm text-slate-600">Require customer signatures for services</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-not-allowed flex-shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={businessSettings.requireSignatures}
+                            disabled
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        </label>
                       </div>
-                      <label className="relative inline-flex items-center cursor-not-allowed flex-shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={businessSettings.requireSignatures}
-                          disabled
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                      </label>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -828,7 +1031,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Data Backup</h2>
                   <p className="text-sm text-slate-600">Protect and manage your pool service data</p>
                 </div>
-                
+
                 <div className="space-y-3">
                   <button
                     onClick={() => setShowBackupManager(true)}
@@ -845,14 +1048,14 @@ export default function Settings() {
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-400" />
                   </button>
-                  
+
                   <div className="p-4 bg-slate-50 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       <Activity className="w-4 h-4 text-slate-600" />
                       <span className="text-sm font-medium text-slate-900">Auto-Backup Status</span>
                     </div>
                     <p className="text-sm text-slate-600 mb-3">
-                      {preferences.autoBackup 
+                      {preferences.autoBackup
                         ? 'Automatic backups are enabled and run every 24 hours'
                         : 'Automatic backups are disabled'
                       }
@@ -881,7 +1084,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Privacy & Data</h2>
                   <p className="text-sm text-slate-600">Manage your data and privacy settings (GDPR compliant)</p>
                 </div>
-                
+
                 <div className="space-y-4">
                   {/* Data Export */}
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -892,7 +1095,7 @@ export default function Settings() {
                       <div className="flex-1">
                         <p className="font-medium text-slate-900">Export Your Data</p>
                         <p className="text-sm text-slate-600 mb-3">
-                          Download all your data in a machine-readable format (JSON). 
+                          Download all your data in a machine-readable format (JSON).
                           This includes customers, service logs, chemical usage, and notes.
                         </p>
                         <Button
@@ -959,11 +1162,16 @@ export default function Settings() {
                     </p>
                     <Button
                       onClick={async () => {
-                        const summary = await getDataRetentionSummary();
-                        const message = summary.dataTypes
-                          .map(d => `${d.type}: ${d.count} records`)
-                          .join('\n');
-                        alert(`Your Data Summary:\n\n${message}`);
+                        try {
+                          const summary = await getDataRetentionSummary();
+                          const message = summary.dataTypes
+                            .map(d => `${d.type}: ${d.count} records`)
+                            .join('\n');
+                          alert(`Your Data Summary:\n\n${message}`);
+                        } catch (error) {
+                          console.error('Failed to load data summary:', error);
+                          setSaveMessage('Failed to load data summary. Please try again.');
+                        }
                       }}
                       variant="outline"
                       size="sm"
@@ -1049,7 +1257,7 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Admin Tools</h2>
                   <p className="text-sm text-slate-600">Advanced system management</p>
                 </div>
-                
+
                 <div className="space-y-3">
                   <button
                     onClick={() => setShowAdminDashboard(true)}
@@ -1066,7 +1274,7 @@ export default function Settings() {
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-400" />
                   </button>
-                  
+
                   <button
                     onClick={() => {
                       if (confirm('Are you sure you want to clear all local data? This cannot be undone.')) {
@@ -1088,7 +1296,7 @@ export default function Settings() {
                     <ChevronRight className="w-5 h-5 text-red-400" />
                   </button>
                 </div>
-                
+
                 <div className="p-4 bg-slate-50 rounded-lg">
                   <p className="text-sm text-slate-600">
                     <strong>Tip:</strong> You can also open the Admin Dashboard anytime by pressing <kbd className="px-2 py-1 bg-slate-200 rounded text-xs">Ctrl</kbd> + <kbd className="px-2 py-1 bg-slate-200 rounded text-xs">Shift</kbd> + <kbd className="px-2 py-1 bg-slate-200 rounded text-xs">A</kbd>
@@ -1098,7 +1306,7 @@ export default function Settings() {
             )}
 
             {/* Save Button */}
-            {activeSection !== 'admin' && activeSection !== 'backup' && (
+            {activeSection !== 'admin' && (
               <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:justify-between">
                 {saveMessage && (
                   <p className={`text-sm text-center sm:text-left ${saveMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>

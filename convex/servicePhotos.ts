@@ -3,6 +3,14 @@ import { query, mutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { enforceRateLimit } from "./rateLimit";
 
+const runtimeEnv =
+  process.env.CONVEX_DEPLOYMENT_ENV ||
+  process.env.VERCEL_ENV ||
+  process.env.NODE_ENV;
+const allowUnauthenticatedPhotoUpload =
+  process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true" ||
+  runtimeEnv !== "production";
+
 /**
  * Service Photos mutations and queries for Proof of Service feature
  * Requirements: 1.5 - Store photos securely with associated service log
@@ -23,6 +31,29 @@ async function verifyServiceLogOwnership(
   const customer = await ctx.db.get(serviceLog.customer_id);
   if (!customer || customer.created_by !== userEmail) {
     throw new Error("Access denied");
+  }
+
+  return { serviceLog, customer };
+}
+
+// Helper: Verify service log belongs to customer (for limited unauthenticated flows)
+async function verifyServiceLogCustomerLink(
+  ctx: any,
+  serviceLogId: Id<"serviceLogs">,
+  customerId: Id<"customers">
+): Promise<{ serviceLog: any; customer: any }> {
+  const serviceLog = await ctx.db.get(serviceLogId);
+  if (!serviceLog) {
+    throw new Error("Service log not found");
+  }
+
+  const customer = await ctx.db.get(customerId);
+  if (!customer) {
+    throw new Error("Customer not found");
+  }
+
+  if (serviceLog.customer_id !== customerId) {
+    throw new Error("Service log does not belong to customer");
   }
 
   return { serviceLog, customer };
@@ -49,8 +80,11 @@ export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
+    if (!identity && !allowUnauthenticatedPhotoUpload) {
+      throw new Error("Not authenticated");
+    }
+    // In dev/auth-bypass flows identity may be absent; ownership is enforced when
+    // the uploadPhoto record is created.
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -74,14 +108,21 @@ export const uploadPhoto = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (identity) {
+      // Enforce rate limiting (database-backed for distributed rate limiting)
+      await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
 
-    // Enforce rate limiting (database-backed for distributed rate limiting)
-    await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
-
-    // Verify ownership of service log and customer
-    await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
-    await verifyCustomerOwnership(ctx, args.customer_id, identity.email!);
+      // Verify ownership of service log and customer
+      await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
+      await verifyCustomerOwnership(ctx, args.customer_id, identity.email!);
+    } else {
+      if (!allowUnauthenticatedPhotoUpload) {
+        throw new Error("Not authenticated");
+      }
+      // Limited fallback for auth-bypass/dev workflows:
+      // still enforce that the service log and customer are linked.
+      await verifyServiceLogCustomerLink(ctx, args.service_log_id, args.customer_id);
+    }
 
     // Validate category
     if (args.category !== "before" && args.category !== "after") {

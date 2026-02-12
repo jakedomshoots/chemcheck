@@ -36,7 +36,7 @@ export function formatSmsMessage(
   businessName: string,
   serviceDate: string,
   overallStatus: PoolStatus,
-  reportLink: string
+  reportLink?: string
 ): string {
   // Truncate business name if too long to help stay under 160 chars
   const maxBusinessNameLength = 30;
@@ -50,7 +50,10 @@ export function formatSmsMessage(
     ? 'OK' 
     : 'Needs Attention';
 
-  const message = `${truncatedBusinessName} - Service completed ${serviceDate}\nPool Status: ${statusText}\nView report: ${reportLink}`;
+  const baseMessage = `${truncatedBusinessName} - Service completed ${serviceDate}\nPool Status: ${statusText}`;
+  const message = reportLink
+    ? `${baseMessage}\nView report: ${reportLink}`
+    : `${baseMessage}\nReport link is added when sent.`;
 
   return message;
 }

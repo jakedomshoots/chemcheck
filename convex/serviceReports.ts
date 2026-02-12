@@ -13,6 +13,7 @@ import { v } from "convex/values";
 import { query, mutation, action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { isDeliverableEmailForReports } from "./validation";
 
 /**
  * Helper: Verify service log ownership
@@ -57,6 +58,51 @@ async function generateUniqueToken(ctx: any): Promise<string> {
   }
 
   throw new Error("Failed to generate unique token after multiple attempts");
+}
+
+/**
+ * Normalize a report base URL from environment or client override.
+ * Returns null when the URL is missing/invalid or uses an unsafe protocol.
+ */
+function normalizeReportBaseUrl(rawUrl?: string): string | null {
+  if (!rawUrl) return null;
+
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+
+    const normalizedPath = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+    return `${parsed.origin}${normalizedPath}`;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalhostBaseUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function resolveReportBaseUrl(clientBaseUrl?: string, envBaseUrl?: string): string | null {
+  const normalizedClientBase = normalizeReportBaseUrl(clientBaseUrl);
+  const normalizedEnvBase = normalizeReportBaseUrl(envBaseUrl);
+
+  // If client sent localhost but APP_URL is a real domain, prefer APP_URL.
+  if (normalizedClientBase && isLocalhostBaseUrl(normalizedClientBase) && normalizedEnvBase && !isLocalhostBaseUrl(normalizedEnvBase)) {
+    return normalizedEnvBase;
+  }
+
+  return normalizedClientBase || normalizedEnvBase || null;
 }
 
 /**
@@ -199,6 +245,8 @@ export const sendReport = action({
     delivery_method: v.optional(v.string()), // 'sms' or 'email', defaults to 'sms'
     custom_note: v.optional(v.string()), // Optional custom note for needs_attention status
     pool_status: v.optional(v.string()), // Optional pool status override ('good' or 'needs_attention')
+    recipient_email: v.optional(v.string()), // Optional local override when customer sync is delayed
+    report_base_url: v.optional(v.string()), // Optional app origin override for report links
   },
   handler: async (ctx, args): Promise<{
     success: boolean;
@@ -210,6 +258,7 @@ export const sendReport = action({
     const deliveryMethod = args.delivery_method || 'sms';
     const customNote = args.custom_note;
     const poolStatusOverride = args.pool_status as "good" | "needs_attention" | undefined;
+    const recipientEmailOverride = args.recipient_email?.trim();
 
     // Get the service log and customer data
     const serviceLog = await ctx.runQuery(internal.serviceReports.getServiceLogWithCustomer, {
@@ -231,7 +280,8 @@ export const sendReport = action({
       };
     }
 
-    if (deliveryMethod === 'email' && (!serviceLog.customer.email || serviceLog.customer.email.trim().length === 0)) {
+    const resolvedRecipientEmail = recipientEmailOverride || serviceLog.customer.email?.trim();
+    if (deliveryMethod === 'email' && (!resolvedRecipientEmail || resolvedRecipientEmail.length === 0)) {
       return {
         success: false,
         error: "No email address on file. Please add an email address to send email reports.",
@@ -256,12 +306,12 @@ export const sendReport = action({
       }
     }
 
-    // Require APP_URL to be set
-    const baseUrl = process.env.APP_URL;
+    // Resolve report base URL (prefer client-provided origin, fallback to APP_URL)
+    const baseUrl = resolveReportBaseUrl(args.report_base_url, process.env.APP_URL);
     if (!baseUrl) {
       return {
         success: false,
-        error: "APP_URL environment variable is not configured. Please contact support.",
+        error: "Report link URL is not configured. Please set APP_URL and try again.",
       };
     }
     const reportLink = `${baseUrl}/report/${report.report_token}`;
@@ -284,6 +334,7 @@ export const sendReport = action({
       return await sendViaEmail(ctx, {
         report,
         customer: serviceLog.customer,
+        recipientEmail: resolvedRecipientEmail,
         businessName,
         serviceDate,
         overallStatus,
@@ -319,6 +370,41 @@ export const getServiceLogWithCustomer = internalQuery({
       ...serviceLog,
       customer,
       business,
+    };
+  },
+});
+
+/**
+ * Internal query to fetch photo URLs for a service log.
+ * Used when building email content so customers can see attached photos directly in email.
+ */
+export const getEmailPhotoUrls = internalQuery({
+  args: {
+    service_log_id: v.id("serviceLogs"),
+  },
+  handler: async (ctx, args) => {
+    const photos = await ctx.db
+      .query("servicePhotos")
+      .withIndex("by_service_log", (q) => q.eq("service_log_id", args.service_log_id))
+      .collect();
+
+    const photosWithUrls = await Promise.all(
+      photos.map(async (photo) => {
+        const url = await ctx.storage.getUrl(photo.storage_id);
+        return {
+          category: photo.category,
+          url: url || null,
+        };
+      })
+    );
+
+    return {
+      before: photosWithUrls
+        .filter((photo) => photo.category === "before" && !!photo.url)
+        .map((photo) => photo.url as string),
+      after: photosWithUrls
+        .filter((photo) => photo.category === "after" && !!photo.url)
+        .map((photo) => photo.url as string),
     };
   },
 });
@@ -485,6 +571,8 @@ export interface EmailContentParams {
   customNote?: string;
   businessName?: string;
   reportLink?: string;
+  beforePhotoUrls?: string[];
+  afterPhotoUrls?: string[];
 }
 
 /**
@@ -509,7 +597,16 @@ export interface GeneratedEmailContent {
  * Requirements: 1.1, 1.2, 3.2, 3.6, 3.7
  */
 export function generateSimpleEmailContent(params: EmailContentParams): GeneratedEmailContent {
-  const { customerName, serviceDate, poolStatus, customNote, businessName: inputBusinessName, reportLink } = params;
+  const {
+    customerName,
+    serviceDate,
+    poolStatus,
+    customNote,
+    businessName: inputBusinessName,
+    reportLink,
+    beforePhotoUrls = [],
+    afterPhotoUrls = [],
+  } = params;
 
   // SECURITY: Centralized escaping for all user-controlled fields
   // This ensures no field is missed during template generation
@@ -544,6 +641,8 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   // Generate the message body based on status
   let messageContent: string;
   let textMessageContent: string;
+  let optionalCustomMessageHtml = '';
+  let optionalCustomMessageText = '';
 
   if (poolStatus === 'good') {
     messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Your pool is in excellent condition and ready for use.</p>`;
@@ -560,6 +659,44 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
     textMessageContent = `Technician Notes:\n${customNote || 'Your pool requires some attention. Please contact us if you have any questions.'}`;
   }
 
+  if (safeCustomNote && poolStatus === 'good') {
+    optionalCustomMessageHtml = `
+      <div style="background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0284c7;">
+        <p style="margin: 0; font-size: 14px; color: #075985; font-weight: 600;">Custom Message:</p>
+        <p style="margin: 10px 0 0 0; font-size: 16px; color: #0c4a6e;">${safeCustomNote}</p>
+      </div>
+    `;
+    optionalCustomMessageText = `\nCustom Message:\n${customNote}\n`;
+  }
+
+  const safeBeforePhotoUrls = beforePhotoUrls
+    .map((url) => escapeUrlForHtml(url))
+    .filter((url) => url.length > 0)
+    .slice(0, 6);
+  const safeAfterPhotoUrls = afterPhotoUrls
+    .map((url) => escapeUrlForHtml(url))
+    .filter((url) => url.length > 0)
+    .slice(0, 6);
+  const hasPhotoUrls = safeBeforePhotoUrls.length > 0 || safeAfterPhotoUrls.length > 0;
+
+  const photoThumbStyle = "width: 108px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; margin: 0 8px 8px 0; display: inline-block;";
+  const renderPhotoLinks = (urls: string[]) =>
+    urls.map((url) => `<a href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="Service photo" style="${photoThumbStyle}" /></a>`).join("");
+
+  const photoSectionHtml = hasPhotoUrls ? `
+      <div style="background: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+        <p style="margin: 0 0 10px 0; font-size: 15px; font-weight: 600; color: #0f172a;">Service Photos</p>
+        ${safeBeforePhotoUrls.length > 0 ? `
+          <p style="margin: 0 0 6px 0; font-size: 13px; color: #64748b;">Before (${safeBeforePhotoUrls.length})</p>
+          <div style="margin-bottom: 10px;">${renderPhotoLinks(safeBeforePhotoUrls)}</div>
+        ` : ''}
+        ${safeAfterPhotoUrls.length > 0 ? `
+          <p style="margin: 0 0 6px 0; font-size: 13px; color: #64748b;">After (${safeAfterPhotoUrls.length})</p>
+          <div>${renderPhotoLinks(safeAfterPhotoUrls)}</div>
+        ` : ''}
+      </div>
+  ` : '';
+
   // Generate report link section if provided and URL is safe
   // Note: safeReportLink is already validated and escaped via createSafeEmailFields
   const reportLinkHtml = safeReportLink ? `
@@ -569,6 +706,13 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   ` : '';
 
   const reportLinkText = reportLink && isValidReportLink(reportLink) ? `\nView your full report: ${reportLink}\n` : '';
+  const validBeforePhotoUrlsText = beforePhotoUrls.filter(isValidReportLink).slice(0, 6);
+  const validAfterPhotoUrlsText = afterPhotoUrls.filter(isValidReportLink).slice(0, 6);
+  const photoSectionText = (validBeforePhotoUrlsText.length > 0 || validAfterPhotoUrlsText.length > 0) ? `
+Service Photos:
+${validBeforePhotoUrlsText.length > 0 ? `Before:\n- ${validBeforePhotoUrlsText.join('\n- ')}` : ''}
+${validAfterPhotoUrlsText.length > 0 ? `After:\n- ${validAfterPhotoUrlsText.join('\n- ')}` : ''}
+` : '';
 
   const htmlBody = `
     <!DOCTYPE html>
@@ -597,6 +741,8 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
         </div>
         
         ${messageContent}
+        ${optionalCustomMessageHtml}
+        ${photoSectionHtml}
         ${reportLinkHtml}
         
         <p style="font-size: 14px; color: #64748b; margin-top: 30px;">If you have any questions about your service, please don't hesitate to contact us.</p>
@@ -626,7 +772,7 @@ Your pool service has been completed by ${businessName}.
 Service Date: ${serviceDate}
 Pool Status: ${statusText} ${statusIcon}
 
-${textMessageContent}${reportLinkText}
+${textMessageContent}${optionalCustomMessageText}${photoSectionText}${reportLinkText}
 If you have any questions about your service, please don't hesitate to contact us.
 
 ${businessName}
@@ -937,6 +1083,7 @@ async function sendViaEmail(
   params: {
     report: any;
     customer: any;
+    recipientEmail?: string;
     businessName: string;
     serviceDate: string;
     overallStatus: "good" | "needs_attention";
@@ -949,7 +1096,12 @@ async function sendViaEmail(
   report_token?: string;
   message_id?: string;
 }> {
-  const { report, customer, businessName, serviceDate, overallStatus, reportLink, customNote } = params;
+  const { report, customer, recipientEmail: recipientEmailOverride, businessName, serviceDate, overallStatus, reportLink, customNote } = params;
+  const recipientEmail = recipientEmailOverride?.trim() || customer.email?.trim();
+
+  const emailPhotos = await ctx.runQuery(internal.serviceReports.getEmailPhotoUrls, {
+    service_log_id: report.service_log_id,
+  });
 
   // Generate simplified email content using the new helper function
   const emailContent = generateSimpleEmailContent({
@@ -959,6 +1111,8 @@ async function sendViaEmail(
     customNote: customNote,
     businessName: businessName,
     reportLink: reportLink,
+    beforePhotoUrls: emailPhotos.before,
+    afterPhotoUrls: emailPhotos.after,
   });
 
   try {
@@ -982,6 +1136,20 @@ async function sendViaEmail(
       };
     }
 
+    if (!recipientEmail) {
+      return {
+        success: false,
+        error: "Recipient email is missing. Please update customer email and try again.",
+      };
+    }
+
+    if (!isDeliverableEmailForReports(recipientEmail)) {
+      return {
+        success: false,
+        error: "Recipient email looks like a placeholder (for example, example.com). Please update the customer email and try again.",
+      };
+    }
+
     const response = await fetch("https://api.mailersend.com/v1/email", {
       method: "POST",
       headers: {
@@ -989,7 +1157,7 @@ async function sendViaEmail(
         "Authorization": `Bearer ${mailersendApiKey}`,
       },
       body: JSON.stringify(buildMailersendRequestBody({
-        recipientEmail: customer.email,
+        recipientEmail,
         fromEmail: fromEmail,
         fromName: businessName,
         subject: emailContent.subject,
@@ -1008,7 +1176,7 @@ async function sendViaEmail(
       console.error("Mailersend Email Error:", {
         status: response.status,
         error_message: errorMessage,
-        customer_email: customer.email,
+        customer_email: recipientEmail,
         timestamp: new Date().toISOString()
       });
 
@@ -1021,11 +1189,20 @@ async function sendViaEmail(
     // Mailersend returns 202 Accepted on success
     // Get message ID from headers if available
     const messageId = response.headers.get('x-message-id') || 'sent';
+    console.log("Mailersend accepted report email:", {
+      to: recipientEmail,
+      from: fromEmail,
+      status: response.status,
+      message_id: messageId,
+      report_id: report._id,
+      report_token: report.report_token,
+      timestamp: new Date().toISOString(),
+    });
 
     // Update report with sent timestamp
     await ctx.runMutation(internal.serviceReports.updateReportSent, {
       report_id: report._id,
-      sent_to_email: customer.email,
+      sent_to_email: recipientEmail,
       delivery_method: 'email',
     });
 

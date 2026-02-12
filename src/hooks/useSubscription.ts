@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getStripe, SUBSCRIPTION_PLANS, PlanId, Subscription, isStripeConfigured } from '@/lib/stripe';
-import { useAuthContext } from '@/components/auth/AuthProvider';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
+import {
+  getStripe,
+  SUBSCRIPTION_PLANS,
+  PlanId,
+  Subscription,
+  isStripeConfigured,
+  getBillingApiConfig,
+  isBillingBackendConfigured as isStripeBillingBackendConfigured,
+} from '@/lib/stripe';
+import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
 
 const SUBSCRIPTION_STORAGE_KEY = 'chemcheck_subscription';
 
@@ -10,6 +20,7 @@ interface UseSubscriptionReturn {
   error: string | null;
   isTrialing: boolean;
   isActive: boolean;
+  isBillingBackendConfigured: boolean;
   currentPlan: typeof SUBSCRIPTION_PLANS[PlanId] | null;
   daysRemaining: number;
   canAccessFeature: (feature: string) => boolean;
@@ -27,15 +38,44 @@ const FREE_TIER_LIMITS = {
 
 export function useSubscription(): UseSubscriptionReturn {
   const { localUser, clerkUser } = useAuthContext();
+  const convexSubscription = useQuery(api.subscriptions.get);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const billingApiConfig = getBillingApiConfig();
+  const isBillingBackendConfigured = isStripeBillingBackendConfigured();
 
   // Load subscription from storage/API
   useEffect(() => {
     const loadSubscription = async () => {
       setIsLoading(true);
       try {
+        if (convexSubscription) {
+          const rawPlanId = convexSubscription.plan_id as string;
+          const planId: PlanId = rawPlanId in SUBSCRIPTION_PLANS
+            ? (rawPlanId as PlanId)
+            : 'starter';
+          setSubscription({
+            id: convexSubscription.stripe_subscription_id,
+            status: convexSubscription.status as Subscription['status'],
+            planId,
+            currentPeriodStart: new Date(convexSubscription.current_period_start),
+            currentPeriodEnd: new Date(convexSubscription.current_period_end),
+            cancelAtPeriodEnd: convexSubscription.cancel_at_period_end,
+            trialEnd: convexSubscription.trial_end
+              ? new Date(convexSubscription.trial_end)
+              : undefined,
+          });
+          setError(null);
+          return;
+        }
+
+        if (convexSubscription === null && isStripeConfigured()) {
+          setSubscription(null);
+          setError(null);
+          return;
+        }
+
         // In production, this would fetch from your backend
         // For now, check local storage for demo purposes
         const stored = localStorage.getItem(SUBSCRIPTION_STORAGE_KEY);
@@ -57,7 +97,7 @@ export function useSubscription(): UseSubscriptionReturn {
     };
 
     loadSubscription();
-  }, [localUser, clerkUser]);
+  }, [convexSubscription, localUser, clerkUser]);
 
   // Computed values
   const isActive = subscription?.status === 'active' || subscription?.status === 'trialing';
@@ -123,6 +163,11 @@ export function useSubscription(): UseSubscriptionReturn {
       return;
     }
 
+    if (!billingApiConfig) {
+      setError('Billing checkout is not configured yet.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -130,24 +175,45 @@ export function useSubscription(): UseSubscriptionReturn {
       const stripe = await getStripe();
       if (!stripe) throw new Error('Stripe not initialized');
 
-      // In production, call your backend to create a checkout session
-      // const response = await fetch('/api/create-checkout-session', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ planId, isAnnual }),
-      // });
-      // const { sessionId } = await response.json();
-      // await stripe.redirectToCheckout({ sessionId });
+      const authToken = await clerkUser?.getToken?.().catch(() => null);
+      const response = await fetch(billingApiConfig.checkoutUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ planId, isAnnual }),
+      });
 
-      // For now, show a message that Stripe needs backend setup
-      throw new Error('Stripe checkout requires backend integration. Please configure your Stripe webhook endpoints.');
+      if (!response.ok) {
+        const fallbackMessage = 'Unable to start checkout.';
+        const payload = await response.json().catch(() => null);
+        const message = payload?.error || fallbackMessage;
+        throw new Error(message);
+      }
+
+      const payload = await response.json();
+      if (typeof payload?.url === 'string' && payload.url.length > 0) {
+        window.location.assign(payload.url);
+        return;
+      }
+
+      if (typeof payload?.sessionId === 'string' && payload.sessionId.length > 0) {
+        const result = await stripe.redirectToCheckout({ sessionId: payload.sessionId });
+        if (result.error) {
+          throw result.error;
+        }
+        return;
+      }
+
+      throw new Error('Checkout session response was invalid.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create checkout session');
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [billingApiConfig, clerkUser]);
 
   // Create Stripe customer portal session
   const createPortalSession = useCallback(async () => {
@@ -156,20 +222,43 @@ export function useSubscription(): UseSubscriptionReturn {
       return;
     }
 
+    if (!billingApiConfig) {
+      setError('Billing portal is not configured yet.');
+      return;
+    }
+
     setIsLoading(true);
+    setError(null);
     try {
-      // In production, call your backend to create a portal session
-      // const response = await fetch('/api/create-portal-session', { method: 'POST' });
-      // const { url } = await response.json();
-      // window.location.href = url;
-      
-      throw new Error('Billing portal requires backend integration');
+      const authToken = await clerkUser?.getToken?.().catch(() => null);
+      const response = await fetch(billingApiConfig.portalUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+      });
+
+      if (!response.ok) {
+        const fallbackMessage = 'Unable to open billing portal.';
+        const payload = await response.json().catch(() => null);
+        const message = payload?.error || fallbackMessage;
+        throw new Error(message);
+      }
+
+      const payload = await response.json();
+      if (typeof payload?.url !== 'string' || payload.url.length === 0) {
+        throw new Error('Billing portal response was invalid.');
+      }
+
+      window.location.assign(payload.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to open billing portal');
+      throw err;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [billingApiConfig, clerkUser]);
 
   // Cancel subscription
   const cancelSubscription = useCallback(async () => {
@@ -183,17 +272,39 @@ export function useSubscription(): UseSubscriptionReturn {
       return;
     }
 
+    if (!billingApiConfig) {
+      setError('Subscription cancellation is not configured yet.');
+      return;
+    }
+
     setIsLoading(true);
+    setError(null);
     try {
-      // In production, call your backend
-      // await fetch('/api/cancel-subscription', { method: 'POST' });
-      throw new Error('Subscription cancellation requires backend integration');
+      const authToken = await clerkUser?.getToken?.().catch(() => null);
+      const response = await fetch(billingApiConfig.cancelUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ subscriptionId: subscription.id }),
+      });
+
+      if (!response.ok) {
+        const fallbackMessage = 'Unable to cancel subscription.';
+        const payload = await response.json().catch(() => null);
+        const message = payload?.error || fallbackMessage;
+        throw new Error(message);
+      }
+
+      setSubscription((prev) => prev ? { ...prev, cancelAtPeriodEnd: true } : prev);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel subscription');
+      throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [subscription]);
+  }, [billingApiConfig, clerkUser, subscription]);
 
   return {
     subscription,
@@ -201,6 +312,7 @@ export function useSubscription(): UseSubscriptionReturn {
     error,
     isTrialing,
     isActive,
+    isBillingBackendConfigured,
     currentPlan,
     daysRemaining,
     canAccessFeature,

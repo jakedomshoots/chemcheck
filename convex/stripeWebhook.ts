@@ -37,6 +37,147 @@ function logWebhookError(
   console.error('[Webhook Error]', JSON.stringify(logEntry));
 }
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
+function formatCurrencyFromCents(cents: unknown): string {
+  if (typeof cents !== "number" || !Number.isFinite(cents)) {
+    return "an outstanding balance";
+  }
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function toIsoDateFromEpochSeconds(epochSeconds: unknown): string {
+  if (typeof epochSeconds !== "number" || !Number.isFinite(epochSeconds)) {
+    return "as soon as possible";
+  }
+  return new Date(epochSeconds * 1000).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+async function sendPaymentFailedNotificationEmail(
+  ctx: any,
+  args: {
+    userEmail: string;
+    stripeCustomerId?: string;
+    invoice: any;
+  }
+): Promise<void> {
+  const { userEmail, invoice } = args;
+  if (!userEmail) return;
+
+  const apiKey = process.env.MAILERSEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL;
+  if (!apiKey || !fromEmail) {
+    logWebhookError("HANDLER_ERROR", {
+      reason: "mailersend_not_configured",
+      hasApiKey: !!apiKey,
+      hasFromEmail: !!fromEmail,
+      userEmail,
+    });
+    return;
+  }
+
+  const business = await ctx.db
+    .query("businesses")
+    .withIndex("by_owner_email", (q) => q.eq("owner_email", userEmail))
+    .first();
+
+  const businessName = business?.name || "ChemCheck";
+  const recipientEmail = business?.email || userEmail;
+  const amountDue = formatCurrencyFromCents(invoice?.amount_due);
+  const retryDate = toIsoDateFromEpochSeconds(invoice?.next_payment_attempt);
+  const invoiceUrl =
+    (typeof invoice?.hosted_invoice_url === "string" && invoice.hosted_invoice_url) ||
+    (typeof invoice?.invoice_pdf === "string" && invoice.invoice_pdf) ||
+    "";
+  const billingPortalUrl = process.env.BILLING_PORTAL_URL || "";
+
+  const safeBusinessName = escapeHtml(businessName);
+  const safeAmountDue = escapeHtml(amountDue);
+  const safeRetryDate = escapeHtml(retryDate);
+  const safeInvoiceUrl = escapeHtml(invoiceUrl);
+  const safeBillingPortalUrl = escapeHtml(billingPortalUrl);
+
+  const subject = `Action needed: payment failed for ${businessName}`;
+  const textBody = [
+    `Hi ${businessName},`,
+    ``,
+    `We could not process your latest subscription payment (${amountDue}).`,
+    `We'll retry on ${retryDate}.`,
+    ``,
+    invoiceUrl ? `Invoice: ${invoiceUrl}` : "",
+    billingPortalUrl ? `Billing portal: ${billingPortalUrl}` : "",
+    ``,
+    `To keep access uninterrupted, please update your payment method.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const htmlBody = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Payment Failed</title>
+    </head>
+    <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;line-height:1.6;color:#1e293b;max-width:600px;margin:0 auto;padding:20px;">
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:24px;">
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#991b1b;">Payment Failed</h1>
+        <p style="margin:0 0 12px 0;">Hi ${safeBusinessName},</p>
+        <p style="margin:0 0 12px 0;">
+          We could not process your latest subscription payment (<strong>${safeAmountDue}</strong>).
+          We will retry on <strong>${safeRetryDate}</strong>.
+        </p>
+        <p style="margin:0 0 16px 0;">To keep access uninterrupted, please update your payment method.</p>
+        ${invoiceUrl ? `<p style="margin:0 0 8px 0;"><a href="${safeInvoiceUrl}" style="color:#2563eb;">View invoice</a></p>` : ""}
+        ${billingPortalUrl ? `<p style="margin:0;"><a href="${safeBillingPortalUrl}" style="color:#2563eb;">Open billing portal</a></p>` : ""}
+      </div>
+    </body>
+    </html>
+  `;
+
+  const response = await fetch("https://api.mailersend.com/v1/email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      from: {
+        email: fromEmail,
+        name: businessName,
+      },
+      to: [{ email: recipientEmail }],
+      subject,
+      text: textBody,
+      html: htmlBody,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    logWebhookError("HANDLER_ERROR", {
+      reason: "payment_failed_notification_send_error",
+      status: response.status,
+      recipientEmail,
+      bodyPreview: body.slice(0, 300),
+    });
+  }
+}
+
 /**
  * SECURITY: Validate origin for defense-in-depth CSRF protection
  * Stripe webhooks should only come from Stripe's infrastructure
@@ -260,15 +401,76 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
       }
 
       case "invoice.payment_succeeded": {
-        // Payment successful - subscription is active
-        console.log("[Webhook] Payment succeeded for invoice:", event.data.object.id);
+        const invoice = event.data.object;
+        const stripeSubscriptionId =
+          typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+        if (stripeSubscriptionId) {
+          const subscription = await ctx.db
+            .query("subscriptions")
+            .withIndex("by_stripe_subscription", (q) => q.eq("stripe_subscription_id", stripeSubscriptionId))
+            .first();
+
+          if (subscription) {
+            await ctx.db.patch(subscription._id, {
+              status: "active",
+              updated_at: Date.now(),
+            });
+          }
+        }
+
+        console.log("[Webhook] Payment succeeded for invoice:", invoice.id);
         break;
       }
 
       case "invoice.payment_failed": {
-        // Payment failed - may need to notify user
-        console.log("[Webhook] Payment failed for invoice:", event.data.object.id);
-        // TODO: Send notification to user about failed payment
+        const invoice = event.data.object;
+        const stripeCustomerId =
+          typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
+        const stripeSubscriptionId =
+          typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+        let userEmail = invoice.metadata?.user_email || invoice.customer_email || "";
+
+        // Try to resolve from existing subscription records.
+        let subscription = null;
+        if (stripeSubscriptionId) {
+          subscription = await ctx.db
+            .query("subscriptions")
+            .withIndex("by_stripe_subscription", (q) => q.eq("stripe_subscription_id", stripeSubscriptionId))
+            .first();
+        }
+
+        if (!subscription && stripeCustomerId) {
+          subscription = await ctx.db
+            .query("subscriptions")
+            .withIndex("by_stripe_customer", (q) => q.eq("stripe_customer_id", stripeCustomerId))
+            .first();
+        }
+
+        if (subscription) {
+          userEmail = userEmail || subscription.user_email;
+          await ctx.db.patch(subscription._id, {
+            status: "past_due",
+            updated_at: Date.now(),
+          });
+        }
+
+        if (userEmail) {
+          try {
+            await sendPaymentFailedNotificationEmail(ctx, {
+              userEmail,
+              stripeCustomerId,
+              invoice,
+            });
+          } catch (notifyErr) {
+            logWebhookError("HANDLER_ERROR", {
+              reason: "payment_failed_notification_exception",
+              invoiceId: invoice.id,
+              userEmail,
+            }, notifyErr);
+          }
+        }
+
+        console.log("[Webhook] Payment failed for invoice:", invoice.id);
         break;
       }
 

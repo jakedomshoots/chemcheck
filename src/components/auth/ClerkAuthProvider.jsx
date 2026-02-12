@@ -1,17 +1,21 @@
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-react';
-import { ConvexProviderWithClerk } from 'convex/react-clerk';
-import { ConvexReactClient } from 'convex/react';
-import { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { userManager } from '@/lib/userManager';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { logLogin, logLogout } from '@/lib/auditLog';
 import { setUserContext, clearUserContext } from '@/lib/sentry';
-import { useSyncInitialization } from '@/hooks/useSyncInitialization';
-
-// Initialize Convex client
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
 // Get Clerk publishable key from environment
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const clerkDomain = import.meta.env.VITE_CLERK_DOMAIN;
+const isIosSimulatorBypass = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true'
+  && typeof window !== 'undefined'
+  && window.Capacitor
+  && window.Capacitor.getPlatform?.() === 'ios';
+
+// Dev mode bypass for localhost development
+const isDevBypass = import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 // Auth context for app-wide auth state
 const AuthContext = createContext(null);
@@ -24,8 +28,37 @@ export function useAuthContext() {
   return context;
 }
 
-// Map the API for use in the provider
-import { api } from '../../../convex/_generated/api';
+let userManagerModulePromise = null;
+async function getUserManager() {
+  if (!userManagerModulePromise) {
+    userManagerModulePromise = import('@/lib/userManager');
+  }
+  const { userManager } = await userManagerModulePromise;
+  return userManager;
+}
+
+let apiModulePromise = null;
+async function getApi() {
+  if (!apiModulePromise) {
+    apiModulePromise = import('../../../convex/_generated/api');
+  }
+  const { api } = await apiModulePromise;
+  return api;
+}
+
+let convexClientPromise = null;
+async function getConvexClient() {
+  if (!convexClientPromise) {
+    convexClientPromise = import('convex/react').then(({ ConvexReactClient }) => {
+      const convexUrl = import.meta.env.VITE_CONVEX_URL;
+      if (!convexUrl) {
+        throw new Error('VITE_CONVEX_URL is not configured');
+      }
+      return new ConvexReactClient(convexUrl);
+    });
+  }
+  return convexClientPromise;
+}
 
 // Inner provider that has access to Clerk hooks
 function AuthContextProvider({ children }) {
@@ -35,15 +68,14 @@ function AuthContextProvider({ children }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [authError, setAuthError] = useState(null);
 
-  // Initialize sync service when user is signed in
-  useSyncInitialization(isSignedIn && isInitialized, false);
-
   // Function to sync/refresh user state from userManager
   const refreshUser = async () => {
     if (!user) return null;
 
     const email = user.primaryEmailAddress?.emailAddress || '';
     if (!email) return null;
+
+    const userManager = await getUserManager();
 
     // Get the current user from userManager (checks localStorage)
     let existingUser = userManager.getCurrentUser();
@@ -63,6 +95,7 @@ function AuthContextProvider({ children }) {
     const syncUser = async () => {
       try {
         if (isSignedIn && user) {
+          const userManager = await getUserManager();
           const email = user.primaryEmailAddress?.emailAddress || '';
           const name = user.fullName || user.firstName || 'User';
 
@@ -84,8 +117,9 @@ function AuthContextProvider({ children }) {
           if (!existingUser) {
             console.log('User not found in localStorage, checking Convex...');
             try {
-              // We need to use the convex client directly since we are in a hook
-              const convexBusiness = await convex.query(api.businesses.getCurrent);
+              const convexClient = await getConvexClient();
+              const api = await getApi();
+              const convexBusiness = await convexClient.query(api.businesses.getCurrent);
 
               if (convexBusiness) {
                 console.log('Business found in Convex, bootstrapping local state...');
@@ -136,6 +170,7 @@ function AuthContextProvider({ children }) {
   const logout = async () => {
     try {
       logLogout();
+      const userManager = await getUserManager();
       userManager.logoutUser();
       setLocalUser(null);
       clearUserContext();
@@ -173,6 +208,28 @@ function AuthContextProvider({ children }) {
 
 // Main ClerkAuthProvider component
 export function ClerkAuthProvider({ children }) {
+  if (isIosSimulatorBypass || isDevBypass) {
+    const bypassValue = {
+      isLoaded: true,
+      isSignedIn: true,
+      userId: 'simulator-bypass',
+      clerkUser: null,
+      isInitialized: true,
+      localUser: null,
+      hasCompletedSetup: true,
+      authError: null,
+      logout: async () => { },
+      refreshUser: async () => null,
+      clearAuthError: () => { }
+    };
+
+    return (
+      <AuthContext.Provider value={bypassValue}>
+        {children}
+      </AuthContext.Provider>
+    );
+  }
+
   // Validate Clerk configuration
   if (!clerkPubKey || clerkPubKey === 'pk_test_placeholder') {
     return (
@@ -193,7 +250,13 @@ export function ClerkAuthProvider({ children }) {
   return (
     <ClerkProvider
       publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      domain={clerkDomain}
       appearance={{
+        layout: {
+          socialButtonsVariant: 'iconButton',
+          shimmer: true
+        },
         baseTheme: undefined,
         variables: {
           colorPrimary: '#0891b2', // cyan-600
@@ -213,11 +276,9 @@ export function ClerkAuthProvider({ children }) {
         }
       }}
     >
-      <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-        <AuthContextProvider>
-          {children}
-        </AuthContextProvider>
-      </ConvexProviderWithClerk>
+      <AuthContextProvider>
+        {children}
+      </AuthContextProvider>
     </ClerkProvider>
   );
 }

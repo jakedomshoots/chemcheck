@@ -991,9 +991,11 @@ function TopicCard({ topic, isExpanded, onToggle }) {
         <div className="flex-1 min-w-0 pr-3">
           <div className="flex items-center gap-2 mb-1.5">
             <h3 className="font-bold text-slate-900 text-base sm:text-lg">{topic.title}</h3>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${config.badge}`}>
-              {topic.severity}
-            </span>
+            {topic.severity !== 'low' && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${config.badge}`}>
+                {topic.severity}
+              </span>
+            )}
           </div>
           <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">{topic.content.summary}</p>
         </div>
@@ -1307,25 +1309,6 @@ export default function PoolSchool() {
           </div>
         )}
 
-        {/* Footer Tip - Enhanced */}
-        <div className="mt-10">
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-2xl blur-2xl" />
-            <div className="relative bg-gradient-to-r from-cyan-50/80 via-blue-50/80 to-teal-50/80 backdrop-blur-sm border border-cyan-200/50 rounded-2xl p-5">
-              <div className="flex items-start gap-4">
-                <div className="p-2.5 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-xl shadow-lg shadow-cyan-500/30">
-                  <Info className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="font-semibold text-cyan-900">Pro Tip</p>
-                  <p className="text-sm text-cyan-700 mt-0.5">
-                    Bookmark this page for quick access in the field. Works offline once loaded!
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

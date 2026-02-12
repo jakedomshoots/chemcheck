@@ -111,6 +111,39 @@ export function validatePhone(value: string | undefined | null): string | undefi
 /**
  * Validate email format
  */
+const RESERVED_EMAIL_DOMAINS = new Set([
+    'example.com',
+    'example.net',
+    'example.org',
+    'test.com',
+    'localhost',
+    'localdomain',
+]);
+
+const RESERVED_EMAIL_TLDS = new Set([
+    'example',
+    'invalid',
+    'localhost',
+    'test',
+]);
+
+export function isDeliverableEmailForReports(email: string): boolean {
+    const normalized = email.trim().toLowerCase();
+    const parts = normalized.split('@');
+    if (parts.length !== 2) return false;
+    const domain = parts[1];
+    if (!domain) return false;
+
+    if (RESERVED_EMAIL_DOMAINS.has(domain)) {
+        return false;
+    }
+
+    const tld = domain.split('.').pop();
+    if (!tld) return false;
+
+    return !RESERVED_EMAIL_TLDS.has(tld);
+}
+
 export function validateEmail(value: string | undefined | null): string | undefined {
     if (value === undefined || value === null || value === '') {
         return undefined;
@@ -124,7 +157,12 @@ export function validateEmail(value: string | undefined | null): string | undefi
         throw new Error('Invalid email format');
     }
 
-    return sanitized.toLowerCase();
+    const normalizedEmail = sanitized.toLowerCase();
+    if (!isDeliverableEmailForReports(normalizedEmail)) {
+        throw new Error('Please use a real customer email address (placeholder domains like example.com are not allowed)');
+    }
+
+    return normalizedEmail;
 }
 
 /**

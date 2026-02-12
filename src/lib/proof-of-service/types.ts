@@ -22,6 +22,35 @@ export interface CapturedPhoto {
   location: GeoLocation | null;
 }
 
+// ============================================
+// Image Compression Types
+// ============================================
+
+export interface ImageCompressionOptions {
+  quality: number;           // 0.1-1.0, default 0.85
+  maxWidth: number;          // Max width in pixels, default 1920
+  maxHeight: number;         // Max height in pixels, default 1080
+  format: 'jpeg' | 'webp';   // Output format, default 'jpeg'
+  preserveExif: boolean;     // Keep EXIF metadata, default true
+}
+
+export interface ImageCompressionResult {
+  dataUrl: string;           // Compressed image as base64
+  originalSize: number;      // Original size in bytes
+  compressedSize: number;    // Compressed size in bytes
+  compressionRatio: number;  // Ratio of compression (0-1)
+  width: number;             // Final width
+  height: number;            // Final height
+}
+
+export const DEFAULT_COMPRESSION_OPTIONS: ImageCompressionOptions = {
+  quality: 0.85,
+  maxWidth: 1920,
+  maxHeight: 1080,
+  format: 'jpeg',
+  preserveExif: true,
+};
+
 export interface OfflinePhotoRecord {
   id: string;                    // UUID
   customerId: string;

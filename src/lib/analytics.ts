@@ -129,10 +129,11 @@ export function setUserProperties(properties: {
  * Opt out of analytics
  */
 export function optOutAnalytics(): void {
+  localStorage.setItem('analytics_opt_out', 'true');
+
   if (GA_MEASUREMENT_ID) {
     // Disable GA tracking
     (window as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`] = true;
-    localStorage.setItem('analytics_opt_out', 'true');
   }
 }
 
@@ -147,9 +148,10 @@ export function hasOptedOut(): boolean {
  * Opt back in to analytics
  */
 export function optInAnalytics(): void {
+  localStorage.removeItem('analytics_opt_out');
+
   if (GA_MEASUREMENT_ID) {
     delete (window as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`];
-    localStorage.removeItem('analytics_opt_out');
     initAnalytics();
   }
 }

@@ -1,57 +1,20 @@
 import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
-import App from '@/App.jsx'
 import '@/index.css'
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ClerkAuthProvider } from "@/components/auth/ClerkAuthProvider";
-import { PublicConvexProvider } from "@/components/auth/PublicConvexProvider";
-import { initSentry } from '@/lib/sentry';
-import { initAnalytics } from '@/lib/analytics';
+import { initSentry, reportError } from '@/lib/sentry';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
 
-// Lazy load the public report page
-const ReportPage = lazy(() => importWithRetry(() => import('@/pages/ReportPage'), 'ReportPage'));
+const AppRouterShell = lazy(() =>
+    importWithRetry(() => import('@/components/routing/AppRouterShell.jsx'), 'AppRouterShell')
+);
 
-// Loading fallback for public routes
-function PublicPageLoader() {
+function RootLoader() {
     return (
         <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100">
             <Loader className="w-12 h-12" />
         </div>
-    );
-}
-
-// Check if current path is a public report route
-const REPORT_ROUTE_PATTERN = /^\/report\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isPublicReportRoute(pathname) {
-    return REPORT_ROUTE_PATTERN.test(pathname);
-}
-
-// App router that handles public vs authenticated routes
-function AppRouter() {
-    const location = useLocation();
-
-    // Public report routes use a simple Convex provider (no auth)
-    if (isPublicReportRoute(location.pathname)) {
-        return (
-            <PublicConvexProvider>
-                <Suspense fallback={<PublicPageLoader />}>
-                    <Routes>
-                        <Route path="/report/:reportId" element={<ReportPage />} />
-                    </Routes>
-                </Suspense>
-            </PublicConvexProvider>
-        );
-    }
-
-    // All other routes go through the full auth provider chain
-    return (
-        <ClerkAuthProvider>
-            <App />
-        </ClerkAuthProvider>
     );
 }
 
@@ -60,17 +23,39 @@ console.log("Initializing ChemCheck...");
 // Initialize Sentry for error tracking and performance monitoring
 initSentry();
 
-// Initialize Google Analytics (respects Do Not Track and opt-out preferences)
-initAnalytics();
+// Initialize Google Analytics after first paint/idle time to keep startup lean.
+function scheduleAnalyticsInitialization() {
+    const initialize = async () => {
+        try {
+            const { initAnalytics } = await import('@/lib/analytics');
+            initAnalytics();
+        } catch (error) {
+            console.warn('Analytics initialization skipped:', error);
+        }
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        window.requestIdleCallback(() => {
+            void initialize();
+        }, { timeout: 3000 });
+        return;
+    }
+
+    setTimeout(() => {
+        void initialize();
+    }, 0);
+}
+
+scheduleAnalyticsInitialization();
 
 async function initializeApp() {
     try {
         createRoot(document.getElementById('root')).render(
             <StrictMode>
                 <ErrorBoundary>
-                    <BrowserRouter>
-                        <AppRouter />
-                    </BrowserRouter>
+                    <Suspense fallback={<RootLoader />}>
+                        <AppRouterShell />
+                    </Suspense>
                 </ErrorBoundary>
             </StrictMode>,
         )
@@ -87,7 +72,6 @@ async function initializeApp() {
 
         // Send to Sentry
         try {
-            const { reportError } = await import('@/lib/sentry');
             reportError(e, { errorId, context: 'app_initialization' });
         } catch (sentryError) {
             console.error('Failed to report error to Sentry:', sentryError);

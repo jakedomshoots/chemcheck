@@ -8,8 +8,9 @@
  * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
  */
 
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from 'convex/react';
+import { useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -209,12 +210,48 @@ function PhotoGallerySection({ title, photos, badgeColor }) {
 
 export default function ReportPage() {
   const { reportId } = useParams();
-  
-  // Fetch report data using the token - Requirements: 3.1
-  const reportResult = useQuery(
-    api.serviceReports.getReportByToken,
-    reportId ? { token: reportId } : 'skip'
-  );
+  const getReportByToken = useAction(api.serviceReports.getReportByToken);
+  const [reportResult, setReportResult] = useState(undefined);
+
+  // Fetch report data using action (public endpoint is implemented as Convex action)
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReport = async () => {
+      if (!reportId) {
+        if (!cancelled) {
+          setReportResult({
+            found: false,
+            error: 'Report link is invalid.',
+          });
+        }
+        return;
+      }
+
+      setReportResult(undefined);
+
+      try {
+        const result = await getReportByToken({ token: reportId });
+        if (!cancelled) {
+          setReportResult(result);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load report.';
+        if (!cancelled) {
+          setReportResult({
+            found: false,
+            error: message,
+          });
+        }
+      }
+    };
+
+    loadReport();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reportId, getReportByToken]);
 
   // Loading state
   if (reportResult === undefined) {
@@ -342,7 +379,7 @@ export default function ReportPage() {
         )}
 
         {/* Photo Gallery - Requirements: 3.5 */}
-        {report.settings?.show_photos !== false && (report.photos.before.length > 0 || report.photos.after.length > 0) && (
+        {(report.photos.before.length > 0 || report.photos.after.length > 0) && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">

@@ -290,9 +290,13 @@ describe('Property-Based Tests: Email Backward Compatibility', () => {
           expect(sanitized).not.toContain('\n');
           expect(sanitized).not.toContain('\r');
           
-          // Should preserve other characters
-          const withoutNewlines = serviceDate.replace(/[\r\n]/g, ' ');
-          expect(sanitized).toBe(withoutNewlines);
+          // Should match backend sanitization behavior exactly
+          const expected = serviceDate
+            .replace(/[\r\n\x00-\x1F\x7F]/g, ' ')
+            .trim()
+            .slice(0, 200);
+          expect(sanitized).toBe(expected);
+          expect(sanitized.length).toBeLessThanOrEqual(200);
         }
       ),
       { numRuns: 100 }

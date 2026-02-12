@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { 
+import {
   Building2, 
   User, 
   Settings, 
@@ -13,11 +13,11 @@ import {
   Calendar
 } from 'lucide-react';
 import { userManager } from '@/lib/userManager';
-import { useUser } from '@clerk/clerk-react';
+import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
 
 export function SetupWizard({ onComplete }) {
-  // Get Clerk user to ensure we use the same email for local user
-  const { user: clerkUser } = useUser();
+  // Read Clerk user via shared auth context so this component is safe in bypass/dev modes.
+  const { clerkUser } = useAuthContext();
   
   const [currentStep, setCurrentStep] = useState(1);
   const [businessData, setBusinessData] = useState({
@@ -394,7 +394,7 @@ export function SetupWizard({ onComplete }) {
                   <li>• Add your first customers</li>
                   <li>• Set up service routes</li>
                   <li>• Start logging service visits</li>
-                  <li>• Invite employees (coming soon)</li>
+                  <li>• Invite employees and assign roles</li>
                 </ul>
               </div>
             </div>

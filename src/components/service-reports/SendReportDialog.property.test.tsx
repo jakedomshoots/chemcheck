@@ -36,7 +36,15 @@ const poolStatusArb = fc.constantFrom<PoolStatus>('good', 'needs_attention');
 /**
  * Generator for valid email addresses
  */
-const emailArb = fc.emailAddress();
+const emailArb = fc.emailAddress().filter((email) => {
+  const domain = email.toLowerCase().split('@')[1] || '';
+  if (!domain) return false;
+  if (['example.com', 'example.net', 'example.org', 'test.com', 'localhost', 'localdomain'].includes(domain)) {
+    return false;
+  }
+  const tld = domain.split('.').pop();
+  return !['example', 'invalid', 'localhost', 'test'].includes(tld || '');
+});
 
 /**
  * Generator for valid custom notes (non-empty, within limit)
@@ -68,7 +76,7 @@ describe('SendReportDialog Property Tests', () => {
     onClose: mockOnClose,
     onConfirm: mockOnConfirm,
     messagePreview: 'Test message preview',
-    customerEmail: 'test@example.com',
+    customerEmail: 'customer@acmepools.com',
   };
 
   beforeEach(() => {
@@ -84,7 +92,7 @@ describe('SendReportDialog Property Tests', () => {
      * 
      * **Validates: Requirements 4.1, 4.2**
      */
-    it('shows simple confirmation for good status (no note input)', async () => {
+    it('shows simple confirmation for good status with optional custom message', async () => {
       await fc.assert(
         fc.asyncProperty(
           emailArb,
@@ -97,10 +105,9 @@ describe('SendReportDialog Property Tests', () => {
               />
             );
 
-            // Requirement 4.1: Good status should show simple send confirmation
-            // Note input should NOT be visible for good status
-            expect(screen.queryByTestId('custom-note-section')).not.toBeInTheDocument();
-            expect(screen.queryByTestId('custom-note-input')).not.toBeInTheDocument();
+            // Good status keeps sending simple, with optional editable message.
+            expect(screen.getByTestId('custom-note-section')).toBeInTheDocument();
+            expect(screen.getByTestId('custom-note-input')).toBeInTheDocument();
             
             // Pool status indicator should show "good" status
             const statusIndicator = screen.getByTestId('pool-status-indicator');
@@ -168,8 +175,8 @@ describe('SendReportDialog Property Tests', () => {
             const statusIndicator = screen.getByTestId('pool-status-indicator');
 
             if (poolStatus === 'good') {
-              // Good status: no note input, positive messaging
-              expect(noteSection).not.toBeInTheDocument();
+              // Good status: optional note input + positive messaging
+              expect(noteSection).toBeInTheDocument();
               expect(statusIndicator.textContent).toContain('Everything is Perfect');
             } else {
               // Needs attention: note input visible, attention messaging

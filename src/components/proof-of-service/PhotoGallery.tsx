@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { CapturedPhoto } from '@/lib/proof-of-service';
+import { PhotoLightbox } from './PhotoLightbox';
 
 // ============================================
 // Types
@@ -26,6 +27,7 @@ import { CapturedPhoto } from '@/lib/proof-of-service';
 export interface PhotoGalleryProps {
   photos: CapturedPhoto[];
   onDelete?: (photoId: string) => void;
+  onEdit?: (photo: CapturedPhoto, editedDataUrl: string) => void;
   readOnly?: boolean;
 }
 
@@ -62,12 +64,12 @@ function formatLocation(location: CapturedPhoto['location']): string {
   if (!location) {
     return 'Location unavailable';
   }
-  
+
   // If we have an address, use it
   if (location.address) {
     return location.address;
   }
-  
+
   // Otherwise show coordinates with accuracy
   const lat = location.latitude.toFixed(4);
   const lng = location.longitude.toFixed(4);
@@ -82,21 +84,22 @@ function formatLocation(location: CapturedPhoto['location']): string {
 export function PhotoGallery({
   photos,
   onDelete,
+  onEdit,
   readOnly = false,
 }: PhotoGalleryProps) {
   const [deletePhotoId, setDeletePhotoId] = useState<string | null>(null);
-  const [expandedPhotoId, setExpandedPhotoId] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const expandedViewRef = useRef<HTMLDivElement>(null);
 
   /**
    * Handle keyboard events for expanded view (Escape to close)
    */
   useEffect(() => {
-    if (!expandedPhotoId) return;
+    if (lightboxIndex === null) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setExpandedPhotoId(null);
+        setLightboxIndex(null);
       }
     };
 
@@ -107,7 +110,7 @@ export function PhotoGallery({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [expandedPhotoId]);
+  }, [lightboxIndex]);
 
   /**
    * Handle delete confirmation
@@ -132,9 +135,20 @@ export function PhotoGallery({
   const photoToDelete = photos.find((p) => p.id === deletePhotoId);
 
   /**
-   * Get expanded photo for full-screen view
+   * Handle edit from lightbox
    */
-  const expandedPhoto = photos.find((p) => p.id === expandedPhotoId);
+  const handleEditPhoto = useCallback((photo: CapturedPhoto, editedDataUrl: string) => {
+    if (onEdit) {
+      onEdit(photo, editedDataUrl);
+    }
+  }, [onEdit]);
+
+  /**
+   * Handle delete from lightbox
+   */
+  const handleDeleteFromLightbox = useCallback((photo: CapturedPhoto) => {
+    setDeletePhotoId(photo.id);
+  }, []);
 
   // Empty state
   if (photos.length === 0) {
@@ -162,7 +176,7 @@ export function PhotoGallery({
             {/* Photo thumbnail */}
             <button
               type="button"
-              onClick={() => setExpandedPhotoId(photo.id)}
+              onClick={() => setLightboxIndex(photos.findIndex(p => p.id === photo.id))}
               className="w-full aspect-square focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 rounded-lg"
             >
               <img
@@ -175,11 +189,10 @@ export function PhotoGallery({
             {/* Category badge */}
             <div className="absolute top-2 left-2">
               <span
-                className={`px-2 py-0.5 text-xs font-medium rounded-full capitalize ${
-                  photo.category === 'before'
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-green-500 text-white'
-                }`}
+                className={`px-2 py-0.5 text-xs font-medium rounded-full capitalize ${photo.category === 'before'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-green-500 text-white'
+                  }`}
               >
                 {photo.category}
               </span>
@@ -252,65 +265,15 @@ export function PhotoGallery({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Expanded Photo View - Accessible modal with keyboard support */}
-      {expandedPhoto && (
-        <div
-          ref={expandedViewRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Expanded ${expandedPhoto.category} photo`}
-          tabIndex={-1}
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 focus:outline-none"
-          onClick={() => setExpandedPhotoId(null)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setExpandedPhotoId(null);
-            }
-          }}
-        >
-          <div className="relative max-w-4xl max-h-full">
-            {/* Close button */}
-            <button
-              type="button"
-              onClick={() => setExpandedPhotoId(null)}
-              className="absolute -top-12 right-0 p-2 text-white hover:text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black rounded"
-              aria-label="Close expanded view (Escape)"
-            >
-              <X className="w-6 h-6" />
-            </button>
-
-            {/* Full-size image */}
-            <img
-              src={expandedPhoto.dataUrl}
-              alt={`${expandedPhoto.category} photo`}
-              className="max-w-full max-h-[80vh] object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-
-            {/* Metadata panel */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 to-transparent rounded-b-lg">
-              <div className="flex flex-wrap items-center gap-4 text-white">
-                <span
-                  className={`px-3 py-1 text-sm font-medium rounded-full capitalize ${
-                    expandedPhoto.category === 'before'
-                      ? 'bg-amber-500'
-                      : 'bg-green-500'
-                  }`}
-                >
-                  {expandedPhoto.category}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  <span>{formatTimestamp(expandedPhoto.timestamp)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
-                  <span>{formatLocation(expandedPhoto.location)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Photo Lightbox */}
+      {lightboxIndex !== null && (
+        <PhotoLightbox
+          photos={photos}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onEdit={onEdit ? handleEditPhoto : undefined}
+          onDelete={!readOnly && onDelete ? handleDeleteFromLightbox : undefined}
+        />
       )}
     </>
   );

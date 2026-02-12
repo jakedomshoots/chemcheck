@@ -30,17 +30,22 @@ export interface GeneratedEmailContent {
 
 /**
  * Helper: Escape HTML to prevent XSS attacks
- * Must match the backend escapeHtml function exactly
+ * Must match the backend escapeHtml function exactly.
  */
-export function escapeHtml(text: string): string {
+export function escapeHtml(text: string | null | undefined): string {
+  if (text === null || text === undefined) return '';
+  if (typeof text !== 'string') return String(text);
+
   const map: Record<string, string> = {
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
     '"': '&quot;',
     "'": '&#039;',
+    '`': '&#x60;',
+    '/': '&#x2F;',
   };
-  return text.replace(/[&<>"']/g, (char) => map[char]);
+  return text.replace(/[&<>"'`\/]/g, (char) => map[char]);
 }
 
 /**
@@ -57,11 +62,45 @@ export function isValidReportLink(url: string): boolean {
 }
 
 /**
+ * Helper: Escape URL for safe href usage
+ */
+export function escapeUrlForHtml(url: string | null | undefined): string {
+  if (!url) return '';
+  if (!isValidReportLink(url)) return '';
+  return escapeHtml(url);
+}
+
+export interface SafeEmailFields {
+  customerName: string;
+  serviceDate: string;
+  customNote: string;
+  businessName: string;
+  reportLink: string;
+}
+
+export function createSafeEmailFields(params: {
+  customerName?: string | null;
+  serviceDate?: string | null;
+  customNote?: string | null;
+  businessName?: string | null;
+  reportLink?: string | null;
+}): SafeEmailFields {
+  return {
+    customerName: escapeHtml(params.customerName || 'Valued Customer'),
+    serviceDate: escapeHtml(params.serviceDate || 'Unknown Date'),
+    customNote: escapeHtml(params.customNote || ''),
+    businessName: escapeHtml(params.businessName || 'Dominick Pool Solutions'),
+    reportLink: escapeUrlForHtml(params.reportLink),
+  };
+}
+
+/**
  * Helper: Sanitize string for use in email subject line
  * Removes newlines to prevent email header injection attacks
  */
 export function sanitizeForSubject(text: string): string {
-  return text.replace(/[\r\n]/g, ' ');
+  if (!text) return '';
+  return text.replace(/[\r\n\x00-\x1F\x7F]/g, ' ').trim().slice(0, 200);
 }
 
 /**
@@ -78,15 +117,24 @@ export function sanitizeForSubject(text: string): string {
  */
 export function generateSimpleEmailContent(params: EmailContentParams): GeneratedEmailContent {
   const { customerName, serviceDate, poolStatus, customNote, businessName: inputBusinessName, reportLink } = params;
-  
-  // Escape user input to prevent XSS (only for HTML content)
-  const safeCustomerName = escapeHtml(customerName);
-  const safeServiceDate = escapeHtml(serviceDate);
-  const safeCustomNote = customNote ? escapeHtml(customNote) : '';
+
+  // Keep preview output identical to backend by using centralized safe fields.
+  const safeFields = createSafeEmailFields({
+    customerName,
+    serviceDate,
+    customNote,
+    businessName: inputBusinessName,
+    reportLink,
+  });
+
+  const safeCustomerName = safeFields.customerName;
+  const safeServiceDate = safeFields.serviceDate;
+  const safeCustomNote = safeFields.customNote;
+  const safeBusinessName = safeFields.businessName;
+  const safeReportLink = safeFields.reportLink;
   
   // Use provided business name or default
   const businessName = inputBusinessName || "Dominick Pool Solutions";
-  const safeBusinessName = escapeHtml(businessName);
   const footerText = "This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions";
   
   // Subject line: sanitize to prevent email header injection, use unescaped values (plain text)
@@ -101,6 +149,8 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   // Generate the message body based on status
   let messageContent: string;
   let textMessageContent: string;
+  let optionalCustomMessageHtml = '';
+  let optionalCustomMessageText = '';
   
   if (poolStatus === 'good') {
     messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Your pool is in excellent condition and ready for use.</p>`;
@@ -116,11 +166,21 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
     `;
     textMessageContent = `Technician Notes:\n${customNote || 'Your pool requires some attention. Please contact us if you have any questions.'}`;
   }
+
+  if (safeCustomNote && poolStatus === 'good') {
+    optionalCustomMessageHtml = `
+      <div style="background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0284c7;">
+        <p style="margin: 0; font-size: 14px; color: #075985; font-weight: 600;">Custom Message:</p>
+        <p style="margin: 10px 0 0 0; font-size: 16px; color: #0c4a6e;">${safeCustomNote}</p>
+      </div>
+    `;
+    optionalCustomMessageText = `\nCustom Message:\n${customNote}\n`;
+  }
   
   // Generate report link section if provided and URL is safe
-  const reportLinkHtml = reportLink && isValidReportLink(reportLink) ? `
+  const reportLinkHtml = safeReportLink ? `
         <div style="text-align: center; margin: 25px 0;">
-          <a href="${escapeHtml(reportLink)}" style="display: inline-block; background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">View Full Report</a>
+          <a href="${safeReportLink}" style="display: inline-block; background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">View Full Report</a>
         </div>
   ` : '';
   
@@ -153,6 +213,7 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
         </div>
         
         ${messageContent}
+        ${optionalCustomMessageHtml}
         ${reportLinkHtml}
         
         <p style="font-size: 14px; color: #64748b; margin-top: 30px;">If you have any questions about your service, please don't hesitate to contact us.</p>
@@ -162,6 +223,11 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
         <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">
           ${safeBusinessName}<br>
           ${footerText}
+        </p>
+        
+        <p style="font-size: 10px; color: #cbd5e1; text-align: center; margin-top: 15px;">
+          You received this email because you are a customer of ${safeBusinessName}.<br>
+          This is a service notification, not a marketing email.
         </p>
       </div>
     </body>
@@ -177,11 +243,15 @@ Your pool service has been completed by ${businessName}.
 Service Date: ${serviceDate}
 Pool Status: ${statusText} ${statusIcon}
 
-${textMessageContent}${reportLinkText}
+${textMessageContent}${optionalCustomMessageText}${reportLinkText}
 If you have any questions about your service, please don't hesitate to contact us.
 
 ${businessName}
 ${footerText}
+
+---
+You received this email because you are a customer of ${businessName}.
+This is a service notification, not a marketing email.
   `.trim();
 
   return {

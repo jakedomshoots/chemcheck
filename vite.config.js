@@ -3,12 +3,15 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 
+const isProd = process.env.NODE_ENV === 'production';
+const enableSentryUpload = isProd && !!process.env.SENTRY_AUTH_TOKEN;
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     // Only add Sentry plugin in production builds with auth token
-    process.env.NODE_ENV === 'production' && process.env.SENTRY_AUTH_TOKEN && sentryVitePlugin({
+    enableSentryUpload && sentryVitePlugin({
       org: process.env.SENTRY_ORG,
       project: process.env.SENTRY_PROJECT,
       authToken: process.env.SENTRY_AUTH_TOKEN,
@@ -34,18 +37,20 @@ export default defineConfig({
     },
   },
   build: {
-    sourcemap: true, // Enable source maps for Sentry
+    // iOS launch builds should prioritize startup performance.
+    minify: isProd ? 'esbuild' : false,
+    // Upload hidden sourcemaps only when Sentry upload is configured.
+    sourcemap: enableSentryUpload ? 'hidden' : false,
     rollupOptions: {
       output: {
         manualChunks: {
           // Vendor chunks - split large dependencies
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          // Core Radix components (frequently used)
-          'vendor-radix-core': [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-select',
-          ],
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-clerk': ['@clerk/clerk-react'],
+          // Split heavy Radix primitives by package so routes only download what they use.
+          'vendor-radix-dialog': ['@radix-ui/react-dialog'],
+          'vendor-radix-dropdown': ['@radix-ui/react-dropdown-menu'],
+          'vendor-radix-select': ['@radix-ui/react-select'],
           // Secondary Radix components (less frequently used)
           'vendor-radix-ui': [
             '@radix-ui/react-tabs',
@@ -63,10 +68,13 @@ export default defineConfig({
           'vendor-charts': ['recharts'],
           'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
           'vendor-dates': ['date-fns', 'react-day-picker'],
-          'vendor-clerk': ['@clerk/clerk-react'],
+          'vendor-router': ['react-router-dom'],
           'vendor-stripe': ['@stripe/stripe-js', '@stripe/react-stripe-js'],
-          'vendor-convex': ['convex'],
-          'vendor-dexie': ['dexie', 'dexie-react-hooks'],
+          'vendor-convex': ['convex/react', 'convex/react-clerk'],
+          'vendor-dexie-core': ['dexie'],
+          'vendor-dexie-hooks': ['dexie-react-hooks'],
+          'vendor-icons': ['lucide-react'],
+          'vendor-sentry': ['@sentry/react'],
         },
         // Ensure consistent chunk naming
         chunkFileNames: 'assets/[name]-[hash].js',

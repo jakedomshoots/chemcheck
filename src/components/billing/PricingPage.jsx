@@ -16,7 +16,12 @@ const planIcons = {
 export function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState(null);
-  const { subscription, isActive, createCheckoutSession } = useSubscription();
+  const {
+    subscription,
+    error,
+    isBillingBackendConfigured,
+    createCheckoutSession,
+  } = useSubscription();
 
   const handleSelectPlan = async (planId) => {
     setLoadingPlan(planId);
@@ -64,6 +69,14 @@ export function PricingPage() {
           <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-lg text-center">
             <p className="text-amber-800">
               <strong>Demo Mode:</strong> Stripe is not configured. Selecting a plan will start a simulated 14-day trial.
+            </p>
+          </div>
+        )}
+
+        {isStripeConfigured() && !isBillingBackendConfigured && (
+          <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+            <p className="text-red-800">
+              <strong>Billing Setup Required:</strong> Stripe is enabled but checkout endpoints are not configured.
             </p>
           </div>
         )}
@@ -123,7 +136,7 @@ export function PricingPage() {
 
                 <Button
                   onClick={() => handleSelectPlan(planId)}
-                  disabled={loadingPlan || isCurrentPlan}
+                  disabled={loadingPlan || isCurrentPlan || (isStripeConfigured() && !isBillingBackendConfigured)}
                   className={cn(
                     "w-full",
                     plan.popular
@@ -136,6 +149,8 @@ export function PricingPage() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : isCurrentPlan ? (
                     "Current Plan"
+                  ) : isStripeConfigured() && !isBillingBackendConfigured ? (
+                    "Billing Setup Required"
                   ) : (
                     "Start Free Trial"
                   )}
@@ -144,6 +159,12 @@ export function PricingPage() {
             );
           })}
         </div>
+
+        {error && (
+          <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg text-center text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* FAQ Section */}
         <div className="mt-16 max-w-3xl mx-auto">

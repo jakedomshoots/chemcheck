@@ -1,14 +1,19 @@
-import { SignUp, useAuth } from '@clerk/clerk-react';
 import { Droplets, CheckCircle, Users, Shield, Zap } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { useAuthContext } from './ClerkAuthProvider';
+import { importWithRetry } from '@/lib/chunkErrorRecovery';
+
+const ClerkSignUp = lazy(() =>
+  importWithRetry(() => import('@/components/auth/ClerkSignUpBridge.jsx'), 'ClerkSignUpBridge')
+);
 
 export function RobustSignUpPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoaded, isSignedIn } = useAuth();
   const auth = useAuthContext();
+  const isLoaded = auth.isLoaded;
+  const isSignedIn = auth.isSignedIn;
   const [isProcessingAuth, setIsProcessingAuth] = useState(true);
   
   // Check if URL contains Clerk OAuth callback indicators
@@ -148,26 +153,34 @@ export function RobustSignUpPage() {
           </div>
 
           {/* Clerk SignUp Component */}
-          <SignUp 
-            routing="path"
-            path="/signup"
-            signInUrl="/login"
-            fallbackRedirectUrl="/setup"
-            appearance={{
-              elements: {
-                rootBox: 'w-full',
-                card: 'shadow-xl border-0 bg-white',
-                headerTitle: 'hidden',
-                headerSubtitle: 'hidden',
-                socialButtonsBlockButton: 'border-2 hover:bg-slate-50 transition-colors duration-200',
-                formButtonPrimary: 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium transition-all duration-200',
-                footerActionLink: 'text-cyan-600 hover:text-cyan-700 font-medium transition-colors',
-                formFieldInput: 'border-slate-300 focus:border-cyan-500 focus:ring-cyan-500',
-                identityPreviewText: 'text-slate-700',
-                identityPreviewEditButton: 'text-cyan-600 hover:text-cyan-700'
-              }
-            }}
-          />
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-10">
+                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            }
+          >
+            <ClerkSignUp
+              routing="path"
+              path="/signup"
+              signInUrl="/login"
+              fallbackRedirectUrl="/setup"
+              appearance={{
+                elements: {
+                  rootBox: 'w-full',
+                  card: 'shadow-xl border-0 bg-white',
+                  headerTitle: 'hidden',
+                  headerSubtitle: 'hidden',
+                  socialButtonsBlockButton: 'border-2 hover:bg-slate-50 transition-colors duration-200',
+                  formButtonPrimary: 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium transition-all duration-200',
+                  footerActionLink: 'text-cyan-600 hover:text-cyan-700 font-medium transition-colors',
+                  formFieldInput: 'border-slate-300 focus:border-cyan-500 focus:ring-cyan-500',
+                  identityPreviewText: 'text-slate-700',
+                  identityPreviewEditButton: 'text-cyan-600 hover:text-cyan-700'
+                }
+              }}
+            />
+          </Suspense>
 
           {/* Footer Links */}
           <div className="mt-6 text-center text-sm text-slate-500">

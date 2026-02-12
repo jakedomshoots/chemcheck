@@ -5,13 +5,12 @@ import {
   Shield, 
   Settings, 
   Download, 
-  Trash2, 
   RefreshCw, 
   AlertTriangle,
   CheckCircle,
-  Clock,
   HardDrive,
   Wifi,
+  WifiOff,
   Smartphone
 } from 'lucide-react';
 import { monitoring } from '@/lib/monitoring';

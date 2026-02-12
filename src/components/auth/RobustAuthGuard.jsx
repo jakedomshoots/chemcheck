@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthContext } from './ClerkAuthProvider';
-import { Droplets, AlertCircle, RefreshCw } from 'lucide-react';
+import { Droplets, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Routes that don't require authentication
@@ -14,8 +14,8 @@ const PUBLIC_ROUTES = [
   '/terms-of-service.html'
 ];
 
-// Report routes are public but have specific UUID format
-const REPORT_ROUTE_PATTERN = /^\/report\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Report routes are public (UUID and legacy URL-safe tokens), with optional trailing slash.
+const REPORT_ROUTE_PATTERN = /^\/report\/[A-Za-z0-9_-]{8,128}\/?$/;
 
 // Check if a path is a public route (including OAuth callback sub-paths)
 function isPublicPath(pathname) {
@@ -34,13 +34,37 @@ function isPublicPath(pathname) {
   return false;
 }
 
+// Auth loading timeout in milliseconds
+const AUTH_LOADING_TIMEOUT = 15000;
+
 export function RobustAuthGuard({ children }) {
   const auth = useAuthContext();
   const navigate = useNavigate();
+  const [hasTimedOut, setHasTimedOut] = useState(false);
   const location = useLocation();
 
   // Check if current path is public
   const isPublicRoute = isPublicPath(location.pathname);
+
+  // Timeout to prevent infinite loading spinner
+  useEffect(() => {
+    if (auth.isLoaded && auth.isInitialized) {
+      setHasTimedOut(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (!auth.isLoaded || !auth.isInitialized) {
+        console.warn('[AuthGuard] Auth loading timed out after', AUTH_LOADING_TIMEOUT, 'ms', {
+          isLoaded: auth.isLoaded,
+          isInitialized: auth.isInitialized,
+        });
+        setHasTimedOut(true);
+      }
+    }, AUTH_LOADING_TIMEOUT);
+
+    return () => clearTimeout(timer);
+  }, [auth.isLoaded, auth.isInitialized]);
 
   useEffect(() => {
     // Don't redirect while Clerk is still loading
@@ -122,6 +146,9 @@ export function RobustAuthGuard({ children }) {
 
   // Show loading while Clerk is initializing (only for protected routes)
   if (!auth.isLoaded || !auth.isInitialized) {
+    if (hasTimedOut) {
+      return <AuthTimeoutScreen onRetry={() => { setHasTimedOut(false); window.location.reload(); }} />;
+    }
     return <AuthLoadingScreen />;
   }
 
@@ -148,6 +175,34 @@ function AuthLoadingScreen() {
         <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
         <p className="text-slate-900 font-medium">Loading ChemCheck...</p>
         <p className="text-slate-600 text-sm mt-2">Initializing your workspace</p>
+      </div>
+    </div>
+  );
+}
+
+function AuthTimeoutScreen({ onRetry }) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50 flex items-center justify-center p-4">
+      <div className="bg-white p-6 rounded-lg shadow-lg max-w-md text-center">
+        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-8 h-8 text-amber-600" />
+        </div>
+
+        <h2 className="text-xl font-bold text-amber-700 mb-2">Taking Longer Than Expected</h2>
+
+        <p className="text-gray-600 mb-6">
+          Authentication is having trouble loading. This can happen on first launch or with a slow connection.
+        </p>
+
+        <div className="flex gap-3">
+          <Button
+            onClick={onRetry}
+            className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry
+          </Button>
+        </div>
       </div>
     </div>
   );

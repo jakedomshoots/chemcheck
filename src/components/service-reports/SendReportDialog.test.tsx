@@ -29,7 +29,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
         />
       );
 
@@ -40,7 +40,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
         />
       );
 
@@ -54,12 +54,12 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
         />
       );
 
       const recipient = screen.getByTestId('recipient-display');
-      expect(recipient).toHaveTextContent('test@example.com');
+      expect(recipient).toHaveTextContent('customer@acmepools.com');
     });
 
     it('shows error when no email on file', () => {
@@ -71,6 +71,44 @@ describe('SendReportDialog', () => {
 
       expect(screen.getByText(/No email address on file/i)).toBeInTheDocument();
     });
+
+    it('shows error when email format is invalid', () => {
+      render(
+        <SendReportDialog
+          {...defaultProps}
+          customerEmail="bad-email"
+        />
+      );
+
+      expect(screen.getAllByText(/email on file is invalid/i).length).toBeGreaterThan(0);
+    });
+
+    it('shows error when email is a placeholder domain', () => {
+      render(
+        <SendReportDialog
+          {...defaultProps}
+          customerEmail="admin@example.com"
+        />
+      );
+
+      expect(screen.getAllByText(/looks like a placeholder/i).length).toBeGreaterThan(0);
+    });
+
+    it('shows attached photos preview when photos are provided', () => {
+      render(
+        <SendReportDialog
+          {...defaultProps}
+          customerEmail="customer@acmepools.com"
+          attachedPhotos={[
+            { id: '1', category: 'before', url: 'data:image/jpeg;base64,before' },
+            { id: '2', category: 'after', url: 'data:image/jpeg;base64,after' },
+          ]}
+        />
+      );
+
+      expect(screen.getByTestId('attached-photos-preview')).toBeInTheDocument();
+      expect(screen.getByText(/Attached Photos \(2\)/i)).toBeInTheDocument();
+    });
   });
 
   describe('Email Preview', () => {
@@ -78,7 +116,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
         />
       );
 
@@ -94,7 +132,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
         />
       );
 
@@ -117,13 +155,25 @@ describe('SendReportDialog', () => {
       expect(sendButton).toBeDisabled();
     });
 
+    it('disables send button when email format is invalid', () => {
+      render(
+        <SendReportDialog
+          {...defaultProps}
+          customerEmail="invalid-email"
+        />
+      );
+
+      const sendButton = screen.getByTestId('confirm-send-button');
+      expect(sendButton).toBeDisabled();
+    });
+
     it('shows loading state during send', async () => {
       mockOnConfirm.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
 
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
         />
       );
 
@@ -141,7 +191,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           error="Failed to send email"
         />
       );
@@ -155,7 +205,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           isResend={true}
         />
       );
@@ -167,7 +217,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           isResend={true}
         />
       );
@@ -181,7 +231,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           poolStatus="good"
         />
       );
@@ -194,7 +244,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           poolStatus="needs_attention"
         />
       );
@@ -207,7 +257,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           poolStatus="needs_attention"
         />
       );
@@ -216,23 +266,24 @@ describe('SendReportDialog', () => {
       expect(screen.getByTestId('custom-note-input')).toBeInTheDocument();
     });
 
-    it('does not show custom note input for good status', () => {
+    it('shows optional custom message input for good status', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           poolStatus="good"
         />
       );
 
-      expect(screen.queryByTestId('custom-note-section')).not.toBeInTheDocument();
+      expect(screen.getByTestId('custom-note-section')).toBeInTheDocument();
+      expect(screen.getByText(/Custom Message/i)).toBeInTheDocument();
     });
 
     it('disables send button when needs_attention and no custom note', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           poolStatus="needs_attention"
         />
       );
@@ -245,7 +296,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           poolStatus="needs_attention"
           customNote="pH levels are high"
         />
@@ -259,7 +310,7 @@ describe('SendReportDialog', () => {
       render(
         <SendReportDialog
           {...defaultProps}
-          customerEmail="test@example.com"
+          customerEmail="customer@acmepools.com"
           poolStatus="needs_attention"
           customNote="Test note"
         />

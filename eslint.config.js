@@ -6,7 +6,17 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import security from 'eslint-plugin-security'
 
 export default [
-  { ignores: ['dist'] },
+  {
+    ignores: [
+      'dist',
+      'coverage',
+      'playwright-report',
+      'test-results',
+      'ios/App/App/public',
+      'ios/App/build',
+      'convex/_generated',
+    ],
+  },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {

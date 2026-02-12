@@ -34,6 +34,14 @@ export interface ProofOfServiceFilterOption {
   description: string;
 }
 
+function isValidLog<T extends ServiceLogData>(log: T | null | undefined): log is T {
+  return !!log && typeof log === 'object';
+}
+
+function normalizeLogs<T extends ServiceLogData>(logs: Array<T | null | undefined>): T[] {
+  return logs.filter(isValidLog);
+}
+
 // ============================================
 // Filter Options Configuration
 // ============================================
@@ -78,7 +86,8 @@ export const PROOF_OF_SERVICE_FILTER_OPTIONS: ProofOfServiceFilterOption[] = [
  * @param log - Service log data
  * @returns True if log has at least one photo
  */
-export function hasPhotos(log: ServiceLogData): boolean {
+export function hasPhotos(log: ServiceLogData | null | undefined): boolean {
+  if (!log) return false;
   return (log.photo_count ?? 0) > 0;
 }
 
@@ -87,7 +96,8 @@ export function hasPhotos(log: ServiceLogData): boolean {
  * @param log - Service log data
  * @returns True if log has both start and end time
  */
-export function hasTimeTracking(log: ServiceLogData): boolean {
+export function hasTimeTracking(log: ServiceLogData | null | undefined): boolean {
+  if (!log) return false;
   return !!(log.start_time && log.end_time);
 }
 
@@ -96,7 +106,7 @@ export function hasTimeTracking(log: ServiceLogData): boolean {
  * @param log - Service log data
  * @returns True if log has both photos AND time tracking
  */
-export function hasCompleteProof(log: ServiceLogData): boolean {
+export function hasCompleteProof(log: ServiceLogData | null | undefined): boolean {
   return hasPhotos(log) && hasTimeTracking(log);
 }
 
@@ -105,7 +115,8 @@ export function hasCompleteProof(log: ServiceLogData): boolean {
  * @param log - Service log data
  * @returns True if log is missing photos OR time tracking
  */
-export function hasIncompleteProof(log: ServiceLogData): boolean {
+export function hasIncompleteProof(log: ServiceLogData | null | undefined): boolean {
+  if (!log) return false;
   return !hasCompleteProof(log);
 }
 
@@ -127,29 +138,31 @@ export function hasIncompleteProof(log: ServiceLogData): boolean {
  * Validates: Requirements 4.4
  */
 export function filterByProofOfService<T extends ServiceLogData>(
-  logs: T[],
+  logs: Array<T | null | undefined>,
   filterType: ProofOfServiceFilterType
 ): T[] {
+  const safeLogs = normalizeLogs(logs);
+
   switch (filterType) {
     case 'all':
-      return logs;
+      return safeLogs;
     
     case 'has_photos':
-      return logs.filter(hasPhotos);
+      return safeLogs.filter(hasPhotos);
     
     case 'has_time':
-      return logs.filter(hasTimeTracking);
+      return safeLogs.filter(hasTimeTracking);
     
     case 'complete':
-      return logs.filter(hasCompleteProof);
+      return safeLogs.filter(hasCompleteProof);
     
     case 'incomplete':
-      return logs.filter(hasIncompleteProof);
+      return safeLogs.filter(hasIncompleteProof);
     
     default:
       // Exhaustive check - TypeScript will error if a case is missed
       const _exhaustiveCheck: never = filterType;
-      return logs;
+      return safeLogs;
   }
 }
 
@@ -161,14 +174,16 @@ export function filterByProofOfService<T extends ServiceLogData>(
  * @returns Object with counts for each filter type
  */
 export function getFilterCounts<T extends ServiceLogData>(
-  logs: T[]
+  logs: Array<T | null | undefined>
 ): Record<ProofOfServiceFilterType, number> {
+  const safeLogs = normalizeLogs(logs);
+
   return {
-    all: logs.length,
-    has_photos: logs.filter(hasPhotos).length,
-    has_time: logs.filter(hasTimeTracking).length,
-    complete: logs.filter(hasCompleteProof).length,
-    incomplete: logs.filter(hasIncompleteProof).length,
+    all: safeLogs.length,
+    has_photos: safeLogs.filter(hasPhotos).length,
+    has_time: safeLogs.filter(hasTimeTracking).length,
+    complete: safeLogs.filter(hasCompleteProof).length,
+    incomplete: safeLogs.filter(hasIncompleteProof).length,
   };
 }
 

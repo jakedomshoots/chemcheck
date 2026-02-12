@@ -50,6 +50,12 @@ export {
   validateTimestampWithinRange,
   getCurrentLocation,
   createCapturedPhoto,
+  // Image compression utilities
+  compressImage,
+  compressToTargetSize,
+  generateThumbnail,
+  getDataUrlSize,
+  formatFileSize,
   type PhotoValidationResult,
   type TimestampValidationResult,
   type GeolocationOptions,
@@ -77,6 +83,7 @@ export {
 // Photo sync service
 export {
   syncPendingPhotos,
+  syncPhotosForServiceLog,
   retrySyncFailedPhotos,
   syncSinglePhoto,
   enableAutoSync,
@@ -132,3 +139,60 @@ export {
   hasAnyRequirements,
   getRequirementsSummary,
 } from './requirementValidation';
+
+// Error handling and recovery
+export {
+  createPhotoError,
+  classifyError,
+  withRetry,
+  validateImageDataUrl,
+  detectCorruption,
+  attemptImageRecovery,
+  logPhotoError,
+  getErrorLog,
+  clearErrorLog,
+  type PhotoErrorCode,
+  type PhotoError,
+  type RetryOptions,
+  type RecoveryResult,
+  type LoggedError,
+} from './photoErrorHandling';
+
+// Performance optimization
+export {
+  photoCache,
+  getCachedThumbnail,
+  createLazyPhotoRef,
+  batchProcess,
+  debounce,
+  throttle,
+  createLazyLoadObserver,
+  releaseMemory,
+  getMemoryStats,
+  type LazyPhotoRef,
+  type BatchProcessOptions,
+} from './photoPerformance';
+
+// Accessibility utilities
+export {
+  announce,
+  announcePhotoCapture,
+  announcePhotoDeleted,
+  announceSyncStatus,
+  createKeyboardHandler,
+  trapFocus,
+  createFocusGuard,
+  getPhotoThumbnailAria,
+  getLightboxAria,
+  getEditorAria,
+  getSliderAria,
+  prefersReducedMotion,
+  getAnimationDuration,
+  prefersHighContrast,
+  MIN_TOUCH_TARGET_SIZE,
+  meetsMinTouchTarget,
+  GALLERY_KEY_BINDINGS,
+  EDITOR_KEY_BINDINGS,
+  type KeyboardHandler,
+  type KeyBindings,
+} from './photoAccessibility';

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import ClientListItem from "../components/clients/ClientListItem";
 import { toast } from "sonner";
+import { getEffectiveWorkingDays } from "@/lib/workingDays";
 
 export default function Clients() {
   const navigate = useNavigate();
@@ -41,26 +42,12 @@ export default function Clients() {
   const [reorderMode, setReorderMode] = useState(false);
   const [movingCustomerId, setMovingCustomerId] = useState(null);
 
-  // Get working days from business settings, with fallback to default weekdays
+  // Get working days from cloud settings with local fallback for offline/dev mode.
   const daysOfWeek = useMemo(() => {
-    const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-    
-    if (convexBusiness?.settings?.working_days && convexBusiness.settings.working_days.length > 0) {
-      // Sort days in proper week order
-      const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-      return [...convexBusiness.settings.working_days].sort((a, b) => 
-        dayOrder.indexOf(a) - dayOrder.indexOf(b)
-      );
-    }
-    
-    return defaultDays;
+    return getEffectiveWorkingDays(convexBusiness);
   }, [convexBusiness]);
 
-  // Filter working days to only include valid days
-  const validWorkingDays = useMemo(() => {
-    const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    return daysOfWeek.filter(day => dayOrder.includes(day));
-  }, [daysOfWeek]);
+  const validWorkingDays = daysOfWeek;
 
   // Update activeDay if it's not in the working days list
   useEffect(() => {

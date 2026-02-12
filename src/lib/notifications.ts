@@ -31,7 +31,11 @@ class NotificationManager {
 
   constructor() {
     this.config = this.loadConfig();
-    this.permission = Notification.permission;
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      this.permission = Notification.permission;
+    } else {
+      this.permission = 'denied';
+    }
     this.loadScheduledNotifications();
     this.startNotificationChecker();
   }

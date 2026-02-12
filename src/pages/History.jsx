@@ -18,6 +18,7 @@ import {
   getFilterCounts,
   PROOF_OF_SERVICE_FILTER_OPTIONS
 } from "@/lib/proof-of-service";
+import { getEffectiveWorkingDays } from "@/lib/workingDays";
 
 // Icons for filter options
 const filterIcons = {
@@ -35,6 +36,11 @@ export default function History() {
 
   // Get customerId from URL query params for filtered view
   const filteredCustomerId = searchParams.get("customerId");
+  const normalizedFilteredCustomerId = useMemo(() => {
+    if (!filteredCustomerId) return null;
+    const asNumber = Number(filteredCustomerId);
+    return Number.isNaN(asNumber) ? filteredCustomerId : asNumber;
+  }, [filteredCustomerId]);
 
   // Get business settings for working days
   const convexBusiness = useQuery(api.businesses.getCurrent);
@@ -52,27 +58,22 @@ export default function History() {
   // Find the filtered customer if customerId is provided
   const filteredCustomer = useMemo(() => {
     if (!filteredCustomerId || !customers.length) return null;
-    return customers.find(c => c._id === filteredCustomerId);
-  }, [filteredCustomerId, customers]);
+    return customers.find(c =>
+      c._id === normalizedFilteredCustomerId ||
+      c.id === normalizedFilteredCustomerId ||
+      String(c._id) === filteredCustomerId ||
+      String(c.id) === filteredCustomerId
+    );
+  }, [filteredCustomerId, normalizedFilteredCustomerId, customers]);
 
   // Clear customer filter function
   const clearCustomerFilter = () => {
     setSearchParams({});
   };
 
-  // Get working days from business settings, with fallback to default weekdays
+  // Get working days from cloud settings with local fallback for offline/dev mode.
   const daysOfWeek = useMemo(() => {
-    const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-
-    if (convexBusiness?.settings?.working_days && convexBusiness.settings.working_days.length > 0) {
-      // Sort days in proper week order
-      const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-      return [...convexBusiness.settings.working_days].sort((a, b) =>
-        dayOrder.indexOf(a) - dayOrder.indexOf(b)
-      );
-    }
-
-    return defaultDays;
+    return getEffectiveWorkingDays(convexBusiness);
   }, [convexBusiness]);
 
   // Update activeDay if it's not in the working days list
@@ -109,35 +110,58 @@ export default function History() {
     return filterByProofOfService(logs, proofFilter);
   }, [logs, proofFilter]);
 
+  const logMatchesCustomer = (log, customer) => (
+    log.customer_id === customer._id ||
+    log.customer_id === customer.id ||
+    String(log.customer_id) === String(customer._id) ||
+    String(log.customer_id) === String(customer.id)
+  );
+
   const getCustomersForDay = (day) => {
     const dayCustomers = customers.filter(c => c.service_day === day);
 
     // For each customer, get their logs
     let result = dayCustomers.map(customer => {
       // Get ALL logs for this customer (for accurate total count)
-      const allCustomerLogs = logs.filter(log => log.customer_id === customer._id);
+      const allCustomerLogs = logs.filter(log => logMatchesCustomer(log, customer));
       // Get filtered logs (for display based on proof-of-service filter)
-      const customerLogs = filteredLogs.filter(log => log.customer_id === customer._id);
+      const customerLogs = filteredLogs.filter(log => logMatchesCustomer(log, customer));
       return {
         customer,
         logs: customerLogs,
-        totalLogCount: allCustomerLogs.length
+        totalLogCount: allCustomerLogs.length,
+        lastServiceDate: allCustomerLogs[0]?.service_date || null,
       };
-    }).filter(item => item.logs.length > 0 || item.totalLogCount > 0); // Show if has any logs
+    }).filter(item => {
+      // In filtered mode, show only customers with matching logs.
+      // In "all" mode, show customers that have any history.
+      if (proofFilter !== "all") return item.logs.length > 0;
+      return item.totalLogCount > 0;
+    });
 
     // If filtering by customerId, ensure that customer is shown first and included even with no logs
     if (filteredCustomerId) {
-      const filteredCustomerData = dayCustomers.find(c => c._id === filteredCustomerId);
+      const filteredCustomerData = dayCustomers.find(c =>
+        c._id === normalizedFilteredCustomerId ||
+        c.id === normalizedFilteredCustomerId ||
+        String(c._id) === filteredCustomerId ||
+        String(c.id) === filteredCustomerId
+      );
       if (filteredCustomerData) {
         // Get all logs for this customer (not filtered by proof-of-service)
-        const allLogsForCustomer = logs.filter(log => log.customer_id === filteredCustomerId);
+        const allLogsForCustomer = logs.filter(log => logMatchesCustomer(log, filteredCustomerData));
+        const filteredLogsForCustomer = filteredLogs.filter(log => logMatchesCustomer(log, filteredCustomerData));
 
         // Remove from result if already there, then prepend
-        result = result.filter(item => item.customer._id !== filteredCustomerId);
+        result = result.filter(item =>
+          item.customer._id !== filteredCustomerData._id &&
+          item.customer.id !== filteredCustomerData.id
+        );
         result.unshift({
           customer: filteredCustomerData,
-          logs: allLogsForCustomer,
-          totalLogCount: allLogsForCustomer.length
+          logs: filteredLogsForCustomer,
+          totalLogCount: allLogsForCustomer.length,
+          lastServiceDate: allLogsForCustomer[0]?.service_date || null,
         });
       }
     }
@@ -297,14 +321,15 @@ export default function History() {
                 </Card>
               ) : (
                 <div className="space-y-3">
-                  {dayData.map(({ customer, logs, totalLogCount }) => (
+                  {dayData.map(({ customer, logs, totalLogCount, lastServiceDate }) => (
                     <CustomerHistoryCard
-                      key={customer.id}
+                      key={customer._id || customer.id}
                       customer={customer}
                       logs={logs}
                       totalLogCount={totalLogCount}
+                      lastServiceDate={lastServiceDate}
                       onDeleteLog={handleDeleteLog}
-                      onClick={() => navigate(createPageUrl("CustomerDetail") + `?id=${customer.id}`)}
+                      onClick={() => navigate(createPageUrl("CustomerDetail") + `?id=${customer._id || customer.id}`)}
                     />
                   ))}
                 </div>

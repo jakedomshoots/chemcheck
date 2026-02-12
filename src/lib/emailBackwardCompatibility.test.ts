@@ -249,7 +249,7 @@ describe('Email Backward Compatibility', () => {
       const maliciousInput = '<script>alert("xss")</script>';
       const escaped = escapeHtml(maliciousInput);
       
-      expect(escaped).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+      expect(escaped).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;&#x2F;script&gt;');
       expect(escaped).not.toContain('<script>');
     });
 
@@ -321,7 +321,7 @@ describe('Email Backward Compatibility', () => {
       });
 
       expect(emailContent.htmlBody).toContain('View Full Report');
-      expect(emailContent.htmlBody).toContain(reportLink);
+      expect(emailContent.htmlBody).toContain(escapeHtml(reportLink));
       expect(emailContent.textBody).toContain(reportLink);
     });
 

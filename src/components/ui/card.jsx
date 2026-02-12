@@ -1,12 +1,9 @@
 import * as React from "react"
-import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 const Card = React.forwardRef(({ className, ...props }, ref) => (
-  <motion.div
+  <div
     ref={ref}
-    whileTap={{ scale: 0.995 }}
-    transition={{ type: "spring", stiffness: 400, damping: 25 }}
     className={cn(
       "rounded-xl border border-white/40 bg-white/60 backdrop-blur-xl text-card-foreground shadow-lg hover:shadow-xl hover:bg-white/70 transition-all duration-300", 
       className

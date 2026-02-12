@@ -4,29 +4,30 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/icon-192.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-  <!-- Content Security Policy - XSS Protection -->
+  <!-- CSP temporarily disabled for Capacitor debugging
   <meta http-equiv="Content-Security-Policy" content="
-    default-src 'self';
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.chemcheck.xyz https://js.stripe.com https://challenges.cloudflare.com;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-    img-src 'self' data: blob: https: http:;
-    font-src 'self' https://fonts.gstatic.com;
-    connect-src 'self' https://*.convex.cloud https://*.clerk.accounts.dev https://*.clerk.com https://clerk.chemcheck.xyz https://api.stripe.com wss://*.convex.cloud https://fonts.googleapis.com https://fonts.gstatic.com https://*.sentry.io https://*.google-analytics.com;
-    frame-src 'self' https://js.stripe.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://*.clerk.com https://clerk.chemcheck.xyz;
+    default-src 'self' capacitor://localhost ionic://localhost;
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' capacitor://localhost ionic://localhost https://*.clerk.accounts.dev https://*.clerk.com https://clerk.chemcheck.xyz https://js.stripe.com https://challenges.cloudflare.com;
+    style-src 'self' 'unsafe-inline' capacitor://localhost ionic://localhost https://fonts.googleapis.com;
+    img-src 'self' data: blob: https: http: capacitor://localhost ionic://localhost;
+    font-src 'self' https://fonts.gstatic.com capacitor://localhost ionic://localhost;
+    connect-src 'self' capacitor://localhost ionic://localhost https://*.convex.cloud https://*.clerk.accounts.dev https://*.clerk.com https://clerk.chemcheck.xyz https://api.stripe.com wss://*.convex.cloud https://fonts.googleapis.com https://fonts.gstatic.com https://*.sentry.io https://*.google-analytics.com;
+    frame-src 'self' capacitor://localhost ionic://localhost https://js.stripe.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://*.clerk.com https://clerk.chemcheck.xyz;
     worker-src 'self' blob:;
     manifest-src 'self';
     base-uri 'self';
     form-action 'self';
   " />
+  -->
   <!-- PWA Manifest -->
   <link rel="manifest" href="/manifest.json" />
 
   <!-- PWA Support -->
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ChemCheck" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
 
@@ -43,6 +44,81 @@
 
 <body>
   <div id="root"></div>
+
+  <!-- On-screen debug console for Simulator -->
+  <div id="debug-console"
+    style="position: fixed; top: 0; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 9999; padding: 10px; pointer-events: none; display: none;">
+    <div style="border-bottom: 1px solid #333; margin-bottom: 5px; font-weight: bold; color: #fff;">DEBUG CONSOLE</div>
+  </div>
+  <button id="debug-console-toggle" type="button"
+    style="position: fixed; bottom: 16px; right: 16px; z-index: 10000; background: rgba(15, 23, 42, 0.9); color: #fff; border: 1px solid #334155; border-radius: 9999px; padding: 6px 10px; font-size: 11px; font-family: monospace;">
+    Show Debug
+  </button>
+  <script>
+    (function () {
+      var consoleDiv = document.getElementById('debug-console');
+      var toggleBtn = document.getElementById('debug-console-toggle');
+      var isHidden = true;
+
+      toggleBtn.addEventListener('click', function () {
+        isHidden = !isHidden;
+        consoleDiv.style.display = isHidden ? 'none' : 'block';
+        toggleBtn.innerText = isHidden ? 'Show Debug' : 'Hide Debug';
+      });
+      function logToScreen(type, args) {
+        var msg = Array.from(args).map(a => {
+          if (a instanceof Error) {
+            return a.toString() + (a.stack ? '\n' + a.stack : '');
+          }
+          if (typeof a === 'object' && a !== null) {
+            if (a.message || a.stack) return (a.message || '') + '\n' + (a.stack || '');
+            try { return JSON.stringify(a, null, 2); } catch (e) { return String(a); }
+          }
+          return String(a);
+        }).join(' ');
+        var line = document.createElement('div');
+        line.style.borderBottom = '1px solid #333';
+        line.style.padding = '2px 0';
+        line.style.whiteSpace = 'pre-wrap';
+        if (type === 'error') line.style.color = '#ff6b6b';
+        if (type === 'warn') line.style.color = '#ffd93d';
+        line.innerText = '[' + type.toUpperCase() + '] ' + msg;
+        consoleDiv.appendChild(line);
+        // consoleDiv.scrollTop = consoleDiv.scrollHeight; // Disable auto-scroll to see early errors
+      }
+      var originalLog = console.log;
+      var originalWarn = console.warn;
+      var originalError = console.error;
+      console.log = function () { originalLog.apply(console, arguments); logToScreen('log', arguments); };
+      console.warn = function () { originalWarn.apply(console, arguments); logToScreen('warn', arguments); };
+      console.error = function () { originalError.apply(console, arguments); logToScreen('error', arguments); };
+
+      window.onerror = function (msg, url, line, col, error) {
+        logToScreen('error', [msg, url, line, col, error ? error.stack : '']);
+      };
+
+      window.addEventListener('unhandledrejection', function (e) {
+        logToScreen('error', ['Unhandled Rejection:', e.reason]);
+      });
+
+      // Network Check
+      setTimeout(function () {
+        console.log('Testing network connectivity...');
+        console.log('Current Origin:', window.location.origin);
+        console.log('User Agent:', navigator.userAgent);
+        fetch('https://www.google.com/favicon.ico', { mode: 'no-cors' })
+          .then(function () { console.log('Network Check: Google Reachable (OK)'); })
+          .catch(function (e) { console.error('Network Check: Google Unreachable', e); });
+
+        fetch('https://clerk.chemcheck.xyz/v1/client?_clerk_js_version=5.56.0', { mode: 'cors' })
+          .then(function (r) {
+            console.log('Network Check: Clerk FAPI Reachable status:', r.status);
+            if (!r.ok) r.text().then(t => console.warn('Clerk Response:', t.substring(0, 100)));
+          })
+          .catch(function (e) { console.error('Network Check: Clerk FAPI Unreachable', e); });
+      }, 2000);
+    })();
+  </script>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 

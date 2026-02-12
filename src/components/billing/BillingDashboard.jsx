@@ -22,7 +22,7 @@ export function BillingDashboard() {
     isLoading,
     error,
     isTrialing,
-    isActive,
+    isBillingBackendConfigured,
     currentPlan,
     daysRemaining,
     createPortalSession,
@@ -64,6 +64,9 @@ export function BillingDashboard() {
     active: { icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50', label: 'Active' },
     trialing: { icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Trial' },
     past_due: { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Past Due' },
+    unpaid: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Unpaid' },
+    incomplete: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Incomplete' },
+    incomplete_expired: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Expired' },
     canceled: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Canceled' },
   };
 
@@ -161,24 +164,30 @@ export function BillingDashboard() {
           
           <div className="flex flex-wrap gap-3">
             {isStripeConfigured() ? (
-              <>
-                <Button variant="outline" onClick={handleManageBilling}>
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Manage Payment Method
-                </Button>
-                
-                <Button variant="outline" onClick={handleManageBilling}>
-                  <Receipt className="w-4 h-4 mr-2" />
-                  View Invoices
-                </Button>
-              </>
+              isBillingBackendConfigured ? (
+                <>
+                  <Button variant="outline" onClick={handleManageBilling}>
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Manage Payment Method
+                  </Button>
+
+                  <Button variant="outline" onClick={handleManageBilling}>
+                    <Receipt className="w-4 h-4 mr-2" />
+                    View Invoices
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-red-600">
+                  Billing backend URLs are missing. Portal and cancellation are currently disabled.
+                </p>
+              )
             ) : (
               <p className="text-sm text-slate-500">
                 Billing management available when Stripe is configured.
               </p>
             )}
 
-            {!subscription.cancelAtPeriodEnd && (
+            {!subscription.cancelAtPeriodEnd && (!isStripeConfigured() || isBillingBackendConfigured) && (
               <Button 
                 variant="ghost" 
                 className="text-red-600 hover:text-red-700 hover:bg-red-50"

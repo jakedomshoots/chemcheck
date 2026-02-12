@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
 import { createPageUrl, parseLocalDate } from "@/utils";
 import { Calendar, Plus, AlertTriangle, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,37 +51,9 @@ function saveSkippedCustomers(customerIds) {
   }
 }
 
-// Animation variants factory that respects reduced motion preference
-function getAnimationVariants(shouldReduceMotion) {
-  return {
-    container: {
-      hidden: { opacity: shouldReduceMotion ? 1 : 0, y: shouldReduceMotion ? 0 : 10 },
-      visible: {
-        opacity: 1,
-        y: 0,
-        transition: {
-          duration: shouldReduceMotion ? 0 : 0.4,
-          staggerChildren: shouldReduceMotion ? 0 : 0.05
-        }
-      }
-    },
-    item: {
-      hidden: { opacity: shouldReduceMotion ? 1 : 0, x: shouldReduceMotion ? 0 : -10 },
-      visible: { opacity: 1, x: 0 }
-    }
-  };
-}
-
 export default function Home() {
   const navigate = useNavigate();
   const user = useCurrentUser();
-
-  // Accessibility: respect user's reduced motion preference
-  const shouldReduceMotion = useReducedMotion();
-  const animationVariants = useMemo(
-    () => getAnimationVariants(shouldReduceMotion),
-    [shouldReduceMotion]
-  );
 
   const allCustomersData = useCustomersFilter({ created_by: user.email });
   const allLogsData = useServiceLogs("-service_date", 100);
@@ -401,18 +372,9 @@ export default function Home() {
           </Button>
         </div>
       ) : (
-        <motion.div
-          variants={animationVariants.container}
-          initial="hidden"
-          animate="visible"
-          className="space-y-3"
-        >
+        <div className="space-y-3">
           {customers.map((customer) => (
-            <motion.div
-              layout={!shouldReduceMotion}
-              key={customer._id}
-              variants={animationVariants.item}
-            >
+            <div key={customer._id}>
               <CustomerCard
                 customer={customer}
                 isCompleted={isCompleted(customer._id)}
@@ -420,9 +382,9 @@ export default function Home() {
                 onClick={() => handleCustomerClick(customer)}
                 onHistoryClick={handleHistoryClick}
               />
-            </motion.div>
+            </div>
           ))}
-        </motion.div>
+        </div>
       )}
     </div>
   );

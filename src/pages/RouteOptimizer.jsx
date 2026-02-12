@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useCustomersFilter, useCurrentUser } from "@/api/convexHooks";
-// import { InvokeLLM } from "@/api/integrations"; // TODO: Implement LLM integration for Convex
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Navigation, MapPin, Clock, Zap, ChevronRight } from "lucide-react";
@@ -8,10 +7,54 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format } from "date-fns";
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const AVG_SERVICE_MINUTES = 25;
+const AVG_TRAVEL_SPEED_MPH = 24;
+
+const extractZip = (address = "") => {
+  const match = address.match(/\b\d{5}(?:-\d{4})?\b/);
+  return match ? match[0] : null;
+};
+
+const normalizeStreetName = (address = "") =>
+  address
+    .toLowerCase()
+    .replace(/\b\d+\b/g, "")
+    .replace(
+      /\b(street|st|avenue|ave|road|rd|drive|dr|lane|ln|court|ct|boulevard|blvd|way|circle|cir)\b/g,
+      ""
+    )
+    .replace(/[^a-z]/g, "")
+    .trim();
+
+const estimateTravelMinutes = (previous, current) => {
+  if (!previous || !current) return 0;
+
+  const previousZip = extractZip(previous.address);
+  const currentZip = extractZip(current.address);
+  if (previousZip && currentZip && previousZip === currentZip) return 6;
+
+  const previousStreet = normalizeStreetName(previous.address);
+  const currentStreet = normalizeStreetName(current.address);
+  if (previousStreet && currentStreet && previousStreet === currentStreet) return 4;
+
+  return 10;
+};
+
+const formatMinutes = (minutes) => {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+};
+
+const toOrderNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+};
 
 export default function RouteOptimizer() {
   const user = useCurrentUser();
-  const allCustomers = useCustomersFilter({ created_by: user.email });
+  const allCustomers = useCustomersFilter({ created_by: user?.email });
 
   const [customers, setCustomers] = useState([]);
   const [selectedDay, setSelectedDay] = useState(format(new Date(), "EEEE"));
@@ -26,54 +69,58 @@ export default function RouteOptimizer() {
     }
   }, [allCustomers]);
 
-  const optimizeRoute = async () => {
-    const dayCustomers = customers.filter(c => c.service_day === selectedDay);
+  const dayCustomers = useMemo(
+    () => customers.filter((c) => c.service_day === selectedDay),
+    [customers, selectedDay]
+  );
 
-    if (dayCustomers.length === 0) {
-      return;
-    }
+  useEffect(() => {
+    setOptimizedRoute(null);
+  }, [selectedDay]);
 
+  const optimizeRoute = useCallback(() => {
+    if (dayCustomers.length === 0) return;
     setOptimizing(true);
 
-    const addresses = dayCustomers.map(c => ({
-      name: c.full_name,
-      address: c.address,
-      id: c._id
-    }));
+    const orderedStops = [...dayCustomers].sort((a, b) => {
+      const orderDelta = toOrderNumber(a.sort_order) - toOrderNumber(b.sort_order);
+      if (orderDelta !== 0) return orderDelta;
 
-    // TODO: Implement LLM integration for Convex
-    // For now, just return a simple ordered list
-    alert("Route optimization with AI is not yet implemented for Convex. Showing customers in current order.");
+      const aZip = extractZip(a.address) || "";
+      const bZip = extractZip(b.address) || "";
+      if (aZip !== bZip) return aZip.localeCompare(bZip);
 
-    const result = {
-      optimized_order: addresses.map((addr, idx) => ({
-        position: idx + 1,
-        customer_name: addr.name,
-        customer_address: addr.address,
-        estimated_travel_time_from_previous: idx === 0 ? "Start" : "~5 min",
-        notes: "Manual ordering - AI optimization coming soon"
-      })),
-      total_estimated_time: "TBD",
-      total_estimated_distance: "TBD",
-      optimization_summary: "Route optimization with AI will be available soon. Currently showing customers in their existing order."
-    };
+      return (a.full_name || "").localeCompare(b.full_name || "");
+    });
 
-    const enrichedRoute = result.optimized_order.map(stop => {
-      const customer = dayCustomers.find(c =>
-        c.full_name === stop.customer_name || c.address === stop.customer_address
-      );
+    let totalTravelMinutes = 0;
+    const optimizedStops = orderedStops.map((customer, idx) => {
+      const previousStop = idx > 0 ? orderedStops[idx - 1] : null;
+      const travelMinutes = previousStop ? estimateTravelMinutes(previousStop, customer) : 0;
+      totalTravelMinutes += travelMinutes;
+
+      const gateCodeText = customer.gate_code ? `Gate code: ${customer.gate_code}` : null;
       return {
-        ...stop,
-        customer: customer
+        position: idx + 1,
+        customer_name: customer.full_name,
+        customer_address: customer.address,
+        estimated_travel_time_from_previous: idx === 0 ? "Start location" : `~${travelMinutes} min`,
+        notes: gateCodeText,
+        customer
       };
     });
 
+    const totalMinutes = (optimizedStops.length * AVG_SERVICE_MINUTES) + totalTravelMinutes;
+    const estimatedDistanceMiles = Number(((totalTravelMinutes / 60) * AVG_TRAVEL_SPEED_MPH).toFixed(1));
+
     setOptimizedRoute({
-      ...result,
-      optimized_order: enrichedRoute
+      optimized_order: optimizedStops,
+      total_estimated_time: formatMinutes(totalMinutes),
+      total_estimated_distance: `${estimatedDistanceMiles} mi`,
+      optimization_summary: `Route plan built from your saved customer order and nearby addresses for ${selectedDay}. Update customer sort order to fine-tune stop sequence.`
     });
     setOptimizing(false);
-  };
+  }, [dayCustomers, selectedDay]);
 
   if (loading) {
     return (
@@ -83,8 +130,6 @@ export default function RouteOptimizer() {
     );
   }
 
-  const dayCustomers = customers.filter(c => c.service_day === selectedDay);
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="mb-6">
@@ -93,8 +138,8 @@ export default function RouteOptimizer() {
             <Navigation className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Route Optimizer</h2>
-            <p className="text-sm text-slate-600">AI-powered fuel-efficient routing</p>
+            <h2 className="text-2xl font-bold text-slate-900">Route Planner</h2>
+            <p className="text-sm text-slate-600">Build a practical daily stop order from your saved customer list</p>
           </div>
         </div>
       </div>
@@ -124,12 +169,12 @@ export default function RouteOptimizer() {
             {optimizing ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Optimizing...
+                Building...
               </>
             ) : (
               <>
                 <Zap className="w-5 h-5 mr-2" />
-                Optimize Route
+                Generate Route Plan
               </>
             )}
           </Button>
@@ -142,17 +187,17 @@ export default function RouteOptimizer() {
             <Navigation className="w-8 h-8 text-slate-400" />
           </div>
           <h3 className="text-lg font-semibold text-slate-900 mb-2">No Customers Scheduled</h3>
-          <p className="text-slate-600">Add customers to {selectedDay} to optimize your route</p>
+          <p className="text-slate-600">Add customers to {selectedDay} to build a route plan</p>
         </Card>
       ) : !optimizedRoute ? (
         <Card className="p-8 text-center border-2 bg-gradient-to-br from-cyan-50 to-blue-50">
           <Navigation className="w-12 h-12 mx-auto mb-4 text-cyan-600" />
-          <h3 className="text-xl font-semibold text-slate-900 mb-2">Ready to Optimize</h3>
+          <h3 className="text-xl font-semibold text-slate-900 mb-2">Ready to Build Route</h3>
           <p className="text-slate-600 mb-4">
             You have {dayCustomers.length} customer{dayCustomers.length !== 1 ? 's' : ''} scheduled for {selectedDay}
           </p>
           <p className="text-sm text-slate-500">
-            Click "Optimize Route" to generate the most fuel-efficient path
+            Generate a stop sequence based on your saved customer order and addresses
           </p>
         </Card>
       ) : (

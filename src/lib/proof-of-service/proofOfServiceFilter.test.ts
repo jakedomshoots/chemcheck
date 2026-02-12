@@ -55,12 +55,12 @@ const serviceDateArb = fc.integer({
 /**
  * Generator for valid service log IDs
  */
-const serviceLogIdArb = fc.string({ minLength: 10, maxLength: 30 });
+const serviceLogIdArb = fc.uuid();
 
 /**
  * Generator for valid customer IDs
  */
-const customerIdArb = fc.string({ minLength: 10, maxLength: 30 });
+const customerIdArb = fc.uuid();
 
 /**
  * Generator for service status
@@ -325,15 +325,18 @@ describe('Proof-of-Service Filter', () => {
           (logs) => {
             const complete = filterByProofOfService(logs, 'complete');
             const incomplete = filterByProofOfService(logs, 'incomplete');
-            
-            // No overlap between complete and incomplete
-            const completeIds = new Set(complete.map(l => l._id));
-            const incompleteIds = new Set(incomplete.map(l => l._id));
-            
-            for (const id of completeIds) {
-              expect(incompleteIds.has(id)).toBe(false);
+
+            // Each group must satisfy its own predicate and never the opposite one
+            for (const log of complete) {
+              expect(hasCompleteProof(log)).toBe(true);
+              expect(hasIncompleteProof(log)).toBe(false);
             }
-            
+
+            for (const log of incomplete) {
+              expect(hasIncompleteProof(log)).toBe(true);
+              expect(hasCompleteProof(log)).toBe(false);
+            }
+
             // Together they should cover all logs
             expect(complete.length + incomplete.length).toBe(logs.length);
           }

@@ -52,7 +52,7 @@ class ServiceWorkerManager {
     // Listen for new service worker installing
     this.registration.addEventListener('updatefound', () => {
       console.log('[SW] Update found, installing new version...');
-      
+
       const newWorker = this.registration!.installing;
       if (!newWorker) return;
 
@@ -78,10 +78,12 @@ class ServiceWorkerManager {
     });
 
     // Listen for service worker taking control
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      console.log('[SW] New service worker took control');
-      window.location.reload();
-    });
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('[SW] New service worker took control');
+        window.location.reload();
+      });
+    }
   }
 
   private startUpdateChecks(): void {
@@ -115,7 +117,7 @@ class ServiceWorkerManager {
     }
 
     console.log('[SW] Applying update...');
-    
+
     // Tell the waiting service worker to skip waiting
     this.registration.waiting.postMessage({ type: 'SKIP_WAITING' });
   }
@@ -125,17 +127,18 @@ class ServiceWorkerManager {
   // ============================================
 
   getState(): ServiceWorkerState {
+    const sw = navigator.serviceWorker;
     return {
       isSupported: this.isSupported(),
       isRegistered: !!this.registration,
-      isControlling: !!navigator.serviceWorker.controller,
+      isControlling: !!(sw && sw.controller),
       hasUpdate: !!(this.registration?.waiting),
       registration: this.registration
     };
   }
 
   isSupported(): boolean {
-    return 'serviceWorker' in navigator;
+    return 'serviceWorker' in navigator && !!navigator.serviceWorker;
   }
 
   isOnline(): boolean {
@@ -172,7 +175,7 @@ class ServiceWorkerManager {
 
     navigator.serviceWorker.addEventListener('message', (event) => {
       console.log('[SW] Message from service worker:', event.data);
-      
+
       if (event.data?.type === 'BACKGROUND_BACKUP_REQUEST') {
         // Trigger backup when service worker requests it
         window.dispatchEvent(new CustomEvent('sw-backup-request', {
@@ -207,11 +210,11 @@ class ServiceWorkerManager {
     try {
       let totalSize = 0;
       const cacheNames = await caches.keys();
-      
+
       for (const cacheName of cacheNames) {
         const cache = await caches.open(cacheName);
         const requests = await cache.keys();
-        
+
         for (const request of requests) {
           const response = await cache.match(request);
           if (response) {
@@ -220,7 +223,7 @@ class ServiceWorkerManager {
           }
         }
       }
-      
+
       return totalSize;
     } catch (error) {
       console.error('[SW] Failed to calculate cache size:', error);
@@ -236,7 +239,7 @@ class ServiceWorkerManager {
     window.addEventListener('online', () => {
       console.log('[SW] Network connection restored');
       monitoring.recordMetric('network_online', performance.now());
-      
+
       // Trigger background sync if supported
       if (this.registration && 'sync' in window.ServiceWorkerRegistration.prototype) {
         this.registration.sync.register('backup-sync').catch(error => {
@@ -260,7 +263,7 @@ class ServiceWorkerManager {
       clearInterval(this.updateCheckInterval);
       this.updateCheckInterval = null;
     }
-    
+
     this.listeners = [];
   }
 }
@@ -280,7 +283,7 @@ if (import.meta.env.PROD && serviceWorkerManager.isSupported()) {
     registerServiceWorker().then(state => {
       console.log('[SW] Initial registration state:', state);
     });
-    
+
     serviceWorkerManager.setupNetworkListeners();
   });
 }

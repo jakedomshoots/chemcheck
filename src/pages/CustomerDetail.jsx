@@ -10,50 +10,31 @@ import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
 import { SendReportDialog } from "@/components/service-reports";
 import { ReportSettingsPanel } from "@/components/service-reports/ReportSettingsPanel";
 import { formatSmsMessage, buildReportUrl } from "@/lib/smsReport";
+import { syncPhotosForServiceLog, getPhotos } from "@/lib/proof-of-service";
 import { toast } from "sonner";
 import { subWeeks, startOfWeek, endOfWeek } from "date-fns";
-import { useAction } from "convex/react";
+import { useAction, useConvex, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { syncService } from "@/lib/sync/SyncService";
-import { CustomerDetailSkeleton, ServiceLogCardSkeleton } from "@/components/ui/skeleton";
+import { CustomerDetailSkeleton } from "@/components/ui/skeleton";
+import { userManager } from "@/lib/userManager";
+import { getEmailDeliveryValidationError } from "@/lib/emailValidation";
 
 // Check if Convex is available (online mode)
 const isConvexAvailable = !!(import.meta.env.VITE_CONVEX_URL && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
-/**
- * IMPLEMENTATION NOTE: SMS Report Sending
- * 
- * The SMS report sending feature is currently a stub implementation because the app
- * runs in offline mode (Dexie) without Convex integration.
- * 
- * To fully implement SMS sending:
- * 
- * 1. Add ConvexProvider to main.jsx:
- *    ```jsx
- *    import { ConvexProvider, ConvexReactClient } from "convex/react";
- *    const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
- *    // Wrap app with <ConvexProvider client={convex}>
- *    ```
- * 
- * 2. Use the Convex action at component level (not in callback):
- *    ```jsx
- *    import { useAction } from "convex/react";
- *    import { api } from "../../convex/_generated/api";
- *    const sendReport = useAction(api.serviceReports.sendReport);
- *    ```
- * 
- * 3. Sync service logs to Convex (currently only in Dexie):
- *    - Create a sync service that uploads Dexie logs to Convex
- *    - Store Convex IDs alongside Dexie IDs
- * 
- * 4. Configure Telnyx in Convex environment:
- *    - Set TELNYX_API_KEY, TELNYX_MESSAGING_PROFILE_ID, TELNYX_FROM_NUMBER
- * 
- * 5. Call the action in handleConfirmSendReport:
- *    ```jsx
- *    const result = await sendReport({ service_log_id: convexLogId });
- *    ```
- */
+function toFriendlySendError(error) {
+  const raw = typeof error === "string" ? error : error?.message || "";
+  if (!raw) return "Failed to send report. Please try again.";
+
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("unauthenticated")) return "You're signed out. Please log in again and resend.";
+  if (normalized.includes("access denied")) return "You don't have permission to send this report.";
+  if (normalized.includes("service log not found")) return "This service visit is missing from cloud sync. Please sync and try again.";
+  if (normalized.includes("app_url")) return "Email system is not fully configured yet. Please set APP_URL before sending.";
+  if (normalized.includes("network") || normalized.includes("fetch")) return "Network issue while sending. Check connection and try again.";
+  return raw;
+}
 
 export default function CustomerDetail() {
   const navigate = useNavigate();
@@ -73,7 +54,9 @@ export default function CustomerDetail() {
 
   // Convex action for sending reports - always call hook unconditionally
   // Runtime check at line 181 validates isConvexAvailable before use
+  const convex = useConvex();
   const sendReportAction = useAction(api.serviceReports.sendReport);
+  const convexBusiness = useQuery(api.businesses.getCurrent);
 
   // Initialize with navigation state for instant render
   const [lastWeekLog, setLastWeekLog] = useState(navigationLastWeekLog || null);
@@ -92,12 +75,22 @@ export default function CustomerDetail() {
   const [sendReportError, setSendReportError] = useState(null);
   const [reportStatuses, setReportStatuses] = useState({});
   const [customNote, setCustomNote] = useState('');
+  const [attachedPhotosPreview, setAttachedPhotosPreview] = useState([]);
 
   // Determine the current customer from the live query hook
   const customer = useMemo(() => {
     if (!customers || !customerId) return navigationCustomer || null;
     return customers.find((c) => c._id === customerId) || navigationCustomer || null;
   }, [customers, customerId, navigationCustomer]);
+  const businessName = useMemo(() => {
+    const convexName = convexBusiness?.name?.trim();
+    if (convexName) return convexName;
+
+    const localBusinessName = userManager.getCurrentBusiness()?.name?.trim();
+    if (localBusinessName) return localBusinessName;
+
+    return "ChemCheck Pool Service";
+  }, [convexBusiness?.name]);
 
   useEffect(() => {
     if (customers && customerId) {
@@ -120,6 +113,59 @@ export default function CustomerDetail() {
       setLastWeekLog(lastWeek);
     }
   }, [logs, navigationLastWeekLog]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAttachedPhotosPreview = async () => {
+      if (!selectedLogForReport) {
+        if (isMounted) setAttachedPhotosPreview([]);
+        return;
+      }
+
+      try {
+        const localLogId = selectedLogForReport._id || selectedLogForReport.id;
+        const convexLogId = selectedLogForReport.convex_id;
+        const localCustomerId = customer?._id || customer?.id;
+
+        if (!localLogId || !localCustomerId) {
+          if (isMounted) setAttachedPhotosPreview([]);
+          return;
+        }
+
+        const allCustomerPhotos = await getPhotos(String(localCustomerId));
+        const acceptableLogIds = new Set([
+          String(localLogId),
+          convexLogId ? String(convexLogId) : null,
+        ].filter(Boolean));
+
+        const localPhotos = allCustomerPhotos.filter((photo) => (
+          photo.serviceLogId !== null && acceptableLogIds.has(String(photo.serviceLogId))
+        ));
+
+        if (!isMounted) return;
+
+        setAttachedPhotosPreview(
+          localPhotos
+            .filter((photo) => Boolean(photo.dataUrl))
+            .map((photo) => ({
+              id: photo.id,
+              category: photo.category,
+              url: photo.dataUrl,
+              timestamp: photo.timestamp,
+            }))
+        );
+      } catch (error) {
+        console.warn("Failed to load local photo preview for report send:", error);
+        if (isMounted) setAttachedPhotosPreview([]);
+      }
+    };
+
+    loadAttachedPhotosPreview();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedLogForReport, customer]);
 
   const handleDeleteLog = async (logId) => {
     await deleteServiceLog(logId);
@@ -201,6 +247,7 @@ export default function CustomerDetail() {
     setSelectedLogForReport(null);
     setSendReportError(null);
     setCustomNote(''); // Clear custom note state on cancel - Requirements: 4.5
+    setAttachedPhotosPreview([]);
   }, []);
 
   // Handle confirming the send report
@@ -226,22 +273,39 @@ export default function CustomerDetail() {
         return;
       }
 
-      if (deliveryMethod === 'email' && !customer.email) {
-        setSendReportError("No email address on file. Please add an email address to send email reports.");
-        setSendReportLoading(false);
-        return;
+      if (deliveryMethod === 'email') {
+        const emailError = getEmailDeliveryValidationError(customer.email);
+        if (emailError) {
+          setSendReportError(emailError);
+          setSendReportLoading(false);
+          return;
+        }
       }
 
-      // Ensure customer record is synced before sending (Requirement 4.3)
-      // This is crucial if the email was just added locally
+      // Try syncing customer record first so contact details and settings stay current in cloud.
+      // If email send can still proceed, we pass recipient_email override to backend.
       if (deliveryMethod === 'email' || deliveryMethod === 'sms') {
+        let customerSyncProblem = null;
         try {
           console.log(`Ensuring customer ${customer._id} is up-to-date in cloud before sending report...`);
-          await syncService.syncRecord('customers', customer._id);
+          const customerSync = await syncService.syncRecord('customers', customer._id);
+          if (!customerSync.success) {
+            customerSyncProblem = customerSync.error || "Customer contact info failed to sync.";
+          }
         } catch (syncError) {
-          console.warn("Non-critical sync warning for customer:", syncError);
-          // We continue anyway, as the backend might already have the data
-          // or the record might already be syncing
+          console.error("Customer sync failed before sending report:", syncError);
+          customerSyncProblem = "Customer info couldn't sync to cloud.";
+        }
+
+        if (customerSyncProblem) {
+          if (deliveryMethod === 'email') {
+            console.warn("Continuing email send with recipient override after customer sync issue:", customerSyncProblem);
+            toast.warning("Customer cloud sync is delayed. Sending with the current email anyway.");
+          } else {
+            setSendReportError(`${customerSyncProblem} Please check your connection and retry.`);
+            setSendReportLoading(false);
+            return;
+          }
         }
       }
 
@@ -301,6 +365,71 @@ export default function CustomerDetail() {
         }
       }
 
+      const localLogId = selectedLogForReport._id || selectedLogForReport.id;
+      const localCustomerId = customer._id || customer.id;
+      let customerConvexId = customer.convex_id;
+
+      // Ensure attached photos are synced before sending report so the customer can see them.
+      try {
+        if (!customerConvexId && localCustomerId) {
+          const { db } = await import('@/db/chemcheck-db');
+          const updatedCustomer = await db.customers.get(localCustomerId);
+          customerConvexId = updatedCustomer?.convex_id;
+        }
+
+        if (!customerConvexId) {
+          if (deliveryMethod === 'email') {
+            toast.warning("Customer sync is still catching up, so new photos may be missing from this email.");
+          } else {
+            setSendReportError("Customer sync is incomplete, so report photos can't be attached yet. Please try again in a moment.");
+            setSendReportLoading(false);
+            return;
+          }
+        } else {
+          const photoSyncResults = await syncPhotosForServiceLog({
+            localServiceLogId: String(localLogId),
+            localCustomerId: String(localCustomerId),
+            convexServiceLogId: String(serviceLogId),
+            convexCustomerId: String(customerConvexId),
+            convexClient: {
+              mutation: async (name, args = {}) => {
+                if (name === 'servicePhotos:generateUploadUrl') {
+                  return convex.mutation(api.servicePhotos.generateUploadUrl, {});
+                }
+                if (name === 'servicePhotos:uploadPhoto') {
+                  return convex.mutation(api.servicePhotos.uploadPhoto, args);
+                }
+                throw new Error(`Unsupported photo sync mutation: ${name}`);
+              },
+            },
+          });
+
+          const failedPhotoSyncs = photoSyncResults.filter((result) => !result.success);
+          if (failedPhotoSyncs.length > 0) {
+            if (deliveryMethod === 'email') {
+              toast.warning("Some photos couldn't sync in time. This email may show fewer photos.");
+            } else {
+              setSendReportError("Some service photos failed to sync. Please retry so photos are included in the customer report.");
+              setSendReportLoading(false);
+              return;
+            }
+          }
+
+          if (photoSyncResults.length > 0 && failedPhotoSyncs.length === 0) {
+            toast.success(`Synced ${photoSyncResults.length} photo${photoSyncResults.length === 1 ? '' : 's'} for this report.`);
+          }
+        }
+      } catch (photoSyncError) {
+        console.error("Photo sync error before report send:", photoSyncError);
+        if (deliveryMethod === 'email') {
+          toast.warning("Couldn't sync all photos before sending. We'll still send the report.");
+        } else {
+          setSendReportError("Couldn't attach service photos yet. Please check your connection and try again.");
+          setSendReportLoading(false);
+          return;
+        }
+      }
+
       // Determine pool status for the email
       const poolStatus = getPoolStatus(selectedLogForReport);
 
@@ -310,6 +439,7 @@ export default function CustomerDetail() {
         delivery_method: deliveryMethod,
         pool_status: poolStatus,
         custom_note: customNote,
+        report_base_url: window.location.origin,
       });
 
       const result = await sendReportAction({
@@ -317,15 +447,31 @@ export default function CustomerDetail() {
         delivery_method: deliveryMethod,
         pool_status: poolStatus,
         custom_note: customNote,
+        recipient_email: deliveryMethod === 'email' ? customer.email?.trim() : undefined,
+        report_base_url: window.location.origin,
       });
 
       if (result.success) {
-        toast.success(`Report sent successfully via ${deliveryMethod === 'sms' ? 'SMS' : 'email'}!`);
+        if (result.was_duplicate) {
+          toast.info("This report was already sent less than a minute ago. No duplicate email was sent.");
+        } else {
+          const destination = deliveryMethod === 'email' ? customer.email : customer.phone;
+          toast.success(`Report sent via ${deliveryMethod === 'sms' ? 'SMS' : 'email'} to ${destination}.`);
+        }
+
+        console.log("Report send result:", {
+          deliveryMethod,
+          recipient: deliveryMethod === 'email' ? customer.email : customer.phone,
+          messageId: result.message_id,
+          wasDuplicate: result.was_duplicate,
+          reportToken: result.report_token,
+        });
+        const selectedLogId = selectedLogForReport._id || selectedLogForReport.id;
 
         // Update report status
         setReportStatuses(prev => ({
           ...prev,
-          [selectedLogForReport._id]: {
+          [selectedLogId]: {
             sentAt: Date.now(),
             method: deliveryMethod,
             reportToken: result.report_token,
@@ -337,35 +483,31 @@ export default function CustomerDetail() {
         handleCloseSendReport();
       } else {
         console.error("Send report failed:", result);
-        setSendReportError(result.error || "Failed to send report. Please try again.");
+        setSendReportError(toFriendlySendError(result.error));
       }
 
     } catch (error) {
       console.error("Failed to send report:", error);
-      setSendReportError(error.message || "Failed to send report. Please try again.");
+      setSendReportError(toFriendlySendError(error));
     } finally {
       setSendReportLoading(false);
     }
-  }, [selectedLogForReport, customer, sendReportAction, handleCloseSendReport, getPoolStatus]);
+  }, [selectedLogForReport, customer, convex, sendReportAction, handleCloseSendReport, getPoolStatus]);
 
   // Generate SMS message preview
   const getMessagePreview = useCallback(() => {
     if (!selectedLogForReport || !customer) return "";
 
-    const businessName = "Dominick Pool Solutions"; // TODO: Get from business settings
     const serviceDate = formatServiceDate(selectedLogForReport.service_date);
 
     // Use the getPoolStatus function for consistency
     const overallStatus = getPoolStatus(selectedLogForReport);
-
-    // Generate a placeholder report link
-    const reportLink = buildReportUrl(
-      window.location.origin,
-      "preview-token"
-    );
+    const selectedLogId = selectedLogForReport._id || selectedLogForReport.id;
+    const reportToken = selectedLogId ? reportStatuses[selectedLogId]?.reportToken : undefined;
+    const reportLink = reportToken ? buildReportUrl(window.location.origin, reportToken) : undefined;
 
     return formatSmsMessage(businessName, serviceDate, overallStatus, reportLink);
-  }, [selectedLogForReport, customer, getPoolStatus]);
+  }, [selectedLogForReport, customer, getPoolStatus, businessName, reportStatuses]);
 
   if (loading) {
     return <CustomerDetailSkeleton />;
@@ -586,10 +728,11 @@ export default function CustomerDetail() {
         messagePreview={getMessagePreview()}
         isLoading={sendReportLoading}
         error={sendReportError}
-        isResend={selectedLogForReport && reportStatuses[selectedLogForReport._id]?.sentAt}
+        isResend={selectedLogForReport && reportStatuses[selectedLogForReport._id || selectedLogForReport.id]?.sentAt}
         poolStatus={getPoolStatus(selectedLogForReport)}
         customNote={customNote}
         onCustomNoteChange={handleCustomNoteChange}
+        attachedPhotos={attachedPhotosPreview}
       />
     </div>
   );

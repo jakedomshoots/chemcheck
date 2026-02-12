@@ -20,8 +20,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, AlertCircle, Loader2, Mail, AlertTriangle } from 'lucide-react';
+import { Send, AlertCircle, Loader2, Mail, AlertTriangle, Image as ImageIcon } from 'lucide-react';
 import { EmailPreview } from './EmailPreview';
+import { getEmailDeliveryValidationError } from '@/lib/emailValidation';
 
 export type DeliveryMethod = 'sms' | 'email';
 export type PoolStatus = 'good' | 'needs_attention';
@@ -60,6 +61,13 @@ export interface SendReportDialogProps {
   customNote?: string;
   /** Whether to show the note input field (overrides automatic detection) */
   showNoteInput?: boolean;
+  /** Photos tied to this service log (local preview before sending) */
+  attachedPhotos?: Array<{
+    id: string;
+    category: 'before' | 'after';
+    url: string;
+    timestamp?: string;
+  }>;
 }
 
 /**
@@ -100,6 +108,7 @@ export function SendReportDialog({
   onCustomNoteChange,
   customNote: externalCustomNote,
   showNoteInput,
+  attachedPhotos = [],
 }: SendReportDialogProps) {
   const [internalLoading, setInternalLoading] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<DeliveryMethod>('sms');
@@ -109,20 +118,22 @@ export function SendReportDialog({
   // Use external custom note if provided, otherwise use internal state
   const customNote = externalCustomNote !== undefined ? externalCustomNote : internalCustomNote;
   
-  // Determine if note input should be shown
-  const shouldShowNoteInput = showNoteInput !== undefined 
-    ? showNoteInput 
-    : poolStatus === 'needs_attention';
+  // Show editable message input by default so users can customize outgoing text.
+  const shouldShowNoteInput = showNoteInput !== undefined ? showNoteInput : true;
+  const isNoteRequired = poolStatus === 'needs_attention';
   
   // Use external loading state if provided, otherwise use internal
   const loading = isLoading || internalLoading;
   
-  const hasEmail = Boolean(customerEmail && customerEmail.trim().length > 0);
+  const normalizedEmail = customerEmail?.trim() || '';
+  const hasEmail = Boolean(normalizedEmail.length > 0);
+  const emailValidationError = hasEmail ? getEmailDeliveryValidationError(normalizedEmail) : null;
+  const hasValidEmail = hasEmail && !emailValidationError;
   
   // Auto-select available method
   const availableMethods = {
     sms: false, // Disable SMS for now due to Twilio issues
-    email: hasEmail,
+    email: hasValidEmail,
   };
   
   // Auto-select email as the default method
@@ -139,16 +150,18 @@ export function SendReportDialog({
   }, [isOpen]);
   
   const canSend = availableMethods[selectedMethod];
+  const beforePhotos = attachedPhotos.filter((photo) => photo.category === 'before');
+  const afterPhotos = attachedPhotos.filter((photo) => photo.category === 'after');
   
   // Validate custom note
   const validateCustomNote = (): boolean => {
     if (shouldShowNoteInput) {
-      if (!customNote || customNote.trim().length === 0) {
-        setNoteValidationError('Please add a note about what needs attention');
-        return false;
-      }
       if (customNote.length > CUSTOM_NOTE_MAX_LENGTH) {
         setNoteValidationError(`Note must be ${CUSTOM_NOTE_MAX_LENGTH} characters or less`);
+        return false;
+      }
+      if (isNoteRequired && (!customNote || customNote.trim().length === 0)) {
+        setNoteValidationError('Please add a note about what needs attention');
         return false;
       }
     }
@@ -157,7 +170,10 @@ export function SendReportDialog({
   };
   
   // Check if send button should be disabled
-  const isNoteValid = !shouldShowNoteInput || (customNote && customNote.trim().length > 0 && customNote.length <= CUSTOM_NOTE_MAX_LENGTH);
+  const isNoteValid = !shouldShowNoteInput
+    || (isNoteRequired
+      ? (customNote && customNote.trim().length > 0 && customNote.length <= CUSTOM_NOTE_MAX_LENGTH)
+      : customNote.length <= CUSTOM_NOTE_MAX_LENGTH);
   const canSendWithValidation = canSend && isNoteValid;
   
   const handleCustomNoteChange = (value: string) => {
@@ -183,7 +199,8 @@ export function SendReportDialog({
     
     setInternalLoading(true);
     try {
-      await onConfirm(selectedMethod, shouldShowNoteInput ? customNote : undefined);
+      const trimmedNote = customNote?.trim() || '';
+      await onConfirm(selectedMethod, trimmedNote.length > 0 ? trimmedNote : undefined);
     } finally {
       setInternalLoading(false);
     }
@@ -203,7 +220,7 @@ export function SendReportDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-[90%] sm:max-w-md rounded-xl">
+      <DialogContent className="max-w-[90%] sm:max-w-md rounded-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <Send className="w-4 h-4 text-cyan-600" />
@@ -250,7 +267,11 @@ export function SendReportDialog({
                   htmlFor="custom-note" 
                   className="text-xs text-slate-500 font-medium"
                 >
-                  Technician Notes <span className="text-red-500">*</span>
+                  {isNoteRequired ? (
+                    <>Technician Notes <span className="text-red-500">*</span></>
+                  ) : (
+                    <>Custom Message <span className="text-slate-400">(optional)</span></>
+                  )}
                 </label>
                 <span 
                   className={`text-xs ${isOverLimit ? 'text-red-500' : 'text-slate-400'}`}
@@ -261,7 +282,11 @@ export function SendReportDialog({
               </div>
               <Textarea
                 id="custom-note"
-                placeholder="Describe what needs attention (e.g., 'pH levels are high, recommend adding acid')"
+                placeholder={
+                  isNoteRequired
+                    ? "Describe what needs attention (e.g., 'pH levels are high, recommend adding acid')"
+                    : "Add a personal message for the customer (optional)"
+                }
                 value={customNote}
                 onChange={(e) => handleCustomNoteChange(e.target.value)}
                 className={`min-h-[100px] text-sm ${
@@ -317,10 +342,59 @@ export function SendReportDialog({
                 className={`text-sm ${canSend ? 'text-slate-900' : 'text-red-600'}`}
                 data-testid="recipient-display"
               >
-                {customerEmail || 'No email on file'}
+                {normalizedEmail || 'No email on file'}
               </div>
             </div>
           </div>
+          {emailValidationError && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+              {emailValidationError}
+            </p>
+          )}
+
+          {/* Pre-send photo preview */}
+          {attachedPhotos.length > 0 && (
+            <div className="space-y-2" data-testid="attached-photos-preview">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                <ImageIcon className="w-3.5 h-3.5" />
+                Attached Photos ({attachedPhotos.length})
+              </div>
+
+              {beforePhotos.length > 0 && (
+                <div>
+                  <div className="text-[11px] text-slate-500 mb-1">Before ({beforePhotos.length})</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {beforePhotos.map((photo) => (
+                      <img
+                        key={photo.id}
+                        src={photo.url}
+                        alt="Before service"
+                        className="w-full h-20 object-cover rounded-md border border-slate-200"
+                        loading="lazy"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {afterPhotos.length > 0 && (
+                <div>
+                  <div className="text-[11px] text-slate-500 mb-1">After ({afterPhotos.length})</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {afterPhotos.map((photo) => (
+                      <img
+                        key={photo.id}
+                        src={photo.url}
+                        alt="After service"
+                        className="w-full h-20 object-cover rounded-md border border-slate-200"
+                        loading="lazy"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Email Preview - Requirements: 4.4 */}
           {customerName && serviceDate && (
@@ -376,7 +450,9 @@ export function SendReportDialog({
             <Alert variant="destructive" className="py-2">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-xs">
-                No email address on file. Please add an email address to send reports.
+                {!hasEmail
+                  ? 'No email address on file. Please add an email address to send reports.'
+                  : (emailValidationError || 'The email on file is invalid. Please update it before sending.')}
               </AlertDescription>
             </Alert>
           )}

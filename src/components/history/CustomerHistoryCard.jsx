@@ -262,7 +262,7 @@ function LogEntry({ log, onDelete }) {
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(log.id);
+                onDelete(log._id || log.id);
               }}
               className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50/50"
             >
@@ -276,13 +276,16 @@ function LogEntry({ log, onDelete }) {
   );
 }
 
-export default function CustomerHistoryCard({ customer, logs, totalLogCount, onDeleteLog, onClick }) {
+export default function CustomerHistoryCard({ customer, logs, totalLogCount, lastServiceDate, onDeleteLog, onClick }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [deleteLogId, setDeleteLogId] = useState(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const safeLogs = Array.isArray(logs) ? logs : [];
+  const customerName = customer?.full_name || "Unknown Customer";
+  const customerAddress = customer?.address || "No address";
 
   // Use totalLogCount if provided, otherwise fall back to logs.length
-  const displayLogCount = totalLogCount ?? logs.length;
+  const displayLogCount = totalLogCount ?? safeLogs.length;
 
   const handleDeleteConfirm = () => {
     if (deleteLogId) {
@@ -297,26 +300,32 @@ export default function CustomerHistoryCard({ customer, logs, totalLogCount, onD
         {/* Customer Header */}
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-          className="p-4 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
+            className="p-4 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
-              {customer.full_name.charAt(0).toUpperCase()}
+              {customerName.charAt(0).toUpperCase()}
             </div>
 
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-base text-slate-900">{customer.full_name}</h3>
+              <h3 className="font-semibold text-base text-slate-900">{customerName}</h3>
               <div className="flex items-center gap-1.5 text-slate-500 mt-0.5">
                 <MapPin className="w-3 h-3 flex-shrink-0" />
-                <p className="text-xs truncate">{customer.address}</p>
+                <p className="text-xs truncate">{customerAddress}</p>
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs px-2 py-0.5 bg-cyan-100/80 text-cyan-700 rounded-md font-medium">
                   {displayLogCount} log{displayLogCount !== 1 ? 's' : ''}
                 </span>
-                <span className="text-xs text-slate-600">
-                  Last: {formatServiceDate(logs[0].service_date)}
-                </span>
+                {lastServiceDate ? (
+                  <span className="text-xs text-slate-600">
+                    Last: {formatServiceDate(lastServiceDate)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500">
+                    No logs
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -329,13 +338,19 @@ export default function CustomerHistoryCard({ customer, logs, totalLogCount, onD
           <div className="border-t border-slate-200/60 bg-slate-50/40 p-4">
             {/* Service Logs - Collapsible List */}
             <div className="space-y-2 mb-4 max-h-[400px] overflow-y-auto">
-              {logs.map((log) => (
-                <LogEntry
-                  key={log.id}
-                  log={log}
-                  onDelete={(id) => setDeleteLogId(id)}
-                />
-              ))}
+              {safeLogs.length === 0 ? (
+                <div className="p-3 text-xs text-slate-500 bg-white border border-dashed border-slate-200 rounded-lg">
+                  No service logs match this filter.
+                </div>
+              ) : (
+                safeLogs.map((log) => (
+                  <LogEntry
+                    key={log._id || log.id || `${log.customer_id}-${log.service_date}`}
+                    log={log}
+                    onDelete={(id) => setDeleteLogId(id)}
+                  />
+                ))
+              )}
             </div>
 
             {/* Action Buttons */}
@@ -348,7 +363,7 @@ export default function CustomerHistoryCard({ customer, logs, totalLogCount, onD
                   }}
                   variant="outline"
                   className="text-sm h-9 border-2 border-purple-200 text-purple-700 hover:bg-purple-50"
-                  disabled={logs.length < 3}
+                  disabled={safeLogs.length < 3}
                 >
                   <BarChart3 className="w-4 h-4 mr-1" />
                   Pool Analysis
@@ -363,7 +378,7 @@ export default function CustomerHistoryCard({ customer, logs, totalLogCount, onD
                   View Details
                 </Button>
               </div>
-              {logs.length < 3 && (
+              {safeLogs.length < 3 && (
                 <p className="text-xs text-slate-500 text-center mt-2">
                   Pool analysis requires at least 3 service visits
                 </p>
@@ -398,7 +413,7 @@ export default function CustomerHistoryCard({ customer, logs, totalLogCount, onD
       {showAnalysis && (
         <PoolAnalysisPanel
           customer={customer}
-          serviceLogs={logs}
+          serviceLogs={safeLogs}
           onClose={() => setShowAnalysis(false)}
         />
       )}

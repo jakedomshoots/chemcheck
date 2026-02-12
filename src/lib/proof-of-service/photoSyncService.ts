@@ -10,6 +10,7 @@ import {
   getPendingPhotos,
   updateSyncStatus,
   getPhotoById,
+  getPhotosByServiceLog,
   deletePhoto as deleteLocalPhoto,
 } from './offlinePhotoStorage';
 import { OfflinePhotoRecord, SyncStatus } from './types';
@@ -265,6 +266,87 @@ async function uploadPhotoToConvex(
   };
 }
 
+/**
+ * Upload a single photo using explicitly provided Convex IDs.
+ * Useful when local photo metadata references local Dexie IDs.
+ */
+async function uploadPhotoToConvexWithIds(
+  photo: OfflinePhotoRecord,
+  convexServiceLogId: string,
+  convexCustomerId: string,
+  convexClient: ConvexClient,
+  config: SyncServiceConfig
+): Promise<SyncResult> {
+  let lastError: string | undefined;
+
+  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    try {
+      if (!isOnline()) {
+        return {
+          photoId: photo.id,
+          success: false,
+          error: 'Device is offline',
+        };
+      }
+
+      const uploadUrl = await convexClient.mutation(
+        'servicePhotos:generateUploadUrl',
+        {}
+      ) as string;
+
+      const blob = dataUrlToBlob(photo.dataUrl);
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type },
+        body: blob,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed with status ${uploadResponse.status}`);
+      }
+
+      const { storageId } = await uploadResponse.json() as { storageId: string };
+
+      const convexPhotoId = await convexClient.mutation('servicePhotos:uploadPhoto', {
+        service_log_id: convexServiceLogId as Id<'serviceLogs'>,
+        customer_id: convexCustomerId as Id<'customers'>,
+        storage_id: storageId as Id<'_storage'>,
+        category: photo.category,
+        timestamp: photo.timestamp,
+        latitude: photo.latitude ?? undefined,
+        longitude: photo.longitude ?? undefined,
+        accuracy: photo.accuracy ?? undefined,
+      }) as string;
+
+      await updateSyncStatus(photo.id, 'synced');
+
+      if (config.deleteAfterSync) {
+        await deleteLocalPhoto(photo.id);
+      }
+
+      return {
+        photoId: photo.id,
+        success: true,
+        convexPhotoId,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'Unknown error';
+      if (attempt < config.maxRetries) {
+        const delay = calculateRetryDelay(attempt, config);
+        await sleep(delay);
+      }
+    }
+  }
+
+  await updateSyncStatus(photo.id, 'failed', lastError);
+
+  return {
+    photoId: photo.id,
+    success: false,
+    error: lastError,
+  };
+}
+
 // ============================================
 // Batch Sync Operations
 // ============================================
@@ -367,6 +449,55 @@ export async function syncSinglePhoto(
 
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
   return uploadPhotoToConvex(photo, convexClient, mergedConfig);
+}
+
+/**
+ * Sync pending/failed photos for one local service log before sending a customer report.
+ * Returns one SyncResult per attempted photo upload.
+ */
+export async function syncPhotosForServiceLog(
+  params: {
+    localServiceLogId: string;
+    localCustomerId: string;
+    convexServiceLogId: string;
+    convexCustomerId: string;
+    convexClient: ConvexClient;
+    config?: Partial<SyncServiceConfig>;
+  }
+): Promise<SyncResult[]> {
+  const {
+    localServiceLogId,
+    localCustomerId,
+    convexServiceLogId,
+    convexCustomerId,
+    convexClient,
+    config = {},
+  } = params;
+
+  if (!isOnline()) return [];
+
+  const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  const localPhotos = await getPhotosByServiceLog(localServiceLogId);
+  const syncablePhotos = localPhotos.filter((photo) => (
+    photo.customerId === localCustomerId
+    && (photo.syncStatus === 'pending' || photo.syncStatus === 'failed')
+  ));
+
+  if (syncablePhotos.length === 0) return [];
+
+  const results: SyncResult[] = [];
+  for (const photo of syncablePhotos) {
+    const result = await uploadPhotoToConvexWithIds(
+      photo,
+      convexServiceLogId,
+      convexCustomerId,
+      convexClient,
+      mergedConfig
+    );
+    results.push(result);
+  }
+
+  return results;
 }
 
 // ============================================

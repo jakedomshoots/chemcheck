@@ -2,6 +2,9 @@ import { loadStripe, Stripe } from '@stripe/stripe-js';
 
 // Stripe publishable key from environment
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripeCheckoutUrl = import.meta.env.VITE_STRIPE_CHECKOUT_URL;
+const stripePortalUrl = import.meta.env.VITE_STRIPE_PORTAL_URL;
+const stripeCancelUrl = import.meta.env.VITE_STRIPE_CANCEL_URL;
 
 // Singleton stripe instance
 let stripePromise: Promise<Stripe | null> | null = null;
@@ -97,6 +100,27 @@ export interface Subscription {
 // Check if Stripe is configured
 export function isStripeConfigured(): boolean {
   return !!stripePublishableKey && stripePublishableKey !== 'pk_test_placeholder';
+}
+
+export interface BillingApiConfig {
+  checkoutUrl: string;
+  portalUrl: string;
+  cancelUrl: string;
+}
+
+export function getBillingApiConfig(): BillingApiConfig | null {
+  if (!stripeCheckoutUrl || !stripePortalUrl || !stripeCancelUrl) {
+    return null;
+  }
+  return {
+    checkoutUrl: stripeCheckoutUrl,
+    portalUrl: stripePortalUrl,
+    cancelUrl: stripeCancelUrl,
+  };
+}
+
+export function isBillingBackendConfigured(): boolean {
+  return getBillingApiConfig() !== null;
 }
 
 // Format price for display
