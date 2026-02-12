@@ -6,7 +6,6 @@ import {
   Building2,
   User,
   Bell,
-  Shield,
   Database,
   ChevronRight,
   Save,
@@ -34,7 +33,6 @@ import { Card } from '@/components/ui/card';
 import { userManager } from '@/lib/userManager';
 import { autoBackup } from '@/lib/backup';
 import { notificationManager } from '@/lib/notifications';
-import { AdminDashboard } from '@/components/AdminDashboard';
 import { BackupManager } from '@/components/BackupManager';
 import { downloadUserData, deleteAllUserData, getDataRetentionSummary } from '@/lib/gdpr';
 import { optOutAnalytics, optInAnalytics, hasOptedOut } from '@/lib/analytics';
@@ -247,7 +245,6 @@ function AccountSection({ userData, setUserData }) {
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState('business');
-  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showBackupManager, setShowBackupManager] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -524,13 +521,8 @@ export default function Settings() {
     { id: 'schedule', label: 'Schedule', icon: Calendar },
     { id: 'services', label: 'Service Types', icon: Beaker },
     { id: 'backup', label: 'Data Backup', icon: HardDrive },
-    { id: 'privacy', label: 'Privacy & Data', icon: Eye },
-    { id: 'admin', label: 'Admin Tools', icon: Shield }
+    { id: 'privacy', label: 'Privacy & Data', icon: Eye }
   ];
-
-  if (showAdminDashboard) {
-    return <AdminDashboard onClose={() => setShowAdminDashboard(false)} />;
-  }
 
   if (showBackupManager) {
     return <BackupManager onClose={() => setShowBackupManager(false)} />;
@@ -1250,88 +1242,31 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Admin Tools Section */}
-            {activeSection === 'admin' && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Admin Tools</h2>
-                  <p className="text-sm text-slate-600">Advanced system management</p>
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setShowAdminDashboard(true)}
-                    className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg hover:from-purple-100 hover:to-indigo-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-600 rounded-lg">
-                        <Activity className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-medium text-slate-900">Admin Dashboard</p>
-                        <p className="text-sm text-slate-600">Performance monitoring, data integrity, and diagnostics</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-slate-400" />
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (confirm('Are you sure you want to clear all local data? This cannot be undone.')) {
-                        localStorage.clear();
-                        window.location.reload();
-                      }
-                    }}
-                    className="w-full flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-red-600 rounded-lg">
-                        <Database className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-medium text-red-900">Reset All Data</p>
-                        <p className="text-sm text-red-600">Clear all local storage and start fresh</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-red-400" />
-                  </button>
-                </div>
-
-                <div className="p-4 bg-slate-50 rounded-lg">
-                  <p className="text-sm text-slate-600">
-                    <strong>Tip:</strong> You can also open the Admin Dashboard anytime by pressing <kbd className="px-2 py-1 bg-slate-200 rounded text-xs">Ctrl</kbd> + <kbd className="px-2 py-1 bg-slate-200 rounded text-xs">Shift</kbd> + <kbd className="px-2 py-1 bg-slate-200 rounded text-xs">A</kbd>
-                  </p>
-                </div>
-              </div>
-            )}
-
             {/* Save Button */}
-            {activeSection !== 'admin' && (
-              <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:justify-between">
-                {saveMessage && (
-                  <p className={`text-sm text-center sm:text-left ${saveMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
-                    {saveMessage}
-                  </p>
+            <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:justify-between">
+              {saveMessage && (
+                <p className={`text-sm text-center sm:text-left ${saveMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
+                  {saveMessage}
+                </p>
+              )}
+              <Button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="w-full sm:w-auto sm:ml-auto bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white py-3 sm:py-2"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Changes
+                  </>
                 )}
-                <Button
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="w-full sm:w-auto sm:ml-auto bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white py-3 sm:py-2"
-                >
-                  {isSaving ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
+              </Button>
+            </div>
           </Card>
         </div>
       </div>

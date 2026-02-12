@@ -4,9 +4,6 @@ import { createPageUrl } from "@/utils";
 import { Home, Users, BarChart3, FileText, TestTube, StickyNote, Menu, X, Settings, BookOpen } from "lucide-react";
 import { importWithRetry } from "@/lib/chunkErrorRecovery";
 
-const AdminDashboard = lazy(() =>
-  import('@/components/AdminDashboard').then((mod) => ({ default: mod.AdminDashboard }))
-);
 const SyncStatusIndicator = lazy(() =>
   importWithRetry(
     () => import('@/components/sync/SyncStatusIndicator').then((mod) => ({ default: mod.SyncStatusIndicator })),
@@ -17,21 +14,7 @@ const SyncStatusIndicator = lazy(() =>
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [renderSyncIndicator, setRenderSyncIndicator] = useState(false);
-
-  // Admin dashboard keyboard shortcut (Ctrl+Shift+A)
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.ctrlKey && event.shiftKey && event.key === 'A') {
-        event.preventDefault();
-        setShowAdminDashboard(true);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   // Defer sync UI hydration until idle time to keep first paint responsive.
   useEffect(() => {
@@ -192,12 +175,6 @@ export default function Layout({ children, currentPageName }) {
         {children}
       </main>
 
-      {/* Admin Dashboard */}
-      {showAdminDashboard && (
-        <Suspense fallback={null}>
-          <AdminDashboard onClose={() => setShowAdminDashboard(false)} />
-        </Suspense>
-      )}
     </div>
   );
 }
