@@ -226,7 +226,7 @@ export function PhotoCapture({
         if (!errMsg.includes('cancel')) {
           setCameraError({
             type: 'unknown',
-            message: 'Failed to capture photo. Please try again.',
+            message: errMsg || 'Failed to capture photo. Please try again.',
           });
           setCameraState('error');
         }
@@ -296,6 +296,20 @@ export function PhotoCapture({
     setCameraState('idle');
     setPreviewUrl(null);
   }, []);
+
+  // Release camera stream when app is backgrounded (important for iOS WebView memory).
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && streamRef.current) {
+        stopCamera();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [stopCamera]);
 
   /**
    * Switch between front and back camera
@@ -387,6 +401,11 @@ export function PhotoCapture({
       stopCamera();
     } catch (error) {
       console.error('Failed to capture photo:', error);
+      setCameraError({
+        type: 'unknown',
+        message: (error as Error)?.message || 'Failed to capture photo. Please try again.',
+      });
+      setCameraState('error');
     } finally {
       setIsCapturing(false);
     }

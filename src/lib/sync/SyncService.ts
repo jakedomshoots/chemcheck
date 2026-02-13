@@ -391,10 +391,11 @@ export class SyncService {
   /**
    * Get sync queue status
    */
-  getQueueStatus(): { pending: number; items: SyncQueueItem[] } {
+  getQueueStatus(): { pending: number; items: SyncQueueItem[]; capacity: { current: number; max: number; warningThreshold: number; usagePercent: number } } {
     return {
       pending: this.syncQueue.getPendingCount(),
       items: this.syncQueue.getPending(),
+      capacity: this.syncQueue.getCapacityStatus(),
     };
   }
 

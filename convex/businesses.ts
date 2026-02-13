@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalQuery } from "./_generated/server";
 
 // Valid role values for team members
 const VALID_ROLES = ['owner', 'admin', 'technician', 'viewer'] as const;
@@ -36,6 +36,18 @@ export const getCurrent = query({
       .first();
 
     return ownedBusiness;
+  },
+});
+
+export const getByOwnerEmailInternal = internalQuery({
+  args: {
+    owner_email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("businesses")
+      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.owner_email))
+      .first();
   },
 });
 

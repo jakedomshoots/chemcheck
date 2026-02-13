@@ -55,6 +55,48 @@ async function getUserCustomerIds(ctx: any, userEmail: string): Promise<Set<stri
     return new Set(customers.map((c: any) => c._id.toString()));
 }
 
+function sortLogsByServiceDate<T extends { service_date: string }>(logs: T[], descending: boolean): T[] {
+    logs.sort((a, b) => descending
+        ? b.service_date.localeCompare(a.service_date)
+        : a.service_date.localeCompare(b.service_date)
+    );
+    return logs;
+}
+
+function dedupeLogsById<T extends { _id: any }>(logs: T[]): T[] {
+    const seen = new Set<string>();
+    const deduped: T[] = [];
+
+    for (const log of logs) {
+        const id = log._id.toString();
+        if (seen.has(id)) continue;
+        seen.add(id);
+        deduped.push(log);
+    }
+
+    return deduped;
+}
+
+async function getLegacyLogsForUser(ctx: any, userEmail: string, serviceDate?: string) {
+    const userCustomerIds = await getUserCustomerIds(ctx, userEmail);
+    const logPromises = Array.from(userCustomerIds).map(customerId => {
+        if (serviceDate) {
+            return ctx.db.query("serviceLogs")
+                .withIndex("by_customer_and_date", (q: any) =>
+                    q.eq("customer_id", customerId as any).eq("service_date", serviceDate)
+                )
+                .collect();
+        }
+
+        return ctx.db.query("serviceLogs")
+            .withIndex("by_customer", (q: any) => q.eq("customer_id", customerId as any))
+            .collect();
+    });
+
+    const logsPerCustomer = await Promise.all(logPromises);
+    return logsPerCustomer.flat();
+}
+
 // Valid status values for service logs
 const VALID_STATUS_VALUES = ['completed', 'pending', 'scheduled', 'in_progress', 'cancelled'] as const;
 type ServiceLogStatus = typeof VALID_STATUS_VALUES[number];
@@ -75,27 +117,26 @@ export const list = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Get user's customer IDs for tenant isolation
-        const userCustomerIds = await getUserCustomerIds(ctx, identity.email!);
+        const descending = args.order === "-service_date";
+        const limit = Math.max(1, Math.min(args.limit || 100, 500));
 
-        // Query logs for each customer using index
-        const logPromises = Array.from(userCustomerIds).map(customerId =>
-            ctx.db.query("serviceLogs")
-                .withIndex("by_customer", (q) => q.eq("customer_id", customerId as any))
-                .collect()
-        );
-        const logsPerCustomer = await Promise.all(logPromises);
-        const userLogs = logsPerCustomer.flat();
+        // Primary path: single indexed tenant query
+        const indexedLogs = await ctx.db
+            .query("serviceLogs")
+            .withIndex("by_created_by_and_service_date", (q: any) =>
+                q.eq("created_by", identity.email!)
+            )
+            .order(descending ? "desc" : "asc")
+            .take(limit);
 
-        // Sort after collecting
-        userLogs.sort((a, b) => {
-            if (args.order === "-service_date") {
-                return b.service_date.localeCompare(a.service_date);
-            }
-            return a.service_date.localeCompare(b.service_date);
-        });
+        // Temporary fallback while backfill is rolling out
+        if (indexedLogs.length >= limit) {
+            return indexedLogs;
+        }
 
-        return userLogs.slice(0, args.limit || 100);
+        const legacyLogs = await getLegacyLogsForUser(ctx, identity.email!);
+        const merged = dedupeLogsById([...indexedLogs, ...legacyLogs]);
+        return sortLogsByServiceDate(merged, descending).slice(0, limit);
     },
 });
 
@@ -109,9 +150,6 @@ export const filter = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Get user's customer IDs for tenant isolation
-        const userCustomerIds = await getUserCustomerIds(ctx, identity.email!);
-
         if (args.customer_id) {
             // Verify ownership first
             const customer = await ctx.db.get(args.customer_id);
@@ -124,22 +162,31 @@ export const filter = query({
                 .collect();
         }
 
-        // For service_date or no args, query per customer for tenant isolation (reuse userCustomerIds from above)
-        const logPromises = Array.from(userCustomerIds).map(customerId => {
-            if (args.service_date) {
-                // Use the new compound index
-                return ctx.db.query("serviceLogs")
-                    .withIndex("by_customer_and_date", (q) =>
-                        q.eq("customer_id", customerId as any).eq("service_date", args.service_date!)
-                    )
-                    .collect();
-            }
-            return ctx.db.query("serviceLogs")
-                .withIndex("by_customer", (q) => q.eq("customer_id", customerId as any))
+        if (args.service_date) {
+            const indexedLogs = await ctx.db.query("serviceLogs")
+                .withIndex("by_created_by_and_service_date", (q: any) =>
+                    q.eq("created_by", identity.email!).eq("service_date", args.service_date!)
+                )
                 .collect();
-        });
-        const logsPerCustomer = await Promise.all(logPromises);
-        return logsPerCustomer.flat();
+
+            if (indexedLogs.length > 0) {
+                return indexedLogs;
+            }
+
+            // Temporary fallback while backfill is rolling out
+            return await getLegacyLogsForUser(ctx, identity.email!, args.service_date);
+        }
+
+        const indexedLogs = await ctx.db.query("serviceLogs")
+            .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+            .collect();
+
+        if (indexedLogs.length > 0) {
+            return indexedLogs;
+        }
+
+        // Temporary fallback while backfill is rolling out
+        return await getLegacyLogsForUser(ctx, identity.email!);
     },
 });
 
@@ -173,19 +220,18 @@ export const getByDate = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Get user's customer IDs for tenant isolation
-        const userCustomerIds = await getUserCustomerIds(ctx, identity.email!);
+        const indexedLogs = await ctx.db.query("serviceLogs")
+            .withIndex("by_created_by_and_service_date", (q: any) =>
+                q.eq("created_by", identity.email!).eq("service_date", args.service_date)
+            )
+            .collect();
 
-        // Query each customer's logs for this date using the new compound index
-        const logPromises = Array.from(userCustomerIds).map(customerId =>
-            ctx.db.query("serviceLogs")
-                .withIndex("by_customer_and_date", (q) =>
-                    q.eq("customer_id", customerId as any).eq("service_date", args.service_date)
-                )
-                .collect()
-        );
-        const logsPerCustomer = await Promise.all(logPromises);
-        return logsPerCustomer.flat();
+        if (indexedLogs.length > 0) {
+            return indexedLogs;
+        }
+
+        // Temporary fallback while backfill is rolling out
+        return await getLegacyLogsForUser(ctx, identity.email!, args.service_date);
     },
 });
 
@@ -195,6 +241,7 @@ export const create = mutation({
         customer_id: v.id("customers"),
         service_date: v.string(),
         status: v.string(),
+        service_type: v.optional(v.string()),
         notes: v.optional(v.string()),
         ph: v.string(),
         chlorine: v.string(),
@@ -230,8 +277,10 @@ export const create = mutation({
 
         const logData = {
             customer_id: args.customer_id,
+            created_by: customer.created_by,
             service_date: args.service_date,
             status: args.status,
+            service_type: args.service_type,
             notes: args.notes,
             ph: args.ph,
             chlorine: args.chlorine,
@@ -259,6 +308,7 @@ export const update = mutation({
         customer_id: v.optional(v.id("customers")),
         service_date: v.optional(v.string()),
         status: v.optional(v.string()),
+        service_type: v.optional(v.string()),
         notes: v.optional(v.string()),
         ph: v.optional(v.string()),
         chlorine: v.optional(v.string()),
@@ -300,6 +350,7 @@ export const update = mutation({
         const finalUpdates = {
             ...updates,
             duration_ms,
+            created_by: log.created_by ?? customer.created_by,
         };
 
         await ctx.db.patch(id, finalUpdates);

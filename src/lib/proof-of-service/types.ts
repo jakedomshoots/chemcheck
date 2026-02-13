@@ -57,12 +57,14 @@ export interface OfflinePhotoRecord {
   serviceLogId: string | null;   // null until service log created
   category: 'before' | 'after';
   dataUrl: string;               // Base64 image data
+  sizeBytes?: number;            // Estimated image payload size
   timestamp: string;             // ISO 8601
   latitude: number | null;
   longitude: number | null;
   accuracy: number | null;
   syncStatus: 'pending' | 'synced' | 'failed';
   syncError?: string;
+  syncedAt?: number;
   createdAt: number;
 }
 

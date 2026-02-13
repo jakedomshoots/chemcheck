@@ -7,7 +7,15 @@ import { setUserContext, clearUserContext } from '@/lib/sentry';
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const clerkDomain = import.meta.env.VITE_CLERK_DOMAIN;
-const isIosSimulatorBypass = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true'
+const bypassFlagEnabled = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true';
+const bypassFlagEnabledInNonDev = bypassFlagEnabled && !import.meta.env.DEV;
+
+if (bypassFlagEnabledInNonDev) {
+  console.error('SECURITY WARNING: VITE_IOS_SIM_AUTH_BYPASS is enabled outside development. Bypass disabled.');
+}
+
+const isIosSimulatorBypass = bypassFlagEnabled
+  && import.meta.env.DEV
   && typeof window !== 'undefined'
   && window.Capacitor
   && window.Capacitor.getPlatform?.() === 'ios';

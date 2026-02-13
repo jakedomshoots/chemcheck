@@ -55,6 +55,7 @@ export interface ServiceLog extends SyncableRecord {
     start_time?: string;         // ISO 8601 UTC
     end_time?: string;           // ISO 8601 UTC
     duration_ms?: number;        // Calculated duration in milliseconds
+    service_type?: string;       // "Regular Cleaning" | "Chemical Balance" | etc.
     createdAt?: string;          // ISO timestamp
     updatedAt?: string;          // ISO timestamp
 }
@@ -210,20 +211,20 @@ export class ChemCheckDB extends Dexie {
                     sync_status: updatedRecord.sync_status
                 });
 
-                if (this.syncService && primKey) {
-                    setTimeout(() => {
+                trans.on('complete', () => {
+                    if (this.syncService && primKey) {
                         this.syncService.enqueueRecord('customers', primKey, 'update', updatedRecord);
-                    }, 0);
-                }
+                    }
+                });
             }
         });
 
         this.customers.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncService && primKey) {
-                setTimeout(() => {
+            trans.on('complete', () => {
+                if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('customers', primKey, 'delete', obj);
-                }, 0);
-            }
+                }
+            });
         });
 
         // Hook into serviceLogs table
@@ -251,20 +252,20 @@ export class ChemCheckDB extends Dexie {
                     sync_status: updatedRecord.sync_status
                 });
 
-                if (this.syncService && primKey) {
-                    setTimeout(() => {
+                trans.on('complete', () => {
+                    if (this.syncService && primKey) {
                         this.syncService.enqueueRecord('serviceLogs', primKey, 'update', updatedRecord);
-                    }, 0);
-                }
+                    }
+                });
             }
         });
 
         this.serviceLogs.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncService && primKey) {
-                setTimeout(() => {
+            trans.on('complete', () => {
+                if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('serviceLogs', primKey, 'delete', obj);
-                }, 0);
-            }
+                }
+            });
         });
 
         // Hook into chemicalUsage table
@@ -292,20 +293,20 @@ export class ChemCheckDB extends Dexie {
                     sync_status: updatedRecord.sync_status
                 });
 
-                if (this.syncService && primKey) {
-                    setTimeout(() => {
+                trans.on('complete', () => {
+                    if (this.syncService && primKey) {
                         this.syncService.enqueueRecord('chemicalUsage', primKey, 'update', updatedRecord);
-                    }, 0);
-                }
+                    }
+                });
             }
         });
 
         this.chemicalUsage.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncService && primKey) {
-                setTimeout(() => {
+            trans.on('complete', () => {
+                if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('chemicalUsage', primKey, 'delete', obj);
-                }, 0);
-            }
+                }
+            });
         });
 
         // Hook into notes table
@@ -333,20 +334,20 @@ export class ChemCheckDB extends Dexie {
                     sync_status: updatedRecord.sync_status
                 });
 
-                if (this.syncService && primKey) {
-                    setTimeout(() => {
+                trans.on('complete', () => {
+                    if (this.syncService && primKey) {
                         this.syncService.enqueueRecord('notes', primKey, 'update', updatedRecord);
-                    }, 0);
-                }
+                    }
+                });
             }
         });
 
         this.notes.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncService && primKey) {
-                setTimeout(() => {
+            trans.on('complete', () => {
+                if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('notes', primKey, 'delete', obj);
-                }, 0);
-            }
+                }
+            });
         });
 
         // Hook into saltCellLogs table
@@ -374,20 +375,20 @@ export class ChemCheckDB extends Dexie {
                     sync_status: updatedRecord.sync_status
                 });
 
-                if (this.syncService && primKey) {
-                    setTimeout(() => {
+                trans.on('complete', () => {
+                    if (this.syncService && primKey) {
                         this.syncService.enqueueRecord('saltCellLogs', primKey, 'update', updatedRecord);
-                    }, 0);
-                }
+                    }
+                });
             }
         });
 
         this.saltCellLogs.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncService && primKey) {
-                setTimeout(() => {
+            trans.on('complete', () => {
+                if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('saltCellLogs', primKey, 'delete', obj);
-                }, 0);
-            }
+                }
+            });
         });
     }
 

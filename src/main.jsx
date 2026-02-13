@@ -5,6 +5,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { initSentry, reportError } from '@/lib/sentry';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
+import { initializeCacheLifecycle } from '@/api/dexieHooks';
 
 const AppRouterShell = lazy(() =>
     importWithRetry(() => import('@/components/routing/AppRouterShell.jsx'), 'AppRouterShell')
@@ -22,6 +23,7 @@ console.log("Initializing ChemCheck...");
 
 // Initialize Sentry for error tracking and performance monitoring
 initSentry();
+initializeCacheLifecycle();
 
 // Initialize Google Analytics after first paint/idle time to keep startup lean.
 function scheduleAnalyticsInitialization() {

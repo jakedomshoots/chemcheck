@@ -1,9 +1,9 @@
 # ChemCheck iOS Release - Scalability Implementation Plan
 
-**Document Version**: 1.0  
+**Document Version**: 1.1  
 **Date**: February 2026  
 **Author**: CTO Code Review  
-**Status**: Pending Approval
+**Status**: Revised (Ready for Approval)
 
 ---
 
@@ -42,75 +42,70 @@ With 100 customers, this creates 100 database round-trips. At 1000+ customers, t
 
 #### Implementation Plan
 
-**Step 1: Add Schema Index** (convex/schema.ts)
+**Step 1: Add tenant field and index safely** (`convex/schema.ts`)
 ```typescript
-// Add to serviceLogs table definition:
-serviceLogs: defineTable({...})
-    .index("by_customer", ["customer_id"])
-    .index("by_service_date", ["service_date"])
-    .index("by_customer_and_date", ["customer_id", "service_date"])
-    .index("by_created_by", ["created_by"])  // NEW: For bulk queries
+// Phase 1: additive and backward-compatible
+serviceLogs: defineTable({...,
+  created_by: v.optional(v.string()),
+})
+  .index("by_customer", ["customer_id"])
+  .index("by_service_date", ["service_date"])
+  .index("by_customer_and_date", ["customer_id", "service_date"])
+  .index("by_created_by", ["created_by"])
 ```
 
-**Step 2: Add created_by to ServiceLogs** (convex/schema.ts)
+**Step 2: Update write path first** (`convex/serviceLogs.ts`)
 ```typescript
-// Add field to serviceLogs:
-created_by: v.string(), // Denormalized from customer for efficient queries
-```
-
-**Step 3: Create Migration Function** (convex/migrations.ts - new file)
-```typescript
-// One-time migration to backfill created_by
-export const backfillServiceLogCreatedBy = mutation({
-    handler: async (ctx) => {
-        const logs = await ctx.db.query("serviceLogs").collect();
-        for (const log of logs) {
-            const customer = await ctx.db.get(log.customer_id);
-            if (customer && !log.created_by) {
-                await ctx.db.patch(log._id, { created_by: customer.created_by });
-            }
-        }
-    }
-});
-```
-
-**Step 4: Update Query Functions** (convex/serviceLogs.ts)
-```typescript
-// Replace N+1 pattern with single query:
-export const list = query({
-    args: { order: v.optional(v.string()), limit: v.optional(v.number()) },
-    handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
-
-        // Single query using new index
-        let query = ctx.db
-            .query("serviceLogs")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!));
-        
-        if (args.order === "-service_date") {
-            query = query.order("desc");
-        }
-        
-        return await query.take(args.limit || 100);
-    },
-});
-```
-
-**Step 5: Update Create Mutation** (convex/serviceLogs.ts)
-```typescript
-// Add created_by when creating logs:
 const logData = {
-    ...args,
-    created_by: customer.created_by, // Denormalize from customer
+  ...args,
+  created_by: customer.created_by, // set on all new writes
 };
 ```
 
+**Step 3: Run batched backfill migration** (`convex/migrations.ts` - new file)
+```typescript
+// Batch with cursor to avoid Convex execution limits
+export const backfillServiceLogCreatedByBatch = mutation({
+  args: { cursor: v.optional(v.string()), batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db.query("serviceLogs").paginate({
+      cursor: args.cursor ?? null,
+      numItems: args.batchSize ?? 100,
+    });
+
+    for (const log of page.page) {
+      if (!log.created_by) {
+        const customer = await ctx.db.get(log.customer_id);
+        if (customer?.created_by) {
+          await ctx.db.patch(log._id, { created_by: customer.created_by });
+        }
+      }
+    }
+
+    return {
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+      processed: page.page.length,
+    };
+  },
+});
+```
+
+**Step 4: Keep query behavior identical while reducing fan-out** (`convex/serviceLogs.ts`)
+- Preserve existing `service_date` ordering semantics.
+- Do not switch to a naive `by_created_by` + `.order()` path that changes result ordering.
+- Apply the single-query optimization for list/filter only after parity tests pass.
+
+**Step 5: Optional hardening pass**
+- After backfill reaches 100% on production data, change `created_by` from optional to required.
+- Keep rollback path by leaving `by_customer` query support for one release.
+
 #### Testing Checklist
-- [ ] Run migration on staging with production data copy
+- [ ] Run batched migration on staging with production-like data
 - [ ] Verify query returns same results as before
 - [ ] Performance test with 1000+ service logs
 - [ ] Verify tenant isolation still works (users only see their logs)
+- [ ] Verify sorting parity with baseline (`service_date` asc/desc)
 
 #### Rollback Plan
 - Keep old query functions as `listLegacy` for 1 release cycle
@@ -120,7 +115,7 @@ const logData = {
 
 ### Issue 2: Unbounded Photo Storage in IndexedDB
 
-**Files**: `src/lib/proof-of-service/photoUtils.ts`, `src/db/chemcheck-db.ts`  
+**Files**: `src/lib/proof-of-service/offlinePhotoStorage.ts`, `src/components/proof-of-service/PhotoCapture.tsx`, `src/pages/Settings.jsx`  
 **Severity**: Critical  
 **Effort**: 3 days
 
@@ -133,28 +128,12 @@ Photos stored as base64 with no limits:
 
 #### Implementation Plan
 
-**Step 1: Add Photo Management Table** (src/db/chemcheck-db.ts)
-```typescript
-export interface PhotoMetadata {
-    id?: number;
-    storage_id: string;           // Convex storage ID after sync
-    service_log_id: number;
-    customer_id: number;
-    category: 'before' | 'after';
-    size_bytes: number;
-    created_at: number;
-    local_path?: string;          // For future file system storage
-    sync_status: 'pending' | 'synced' | 'error';
-}
+**Step 1: Extend existing photo IndexedDB store** (`src/lib/proof-of-service/offlinePhotoStorage.ts`)
+- Add fields to the existing `proofOfServicePhotos` DB record (for example: `sizeBytes`, `syncedAt`).
+- Add a Dexie version bump in that file if new indexes are needed.
+- Do not add photo tables to `chemcheck-db.ts`; photo storage is already isolated in the proof-of-service DB.
 
-// Add to database schema:
-this.version(4).stores({
-    // ... existing tables
-    photoMetadata: '++id, service_log_id, customer_id, category, created_at, sync_status',
-});
-```
-
-**Step 2: Implement Storage Limits** (src/lib/proof-of-service/photoStorage.ts - new file)
+**Step 2: Implement storage limits** (`src/lib/proof-of-service/photoStorage.ts` - new file)
 ```typescript
 const MAX_PHOTOS_PER_SERVICE_LOG = 10; // 5 before + 5 after
 const MAX_PHOTO_AGE_DAYS = 90;
@@ -176,7 +155,7 @@ export async function enforceStorageLimits(): Promise<void> {
 }
 ```
 
-**Step 3: Update Photo Capture** (src/components/proof-of-service/PhotoCapture.tsx)
+**Step 3: Update photo capture flow** (`src/components/proof-of-service/PhotoCapture.tsx`)
 ```typescript
 // Before saving, check limits:
 const existingPhotos = await getPhotosForServiceLog(serviceLogId);
@@ -188,7 +167,7 @@ if (existingPhotos.filter(p => p.category === category).length >= 5) {
 await enforceStorageLimits();
 ```
 
-**Step 4: Add Settings UI** (src/pages/Settings.jsx)
+**Step 4: Add Settings UI** (`src/pages/Settings.jsx`)
 ```typescript
 // Add storage management section:
 <StorageSettings>
@@ -205,7 +184,7 @@ await enforceStorageLimits();
 - [ ] Memory profiling on iOS simulator
 
 #### Rollback Plan
-- Database version 4 is additive
+- Offline photo DB version bump is additive
 - Old photos remain accessible
 
 ---
@@ -351,26 +330,10 @@ export const list = query({
 });
 ```
 
-**Step 2: Update Frontend Hook** (src/api/dexieHooks.ts)
-```typescript
-export function useCustomersPaginated(initialLimit = 50) {
-    const [cursor, setCursor] = useState<string | null>(null);
-    const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
-    
-    const { data, isLoading } = useQuery(api.customers.list, { 
-        limit: initialLimit,
-        cursor 
-    });
-    
-    const loadMore = useCallback(() => {
-        if (data?.hasMore && data?.cursor) {
-            setCursor(data.cursor);
-        }
-    }, [data]);
-    
-    return { customers: allCustomers, loadMore, isLoading, hasMore: data?.hasMore };
-}
-```
+**Step 2: Align frontend with current architecture**
+- If customer list UI is Convex-backed, use the paginated Convex hook in the Convex data layer (not `dexieHooks.ts`).
+- If customer list UI is Dexie-backed (current local-first path), implement pagination/windowing in Dexie hooks and keep Convex pagination as sync optimization.
+- Do not mix Convex `useQuery` examples into `src/api/dexieHooks.ts` without an architecture change.
 
 ---
 
@@ -388,48 +351,39 @@ setTimeout(() => {
 }, 0);
 ```
 
-This creates race conditions:
+This creates ordering/consistency risk:
 1. User updates record A
 2. User updates record A again
-3. Second setTimeout fires first
-4. Sync queue has wrong order
+3. Sync enqueue can run before transaction fully commits
+4. Queue observes stale/intermediate state
 
 #### Implementation Plan
 
-**Step 1: Replace setTimeout with Transaction-Aware Queue**
+**Step 1: Replace `setTimeout` with transaction completion callbacks**
 ```typescript
-private setupSyncHooks(): void {
-    // Use a microtask queue instead of setTimeout
-    const syncQueue: Array<() => void> = [];
-    let syncScheduled = false;
-    
-    const flushSyncQueue = () => {
-        syncScheduled = false;
-        const items = syncQueue.splice(0, syncQueue.length);
-        for (const item of items) {
-            item();
-        }
-    };
-    
-    const scheduleSync = (fn: () => void) => {
-        syncQueue.push(fn);
-        if (!syncScheduled) {
-            syncScheduled = true;
-            queueMicrotask(flushSyncQueue);
-        }
-    };
-    
-    // Use scheduleSync instead of setTimeout
-    this.customers.hook('updating', (modifications, primKey, obj, trans) => {
-        if (this.hasNonSyncFieldChanges(modifications)) {
-            // ... existing code ...
-            
-            scheduleSync(() => {
-                this.syncService?.enqueueRecord('customers', primKey, 'update', updatedRecord);
-            });
-        }
-    });
-}
+this.customers.hook('updating', (modifications, primKey, obj, trans) => {
+  if (!this.hasNonSyncFieldChanges(modifications)) return;
+
+  const updatedRecord = { ...obj, ...modifications, local_updated_at: Date.now(), sync_status: 'pending' };
+  Object.assign(modifications, {
+    local_updated_at: updatedRecord.local_updated_at,
+    sync_status: updatedRecord.sync_status,
+  });
+
+  trans.on('complete', () => {
+    if (this.syncService && primKey) {
+      this.syncService.enqueueRecord('customers', primKey, 'update', updatedRecord);
+    }
+  });
+});
+
+this.customers.hook('deleting', (primKey, obj, trans) => {
+  trans.on('complete', () => {
+    if (this.syncService && primKey) {
+      this.syncService.enqueueRecord('customers', primKey, 'delete', obj);
+    }
+  });
+});
 ```
 
 **Step 2: Add Sequence Numbers**
@@ -445,6 +399,10 @@ this.customers.hook('updating', (modifications, primKey, obj, trans) => {
 });
 ```
 
+**Step 3: Prefer queue-layer dedupe/ordering guarantees**
+- Keep record dedupe semantics in `SyncService.enqueueRecord` / `SyncQueue`.
+- Avoid DB-layer event emitters for queue full/error signaling.
+
 ---
 
 ### Issue 6: iOS Simulator Auth Bypass in Production Code
@@ -458,22 +416,25 @@ this.customers.hook('updating', (modifications, primKey, obj, trans) => {
 
 **Step 1: Add Build-Time Check**
 ```typescript
-// Remove runtime bypass, use build-time constant:
+// Keep platform guard and also require DEV:
 const isIosSimulatorBypass = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true'
-    && import.meta.env.DEV; // Only in development builds
+  && import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && window.Capacitor
+  && window.Capacitor.getPlatform?.() === 'ios';
 
-// Add warning in production:
+// Fail closed in non-dev builds:
 if (import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true' && !import.meta.env.DEV) {
     console.error('SECURITY WARNING: iOS Simulator Auth Bypass is enabled in production!');
-    // Optionally throw error or disable bypass
+    // Force bypass off / optionally throw
 }
 ```
 
-**Step 2: Add CI/CD Check** (.github/workflows/build.yml)
+**Step 2: Add CI/CD guard in actual pipeline file(s)**
 ```yaml
 - name: Check for auth bypass
   run: |
-    if grep -q "VITE_IOS_SIM_AUTH_BYPASS.*true" .env.production; then
+    if [ "${VITE_IOS_SIM_AUTH_BYPASS}" = "true" ]; then
       echo "ERROR: Auth bypass enabled in production environment"
       exit 1
     fi
@@ -508,39 +469,38 @@ crons.hourly(
 export default crons;
 ```
 
-**Step 2: Update convex.json**
+**Step 2: Register cron configuration**
 ```json
 {
     "functions": "convex/",
     "crons": "convex/cron.ts"
 }
 ```
+If `convex.json` does not exist in this repo, create it with the above fields.
 
 ---
 
 ## P2 - Medium Severity Issues
 
-### Issue 8: No Offline Queue Size Limit
+### Issue 8: Offline Queue Limit and Overflow Policy
 
-**File**: `src/db/chemcheck-db.ts`  
+**File**: `src/lib/sync/SyncQueue.ts`  
 **Effort**: 1 day
 
 #### Implementation Plan
 ```typescript
-const MAX_PENDING_OPERATIONS = 1000;
+// Already present:
+const MAX_QUEUE_SIZE = 500;
 
-private enqueueRecord(table: string, id: number, operation: string, record: any): void {
-    // Check queue size
-    const pendingCount = this.getPendingCount();
-    if (pendingCount >= MAX_PENDING_OPERATIONS) {
-        // Alert user to sync
-        this.emit('sync:queue-full', { count: pendingCount });
-        return;
-    }
-    
-    // ... existing enqueue logic
+enqueue(item) {
+  // keep dedupe + priority sort
+  // keep hard cap enforcement
+  // add explicit telemetry when overflow trimming occurs
+  // expose queue usage to UI (warning threshold, e.g. >= 80%)
 }
 ```
+
+No new DB-layer queue limit is required; this should remain in the sync queue/service layer.
 
 ---
 

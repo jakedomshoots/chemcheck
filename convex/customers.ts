@@ -19,6 +19,33 @@ export const list = query({
     },
 });
 
+// Paginated customer list for large datasets
+export const listPaginated = query({
+    args: {
+        limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) throw new Error("Not authenticated");
+
+        const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
+        const result = await ctx.db
+            .query("customers")
+            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+            .paginate({
+                cursor: args.cursor ?? null,
+                numItems: limit,
+            });
+
+        return {
+            customers: result.page,
+            cursor: result.continueCursor,
+            hasMore: !result.isDone,
+        };
+    },
+});
+
 // Filter customers by criteria
 export const filter = query({
     args: {

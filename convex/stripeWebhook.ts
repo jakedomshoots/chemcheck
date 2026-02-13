@@ -67,14 +67,14 @@ function toIsoDateFromEpochSeconds(epochSeconds: unknown): string {
 }
 
 async function sendPaymentFailedNotificationEmail(
-  ctx: any,
   args: {
     userEmail: string;
-    stripeCustomerId?: string;
-    invoice: any;
+    businessName?: string;
+    businessEmail?: string;
+    invoice: unknown;
   }
 ): Promise<void> {
-  const { userEmail, invoice } = args;
+  const { userEmail, businessName, businessEmail, invoice } = args;
   if (!userEmail) return;
 
   const apiKey = process.env.MAILERSEND_API_KEY;
@@ -89,30 +89,26 @@ async function sendPaymentFailedNotificationEmail(
     return;
   }
 
-  const business = await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q) => q.eq("owner_email", userEmail))
-    .first();
-
-  const businessName = business?.name || "ChemCheck";
-  const recipientEmail = business?.email || userEmail;
-  const amountDue = formatCurrencyFromCents(invoice?.amount_due);
-  const retryDate = toIsoDateFromEpochSeconds(invoice?.next_payment_attempt);
+  const invoiceData = (invoice && typeof invoice === "object" ? invoice : {}) as Record<string, unknown>;
+  const resolvedBusinessName = businessName || "ChemCheck";
+  const recipientEmail = businessEmail || userEmail;
+  const amountDue = formatCurrencyFromCents(invoiceData.amount_due);
+  const retryDate = toIsoDateFromEpochSeconds(invoiceData.next_payment_attempt);
   const invoiceUrl =
-    (typeof invoice?.hosted_invoice_url === "string" && invoice.hosted_invoice_url) ||
-    (typeof invoice?.invoice_pdf === "string" && invoice.invoice_pdf) ||
+    (typeof invoiceData.hosted_invoice_url === "string" && invoiceData.hosted_invoice_url) ||
+    (typeof invoiceData.invoice_pdf === "string" && invoiceData.invoice_pdf) ||
     "";
   const billingPortalUrl = process.env.BILLING_PORTAL_URL || "";
 
-  const safeBusinessName = escapeHtml(businessName);
+  const safeBusinessName = escapeHtml(resolvedBusinessName);
   const safeAmountDue = escapeHtml(amountDue);
   const safeRetryDate = escapeHtml(retryDate);
   const safeInvoiceUrl = escapeHtml(invoiceUrl);
   const safeBillingPortalUrl = escapeHtml(billingPortalUrl);
 
-  const subject = `Action needed: payment failed for ${businessName}`;
+  const subject = `Action needed: payment failed for ${resolvedBusinessName}`;
   const textBody = [
-    `Hi ${businessName},`,
+    `Hi ${resolvedBusinessName},`,
     ``,
     `We could not process your latest subscription payment (${amountDue}).`,
     `We'll retry on ${retryDate}.`,
@@ -158,7 +154,7 @@ async function sendPaymentFailedNotificationEmail(
     body: JSON.stringify({
       from: {
         email: fromEmail,
-        name: businessName,
+        name: resolvedBusinessName,
       },
       to: [{ email: recipientEmail }],
       subject,
@@ -405,15 +401,14 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
         const stripeSubscriptionId =
           typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
         if (stripeSubscriptionId) {
-          const subscription = await ctx.db
-            .query("subscriptions")
-            .withIndex("by_stripe_subscription", (q) => q.eq("stripe_subscription_id", stripeSubscriptionId))
-            .first();
+          const subscription = await ctx.runQuery(internal.subscriptions.getByStripeSubscription, {
+            stripe_subscription_id: stripeSubscriptionId,
+          });
 
           if (subscription) {
-            await ctx.db.patch(subscription._id, {
+            await ctx.runMutation(internal.subscriptions.updateStatus, {
+              subscription_id: subscription._id,
               status: "active",
-              updated_at: Date.now(),
             });
           }
         }
@@ -433,32 +428,34 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
         // Try to resolve from existing subscription records.
         let subscription = null;
         if (stripeSubscriptionId) {
-          subscription = await ctx.db
-            .query("subscriptions")
-            .withIndex("by_stripe_subscription", (q) => q.eq("stripe_subscription_id", stripeSubscriptionId))
-            .first();
+          subscription = await ctx.runQuery(internal.subscriptions.getByStripeSubscription, {
+            stripe_subscription_id: stripeSubscriptionId,
+          });
         }
 
         if (!subscription && stripeCustomerId) {
-          subscription = await ctx.db
-            .query("subscriptions")
-            .withIndex("by_stripe_customer", (q) => q.eq("stripe_customer_id", stripeCustomerId))
-            .first();
+          subscription = await ctx.runQuery(internal.subscriptions.getByStripeCustomer, {
+            stripe_customer_id: stripeCustomerId,
+          });
         }
 
         if (subscription) {
           userEmail = userEmail || subscription.user_email;
-          await ctx.db.patch(subscription._id, {
+          await ctx.runMutation(internal.subscriptions.updateStatus, {
+            subscription_id: subscription._id,
             status: "past_due",
-            updated_at: Date.now(),
           });
         }
 
         if (userEmail) {
           try {
-            await sendPaymentFailedNotificationEmail(ctx, {
+            const business = await ctx.runQuery(internal.businesses.getByOwnerEmailInternal, {
+              owner_email: userEmail,
+            });
+            await sendPaymentFailedNotificationEmail({
               userEmail,
-              stripeCustomerId,
+              businessName: business?.name,
+              businessEmail: business?.email || undefined,
               invoice,
             });
           } catch (notifyErr) {

@@ -17,10 +17,12 @@ export interface SyncQueueItem {
 const STORAGE_KEY = 'chemcheck_sync_queue';
 const MAX_RETRIES = 3;
 const MAX_QUEUE_SIZE = 500; // Prevent unbounded growth
+const QUEUE_WARNING_THRESHOLD = Math.floor(MAX_QUEUE_SIZE * 0.8);
 const BATCH_SIZE = 20; // Process this many items per sync cycle
 
 export class SyncQueue {
   private queue: SyncQueueItem[] = [];
+  private highWatermarkWarned = false;
 
   constructor() {
     this.loadFromStorage();
@@ -62,6 +64,17 @@ export class SyncQueue {
       console.warn(`Sync queue overflow: removed ${overflow} low-priority items to maintain limit of ${MAX_QUEUE_SIZE}`);
     }
 
+    if (this.queue.length >= QUEUE_WARNING_THRESHOLD) {
+      if (!this.highWatermarkWarned) {
+        console.warn(
+          `Sync queue is ${this.queue.length}/${MAX_QUEUE_SIZE} (${Math.round((this.queue.length / MAX_QUEUE_SIZE) * 100)}%).`
+        );
+        this.highWatermarkWarned = true;
+      }
+    } else {
+      this.highWatermarkWarned = false;
+    }
+
     try {
       this.saveToStorage();
       console.log(`Enqueued ${item.table}[${item.localId}] for ${item.operation}`);
@@ -96,6 +109,16 @@ export class SyncQueue {
    */
   getPendingCount(): number {
     return this.queue.length;
+  }
+
+  getCapacityStatus(): { current: number; max: number; warningThreshold: number; usagePercent: number } {
+    const current = this.queue.length;
+    return {
+      current,
+      max: MAX_QUEUE_SIZE,
+      warningThreshold: QUEUE_WARNING_THRESHOLD,
+      usagePercent: Math.round((current / MAX_QUEUE_SIZE) * 100),
+    };
   }
 
   /**

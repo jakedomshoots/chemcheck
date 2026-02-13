@@ -12,7 +12,8 @@
     "test": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "ios:sim": "bash scripts/ios-sim-run.sh"
   },
   "dependencies": {
     "@capacitor/camera": "^8.0.0",

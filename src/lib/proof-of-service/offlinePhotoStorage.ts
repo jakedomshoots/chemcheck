@@ -7,6 +7,10 @@
 import Dexie, { Table } from 'dexie';
 import { OfflinePhotoRecord, CapturedPhoto, SyncStatus } from './types';
 
+const MAX_PHOTOS_PER_CATEGORY_PER_SERVICE_LOG = 5;
+const MAX_TOTAL_STORAGE_BYTES = 100 * 1024 * 1024; // 100MB
+const MAX_PHOTO_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
 // ============================================
 // Error Types
 // ============================================
@@ -44,6 +48,43 @@ const db = new OfflinePhotoDatabase();
 // ============================================
 // Helper Functions
 // ============================================
+
+function getDataUrlSizeBytes(dataUrl: string): number {
+  const base64 = dataUrl.split(',')[1];
+  if (!base64) return dataUrl.length * 2;
+  const padding = (base64.match(/=/g) || []).length;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+async function getTotalPhotoSizeBytesInternal(): Promise<number> {
+  const photos = await db.photos.toArray();
+  return photos.reduce((sum, photo) => {
+    return sum + (photo.sizeBytes ?? getDataUrlSizeBytes(photo.dataUrl));
+  }, 0);
+}
+
+async function enforceStorageLimitsInternal(): Promise<void> {
+  // Retention cleanup first
+  const cutoff = Date.now() - MAX_PHOTO_AGE_MS;
+  await db.photos.where('createdAt').below(cutoff).delete();
+
+  let totalSize = await getTotalPhotoSizeBytesInternal();
+  if (totalSize <= MAX_TOTAL_STORAGE_BYTES) return;
+
+  // Trim oldest synced photos first when above cap
+  const syncedPhotos = await db.photos
+    .where('syncStatus')
+    .equals('synced')
+    .sortBy('createdAt');
+
+  for (const photo of syncedPhotos) {
+    await db.photos.delete(photo.id);
+    totalSize -= photo.sizeBytes ?? getDataUrlSizeBytes(photo.dataUrl);
+    if (totalSize <= MAX_TOTAL_STORAGE_BYTES) {
+      break;
+    }
+  }
+}
 
 /**
  * Generate a UUID with fallback for older browsers
@@ -135,12 +176,32 @@ export async function savePhoto(
   serviceLogId: string | null = null
 ): Promise<string> {
   return withErrorHandling('save photo', async () => {
+    const sameCategoryCount = serviceLogId
+      ? await db.photos
+          .where('serviceLogId')
+          .equals(serviceLogId)
+          .and((existing) => existing.category === photo.category)
+          .count()
+      : await db.photos
+          .where('customerId')
+          .equals(customerId)
+          .and((existing) => existing.serviceLogId === null && existing.category === photo.category)
+          .count();
+
+    if (sameCategoryCount >= MAX_PHOTOS_PER_CATEGORY_PER_SERVICE_LOG) {
+      throw new PhotoStorageError(
+        `Maximum ${photo.category} photos reached (${MAX_PHOTOS_PER_CATEGORY_PER_SERVICE_LOG})`,
+        'save photo'
+      );
+    }
+
     const record: OfflinePhotoRecord = {
       id: photo.id || generateUUID(),
       customerId,
       serviceLogId,
       category: photo.category,
       dataUrl: photo.dataUrl,
+      sizeBytes: getDataUrlSizeBytes(photo.dataUrl),
       timestamp: photo.timestamp,
       latitude: photo.location?.latitude ?? null,
       longitude: photo.location?.longitude ?? null,
@@ -150,6 +211,7 @@ export async function savePhoto(
     };
 
     await db.photos.put(record);
+    await enforceStorageLimitsInternal();
     return record.id;
   });
 }
@@ -274,9 +336,14 @@ export async function updateSyncStatus(
   error?: string
 ): Promise<void> {
   return withErrorHandling('update sync status', async () => {
-    const update: Partial<OfflinePhotoRecord> = { syncStatus: status };
+    const update: Partial<OfflinePhotoRecord> = {
+      syncStatus: status,
+      syncedAt: status === 'synced' ? Date.now() : undefined,
+    };
     if (error) {
       update.syncError = error;
+    } else {
+      update.syncError = undefined;
     }
     await db.photos.update(photoId, update);
   });
@@ -366,6 +433,66 @@ export async function clearAllPhotos(): Promise<void> {
     await db.photos.clear();
   });
 }
+
+/**
+ * Delete all synced photos from local storage.
+ */
+export async function clearSyncedPhotos(): Promise<number> {
+  return withErrorHandling('clear synced photos', async () => {
+    const syncedPhotos = await db.photos.where('syncStatus').equals('synced').toArray();
+    await db.photos.where('syncStatus').equals('synced').delete();
+    return syncedPhotos.length;
+  });
+}
+
+/**
+ * Get total local photo storage usage.
+ */
+export async function getTotalPhotoSizeBytes(): Promise<number> {
+  return withErrorHandling('get total photo size', async () => {
+    return getTotalPhotoSizeBytesInternal();
+  });
+}
+
+/**
+ * Enforce retention and storage budget on local photos.
+ */
+export async function enforceStorageLimits(): Promise<void> {
+  return withErrorHandling('enforce storage limits', async () => {
+    await enforceStorageLimitsInternal();
+  });
+}
+
+/**
+ * Local photo storage usage summary.
+ */
+export async function getPhotoStorageStats(): Promise<{
+  count: number;
+  totalSizeBytes: number;
+  maxSizeBytes: number;
+  usagePercent: number;
+}> {
+  return withErrorHandling('get photo storage stats', async () => {
+    const [count, totalSizeBytes] = await Promise.all([
+      db.photos.count(),
+      getTotalPhotoSizeBytesInternal(),
+    ]);
+    const usagePercent = Math.min(100, Math.round((totalSizeBytes / MAX_TOTAL_STORAGE_BYTES) * 100));
+
+    return {
+      count,
+      totalSizeBytes,
+      maxSizeBytes: MAX_TOTAL_STORAGE_BYTES,
+      usagePercent,
+    };
+  });
+}
+
+export const photoStorageLimits = {
+  maxPhotosPerCategoryPerServiceLog: MAX_PHOTOS_PER_CATEGORY_PER_SERVICE_LOG,
+  maxTotalStorageBytes: MAX_TOTAL_STORAGE_BYTES,
+  maxPhotoAgeMs: MAX_PHOTO_AGE_MS,
+} as const;
 
 /**
  * Check if the database is accessible

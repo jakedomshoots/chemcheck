@@ -251,19 +251,33 @@ class MonitoringService {
     }
   }
 
+  private getStorage(): Storage | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
+  }
+
   private persistData(): void {
     try {
-      localStorage.setItem('monitoring_metrics', JSON.stringify(this.metrics.slice(-50)));
-      localStorage.setItem('monitoring_errors', JSON.stringify(this.errors.slice(-50)));
+      const storage = this.getStorage();
+      if (!storage) return;
+
+      storage.setItem('monitoring_metrics', JSON.stringify(this.metrics.slice(-50)));
+      storage.setItem('monitoring_errors', JSON.stringify(this.errors.slice(-50)));
     } catch (error) {
       // Handle quota exceeded error specifically
       if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('LocalStorage quota exceeded, clearing old monitoring data');
+        console.warn('SessionStorage quota exceeded, clearing old monitoring data');
         this.clearOldData();
         // Retry once with reduced data
         try {
-          localStorage.setItem('monitoring_metrics', JSON.stringify(this.metrics.slice(-25)));
-          localStorage.setItem('monitoring_errors', JSON.stringify(this.errors.slice(-25)));
+          const storage = this.getStorage();
+          if (!storage) return;
+          storage.setItem('monitoring_metrics', JSON.stringify(this.metrics.slice(-25)));
+          storage.setItem('monitoring_errors', JSON.stringify(this.errors.slice(-25)));
         } catch (retryError) {
           console.warn('Still failed to persist after clearing, using memory-only mode');
         }
@@ -281,8 +295,11 @@ class MonitoringService {
 
   private loadStoredData(): void {
     try {
-      const storedMetrics = localStorage.getItem('monitoring_metrics');
-      const storedErrors = localStorage.getItem('monitoring_errors');
+      const storage = this.getStorage();
+      if (!storage) return;
+
+      const storedMetrics = storage.getItem('monitoring_metrics');
+      const storedErrors = storage.getItem('monitoring_errors');
 
       if (storedMetrics) {
         this.metrics = JSON.parse(storedMetrics);
@@ -351,8 +368,10 @@ class MonitoringService {
   clearData(): void {
     this.metrics = [];
     this.errors = [];
-    localStorage.removeItem('monitoring_metrics');
-    localStorage.removeItem('monitoring_errors');
+    const storage = this.getStorage();
+    if (!storage) return;
+    storage.removeItem('monitoring_metrics');
+    storage.removeItem('monitoring_errors');
   }
 }
 

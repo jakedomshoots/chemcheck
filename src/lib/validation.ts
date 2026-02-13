@@ -32,42 +32,42 @@ export const customerSchema = z.object({
     .min(1, 'Name is required')
     .max(100, 'Name must be less than 100 characters')
     .transform(sanitizeString),
-  
+
   address: z.string()
     .min(1, 'Address is required')
     .max(500, 'Address must be less than 500 characters')
     .transform(sanitizeString),
-  
+
   phone: z.string()
     .optional()
     .transform(val => val ? sanitizeString(val) : undefined)
     .refine((val: string | undefined) => !val || /^[\d\s\-\(\)\+\.]{10,20}$/.test(val), {
       message: 'Invalid phone number format'
     }),
-  
+
   email: z.string()
     .optional()
     .transform(val => val ? sanitizeString(val) : undefined)
     .refine((val: string | undefined) => !val || z.string().email().safeParse(val).success, {
       message: 'Invalid email format'
     }),
-  
+
   gate_code: z.string()
     .max(50, 'Gate code must be less than 50 characters')
     .optional()
     .transform(val => val ? sanitizeString(val) : undefined),
-  
+
   service_day: z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
-  
+
   pool_gallons: z.number()
     .min(0, 'Pool gallons must be positive')
     .max(1000000, 'Pool gallons seems unrealistic')
     .optional(),
-  
+
   pool_type: z.enum(['Salt', 'Chlorine']),
-  
+
   surface_type: z.enum(['Plaster', 'Vinyl', 'Fiberglass', 'Tile']),
-  
+
   sort_order: z.number()
     .min(0, 'Sort order must be positive')
     .optional(),
@@ -75,54 +75,56 @@ export const customerSchema = z.object({
 
 export const serviceLogSchema = z.object({
   customer_id: z.number().min(1, 'Customer ID is required'),
-  
+
   service_date: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Service date must be in YYYY-MM-DD format')
     .refine(date => {
       const parsed = new Date(date);
       return !isNaN(parsed.getTime()) && parsed <= new Date();
     }, 'Invalid or future service date'),
-  
+
   status: z.enum(['completed', 'pending', 'cancelled', 'rescheduled']),
-  
+
   notes: z.string()
     .optional()
     .transform(val => val ? sanitizeString(val) : undefined)
     .refine((val: string | undefined) => !val || val.length <= 2000, {
       message: 'Notes must be less than 2000 characters'
     }),
-  
+
   ph: z.enum(['good', 'low', 'high']),
   chlorine: z.enum(['good', 'low', 'high']),
   alkalinity: z.enum(['good', 'low', 'high']),
   stabilizer: z.enum(['good', 'low', 'high']),
-  
+
   salt: z.number()
     .min(0, 'Salt level must be positive')
     .max(10000, 'Salt level seems unrealistic (max 10,000 ppm)')
     .optional(),
+
+  service_type: z.string().optional(),
 });
 
 export const chemicalUsageSchema = z.object({
   customer_id: z.number().min(1, 'Customer ID is required'),
-  
+
   chemical_type: z.string()
     .min(1, 'Chemical type is required')
     .max(100, 'Chemical type must be less than 100 characters')
     .transform(sanitizeString),
-  
+
   quantity: z.string()
     .min(1, 'Quantity is required')
     .max(50, 'Quantity must be less than 50 characters')
     .transform(sanitizeString),
-  
+
   notes: z.string()
     .optional()
     .transform(val => val ? sanitizeString(val) : undefined)
     .refine((val: string | undefined) => !val || val.length <= 1000, {
       message: 'Notes must be less than 1000 characters'
     }),
-  
+
   created_date: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
     .optional(),
@@ -133,22 +135,22 @@ export const noteSchema = z.object({
     .min(1, 'Title is required')
     .max(200, 'Title must be less than 200 characters')
     .transform(sanitizeString),
-  
+
   content: z.string()
     .min(1, 'Content is required')
     .max(5000, 'Content must be less than 5000 characters')
     .transform(sanitizeString),
-  
+
   category: z.enum(['General', 'Customer', 'Equipment', 'Reminder', 'Chemical', 'Billing']),
-  
+
   customer_id: z.number()
     .min(1, 'Invalid customer ID')
     .optional(),
-  
+
   priority: z.enum(['low', 'medium', 'high']),
-  
+
   completed: z.boolean().optional(),
-  
+
   created_date: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
     .optional(),
@@ -225,32 +227,32 @@ export function checkRateLimit(table: keyof typeof RATE_LIMITS): { allowed: bool
   const limits = RATE_LIMITS[table];
   const now = Date.now();
   const hourAgo = now - (60 * 60 * 1000);
-  
+
   // Get recent actions from localStorage
   const recentKey = `rateLimit_${table}_recent`;
   const totalKey = `rateLimit_${table}_total`;
-  
+
   try {
     const recent = JSON.parse(localStorage.getItem(recentKey) || '[]') as number[];
     const total = parseInt(localStorage.getItem(totalKey) || '0');
-    
+
     // Clean old entries
     const recentFiltered = recent.filter(timestamp => timestamp > hourAgo);
-    
+
     // Check limits
     if (recentFiltered.length >= limits.maxPerHour) {
       return { allowed: false, reason: `Rate limit exceeded: max ${limits.maxPerHour} ${table} per hour` };
     }
-    
+
     if (total >= limits.maxTotal) {
       return { allowed: false, reason: `Storage limit exceeded: max ${limits.maxTotal} ${table} total` };
     }
-    
+
     // Update counters
     recentFiltered.push(now);
     localStorage.setItem(recentKey, JSON.stringify(recentFiltered));
     localStorage.setItem(totalKey, (total + 1).toString());
-    
+
     return { allowed: true };
   } catch (error) {
     console.error('Rate limit check failed:', error);

@@ -28,6 +28,6 @@
   "ios": {
     "contentInset": "automatic",
     "backgroundColor": "#0f172a",
-    "limitsNavigationsToAppBoundDomains": false
+    "limitsNavigationsToAppBoundDomains": true
   }
 }

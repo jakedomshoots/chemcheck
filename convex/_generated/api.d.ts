@@ -11,9 +11,11 @@
 import type * as account from "../account.js";
 import type * as businesses from "../businesses.js";
 import type * as chemicalUsage from "../chemicalUsage.js";
+import type * as crons from "../crons.js";
 import type * as customers from "../customers.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
+import type * as migrations from "../migrations.js";
 import type * as notes from "../notes.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as serviceLogs from "../serviceLogs.js";
@@ -34,9 +36,11 @@ declare const fullApi: ApiFromModules<{
   account: typeof account;
   businesses: typeof businesses;
   chemicalUsage: typeof chemicalUsage;
+  crons: typeof crons;
   customers: typeof customers;
   health: typeof health;
   http: typeof http;
+  migrations: typeof migrations;
   notes: typeof notes;
   rateLimit: typeof rateLimit;
   serviceLogs: typeof serviceLogs;

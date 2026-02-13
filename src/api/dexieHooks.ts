@@ -34,14 +34,10 @@ class LRUCacheWithTTL<T> {
     private cache = new Map<string, CacheEntry<T>>();
     private readonly maxSize: number;
     private readonly ttlMs: number;
-    private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
     constructor(maxSize: number = 1000, ttlMs: number = 5 * 60 * 1000) {
         this.maxSize = maxSize;
         this.ttlMs = ttlMs;
-
-        // Set up periodic cleanup every minute
-        this.cleanupIntervalId = setInterval(() => this.cleanup(), 60 * 1000);
     }
 
     /**
@@ -161,10 +157,6 @@ class LRUCacheWithTTL<T> {
      * Stop the cleanup interval (for cleanup on unmount)
      */
     destroy(): void {
-        if (this.cleanupIntervalId) {
-            clearInterval(this.cleanupIntervalId);
-            this.cleanupIntervalId = null;
-        }
         this.cache.clear();
     }
 }
@@ -172,6 +164,44 @@ class LRUCacheWithTTL<T> {
 // Create a singleton LRU cache for ID aliasing
 // Max 1000 entries, 5 minute TTL
 const idAliasCache = new LRUCacheWithTTL<any>(1000, 5 * 60 * 1000);
+
+let cacheCleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+let visibilityCleanupRegistered = false;
+let cacheLifecycleInitialized = false;
+
+export function startCacheCleanup(): void {
+    if (cacheCleanupIntervalId) return;
+    cacheCleanupIntervalId = setInterval(() => {
+        idAliasCache.cleanup();
+    }, 60 * 1000);
+}
+
+export function stopCacheCleanup(): void {
+    if (!cacheCleanupIntervalId) return;
+    clearInterval(cacheCleanupIntervalId);
+    cacheCleanupIntervalId = null;
+}
+
+export function registerVisibilityCleanup(): void {
+    if (visibilityCleanupRegistered || typeof document === 'undefined') return;
+    visibilityCleanupRegistered = true;
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            idAliasCache.cleanup();
+            stopCacheCleanup();
+        } else {
+            startCacheCleanup();
+        }
+    });
+}
+
+export function initializeCacheLifecycle(): void {
+    if (cacheLifecycleInitialized) return;
+    cacheLifecycleInitialized = true;
+    registerVisibilityCleanup();
+    startCacheCleanup();
+}
 
 function addIdAlias<T extends { id?: number }>(record: T): T & { _id: number } {
     // Guard against null/undefined records or non-object types

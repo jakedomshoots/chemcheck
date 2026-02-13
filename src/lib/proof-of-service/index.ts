@@ -22,10 +22,20 @@ export {
   getTotalPhotoCount,
   recordToCapturedPhoto,
   clearAllPhotos,
+  clearSyncedPhotos,
+  getTotalPhotoSizeBytes,
+  enforceStorageLimits,
+  getPhotoStorageStats,
+  photoStorageLimits,
   isDatabaseAccessible,
   offlinePhotoDb,
   PhotoStorageError,
 } from './offlinePhotoStorage';
+
+// Photo storage helpers
+export {
+  formatStorageBytes,
+} from './photoStorage';
 
 // Time tracking storage
 export {

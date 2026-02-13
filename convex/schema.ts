@@ -34,8 +34,10 @@ export default defineSchema({
 
   serviceLogs: defineTable({
     customer_id: v.id("customers"),
+    created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     service_date: v.string(), // YYYY-MM-DD format
     status: v.string(), // completed, pending, etc.
+    service_type: v.optional(v.string()), // e.g. Regular Cleaning, Chemical Balance, etc.
     notes: v.optional(v.string()),
     ph: v.string(), // good, low, high
     chlorine: v.string(), // good, low, high
@@ -54,8 +56,10 @@ export default defineSchema({
     has_after_photos: v.optional(v.boolean()),
   })
     .index("by_customer", ["customer_id"])
+    .index("by_created_by", ["created_by"])
     .index("by_service_date", ["service_date"])
-    .index("by_customer_and_date", ["customer_id", "service_date"]),
+    .index("by_customer_and_date", ["customer_id", "service_date"])
+    .index("by_created_by_and_service_date", ["created_by", "service_date"]),
 
   chemicalUsage: defineTable({
     customer_id: v.id("customers"),

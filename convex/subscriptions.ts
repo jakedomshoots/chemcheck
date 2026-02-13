@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server";
+import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 
 // Subscription status enum values
 const subscriptionStatuses = v.union(
@@ -70,6 +70,47 @@ export const upsert = internalMutation({
         updated_at: Date.now(),
       });
     }
+  },
+});
+
+export const getByStripeSubscription = internalQuery({
+  args: {
+    stripe_subscription_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("subscriptions")
+      .withIndex("by_stripe_subscription", (q) =>
+        q.eq("stripe_subscription_id", args.stripe_subscription_id)
+      )
+      .first();
+  },
+});
+
+export const getByStripeCustomer = internalQuery({
+  args: {
+    stripe_customer_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("subscriptions")
+      .withIndex("by_stripe_customer", (q) =>
+        q.eq("stripe_customer_id", args.stripe_customer_id)
+      )
+      .first();
+  },
+});
+
+export const updateStatus = internalMutation({
+  args: {
+    subscription_id: v.id("subscriptions"),
+    status: subscriptionStatuses,
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.subscription_id, {
+      status: args.status,
+      updated_at: Date.now(),
+    });
   },
 });
 
