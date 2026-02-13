@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser, useServiceLogDelete } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -54,6 +54,8 @@ export default function History() {
   const [loading, setLoading] = useState(true);
   const [activeDay, setActiveDay] = useState("Monday");
   const [proofFilter, setProofFilter] = useState("all");
+  const dayTabRefs = useRef({});
+  const hasAutoScrolledDayRef = useRef(false);
 
   // Find the filtered customer if customerId is provided
   const filteredCustomer = useMemo(() => {
@@ -82,6 +84,22 @@ export default function History() {
       setActiveDay(daysOfWeek[0]);
     }
   }, [daysOfWeek, activeDay]);
+
+  useEffect(() => {
+    const activeTab = dayTabRefs.current[activeDay];
+    if (!activeTab) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      activeTab.scrollIntoView({
+        behavior: hasAutoScrolledDayRef.current ? "smooth" : "auto",
+        block: "nearest",
+        inline: "center",
+      });
+      hasAutoScrolledDayRef.current = true;
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [activeDay, daysOfWeek]);
 
   // Auto-switch to filtered customer's service day
   useEffect(() => {
@@ -302,13 +320,16 @@ export default function History() {
       </div>
 
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-        <div className="overflow-x-auto mb-6">
-          <TabsList className="inline-flex w-full sm:w-auto min-w-full sm:min-w-0 bg-slate-100 p-1 rounded-2xl">
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto native-scroll mb-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className="inline-flex w-max min-w-full sm:min-w-0 bg-slate-100 p-1 rounded-2xl gap-1 snap-x snap-mandatory">
             {daysOfWeek.map((day) => (
               <TabsTrigger
                 key={day}
                 value={day}
-                className="flex-1 sm:flex-none rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-cyan-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all whitespace-nowrap px-3"
+                ref={(el) => {
+                  if (el) dayTabRefs.current[day] = el;
+                }}
+                className="shrink-0 min-w-[4.75rem] sm:min-w-0 sm:flex-1 snap-start rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-cyan-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all whitespace-nowrap px-3"
               >
                 {day.substring(0, 3)}
               </TabsTrigger>

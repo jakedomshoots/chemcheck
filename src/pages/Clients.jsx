@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useCustomersFilter, useCurrentUser, useCustomerUpdate, useCustomerDelete } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -41,6 +41,8 @@ export default function Clients() {
   const [searchQuery, setSearchQuery] = useState("");
   const [reorderMode, setReorderMode] = useState(false);
   const [movingCustomerId, setMovingCustomerId] = useState(null);
+  const dayTabRefs = useRef({});
+  const hasAutoScrolledDayRef = useRef(false);
 
   // Get working days from cloud settings with local fallback for offline/dev mode.
   const daysOfWeek = useMemo(() => {
@@ -55,6 +57,22 @@ export default function Clients() {
       setActiveDay(validWorkingDays[0]);
     }
   }, [validWorkingDays, activeDay]);
+
+  useEffect(() => {
+    const activeTab = dayTabRefs.current[activeDay];
+    if (!activeTab) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      activeTab.scrollIntoView({
+        behavior: hasAutoScrolledDayRef.current ? "smooth" : "auto",
+        block: "nearest",
+        inline: "center",
+      });
+      hasAutoScrolledDayRef.current = true;
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [activeDay, validWorkingDays]);
 
   useEffect(() => {
     if (allCustomers && convexBusiness !== undefined) {
@@ -297,15 +315,18 @@ export default function Clients() {
       </div>
 
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-        <div className="overflow-x-auto mb-6">
-          <TabsList className="inline-flex w-full sm:w-auto min-w-full sm:min-w-0 bg-slate-100 p-1 rounded-2xl">
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto native-scroll mb-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className="inline-flex w-max min-w-full sm:min-w-0 bg-slate-100 p-1 rounded-2xl gap-1 snap-x snap-mandatory">
             {validWorkingDays.map((day) => {
               const count = customerCounts[day] || 0;
               return (
                 <TabsTrigger
                   key={day}
                   value={day}
-                  className="flex-1 sm:flex-none rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-cyan-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all whitespace-nowrap px-3 relative"
+                  ref={(el) => {
+                    if (el) dayTabRefs.current[day] = el;
+                  }}
+                  className="shrink-0 min-w-[4.75rem] sm:min-w-0 sm:flex-1 snap-start rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-cyan-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all whitespace-nowrap px-3 relative"
                 >
                   <span>{day.substring(0, 3)}</span>
                   {count > 0 && (
