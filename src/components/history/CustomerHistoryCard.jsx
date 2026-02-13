@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { ChevronDown, ChevronRight, MapPin, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, Trash2, Calendar as CalendarIcon, Lock, BarChart3, Camera } from "lucide-react";
+import { ChevronDown, ChevronRight, MapPin, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, Trash2, Calendar as CalendarIcon, Lock, BarChart3, Camera, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
 import { format, parseISO } from "date-fns";
@@ -54,7 +54,11 @@ function getLogStatus(log) {
 
 // Collapsible Log Entry Component
 function LogEntry({ log, onDelete }) {
+  // Debug log for service type visibility
+  // console.log("[LogEntry] Rendering log:", log._id, "Service Type:", log.service_type);
+
   const [isOpen, setIsOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [photos, setPhotos] = useState([]);
   const [photosLoaded, setPhotosLoaded] = useState(false);
 
@@ -153,6 +157,16 @@ function LogEntry({ log, onDelete }) {
               {statusConfig.label}
             </span>
           </div>
+
+          {/* Service Type Badge */}
+          {log.service_type && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50/80 border border-blue-200">
+              <ClipboardList className="w-3 h-3 text-blue-600" />
+              <span className="text-[10px] font-medium text-blue-600 truncate max-w-[100px]">
+                {log.service_type}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Photo Indicator (when collapsed) */}
@@ -300,13 +314,9 @@ export default function CustomerHistoryCard({ customer, logs, totalLogCount, las
         {/* Customer Header */}
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-            className="p-4 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
+          className="p-4 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
-              {customerName.charAt(0).toUpperCase()}
-            </div>
-
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-base text-slate-900">{customerName}</h3>
               <div className="flex items-center gap-1.5 text-slate-500 mt-0.5">

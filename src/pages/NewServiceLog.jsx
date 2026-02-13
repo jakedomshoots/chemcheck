@@ -1,13 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useCustomers, useServiceLogCreate } from "@/api/convexHooks";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Save, Droplets, TestTube, Waves, Activity, AlertCircle } from "lucide-react";
+import { ArrowLeft, Save, Droplets, TestTube, Waves, Activity, AlertCircle, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import SimplifiedChemicalInput from "../components/servicelog/SimplifiedChemicalInput";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
@@ -53,11 +56,20 @@ export default function NewServiceLog() {
 
   const customers = useCustomers();
   const createServiceLog = useServiceLogCreate();
+  const convexBusiness = useQuery(api.businesses.getCurrent);
+
+  // Get service types from business settings
+  const serviceTypes = useMemo(() => {
+    const settingsTypes = convexBusiness?.settings?.service_types;
+    if (settingsTypes?.length > 0) return settingsTypes;
+    return ['Regular Cleaning', 'Chemical Balance', 'Equipment Check', 'Repair'];
+  }, [convexBusiness?.settings?.service_types]);
 
   // Initialize with navigation state for instant form render
   const [customer, setCustomer] = useState(navigationCustomer || null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
+    service_type: "",
     ph: "good",
     chlorine: "good",
     alkalinity: "good",
@@ -66,13 +78,20 @@ export default function NewServiceLog() {
     notes: ""
   });
 
+  // Set default service type once serviceTypes are loaded
+  useEffect(() => {
+    if (serviceTypes.length > 0 && !formData.service_type) {
+      setFormData(prev => ({ ...prev, service_type: serviceTypes[0] }));
+    }
+  }, [serviceTypes]);
+
   // Photo capture state - Requirements 1.1, 1.6, 1.7
   const [beforePhotos, setBeforePhotos] = useState([]);
   const [afterPhotos, setAfterPhotos] = useState([]);
-  
+
   // Validation error state - Requirements 5.2, 5.4
   const [validationError, setValidationError] = useState(null);
-  
+
   // Business settings for proof-of-service requirements - Requirements 5.1, 5.3
   const { proofOfServiceSettings, isLoading: settingsLoading } = useBusinessSettings();
 
@@ -95,14 +114,14 @@ export default function NewServiceLog() {
       const found = customers.find((c) => c._id === customerId);
       console.log("Found customer:", found);
       setCustomer(found);
-      
+
       // Clean up old unlinked photos ONLY ONCE when customer is first loaded
       // This ensures a fresh start for each new service log session
       // but doesn't delete photos captured during the current session
       if (found && customerIdParam && !cleanupPerformed.current) {
         console.log('[NewServiceLog] Cleaning up old unlinked photos for customer:', customerIdParam);
         cleanupPerformed.current = true;
-        
+
         // Use IIFE to handle async operation in useEffect
         (async () => {
           try {
@@ -117,7 +136,7 @@ export default function NewServiceLog() {
       // We have customer from navigation, still need to clean up photos
       console.log('[NewServiceLog] Cleaning up old unlinked photos for customer (from nav state):', customerIdParam);
       cleanupPerformed.current = true;
-      
+
       (async () => {
         try {
           await deleteUnlinkedPhotos(customerIdParam);
@@ -131,40 +150,40 @@ export default function NewServiceLog() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Clear any previous validation errors
     setValidationError(null);
-    
+
     // Defensive check for customerIdParam
     if (!customerIdParam) {
       console.error('[NewServiceLog] Missing customerIdParam');
       setValidationError('Missing customer information. Please try again.');
       return;
     }
-    
+
     console.log('[NewServiceLog handleSubmit] Before photos:', beforePhotos.length, 'After photos:', afterPhotos.length);
     console.log('[NewServiceLog handleSubmit] Before photos array:', beforePhotos);
     console.log('[NewServiceLog handleSubmit] After photos array:', afterPhotos);
-    
+
     // Validate proof-of-service requirements before submission - Requirements 5.2, 5.4
     const validationResult = validateServiceCompletion(proofOfServiceSettings, {
       beforePhotoCount: beforePhotos.length,
       afterPhotoCount: afterPhotos.length,
     });
-    
+
     if (!validationResult.isValid) {
       const errorMessage = getValidationErrorMessage(validationResult);
       setValidationError(errorMessage);
       return;
     }
-    
+
     setSaving(true);
 
     // Get actual photo count from IndexedDB to ensure accuracy
     // This handles cases where state might not be fully updated
     let actualBeforeCount = beforePhotos.length;
     let actualAfterCount = afterPhotos.length;
-    
+
     try {
       const allPhotos = await getPhotos(customerIdParam);
       const unlinkedPhotos = allPhotos.filter(p => p.serviceLogId === null);
@@ -186,6 +205,7 @@ export default function NewServiceLog() {
       customer_id: customerId,
       service_date: localDate,
       status: "completed",
+      service_type: formData.service_type || undefined,
       notes: formData.notes,
       ph: formData.ph,
       chlorine: formData.chlorine,
@@ -196,7 +216,7 @@ export default function NewServiceLog() {
       has_before_photos: actualBeforeCount > 0,
       has_after_photos: actualAfterCount > 0,
     };
-    
+
     console.log('[NewServiceLog] Creating service log with photo_count:', logData.photo_count);
     console.log('[NewServiceLog] has_before_photos:', logData.has_before_photos, 'has_after_photos:', logData.has_after_photos);
 
@@ -237,10 +257,10 @@ export default function NewServiceLog() {
       navigate(createPageUrl("Home"));
     } catch (error) {
       console.error('[NewServiceLog] Failed to create service log:', error);
-      
+
       // Reset saving state to allow retry
       setSaving(false);
-      
+
       // Show error to user
       setValidationError('Failed to save service log. Please try again.');
     }
@@ -267,10 +287,7 @@ export default function NewServiceLog() {
         </Button>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg">
-              <Droplets className="w-5 h-5 text-white stroke-[1.75]" />
-            </div>
+          <div>
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900">Service Log</h2>
               <p className="text-sm font-medium text-slate-600">{customer.full_name}</p>
@@ -293,6 +310,29 @@ export default function NewServiceLog() {
             onPhotosChange={handleBeforePhotosChange}
           />
         </div>
+
+        {/* Service Type Selector */}
+        <Card className="p-6 mb-6 border-2 shadow-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <ClipboardList className="w-5 h-5 text-cyan-600 stroke-[1.75]" />
+            <h3 className="text-lg font-bold tracking-tight text-slate-900">Service Type</h3>
+          </div>
+          <Select
+            value={formData.service_type}
+            onValueChange={(value) => setFormData({ ...formData, service_type: value })}
+          >
+            <SelectTrigger className="bg-white text-slate-900 border-2 border-slate-200 focus:border-cyan-500 rounded-xl h-11">
+              <SelectValue placeholder="Select service type" />
+            </SelectTrigger>
+            <SelectContent>
+              {serviceTypes.map(type => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Card>
 
         <Card className="p-6 mb-6 border-2 shadow-lg">
           <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-2 flex items-center gap-2">

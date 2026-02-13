@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useCustomersFilter, useCurrentUser } from "@/api/convexHooks";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Navigation, MapPin, Clock, Zap, ChevronRight } from "lucide-react";
+import { Navigation, MapPin, Clock, Zap, ChevronRight, AlertTriangle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 
-const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const AVG_SERVICE_MINUTES = 25;
 const AVG_TRAVEL_SPEED_MPH = 24;
 
@@ -55,6 +57,16 @@ const toOrderNumber = (value) => {
 export default function RouteOptimizer() {
   const user = useCurrentUser();
   const allCustomers = useCustomersFilter({ created_by: user?.email });
+  const convexBusiness = useQuery(api.businesses.getCurrent);
+
+  // Read route optimization and working hours from business settings
+  const routeOptimizationEnabled = convexBusiness?.settings?.route_optimization ?? true;
+  const workingHoursStart = convexBusiness?.settings?.working_hours_start || "08:00";
+  const workingHoursEnd = convexBusiness?.settings?.working_hours_end || "17:00";
+  const daysOfWeek = useMemo(() => {
+    const settingsDays = convexBusiness?.settings?.working_days;
+    return settingsDays?.length > 0 ? settingsDays : DEFAULT_DAYS;
+  }, [convexBusiness?.settings?.working_days]);
 
   const [customers, setCustomers] = useState([]);
   const [selectedDay, setSelectedDay] = useState(format(new Date(), "EEEE"));
@@ -63,8 +75,8 @@ export default function RouteOptimizer() {
   const [optimizing, setOptimizing] = useState(false);
 
   useEffect(() => {
-    if (allCustomers) {
-      setCustomers(allCustomers);
+    if (allCustomers !== undefined) {
+      setCustomers(allCustomers || []);
       setLoading(false);
     }
   }, [allCustomers]);
@@ -133,10 +145,7 @@ export default function RouteOptimizer() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg">
-            <Navigation className="w-5 h-5 text-white" />
-          </div>
+        <div className="mb-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Route Planner</h2>
             <p className="text-sm text-slate-600">Build a practical daily stop order from your saved customer list</p>
@@ -161,23 +170,30 @@ export default function RouteOptimizer() {
               </SelectContent>
             </Select>
           </div>
-          <Button
-            onClick={optimizeRoute}
-            disabled={optimizing || dayCustomers.length === 0}
-            className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
-          >
-            {optimizing ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Building...
-              </>
-            ) : (
-              <>
-                <Zap className="w-5 h-5 mr-2" />
-                Generate Route Plan
-              </>
-            )}
-          </Button>
+          {routeOptimizationEnabled ? (
+            <Button
+              onClick={optimizeRoute}
+              disabled={optimizing || dayCustomers.length === 0}
+              className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
+            >
+              {optimizing ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Building...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-5 h-5 mr-2" />
+                  Generate Route Plan
+                </>
+              )}
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span className="text-sm text-amber-700">Route optimization is disabled in Settings</span>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -218,11 +234,14 @@ export default function RouteOptimizer() {
                 <div className="text-sm text-slate-600 mt-1">Est. Time</div>
               </div>
             </div>
-            {optimizedRoute.optimization_summary && (
-              <div className="mt-4 p-4 bg-white rounded-lg border border-emerald-200">
-                <p className="text-sm text-slate-700">{optimizedRoute.optimization_summary}</p>
+
+            <div className="mt-4 pt-4 border-t border-emerald-200/50 flex items-center justify-between text-sm text-slate-600">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-600" />
+                <span>Working Hours: <span className="font-semibold text-slate-900">{workingHoursStart} - {workingHoursEnd}</span></span>
               </div>
-            )}
+              <div>{optimizedRoute.optimization_summary}</div>
+            </div>
           </Card>
 
           <div className="space-y-3">

@@ -250,10 +250,7 @@ export default function Home() {
     return (
       <div className="max-w-7xl mx-auto px-3 py-4 font-sans">
         <div className="mb-4">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="p-1.5 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg shadow-lg">
-              <Calendar className="w-4 h-4 text-white stroke-[1.75]" />
-            </div>
+          <div className="mb-1">
             <div>
               <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
               <p className="text-xs font-medium text-slate-600">
@@ -276,10 +273,7 @@ export default function Home() {
   return (
     <div className="max-w-7xl mx-auto px-3 py-4 font-sans">
       <div className="mb-4">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="p-1.5 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg shadow-lg">
-            <Calendar className="w-4 h-4 text-white stroke-[1.75]" />
-          </div>
+        <div className="mb-1">
           <div>
             <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
             <p className="text-xs font-medium text-slate-600">

@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Home, Users, BarChart3, FileText, TestTube, StickyNote, Menu, X, Settings, BookOpen } from "lucide-react";
 import { importWithRetry } from "@/lib/chunkErrorRecovery";
+import chemcheckLogo from "@/assets/chemcheck-logo.svg";
 
 const SyncStatusIndicator = lazy(() =>
   importWithRetry(
@@ -45,13 +46,12 @@ export default function Layout({ children, currentPageName }) {
       {/* Header - Mobile Only */}
       <header className="lg:hidden sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm safe-area-top">
         <div className="flex items-center justify-between px-4 h-14">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-              <TestTube className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-              ChemCheck
-            </h1>
+          <div className="flex items-center">
+            <img
+              src={chemcheckLogo}
+              alt="ChemCheck"
+              className="h-7 sm:h-8 w-auto max-w-[150px] sm:max-w-[200px]"
+            />
           </div>
           <div className="flex items-center gap-2">
             <Suspense fallback={<div className="h-8 w-8" aria-hidden="true" />}>
@@ -72,16 +72,13 @@ export default function Layout({ children, currentPageName }) {
       <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white/80 backdrop-blur-xl border-r border-slate-200/60 shadow-2xl flex-col z-40">
         {/* Logo */}
         <div className="p-6 border-b border-slate-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-              <TestTube className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                ChemCheck
-              </h1>
-              <p className="text-xs font-medium text-slate-500">Pool Service Manager</p>
-            </div>
+          <div className="space-y-2">
+            <img
+              src={chemcheckLogo}
+              alt="ChemCheck"
+              className="h-10 w-auto max-w-[220px]"
+            />
+            <p className="text-xs font-medium text-slate-500">Pool Service Manager</p>
           </div>
         </div>
 
@@ -127,15 +124,12 @@ export default function Layout({ children, currentPageName }) {
           />
           <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl flex flex-col transform transition-transform duration-200 ease-out translate-x-0">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <TestTube className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                    ChemCheck
-                  </h1>
-                </div>
+              <div className="flex items-center">
+                <img
+                  src={chemcheckLogo}
+                  alt="ChemCheck"
+                  className="h-7 sm:h-8 w-auto max-w-[160px] sm:max-w-[200px]"
+                />
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}

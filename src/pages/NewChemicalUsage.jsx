@@ -4,7 +4,7 @@ import { api } from "../../convex/_generated/api";
 import { useCustomersFilter, useChemicalUsageCreate, useCurrentUser } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Save, TestTube } from "lucide-react";
+import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -125,10 +125,7 @@ export default function NewChemicalUsage() {
           Back to Chemical Usage
         </Button>
 
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl shadow-lg">
-            <TestTube className="w-5 h-5 text-white stroke-[1.75]" />
-          </div>
+        <div>
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-slate-900">Add Chemical Usage</h2>
             <p className="text-sm font-medium text-slate-600">Track extra chemicals for billing</p>

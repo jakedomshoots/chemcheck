@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   Search,
-  BookOpen,
   AlertTriangle,
   Droplets,
   Wrench,
@@ -1150,25 +1149,20 @@ export default function PoolSchool() {
         <div className="relative mb-8">
           <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-teal-500/20 rounded-3xl blur-3xl" />
           <div className="relative bg-white/70 backdrop-blur-xl rounded-3xl border border-white/50 shadow-xl p-6 sm:p-8">
-            <div className="flex items-start gap-4">
-              <div className="p-3 sm:p-4 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 rounded-2xl shadow-lg shadow-teal-500/30">
-                <BookOpen className="w-7 sm:w-8 h-7 sm:h-8 text-white" />
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
-                  Pool School
-                </h1>
-                <p className="text-slate-600 mt-1 text-sm sm:text-base">
-                  Florida pool tech's complete field guide
-                </p>
-                <div className="flex items-center gap-3 mt-3">
-                  <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
-                    {totalTopics} Topics
-                  </span>
-                  <span className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
-                    {POOL_SCHOOL_DATA.categories.length} Categories
-                  </span>
-                </div>
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
+                Pool School
+              </h1>
+              <p className="text-slate-600 mt-1 text-sm sm:text-base">
+                Florida pool tech's complete field guide
+              </p>
+              <div className="flex items-center gap-3 mt-3">
+                <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
+                  {totalTopics} Topics
+                </span>
+                <span className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                  {POOL_SCHOOL_DATA.categories.length} Categories
+                </span>
               </div>
             </div>
           </div>

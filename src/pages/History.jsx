@@ -4,8 +4,8 @@ import { useCustomersFilter, useServiceLogs, useCurrentUser, useServiceLogDelete
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { createPageUrl, parseLocalDate } from "@/utils";
-import { BarChart3, Calendar, Filter, Camera, Clock, CheckCircle2, AlertCircle, X } from "lucide-react";
+import { createPageUrl } from "@/utils";
+import { Calendar, Filter, Camera, Clock, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -100,15 +100,37 @@ export default function History() {
     }
   }, [allCustomers, allLogs]);
 
+  // Keep filter counts aligned with what can actually render in day tabs.
+  const scopedLogs = useMemo(() => {
+    if (!customers.length || !logs.length || !daysOfWeek.length) {
+      return [];
+    }
+
+    const visibleCustomerIds = new Set(
+      customers
+        .filter((customer) => daysOfWeek.includes(customer.service_day))
+        .flatMap((customer) => [customer._id, customer.id])
+        .filter((id) => id !== undefined && id !== null)
+        .map((id) => String(id))
+    );
+
+    return logs.filter((log) => {
+      if (log?.customer_id === undefined || log?.customer_id === null) {
+        return false;
+      }
+      return visibleCustomerIds.has(String(log.customer_id));
+    });
+  }, [customers, logs, daysOfWeek]);
+
   // Calculate filter counts for the badge display
   const filterCounts = useMemo(() => {
-    return getFilterCounts(logs);
-  }, [logs]);
+    return getFilterCounts(scopedLogs);
+  }, [scopedLogs]);
 
   // Apply proof-of-service filter to logs
   const filteredLogs = useMemo(() => {
-    return filterByProofOfService(logs, proofFilter);
-  }, [logs, proofFilter]);
+    return filterByProofOfService(scopedLogs, proofFilter);
+  }, [scopedLogs, proofFilter]);
 
   const logMatchesCustomer = (log, customer) => (
     log.customer_id === customer._id ||
@@ -123,7 +145,7 @@ export default function History() {
     // For each customer, get their logs
     let result = dayCustomers.map(customer => {
       // Get ALL logs for this customer (for accurate total count)
-      const allCustomerLogs = logs.filter(log => logMatchesCustomer(log, customer));
+      const allCustomerLogs = scopedLogs.filter(log => logMatchesCustomer(log, customer));
       // Get filtered logs (for display based on proof-of-service filter)
       const customerLogs = filteredLogs.filter(log => logMatchesCustomer(log, customer));
       return {
@@ -149,7 +171,7 @@ export default function History() {
       );
       if (filteredCustomerData) {
         // Get all logs for this customer (not filtered by proof-of-service)
-        const allLogsForCustomer = logs.filter(log => logMatchesCustomer(log, filteredCustomerData));
+        const allLogsForCustomer = scopedLogs.filter(log => logMatchesCustomer(log, filteredCustomerData));
         const filteredLogsForCustomer = filteredLogs.filter(log => logMatchesCustomer(log, filteredCustomerData));
 
         // Remove from result if already there, then prepend
@@ -177,10 +199,7 @@ export default function History() {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg">
-              <BarChart3 className="w-5 h-5 text-white" />
-            </div>
+          <div>
             <div>
               <h2 className="text-2xl font-bold text-slate-900">Service History</h2>
               <p className="text-sm text-slate-600">All service logs by day</p>
@@ -202,11 +221,8 @@ export default function History() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg">
-              <BarChart3 className="w-5 h-5 text-white" />
-            </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
             <div>
               <h2 className="text-2xl font-bold text-slate-900">Service History</h2>
               <p className="text-sm text-slate-600">All service logs by day</p>
@@ -214,10 +230,10 @@ export default function History() {
           </div>
 
           {/* Proof-of-Service Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-500" />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" />
             <Select value={proofFilter} onValueChange={setProofFilter}>
-              <SelectTrigger className="w-[180px] h-9 text-sm bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg">
+              <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg">
                 <SelectValue placeholder="Filter by proof" />
               </SelectTrigger>
               <SelectContent>
@@ -245,9 +261,6 @@ export default function History() {
         {filteredCustomer && (
           <div className="mt-3 p-3 bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-200 rounded-xl flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
-                {filteredCustomer.full_name?.charAt(0)?.toUpperCase() || '?'}
-              </div>
               <div>
                 <span className="text-sm font-semibold text-slate-900">
                   {filteredCustomer.full_name}

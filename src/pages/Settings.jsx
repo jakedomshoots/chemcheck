@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import {
-  Settings as SettingsIcon,
   Building2,
   User,
   Bell,
@@ -37,6 +36,12 @@ import { BackupManager } from '@/components/BackupManager';
 import { downloadUserData, deleteAllUserData, getDataRetentionSummary } from '@/lib/gdpr';
 import { optOutAnalytics, optInAnalytics, hasOptedOut } from '@/lib/analytics';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
+import {
+  getPhotoStorageStats,
+  clearSyncedPhotos,
+  clearAllPhotos as clearAllLocalPhotos,
+  formatStorageBytes,
+} from '@/lib/proof-of-service';
 
 // Account Section Component with Logout and Delete Account
 function AccountSection({ userData, setUserData }) {
@@ -248,6 +253,13 @@ export default function Settings() {
   const [showBackupManager, setShowBackupManager] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [photoStorage, setPhotoStorage] = useState({
+    count: 0,
+    totalSizeBytes: 0,
+    maxSizeBytes: 100 * 1024 * 1024,
+    usagePercent: 0,
+  });
+  const [isStorageLoading, setIsStorageLoading] = useState(false);
 
   // Convex hooks for business data
   const convexBusiness = useQuery(api.businesses.getCurrent);
@@ -294,6 +306,12 @@ export default function Settings() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (activeSection === 'privacy') {
+      void refreshPhotoStorageStats();
+    }
+  }, [activeSection]);
 
   // Load business data from Convex when available
   useEffect(() => {
@@ -410,6 +428,48 @@ export default function Settings() {
         requirePhotos: settings.requirePhotos ?? settings.require_photos ?? false,
         requireSignatures: settings.requireSignatures ?? settings.require_signatures ?? false
       });
+    }
+  };
+
+  const refreshPhotoStorageStats = async () => {
+    setIsStorageLoading(true);
+    try {
+      const stats = await getPhotoStorageStats();
+      setPhotoStorage(stats);
+    } catch (error) {
+      console.error('Failed to load photo storage stats:', error);
+    } finally {
+      setIsStorageLoading(false);
+    }
+  };
+
+  const handleClearSyncedPhotos = async () => {
+    const confirmed = window.confirm('Delete all synced photos from local storage?');
+    if (!confirmed) return;
+
+    try {
+      const deletedCount = await clearSyncedPhotos();
+      setSaveMessage(`Synced photo cleanup successful: cleared ${deletedCount} photo${deletedCount === 1 ? '' : 's'}.`);
+      await refreshPhotoStorageStats();
+    } catch (error) {
+      console.error('Failed to clear synced photos:', error);
+      setSaveMessage('Failed to clear synced photos.');
+    }
+  };
+
+  const handleClearAllLocalPhotos = async () => {
+    const confirmed = window.confirm(
+      'Delete ALL locally stored photos? Synced photos stay in cloud storage, but local copies will be removed.'
+    );
+    if (!confirmed) return;
+
+    try {
+      await clearAllLocalPhotos();
+      setSaveMessage('Local photo cleanup successful: cleared all local photos.');
+      await refreshPhotoStorageStats();
+    } catch (error) {
+      console.error('Failed to clear local photos:', error);
+      setSaveMessage('Failed to clear local photos.');
     }
   };
 
@@ -532,10 +592,7 @@ export default function Settings() {
     <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl shadow-lg">
-            <SettingsIcon className="w-5 h-5 text-white" />
-          </div>
+        <div className="mb-2">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Settings</h1>
             <p className="text-xs sm:text-sm text-slate-600">Manage your business and account</p>
@@ -1170,6 +1227,42 @@ export default function Settings() {
                     >
                       View Data Summary
                     </Button>
+                    <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-700">Local photo storage</span>
+                        <span className="text-sm font-medium text-slate-900">
+                          {isStorageLoading
+                            ? 'Loading...'
+                            : `${formatStorageBytes(photoStorage.totalSizeBytes)} / ${formatStorageBytes(photoStorage.maxSizeBytes)}`}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all ${photoStorage.usagePercent >= 85 ? 'bg-red-500' : 'bg-purple-600'}`}
+                          style={{ width: `${Math.min(100, photoStorage.usagePercent)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {photoStorage.count} local photo{photoStorage.count === 1 ? '' : 's'} ({photoStorage.usagePercent}% used)
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          onClick={handleClearSyncedPhotos}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Clear Synced Photos
+                        </Button>
+                        <Button
+                          onClick={handleClearAllLocalPhotos}
+                          variant="outline"
+                          size="sm"
+                          className="border-red-300 text-red-700 hover:bg-red-100"
+                        >
+                          Clear All Local Photos
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Delete All Data */}

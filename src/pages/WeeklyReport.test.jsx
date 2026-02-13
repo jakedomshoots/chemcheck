@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import WeeklyReport from './WeeklyReport';
 import { addWeeks, startOfWeek, endOfWeek, format } from 'date-fns';
@@ -20,14 +20,16 @@ vi.mock('@/api/convexHooks', () => ({
                 customer_id: 'cust1',
                 service_date: format(monday, 'yyyy-MM-dd'), // Log for this week
                 ph: '7.4',
-                chlorine: '3.0'
+                chlorine: '3.0',
+                alkalinity: 'good'
             },
             {
                 _id: 'log2',
                 customer_id: 'cust2',
                 service_date: '2023-01-01', // Old log
                 ph: '7.2',
-                chlorine: '2.0'
+                chlorine: '2.0',
+                alkalinity: 'low'
             }
         ];
     }
@@ -63,5 +65,15 @@ describe('WeeklyReport', () => {
         expect(screen.getByText('Monday')).toBeInTheDocument();
         // We need to click/expand the day to see the customer, but the count should be visible
         expect(screen.getByText('1 service')).toBeInTheDocument();
+    });
+
+    it('shows alkalinity in expanded weekly report table', () => {
+        render(<WeeklyReport />);
+
+        // Expand Monday row
+        fireEvent.click(screen.getByText('Monday'));
+
+        expect(screen.getByText('Alk')).toBeInTheDocument();
+        expect(screen.getByText('good')).toBeInTheDocument();
     });
 });

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { FileText, Download, Calendar, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { Download, Calendar, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { format, startOfWeek, endOfWeek, parseISO, isWithinInterval, addWeeks } from "date-fns";
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -67,6 +67,31 @@ export default function WeeklyReport() {
     daysOfWeek.forEach(day => {
       logsByDay[day] = getDayLogs(day);
     });
+
+    const escapeHtml = (value) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    const getLevelKey = (value) => {
+      const normalized = String(value ?? '').toLowerCase();
+      return ['low', 'good', 'high', 'critical'].includes(normalized) ? normalized : null;
+    };
+
+    const getLevelClass = (value) => {
+      const key = getLevelKey(value);
+      return key ? `level-${key}` : '';
+    };
+
+    const getLevelDisplay = (value) => {
+      const key = getLevelKey(value);
+      if (key) return key.toUpperCase();
+
+      const raw = String(value ?? '').trim();
+      return raw ? escapeHtml(raw.toUpperCase()) : '-';
+    };
 
     const printWindow = window.open('', '_blank');
 
@@ -248,26 +273,28 @@ export default function WeeklyReport() {
                   <table>
                     <thead>
                       <tr>
-                        <th style="width: 22%;">Customer</th>
+                        <th style="width: 20%;">Customer</th>
                         <th style="width: 10%;">pH</th>
                         <th style="width: 10%;">Chlorine</th>
+                        <th style="width: 10%;">Alkalinity</th>
                         <th style="width: 10%;">Cyanuric Acid</th>
                         <th style="width: 10%;">Salt</th>
-                        <th style="width: 38%;">Notes</th>
+                        <th style="width: 30%;">Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${dayData.map(({ customer, log }) => `
                         <tr>
                           <td>
-                            <div class="customer-name">${customer.full_name}</div>
-                            <div class="address">${customer.address}</div>
+                            <div class="customer-name">${escapeHtml(customer.full_name || 'Unknown Customer')}</div>
+                            <div class="address">${escapeHtml(customer.address || '')}</div>
                           </td>
-                          <td class="${log.ph ? `level-${log.ph}` : ''}">${log.ph ? log.ph.toUpperCase() : '-'}</td>
-                          <td class="${log.chlorine ? `level-${log.chlorine}` : ''}">${log.chlorine ? log.chlorine.toUpperCase() : '-'}</td>
-                          <td class="${log.stabilizer ? `level-${log.stabilizer}` : ''}">${log.stabilizer ? log.stabilizer.toUpperCase() : '-'}</td>
-                          <td style="text-align: center;">${log.salt ? log.salt + ' PPM' : '-'}</td>
-                          <td class="notes-cell">${log.notes || '-'}</td>
+                          <td class="${getLevelClass(log.ph)}">${getLevelDisplay(log.ph)}</td>
+                          <td class="${getLevelClass(log.chlorine)}">${getLevelDisplay(log.chlorine)}</td>
+                          <td class="${getLevelClass(log.alkalinity)}">${getLevelDisplay(log.alkalinity)}</td>
+                          <td class="${getLevelClass(log.stabilizer)}">${getLevelDisplay(log.stabilizer)}</td>
+                          <td style="text-align: center;">${log.salt ? `${escapeHtml(log.salt)} PPM` : '-'}</td>
+                          <td class="notes-cell">${escapeHtml(log.notes || '-')}</td>
                         </tr>
                       `).join('')}
                     </tbody>
@@ -303,10 +330,7 @@ export default function WeeklyReport() {
   return (
     <div className="max-w-7xl mx-auto px-3 py-4">
       <div className="flex flex-col gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg shadow-lg">
-            <FileText className="w-4 h-4 text-white" />
-          </div>
+        <div>
           <div>
             <h2 className="text-xl font-bold text-slate-900">Weekly Report</h2>
             <p className="text-xs text-slate-600">
@@ -411,6 +435,7 @@ export default function WeeklyReport() {
                             <th className="text-left p-2 text-[10px] font-semibold text-slate-700">Customer</th>
                             <th className="text-center p-2 text-[10px] font-semibold text-slate-700">pH</th>
                             <th className="text-center p-2 text-[10px] font-semibold text-slate-700">Cl</th>
+                            <th className="text-center p-2 text-[10px] font-semibold text-slate-700">Alk</th>
                             <th className="text-center p-2 text-[10px] font-semibold text-slate-700">CYA</th>
                             <th className="text-left p-2 text-[10px] font-semibold text-slate-700">Notes</th>
                           </tr>
@@ -438,6 +463,15 @@ export default function WeeklyReport() {
                                       log.chlorine === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
                                   }`}>
                                   {log.chlorine || '-'}
+                                </span>
+                              </td>
+                              <td className="p-2 text-center">
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${log.alkalinity === 'good' ? 'bg-emerald-100 text-emerald-700' :
+                                  log.alkalinity === 'low' ? 'bg-yellow-100 text-yellow-700' :
+                                    log.alkalinity === 'high' ? 'bg-orange-100 text-orange-700' :
+                                      log.alkalinity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                                  }`}>
+                                  {log.alkalinity || '-'}
                                 </span>
                               </td>
                               <td className="p-2 text-center">
