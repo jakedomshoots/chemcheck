@@ -51,6 +51,18 @@ function saveSkippedCustomers(customerIds) {
   }
 }
 
+function formatRouteDuration(totalMinutes) {
+  const safeMinutes = Number.isFinite(totalMinutes) ? Math.max(0, Math.round(totalMinutes)) : 0;
+  if (safeMinutes < 60) return `${safeMinutes} min`;
+
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  const hourLabel = hours === 1 ? "hr" : "hrs";
+
+  if (minutes === 0) return `${hours} ${hourLabel}`;
+  return `${hours} ${hourLabel} ${minutes} min`;
+}
+
 export default function Home() {
   const navigate = useNavigate();
   const user = useCurrentUser();
@@ -453,7 +465,7 @@ export default function Home() {
               <p className="text-[11px] uppercase tracking-wide text-slate-500">Estimated Route</p>
               <p className="text-lg font-bold text-cyan-700 flex items-center gap-1">
                 <Route className="w-3.5 h-3.5" />
-                {opsBrief.pendingStops} stops · {opsBrief.estimatedRouteMinutes} min
+                {opsBrief.pendingStops} stops · {formatRouteDuration(opsBrief.estimatedRouteMinutes)}
               </p>
             </div>
           </div>
