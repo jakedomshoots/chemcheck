@@ -3,6 +3,50 @@ import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
 
+async function resolveBusinessContext(ctx: any, userEmail: string) {
+    const teamMember = await ctx.db
+        .query("team_members")
+        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
+        .filter((q: any) => q.eq(q.field("is_active"), true))
+        .first();
+
+    if (teamMember) {
+        const teamBusiness = await ctx.db.get(teamMember.business_id);
+        if (teamBusiness) return teamBusiness;
+    }
+
+    return await ctx.db
+        .query("businesses")
+        .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
+        .first();
+}
+
+async function listAccessibleCustomers(ctx: any, userEmail: string) {
+    const business = await resolveBusinessContext(ctx, userEmail);
+
+    if (business) {
+        const businessCustomers = await ctx.db
+            .query("customers")
+            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+            .collect();
+
+        if (businessCustomers.length > 0) {
+            return businessCustomers;
+        }
+
+        // Backwards compatibility for legacy records without business_id
+        return await ctx.db
+            .query("customers")
+            .withIndex("by_created_by", (q: any) => q.eq("created_by", business.owner_email))
+            .collect();
+    }
+
+    return await ctx.db
+        .query("customers")
+        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
+        .collect();
+}
+
 // Get all customers for the current user
 export const list = query({
     args: {},
@@ -10,12 +54,7 @@ export const list = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        const customers = await ctx.db
-            .query("customers")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-            .collect();
-
-        return customers;
+        return await listAccessibleCustomers(ctx, identity.email!);
     },
 });
 
@@ -56,14 +95,11 @@ export const filter = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Strictly enforce filtering by current user's email
-        // We override any 'created_by' arg to ensure tenant isolation
-        const customers = await ctx.db.query("customers")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-            .collect();
+        // Ignore created_by input and enforce tenant-safe list on server
+        const customers = await listAccessibleCustomers(ctx, identity.email!);
 
         if (args.service_day) {
-            return customers.filter((c) => c.service_day === args.service_day);
+            return customers.filter((c: any) => c.service_day === args.service_day);
         }
 
         return customers;
@@ -80,8 +116,9 @@ export const get = query({
         const customer = await ctx.db.get(args.id);
         if (!customer) throw new Error("Customer not found");
 
-        // Verify ownership (tenant isolation)
-        if (customer.created_by !== identity.email) {
+        const accessibleCustomers = await listAccessibleCustomers(ctx, identity.email!);
+        const canAccess = accessibleCustomers.some((item: any) => String(item._id) === String(customer._id));
+        if (!canAccess) {
             throw new Error("Access denied");
         }
 
@@ -113,10 +150,14 @@ export const create = mutation({
         // SECURITY: Server-side validation and sanitization
         // This cannot be bypassed by attackers sending data directly to Convex
         const validatedData = validateCustomerCreate(args);
+        const business = await resolveBusinessContext(ctx, identity.email!);
+        const createdBy = business ? business.owner_email : identity.email!;
+        const businessId = business ? String(business._id) : undefined;
 
         const customerId = await ctx.db.insert("customers", {
             ...validatedData,
-            created_by: identity.email!,
+            created_by: createdBy,
+            business_id: businessId,
         });
 
         return customerId;

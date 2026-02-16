@@ -694,11 +694,24 @@ export default function WorkOrders() {
 
   const workOrderById = useMemo(() => {
     const map = new Map();
-    for (const order of workOrders) {
+    for (const order of allWorkOrders) {
       map.set(String(order._id), order);
     }
     return map;
-  }, [workOrders]);
+  }, [allWorkOrders]);
+
+  const invoiceWorkOrderOptions = useMemo(() => {
+    const selectedCustomerId = String(invoiceForm.customer_id || "");
+    const filteredOrders = (allWorkOrders ?? []).filter((order) =>
+      !selectedCustomerId || String(order.customer_id) === selectedCustomerId
+    );
+
+    return filteredOrders.sort((a, b) => {
+      const dateDiff = String(b.scheduled_date || "").localeCompare(String(a.scheduled_date || ""));
+      if (dateDiff !== 0) return dateDiff;
+      return Number(b.created_at || 0) - Number(a.created_at || 0);
+    });
+  }, [allWorkOrders, invoiceForm.customer_id]);
 
   const quoteById = useMemo(() => {
     const map = new Map();
@@ -1482,9 +1495,9 @@ export default function WorkOrders() {
     setIsCreating(true);
     try {
       if (cloudEnabled) {
-        const selectedCloudCustomer = cloudCustomers.find((c) => String(c._id) === String(form.customer_id));
+        const selectedCloudCustomer = customerById.get(String(form.customer_id));
         if (!selectedCloudCustomer) {
-          throw new Error("Select a cloud customer. Local customers cannot be used for cloud work orders.");
+          throw new Error("Select a valid customer before creating a work order.");
         }
 
         await createWorkOrder({
@@ -1703,9 +1716,9 @@ export default function WorkOrders() {
     setIsCreatingInvoice(true);
     try {
       if (cloudEnabled) {
-        const selectedCloudCustomer = cloudCustomers.find((c) => String(c._id) === String(invoiceForm.customer_id));
+        const selectedCloudCustomer = customerById.get(String(invoiceForm.customer_id));
         if (!selectedCloudCustomer) {
-          throw new Error("Select a cloud customer. Local customers cannot be used for cloud invoices.");
+          throw new Error("Select a valid customer before creating an invoice.");
         }
 
         const draftLineItems = [
@@ -1812,9 +1825,9 @@ export default function WorkOrders() {
     try {
       const lineAmount = Number((quantity * unitPrice).toFixed(2));
       if (cloudEnabled) {
-        const selectedCloudCustomer = cloudCustomers.find((c) => String(c._id) === String(quoteForm.customer_id));
+        const selectedCloudCustomer = customerById.get(String(quoteForm.customer_id));
         if (!selectedCloudCustomer) {
-          throw new Error("Select a cloud customer. Local customers cannot be used for cloud quotes.");
+          throw new Error("Select a valid customer before creating a quote.");
         }
 
         await createQuote({
@@ -2249,6 +2262,20 @@ export default function WorkOrders() {
       customer_id: String(order.customer_id),
       description: order.title,
     }));
+  };
+
+  const handleInvoiceCustomerSelect = (value) => {
+    setInvoiceForm((prev) => {
+      const next = { ...prev, customer_id: value };
+      if (!prev.work_order_id) return next;
+
+      const selectedOrder = workOrderById.get(String(prev.work_order_id));
+      if (!selectedOrder || String(selectedOrder.customer_id) !== String(value)) {
+        next.work_order_id = "";
+      }
+
+      return next;
+    });
   };
 
   const handleSendInvoice = async (invoiceId, destinationOverride) => {
@@ -3362,7 +3389,7 @@ export default function WorkOrders() {
                 <select
                   id="inv-customer"
                   value={invoiceForm.customer_id}
-                  onChange={(e) => setInvoiceForm((prev) => ({ ...prev, customer_id: e.target.value }))}
+                  onChange={(e) => handleInvoiceCustomerSelect(e.target.value)}
                   className="w-full h-9 border border-slate-300 rounded-md px-2 text-xs bg-white"
                 >
                   <option value="">Select customer...</option>
@@ -3384,12 +3411,15 @@ export default function WorkOrders() {
                   className="w-full h-9 border border-slate-300 rounded-md px-2 text-xs bg-white"
                 >
                   <option value="">No linked work order</option>
-                  {workOrders.map((order) => (
+                  {invoiceWorkOrderOptions.map((order) => (
                     <option key={order._id} value={String(order._id)}>
                       {order.title} ({order.status.replace("_", " ")})
                     </option>
                   ))}
                 </select>
+                {invoiceForm.customer_id && invoiceWorkOrderOptions.length === 0 && (
+                  <p className="mt-1 text-[11px] text-slate-500">No work orders found for this customer yet.</p>
+                )}
               </div>
 
               <div>
