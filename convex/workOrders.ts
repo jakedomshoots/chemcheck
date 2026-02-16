@@ -5,6 +5,15 @@ import { normalizeTaxRate } from "./tax";
 const VALID_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
 
+function normalizeWorkOrderDate(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function normalizeTimestamp(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 function validateStatus(status: string): void {
   if (!VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
     throw new Error(`Invalid work order status: \"${status}\"`);
@@ -39,7 +48,9 @@ export const list = query({
       .collect();
 
     if (args.scheduled_date) {
-      workOrders = workOrders.filter((item) => item.scheduled_date === args.scheduled_date);
+      workOrders = workOrders.filter(
+        (item) => normalizeWorkOrderDate((item as { scheduled_date?: unknown }).scheduled_date) === args.scheduled_date,
+      );
     }
 
     if (args.status) {
@@ -47,9 +58,13 @@ export const list = query({
     }
 
     workOrders.sort((a, b) => {
-      const dateDiff = a.scheduled_date.localeCompare(b.scheduled_date);
+      const aDate = normalizeWorkOrderDate((a as { scheduled_date?: unknown }).scheduled_date);
+      const bDate = normalizeWorkOrderDate((b as { scheduled_date?: unknown }).scheduled_date);
+      const dateDiff = aDate.localeCompare(bDate);
       if (dateDiff !== 0) return dateDiff;
-      return a.created_at - b.created_at;
+      const aCreatedAt = normalizeTimestamp((a as { created_at?: unknown }).created_at);
+      const bCreatedAt = normalizeTimestamp((b as { created_at?: unknown }).created_at);
+      return aCreatedAt - bCreatedAt;
     });
 
     return workOrders;
