@@ -1,10 +1,31 @@
-import React, { useState, memo } from "react";
-import { MapPin, Phone, Mail, Droplets, ChevronDown, CheckCircle2, Clock, FileText, History } from "lucide-react";
+import { useState, memo } from "react";
+import {
+  Phone,
+  Mail,
+  ChevronDown,
+  CheckCircle2,
+  Clock,
+  FileText,
+  SkipForward,
+  PhoneCall,
+  MapPin,
+  ShieldCheck,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatServiceDate } from "@/utils";
 
-const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWeekLog, onClick, onHistoryClick }) {
+const CustomerCard = memo(function CustomerCard({
+  customer,
+  isCompleted,
+  lastWeekLog,
+  onClick,
+  onStart,
+  onSkip,
+  onCall,
+  onMap,
+  serviceConfidence,
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -34,9 +55,74 @@ const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWee
         </div>
       </div>
 
+      <div className={`px-3 pb-2 ${isCompleted ? 'bg-emerald-50/30' : 'bg-slate-50/30'}`}>
+        <div className="grid grid-cols-4 gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-[11px]"
+            onClick={(e) => {
+              e.stopPropagation();
+              (onStart || onClick)?.();
+            }}
+          >
+            <Clock className="w-3 h-3 mr-1" />
+            {isCompleted ? "View" : "Start"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-[11px]"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSkip?.();
+            }}
+            disabled={isCompleted}
+          >
+            <SkipForward className="w-3 h-3 mr-1" />
+            Skip
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-[11px]"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCall?.();
+            }}
+            disabled={!customer.phone}
+          >
+            <PhoneCall className="w-3 h-3 mr-1" />
+            Call
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-[11px]"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMap?.();
+            }}
+            disabled={!customer.address}
+          >
+            <MapPin className="w-3 h-3 mr-1" />
+            Map
+          </Button>
+        </div>
+      </div>
+
       {isExpanded && (
         <div className={`border-t ${isCompleted ? 'border-emerald-200' : 'border-slate-200/60'}`}>
           <div className={`p-3 space-y-2 ${isCompleted ? 'bg-emerald-50/40' : 'bg-slate-50/40'}`}>
+            {isCompleted && serviceConfidence && (
+              <div className="flex items-center gap-2 bg-cyan-50 border border-cyan-200 rounded-lg p-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-700" />
+                <span className="text-[11px] text-cyan-800 font-medium">
+                  Service Confidence: {serviceConfidence.label}
+                </span>
+              </div>
+            )}
+
             {customer.phone && (
               <div className="flex items-center gap-2 text-slate-700">
                 <Phone className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
@@ -127,20 +213,6 @@ const CustomerCard = memo(function CustomerCard({ customer, isCompleted, lastWee
                   </>
                 )}
               </Button>
-
-              {onHistoryClick && (
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onHistoryClick(customer);
-                  }}
-                  variant="outline"
-                  className="w-full text-sm h-9 border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
-                >
-                  <History className="w-4 h-4 mr-2" />
-                  View History
-                </Button>
-              )}
             </div>
           </div>
         </div>

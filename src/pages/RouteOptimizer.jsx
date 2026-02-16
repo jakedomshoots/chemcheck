@@ -7,39 +7,51 @@ import { Card } from "@/components/ui/card";
 import { Navigation, MapPin, Clock, Zap, ChevronRight, AlertTriangle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import { routeOptimizer } from "@/lib/routeOptimizer";
 
 const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const AVG_SERVICE_MINUTES = 25;
-const AVG_TRAVEL_SPEED_MPH = 24;
 
-const extractZip = (address = "") => {
-  const match = address.match(/\b\d{5}(?:-\d{4})?\b/);
-  return match ? match[0] : null;
+const normalizeDayName = (value) => {
+  if (!value) return null;
+  switch (String(value).trim().toLowerCase()) {
+    case "sun":
+    case "sunday":
+      return "Sunday";
+    case "mon":
+    case "monday":
+      return "Monday";
+    case "tue":
+    case "tues":
+    case "tuesday":
+      return "Tuesday";
+    case "wed":
+    case "weds":
+    case "wednesday":
+      return "Wednesday";
+    case "thu":
+    case "thur":
+    case "thurs":
+    case "thursday":
+      return "Thursday";
+    case "fri":
+    case "friday":
+      return "Friday";
+    case "sat":
+    case "saturday":
+      return "Saturday";
+    default:
+      return null;
+  }
 };
 
-const normalizeStreetName = (address = "") =>
-  address
-    .toLowerCase()
-    .replace(/\b\d+\b/g, "")
-    .replace(
-      /\b(street|st|avenue|ave|road|rd|drive|dr|lane|ln|court|ct|boulevard|blvd|way|circle|cir)\b/g,
-      ""
-    )
-    .replace(/[^a-z]/g, "")
-    .trim();
-
-const estimateTravelMinutes = (previous, current) => {
-  if (!previous || !current) return 0;
-
-  const previousZip = extractZip(previous.address);
-  const currentZip = extractZip(current.address);
-  if (previousZip && currentZip && previousZip === currentZip) return 6;
-
-  const previousStreet = normalizeStreetName(previous.address);
-  const currentStreet = normalizeStreetName(current.address);
-  if (previousStreet && currentStreet && previousStreet === currentStreet) return 4;
-
-  return 10;
+const parseClockToMinutes = (timeValue) => {
+  if (!timeValue || !String(timeValue).includes(":")) return null;
+  const [hoursRaw, minutesRaw] = String(timeValue).split(":");
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return Math.min(23, Math.max(0, hours)) * 60 + Math.min(59, Math.max(0, minutes));
 };
 
 const formatMinutes = (minutes) => {
@@ -49,9 +61,40 @@ const formatMinutes = (minutes) => {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 };
 
-const toOrderNumber = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+const getReferenceDateForDay = (dayName) => {
+  const normalizedDay = normalizeDayName(dayName);
+  let targetIndex = -1;
+  switch (normalizedDay) {
+    case "Sunday":
+      targetIndex = 0;
+      break;
+    case "Monday":
+      targetIndex = 1;
+      break;
+    case "Tuesday":
+      targetIndex = 2;
+      break;
+    case "Wednesday":
+      targetIndex = 3;
+      break;
+    case "Thursday":
+      targetIndex = 4;
+      break;
+    case "Friday":
+      targetIndex = 5;
+      break;
+    case "Saturday":
+      targetIndex = 6;
+      break;
+    default:
+      targetIndex = -1;
+  }
+  const now = new Date();
+  if (targetIndex < 0) return now;
+  const delta = (targetIndex - now.getDay() + 7) % 7;
+  const targetDate = new Date(now);
+  targetDate.setDate(now.getDate() + delta);
+  return targetDate;
 };
 
 export default function RouteOptimizer() {
@@ -65,11 +108,17 @@ export default function RouteOptimizer() {
   const workingHoursEnd = convexBusiness?.settings?.working_hours_end || "17:00";
   const daysOfWeek = useMemo(() => {
     const settingsDays = convexBusiness?.settings?.working_days;
-    return settingsDays?.length > 0 ? settingsDays : DEFAULT_DAYS;
+    const sourceDays = settingsDays?.length > 0 ? settingsDays : DEFAULT_DAYS;
+    const normalizedDays = sourceDays
+      .map((day) => normalizeDayName(day))
+      .filter(Boolean);
+
+    if (normalizedDays.length === 0) return DEFAULT_DAYS;
+    return [...new Set(normalizedDays)];
   }, [convexBusiness?.settings?.working_days]);
 
   const [customers, setCustomers] = useState([]);
-  const [selectedDay, setSelectedDay] = useState(format(new Date(), "EEEE"));
+  const [selectedDay, setSelectedDay] = useState(() => normalizeDayName(format(new Date(), "EEEE")) || "Monday");
   const [optimizedRoute, setOptimizedRoute] = useState(null);
   const [loading, setLoading] = useState(true);
   const [optimizing, setOptimizing] = useState(false);
@@ -81,8 +130,25 @@ export default function RouteOptimizer() {
     }
   }, [allCustomers]);
 
+  useEffect(() => {
+    if (daysOfWeek.length === 0) return;
+    if (!daysOfWeek.includes(selectedDay)) {
+      setSelectedDay(daysOfWeek[0]);
+    }
+  }, [daysOfWeek, selectedDay]);
+
+  const customerDayCounts = useMemo(() => {
+    const counts = new Map();
+    for (const customer of customers) {
+      const normalizedDay = normalizeDayName(customer.service_day);
+      if (!normalizedDay) continue;
+      counts.set(normalizedDay, (counts.get(normalizedDay) || 0) + 1);
+    }
+    return counts;
+  }, [customers]);
+
   const dayCustomers = useMemo(
-    () => customers.filter((c) => c.service_day === selectedDay),
+    () => customers.filter((customer) => normalizeDayName(customer.service_day) === selectedDay),
     [customers, selectedDay]
   );
 
@@ -90,49 +156,72 @@ export default function RouteOptimizer() {
     setOptimizedRoute(null);
   }, [selectedDay]);
 
-  const optimizeRoute = useCallback(() => {
+  const optimizeRoute = useCallback(async () => {
     if (dayCustomers.length === 0) return;
     setOptimizing(true);
+    try {
+      const customerById = new Map(
+        customers.map((customer) => [Number(customer._id ?? customer.id), customer])
+      );
+      const targetDate = getReferenceDateForDay(selectedDay);
 
-    const orderedStops = [...dayCustomers].sort((a, b) => {
-      const orderDelta = toOrderNumber(a.sort_order) - toOrderNumber(b.sort_order);
-      if (orderDelta !== 0) return orderDelta;
+      const route = await routeOptimizer.optimizeRoute(customers, targetDate, {
+        startTime: workingHoursStart,
+        prioritizeTimeWindows: true,
+        prioritizeHighPriority: true,
+        algorithm: "nearest-neighbor",
+      });
 
-      const aZip = extractZip(a.address) || "";
-      const bZip = extractZip(b.address) || "";
-      if (aZip !== bZip) return aZip.localeCompare(bZip);
+      if (route.stops.length === 0) {
+        toast.info(`No route stops found for ${selectedDay}.`);
+        setOptimizedRoute(null);
+        return;
+      }
 
-      return (a.full_name || "").localeCompare(b.full_name || "");
-    });
+      const optimizedStops = route.stops.map((stop, idx) => {
+        const originalCustomer = customerById.get(Number(stop.customer.id));
+        const gateCodeText = originalCustomer?.gate_code ? `Gate code: ${originalCustomer.gate_code}` : null;
+        return {
+          position: idx + 1,
+          customer_name: stop.customer.name || "Unnamed customer",
+          customer_address: stop.customer.address || "No address on file",
+          estimated_travel_time_from_previous: idx === 0 ? "Start location" : `~${Math.round(stop.travelTime)} min`,
+          estimated_distance_from_previous: idx === 0 ? null : `${stop.distance.toFixed(1)} mi`,
+          notes: gateCodeText,
+          customer: originalCustomer || stop.customer,
+        };
+      });
 
-    let totalTravelMinutes = 0;
-    const optimizedStops = orderedStops.map((customer, idx) => {
-      const previousStop = idx > 0 ? orderedStops[idx - 1] : null;
-      const travelMinutes = previousStop ? estimateTravelMinutes(previousStop, customer) : 0;
-      totalTravelMinutes += travelMinutes;
+      const totalMinutes = Math.round(route.totalTime);
+      const estimatedDistanceMiles = Number(route.totalDistance.toFixed(1));
 
-      const gateCodeText = customer.gate_code ? `Gate code: ${customer.gate_code}` : null;
-      return {
-        position: idx + 1,
-        customer_name: customer.full_name,
-        customer_address: customer.address,
-        estimated_travel_time_from_previous: idx === 0 ? "Start location" : `~${travelMinutes} min`,
-        notes: gateCodeText,
-        customer
-      };
-    });
+      setOptimizedRoute({
+        optimized_order: optimizedStops,
+        total_estimated_minutes: totalMinutes,
+        total_estimated_time: formatMinutes(totalMinutes),
+        total_estimated_distance: `${estimatedDistanceMiles} mi`,
+        optimization_summary: `Route optimized with ${route.optimizationMethod} for ${selectedDay}.`
+      });
+    } catch (error) {
+      console.error("[RouteOptimizer] Failed to generate route:", error);
+      toast.error("Could not generate route plan. Please try again.");
+    } finally {
+      setOptimizing(false);
+    }
+  }, [customers, dayCustomers, selectedDay, workingHoursStart]);
 
-    const totalMinutes = (optimizedStops.length * AVG_SERVICE_MINUTES) + totalTravelMinutes;
-    const estimatedDistanceMiles = Number(((totalTravelMinutes / 60) * AVG_TRAVEL_SPEED_MPH).toFixed(1));
+  const availableWorkingMinutes = useMemo(() => {
+    const startMinutes = parseClockToMinutes(workingHoursStart);
+    const endMinutes = parseClockToMinutes(workingHoursEnd);
+    if (startMinutes === null || endMinutes === null) return null;
+    if (endMinutes <= startMinutes) return null;
+    return endMinutes - startMinutes;
+  }, [workingHoursStart, workingHoursEnd]);
 
-    setOptimizedRoute({
-      optimized_order: optimizedStops,
-      total_estimated_time: formatMinutes(totalMinutes),
-      total_estimated_distance: `${estimatedDistanceMiles} mi`,
-      optimization_summary: `Route plan built from your saved customer order and nearby addresses for ${selectedDay}. Update customer sort order to fine-tune stop sequence.`
-    });
-    setOptimizing(false);
-  }, [dayCustomers, selectedDay]);
+  const exceedsWorkingHours = useMemo(() => {
+    if (!optimizedRoute || availableWorkingMinutes === null) return false;
+    return optimizedRoute.total_estimated_minutes > availableWorkingMinutes;
+  }, [optimizedRoute, availableWorkingMinutes]);
 
   if (loading) {
     return (
@@ -164,7 +253,7 @@ export default function RouteOptimizer() {
               <SelectContent>
                 {daysOfWeek.map(day => (
                   <SelectItem key={day} value={day}>
-                    {day} ({customers.filter(c => c.service_day === day).length} customers)
+                    {day} ({customerDayCounts.get(day) || 0} customers)
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -242,6 +331,12 @@ export default function RouteOptimizer() {
               </div>
               <div>{optimizedRoute.optimization_summary}</div>
             </div>
+
+            {exceedsWorkingHours && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Estimated route time exceeds configured working hours. Consider splitting stops or extending working hours.
+              </div>
+            )}
           </Card>
 
           <div className="space-y-3">
@@ -271,7 +366,9 @@ export default function RouteOptimizer() {
                       <div className="flex items-center gap-2 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
                         <Clock className="w-4 h-4 text-blue-600" />
                         <span className="text-sm text-blue-700 font-medium">
-                          {stop.estimated_travel_time_from_previous} from previous stop
+                          {stop.estimated_travel_time_from_previous}
+                          {stop.estimated_distance_from_previous ? ` (${stop.estimated_distance_from_previous})` : ""}
+                          {" "}from previous stop
                         </span>
                       </div>
                     )}

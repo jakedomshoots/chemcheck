@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, AlertCircle, Loader2, Mail, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { Send, AlertCircle, Loader2, Mail, AlertTriangle, Image as ImageIcon, MessageSquare } from 'lucide-react';
 import { EmailPreview } from './EmailPreview';
 import { getEmailDeliveryValidationError } from '@/lib/emailValidation';
 
@@ -61,6 +61,8 @@ export interface SendReportDialogProps {
   customNote?: string;
   /** Whether to show the note input field (overrides automatic detection) */
   showNoteInput?: boolean;
+  /** Enabled delivery channels in UI (defaults to both if omitted) */
+  enabledChannels?: DeliveryMethod[];
   /** Photos tied to this service log (local preview before sending) */
   attachedPhotos?: Array<{
     id: string;
@@ -108,10 +110,11 @@ export function SendReportDialog({
   onCustomNoteChange,
   customNote: externalCustomNote,
   showNoteInput,
+  enabledChannels,
   attachedPhotos = [],
 }: SendReportDialogProps) {
   const [internalLoading, setInternalLoading] = useState(false);
-  const [selectedMethod, setSelectedMethod] = useState<DeliveryMethod>('sms');
+  const [selectedMethod, setSelectedMethod] = useState<DeliveryMethod>('email');
   const [internalCustomNote, setInternalCustomNote] = useState('');
   const [noteValidationError, setNoteValidationError] = useState<string | null>(null);
   
@@ -125,21 +128,36 @@ export function SendReportDialog({
   // Use external loading state if provided, otherwise use internal
   const loading = isLoading || internalLoading;
   
+  const normalizedPhone = customerPhone?.trim() || '';
   const normalizedEmail = customerEmail?.trim() || '';
+  const hasPhone = Boolean(normalizedPhone.length > 0);
+  const normalizedPhoneDigits = normalizedPhone.replace(/[^\d]/g, '');
+  const hasValidPhone = hasPhone && normalizedPhoneDigits.length >= 7 && normalizedPhoneDigits.length <= 15;
   const hasEmail = Boolean(normalizedEmail.length > 0);
   const emailValidationError = hasEmail ? getEmailDeliveryValidationError(normalizedEmail) : null;
   const hasValidEmail = hasEmail && !emailValidationError;
   
-  // Auto-select available method
+  const requestedChannels = Array.isArray(enabledChannels) && enabledChannels.length > 0
+    ? enabledChannels
+    : (['sms', 'email'] as DeliveryMethod[]);
+  const canUseSmsChannel = requestedChannels.includes('sms');
+  const canUseEmailChannel = requestedChannels.includes('email');
+
   const availableMethods = {
-    sms: false, // Disable SMS for now due to Twilio issues
-    email: hasValidEmail,
+    sms: canUseSmsChannel && hasValidPhone,
+    email: canUseEmailChannel && hasValidEmail,
   };
+  const availableMethodOrder: DeliveryMethod[] = ['sms', 'email'];
+  const firstAvailableMethod = availableMethodOrder.find((method) => availableMethods[method]) || null;
   
-  // Auto-select email as the default method
+  // Auto-select the first available channel when the dialog opens.
   useEffect(() => {
-    setSelectedMethod('email');
-  }, []);
+    if (!isOpen) return;
+    if (availableMethods[selectedMethod]) return;
+    if (firstAvailableMethod) {
+      setSelectedMethod(firstAvailableMethod);
+    }
+  }, [availableMethods.email, availableMethods.sms, firstAvailableMethod, isOpen, selectedMethod]);
   
   // Reset internal state when dialog opens/closes
   useEffect(() => {
@@ -149,7 +167,7 @@ export function SendReportDialog({
     }
   }, [isOpen]);
   
-  const canSend = availableMethods[selectedMethod];
+  const canSend = Boolean(availableMethods[selectedMethod]);
   const beforePhotos = attachedPhotos.filter((photo) => photo.category === 'before');
   const afterPhotos = attachedPhotos.filter((photo) => photo.category === 'after');
   
@@ -217,6 +235,12 @@ export function SendReportDialog({
   
   const characterCount = customNote?.length || 0;
   const isOverLimit = characterCount > CUSTOM_NOTE_MAX_LENGTH;
+  const selectedRecipient = selectedMethod === 'sms' ? normalizedPhone : normalizedEmail;
+  const selectedChannelError = selectedMethod === 'sms'
+    ? (!hasPhone ? 'No phone number on file. Please add a phone number to send SMS reports.' : (!hasValidPhone ? 'The phone number on file appears invalid. Please update it before sending.' : null))
+    : (!hasEmail
+      ? 'No email address on file. Please add an email address to send reports.'
+      : (emailValidationError || 'The email on file is invalid. Please update it before sending.'));
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -311,19 +335,36 @@ export function SendReportDialog({
             </div>
           )}
 
-          {/* Delivery Method Selection - Email Only */}
-          {hasEmail && (
+          {/* Delivery Method Selection */}
+          {(canUseSmsChannel || canUseEmailChannel) && (
             <div className="space-y-2">
               <div className="text-xs text-slate-500 font-medium">Delivery Method</div>
               <div className="flex gap-2">
+                {canUseSmsChannel && (
+                  <Button
+                    type="button"
+                    variant={selectedMethod === 'sms' ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={loading || !availableMethods.sms}
+                    onClick={() => setSelectedMethod('sms')}
+                    className={selectedMethod === 'sms' ? 'flex-1 bg-cyan-600 hover:bg-cyan-700' : 'flex-1'}
+                    data-testid="sms-method-button"
+                    aria-pressed={selectedMethod === 'sms'}
+                    aria-label="Send via SMS"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                    SMS
+                  </Button>
+                )}
                 <Button
                   type="button"
-                  variant="default"
+                  variant={selectedMethod === 'email' ? 'default' : 'outline'}
                   size="sm"
-                  disabled={loading}
-                  className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                  disabled={loading || !availableMethods.email}
+                  onClick={() => setSelectedMethod('email')}
+                  className={selectedMethod === 'email' ? 'flex-1 bg-cyan-600 hover:bg-cyan-700' : 'flex-1'}
                   data-testid="email-method-button"
-                  aria-pressed={true}
+                  aria-pressed={selectedMethod === 'email'}
                   aria-label="Send via Email"
                 >
                   <Mail className="w-3.5 h-3.5 mr-1.5" />
@@ -335,18 +376,24 @@ export function SendReportDialog({
 
           {/* Recipient Display */}
           <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-            <Mail className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            {selectedMethod === 'sms' ? (
+              <MessageSquare className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            ) : (
+              <Mail className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            )}
             <div>
-              <div className="text-xs text-slate-500 font-medium">Sending to</div>
+              <div className="text-xs text-slate-500 font-medium">
+                Sending to {selectedMethod === 'sms' ? 'phone' : 'email'}
+              </div>
               <div 
                 className={`text-sm ${canSend ? 'text-slate-900' : 'text-red-600'}`}
                 data-testid="recipient-display"
               >
-                {normalizedEmail || 'No email on file'}
+                {selectedRecipient || `No ${selectedMethod === 'sms' ? 'phone' : 'email'} on file`}
               </div>
             </div>
           </div>
-          {emailValidationError && (
+          {selectedMethod === 'email' && emailValidationError && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
               {emailValidationError}
             </p>
@@ -450,9 +497,7 @@ export function SendReportDialog({
             <Alert variant="destructive" className="py-2">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-xs">
-                {!hasEmail
-                  ? 'No email address on file. Please add an email address to send reports.'
-                  : (emailValidationError || 'The email on file is invalid. Please update it before sending.')}
+                {selectedChannelError}
               </AlertDescription>
             </Alert>
           )}

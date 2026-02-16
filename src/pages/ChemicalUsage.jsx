@@ -31,6 +31,18 @@ import { format, parseISO, startOfMonth, endOfMonth, addMonths, isWithinInterval
 import AddChemicalForm from "@/components/servicelog/AddChemicalForm";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
 
+function downloadHtmlReport(filename, html) {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
 export default function ChemicalUsagePage() {
   const navigate = useNavigate();
   const user = useCurrentUser();
@@ -162,13 +174,6 @@ export default function ChemicalUsagePage() {
     if (monthlyRecords.length === 0) return;
 
     setGenerating(true);
-    const printWindow = window.open("", "_blank");
-
-    if (!printWindow) {
-      setGenerating(false);
-      alert("Please allow popups to download the report");
-      return;
-    }
 
     const reportHTML = `
       <!DOCTYPE html>
@@ -335,13 +340,8 @@ export default function ChemicalUsagePage() {
         </body>
       </html>
     `;
-
-    printWindow.document.write(reportHTML);
-    printWindow.document.close();
-
-    setTimeout(() => {
-      setGenerating(false);
-    }, 500);
+    downloadHtmlReport(`chemical-usage-${format(currentMonthStart, "yyyy-MM")}.html`, reportHTML);
+    setGenerating(false);
   };
 
   if (loading) {

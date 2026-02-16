@@ -59,6 +59,8 @@ This guide walks you through setting up Stripe for ChemCheck billing.
    - `customer.subscription.deleted`
    - `invoice.payment_succeeded`
    - `invoice.payment_failed`
+   - `checkout.session.completed`
+   - `checkout.session.async_payment_succeeded`
 
 5. Copy the **Signing secret** (starts with `whsec_`)
 6. Add it to your Convex environment variables:
@@ -82,6 +84,15 @@ This guide walks you through setting up Stripe for ChemCheck billing.
 3. Or configure per-product trial periods
 
 ## Testing
+
+### Invoice and Deposit Payment Links
+- ChemCheck now creates Stripe Checkout links for:
+  - Customer invoice payment (`payment_type=invoice`)
+  - Quote deposit payment (`payment_type=quote_deposit`)
+- Success redirects include `session_id` and return to:
+  - `/workorders?stripe_payment=invoice_success...`
+  - `/workorders?stripe_payment=deposit_success...`
+- On return, the app verifies the Checkout Session with Stripe and syncs payment status as a fallback if webhook delivery is delayed.
 
 ### Test Mode
 - Use test API keys (starting with `pk_test_` and `sk_test_`)

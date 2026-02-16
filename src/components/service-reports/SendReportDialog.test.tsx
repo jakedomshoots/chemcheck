@@ -1,8 +1,7 @@
 /**
  * Tests for SendReportDialog Component
  * 
- * Tests email delivery, validation, and UI states.
- * Note: SMS functionality has been disabled in favor of email-only delivery.
+ * Tests delivery channel selection, validation, and UI states.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -46,6 +45,31 @@ describe('SendReportDialog', () => {
 
       const emailButton = screen.getByTestId('email-method-button');
       expect(emailButton).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
+  describe('SMS Delivery', () => {
+    it('shows sms method button when phone is available', () => {
+      render(
+        <SendReportDialog
+          {...defaultProps}
+          customerPhone="+15551234567"
+        />
+      );
+
+      expect(screen.getByTestId('sms-method-button')).toBeInTheDocument();
+    });
+
+    it('defaults to sms when phone exists and email is missing', () => {
+      render(
+        <SendReportDialog
+          {...defaultProps}
+          customerPhone="+15551234567"
+        />
+      );
+
+      const smsButton = screen.getByTestId('sms-method-button');
+      expect(smsButton).toHaveAttribute('aria-pressed', 'true');
     });
   });
 
@@ -141,6 +165,24 @@ describe('SendReportDialog', () => {
 
       await waitFor(() => {
         expect(mockOnConfirm).toHaveBeenCalledWith('email', undefined);
+      });
+    });
+
+    it('calls onConfirm with sms method when phone-only customer sends', async () => {
+      mockOnConfirm.mockResolvedValue(undefined);
+
+      render(
+        <SendReportDialog
+          {...defaultProps}
+          customerPhone="+15551234567"
+        />
+      );
+
+      const sendButton = screen.getByTestId('confirm-send-button');
+      fireEvent.click(sendButton);
+
+      await waitFor(() => {
+        expect(mockOnConfirm).toHaveBeenCalledWith('sms', undefined);
       });
     });
 

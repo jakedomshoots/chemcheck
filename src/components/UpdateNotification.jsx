@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Download, RefreshCw, X, Wifi, WifiOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, RefreshCw, X } from 'lucide-react';
 import { serviceWorkerManager, applyUpdate } from '@/lib/serviceWorker';
+import { toast } from 'sonner';
 
 export function UpdateNotification() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [showOfflineNotice, setShowOfflineNotice] = useState(false);
 
   useEffect(() => {
     // Listen for service worker updates
@@ -18,32 +17,8 @@ export function UpdateNotification() {
 
     serviceWorkerManager.addEventListener(handleUpdate);
 
-    // Listen for network status changes
-    const handleOnline = () => {
-      setIsOnline(true);
-      setShowOfflineNotice(false);
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-      setShowOfflineNotice(true);
-      // Auto-hide offline notice after 5 seconds
-      setTimeout(() => setShowOfflineNotice(false), 5000);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Check initial state
-    if (!navigator.onLine) {
-      setShowOfflineNotice(true);
-      setTimeout(() => setShowOfflineNotice(false), 5000);
-    }
-
     return () => {
       serviceWorkerManager.removeEventListener(handleUpdate);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -55,17 +30,12 @@ export function UpdateNotification() {
     } catch (error) {
       console.error('Update failed:', error);
       setIsUpdating(false);
-      // Show error message
-      alert('Update failed. Please refresh the page manually.');
+      toast.error('Update failed. Please refresh manually.');
     }
   };
 
   const dismissUpdate = () => {
     setUpdateAvailable(false);
-  };
-
-  const dismissOfflineNotice = () => {
-    setShowOfflineNotice(false);
   };
 
   return (
@@ -123,63 +93,6 @@ export function UpdateNotification() {
           </div>
         </div>
       )}
-
-      {/* Offline Notice */}
-      {showOfflineNotice && (
-        <div className="fixed bottom-4 left-4 right-4 z-50 max-w-sm mx-auto">
-          <div className={`rounded-lg shadow-lg p-4 border transition-all duration-300 ${
-            isOnline 
-              ? 'bg-green-600 text-white border-green-500' 
-              : 'bg-orange-600 text-white border-orange-500'
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                isOnline ? 'bg-green-500' : 'bg-orange-500'
-              }`}>
-                {isOnline ? (
-                  <Wifi className="w-4 h-4" />
-                ) : (
-                  <WifiOff className="w-4 h-4" />
-                )}
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <h3 className="font-medium text-sm">
-                  {isOnline ? 'Back Online' : 'You\'re Offline'}
-                </h3>
-                <p className={`text-xs mt-1 ${
-                  isOnline ? 'text-green-100' : 'text-orange-100'
-                }`}>
-                  {isOnline 
-                    ? 'Internet connection restored. All features available.'
-                    : 'No internet connection. App works offline with local data.'
-                  }
-                </p>
-              </div>
-              
-              <button
-                onClick={dismissOfflineNotice}
-                className={`p-1 ${
-                  isOnline ? 'text-green-200 hover:text-white' : 'text-orange-200 hover:text-white'
-                }`}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Network Status Indicator (always visible in corner) */}
-      <div className="fixed bottom-4 right-4 z-40">
-        <div className={`w-3 h-3 rounded-full transition-all duration-300 ${
-          isOnline 
-            ? 'bg-green-500 shadow-green-500/50' 
-            : 'bg-red-500 shadow-red-500/50 animate-pulse'
-        } shadow-lg`} 
-        title={isOnline ? 'Online' : 'Offline'}
-        />
-      </div>
     </>
   );
 }

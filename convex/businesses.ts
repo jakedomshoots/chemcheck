@@ -91,6 +91,9 @@ export const create = mutation({
         route_optimization: true,
         require_photos: false,
         require_signatures: false,
+        default_workorders_section: "dispatch",
+        home_primary_action: "start_next_pending",
+        show_ops_brief: true,
       },
       created_at: now,
       updated_at: now,
@@ -139,6 +142,9 @@ export const updateSettings = mutation({
     route_optimization: v.optional(v.boolean()),
     require_photos: v.optional(v.boolean()),
     require_signatures: v.optional(v.boolean()),
+    default_workorders_section: v.optional(v.string()),
+    home_primary_action: v.optional(v.string()),
+    show_ops_brief: v.optional(v.boolean()),
     proof_of_service: v.optional(proofOfServiceSettingsValidator),
   },
   handler: async (ctx, args) => {
@@ -165,6 +171,9 @@ export const updateSettings = mutation({
       ...(args.route_optimization !== undefined && { route_optimization: args.route_optimization }),
       ...(args.require_photos !== undefined && { require_photos: args.require_photos }),
       ...(args.require_signatures !== undefined && { require_signatures: args.require_signatures }),
+      ...(args.default_workorders_section !== undefined && { default_workorders_section: args.default_workorders_section }),
+      ...(args.home_primary_action !== undefined && { home_primary_action: args.home_primary_action }),
+      ...(args.show_ops_brief !== undefined && { show_ops_brief: args.show_ops_brief }),
       ...(args.proof_of_service !== undefined && { proof_of_service: args.proof_of_service }),
     };
 

@@ -2,7 +2,6 @@
 // Optimizes service routes using GPS coordinates and various algorithms
 
 import { monitoring } from './monitoring';
-import { userManager } from './userManager';
 
 export interface Location {
   latitude: number;
@@ -56,6 +55,9 @@ export interface RouteOptimizationOptions {
   algorithm?: 'nearest-neighbor' | 'genetic' | 'simulated-annealing';
 }
 
+type UnknownCustomer = Customer | Record<string, unknown>;
+type CustomerPriority = Customer['priority'];
+
 class RouteOptimizer {
   private geocodeCache = new Map<string, Location>();
   private distanceCache = new Map<string, { distance: number; duration: number }>();
@@ -65,21 +67,28 @@ class RouteOptimizer {
   // ============================================
 
   async optimizeRoute(
-    customers: Customer[],
-    date: string,
+    customers: UnknownCustomer[],
+    date: string | Date,
     options: RouteOptimizationOptions = {}
   ): Promise<OptimizedRoute> {
     const startTime = performance.now();
+    const normalizedCustomers = customers
+      .map((customer) => this.normalizeCustomer(customer))
+      .filter((customer): customer is Customer => customer !== null);
     
     try {
       // Ensure all customers have locations
-      await this.ensureLocations(customers);
+      const customersWithLocations = await this.ensureLocations(normalizedCustomers);
+
+      const targetDay = this.getDayOfWeek(date);
       
       // Filter customers for the specific day
-      const dayCustomers = customers.filter(c => c.serviceDay === this.getDayOfWeek(date));
+      const dayCustomers = customersWithLocations.filter(
+        (customer) => this.normalizeDayName(customer.serviceDay) === targetDay
+      );
       
       if (dayCustomers.length === 0) {
-        return this.createEmptyRoute(date, options);
+        return this.createEmptyRoute(this.toDateString(date), options);
       }
 
       // Choose optimization algorithm
@@ -98,7 +107,7 @@ class RouteOptimizer {
       }
 
       // Calculate route details
-      const route = await this.calculateRouteDetails(optimizedOrder, date, options);
+      const route = await this.calculateRouteDetails(optimizedOrder, this.toDateString(date), options);
       
       const duration = performance.now() - startTime;
       monitoring.recordMetric('route_optimization', duration, {
@@ -115,7 +124,7 @@ class RouteOptimizer {
         severity: 'medium',
         metadata: { 
           date, 
-          customerCount: customers.length,
+          customerCount: normalizedCustomers.length,
           error: error instanceof Error ? error.message : 'Unknown error'
         }
       });
@@ -347,6 +356,8 @@ class RouteOptimizer {
   }
 
   private async calculateRouteFitness(route: Customer[], options: RouteOptimizationOptions): Promise<number> {
+    if (route.length === 0) return 0;
+
     let totalDistance = 0;
     let totalTime = 0;
     let timeWindowPenalty = 0;
@@ -363,7 +374,7 @@ class RouteOptimizer {
         currentTime += duration;
 
         // Time window penalty
-        if (customer.timeWindow) {
+        if (options.prioritizeTimeWindows && customer.timeWindow) {
           const windowStart = this.parseTime(customer.timeWindow.start);
           const windowEnd = this.parseTime(customer.timeWindow.end);
           
@@ -376,13 +387,16 @@ class RouteOptimizer {
         }
 
         // Priority bonus
-        if (customer.priority === 'high') {
-          priorityBonus -= 10; // Negative because lower fitness is better
-        } else if (customer.priority === 'medium') {
-          priorityBonus -= 5;
+        if (options.prioritizeHighPriority) {
+          if (customer.priority === 'high') {
+            priorityBonus -= 10; // Negative because lower fitness is better
+          } else if (customer.priority === 'medium') {
+            priorityBonus -= 5;
+          }
         }
 
-        currentTime += customer.estimatedDuration;
+        currentTime += this.getEstimatedDuration(customer);
+        totalTime += this.getEstimatedDuration(customer);
         currentLocation = customer.location;
       }
     }
@@ -417,6 +431,7 @@ class RouteOptimizer {
       const customer = customers[i];
       let travelTime = 0;
       let distance = 0;
+      const serviceDuration = this.getEstimatedDuration(customer);
 
       if (currentLocation && customer.location) {
         const result = await this.getDistanceAndDuration(currentLocation, customer.location);
@@ -436,7 +451,8 @@ class RouteOptimizer {
       }
 
       const arrivalTime = this.formatTime(currentTime);
-      currentTime += customer.estimatedDuration;
+      currentTime += serviceDuration;
+      totalTime += serviceDuration;
       const departureTime = this.formatTime(currentTime);
 
       stops.push({
@@ -467,30 +483,43 @@ class RouteOptimizer {
   // Geocoding & Distance Calculation
   // ============================================
 
-  private async ensureLocations(customers: Customer[]): Promise<void> {
+  private async ensureLocations(customers: Customer[]): Promise<Customer[]> {
+    const customersWithLocations: Customer[] = [];
+
     for (const customer of customers) {
-      if (!customer.location) {
-        customer.location = await this.geocodeAddress(customer.address);
+      if (customer.location) {
+        customersWithLocations.push(customer);
+        continue;
       }
+
+      const location = await this.geocodeAddress(customer.address);
+      customersWithLocations.push({ ...customer, location });
     }
+
+    return customersWithLocations;
   }
 
   private async geocodeAddress(address: string): Promise<Location> {
+    const normalizedAddress = (address || '').trim().toLowerCase();
+
     // Check cache first
-    if (this.geocodeCache.has(address)) {
-      return this.geocodeCache.get(address)!;
+    if (this.geocodeCache.has(normalizedAddress)) {
+      return this.geocodeCache.get(normalizedAddress)!;
     }
 
     try {
-      // For demo purposes, generate random coordinates
-      // In production, use a real geocoding service like Google Maps API
+      const hash = this.hashString(normalizedAddress || 'unknown-address');
+      const latOffset = (((hash % 2000) / 2000) - 0.5) * 0.3;
+      const lngOffset = ((((Math.floor(hash / 2000)) % 2000) / 2000) - 0.5) * 0.3;
+
+      // Deterministic fallback location (stable between app loads)
       const location: Location = {
-        latitude: 34.0522 + (Math.random() - 0.5) * 0.1, // Los Angeles area
-        longitude: -118.2437 + (Math.random() - 0.5) * 0.1,
+        latitude: 34.0522 + latOffset,
+        longitude: -118.2437 + lngOffset,
         address
       };
 
-      this.geocodeCache.set(address, location);
+      this.geocodeCache.set(normalizedAddress, location);
       return location;
     } catch (error) {
       console.error('Geocoding failed for address:', address, error);
@@ -533,7 +562,7 @@ class RouteOptimizer {
     const distance = this.calculateDistance(from, to);
     
     // Estimate duration (assuming 30 mph average with traffic)
-    const duration = (distance / 30) * 60; // Convert to minutes
+    const duration = distance <= 0 ? 0 : Math.max(2, (distance / 30) * 60); // Convert to minutes with a realistic minimum
     
     const result = { distance, duration };
     this.distanceCache.set(cacheKey, result);
@@ -549,8 +578,126 @@ class RouteOptimizer {
     return degrees * (Math.PI / 180);
   }
 
+  private hashString(value: string): number {
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = ((hash << 5) - hash) + value.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
+  private normalizeDayName(day: string | null | undefined): string {
+    if (!day) return '';
+    switch (day.trim().toLowerCase()) {
+      case 'sun':
+      case 'sunday':
+        return 'Sunday';
+      case 'mon':
+      case 'monday':
+        return 'Monday';
+      case 'tue':
+      case 'tues':
+      case 'tuesday':
+        return 'Tuesday';
+      case 'wed':
+      case 'weds':
+      case 'wednesday':
+        return 'Wednesday';
+      case 'thu':
+      case 'thur':
+      case 'thurs':
+      case 'thursday':
+        return 'Thursday';
+      case 'fri':
+      case 'friday':
+        return 'Friday';
+      case 'sat':
+      case 'saturday':
+        return 'Saturday';
+      default:
+        return '';
+    }
+  }
+
+  private normalizePriority(priority: unknown): CustomerPriority {
+    if (priority === 'high' || priority === 'medium' || priority === 'low') {
+      return priority;
+    }
+    return 'medium';
+  }
+
+  private normalizeCustomer(customer: UnknownCustomer): Customer | null {
+    const customerRecord = customer as Record<string, unknown>;
+    const idCandidate = customerRecord.id ?? customerRecord._id;
+    const id = Number(idCandidate);
+
+    if (!Number.isFinite(id)) {
+      return null;
+    }
+
+    const name =
+      (typeof customerRecord.name === 'string' && customerRecord.name) ||
+      (typeof customerRecord.full_name === 'string' && customerRecord.full_name) ||
+      `Customer ${id}`;
+    const address = typeof customerRecord.address === 'string' ? customerRecord.address : '';
+
+    const rawLocation = customerRecord.location as Record<string, unknown> | undefined;
+    const latitude = Number(rawLocation?.latitude ?? rawLocation?.lat);
+    const longitude = Number(rawLocation?.longitude ?? rawLocation?.lng);
+    const location = Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? { latitude, longitude, address }
+      : undefined;
+
+    const normalizedServiceDay = this.normalizeDayName(
+      (customerRecord.serviceDay as string | undefined) ??
+      (customerRecord.service_day as string | undefined)
+    );
+
+    if (!normalizedServiceDay) {
+      return null;
+    }
+
+    return {
+      id,
+      name,
+      address,
+      location,
+      serviceDay: normalizedServiceDay,
+      priority: this.normalizePriority(customerRecord.priority),
+      estimatedDuration: this.getEstimatedDuration(customerRecord),
+      timeWindow: this.normalizeTimeWindow(
+        (customerRecord.timeWindow as Record<string, unknown> | undefined) ??
+        (customerRecord.time_window as Record<string, unknown> | undefined)
+      ),
+      notes: typeof customerRecord.notes === 'string' ? customerRecord.notes : undefined,
+    };
+  }
+
+  private normalizeTimeWindow(windowValue?: Record<string, unknown>): Customer['timeWindow'] | undefined {
+    if (!windowValue) return undefined;
+    const start = typeof windowValue.start === 'string' ? windowValue.start : '';
+    const end = typeof windowValue.end === 'string' ? windowValue.end : '';
+    if (!start || !end) return undefined;
+    return { start, end };
+  }
+
+  private getEstimatedDuration(customer: Partial<Customer> | Record<string, unknown>): number {
+    const record = customer as Record<string, unknown>;
+    const durationCandidate =
+      record.estimatedDuration ??
+      record.estimated_duration ??
+      record.duration;
+    const duration = Number(durationCandidate);
+    if (!Number.isFinite(duration) || duration <= 0) return 30;
+    return Math.min(180, duration);
+  }
+
   private parseTime(timeStr: string): number {
-    const [hours, minutes] = timeStr.split(':').map(Number);
+    if (!timeStr || !timeStr.includes(':')) return 8 * 60;
+    const [hoursRaw, minutesRaw] = timeStr.split(':').map(Number);
+    const hours = Number.isFinite(hoursRaw) ? Math.min(23, Math.max(0, hoursRaw)) : 8;
+    const minutes = Number.isFinite(minutesRaw) ? Math.min(59, Math.max(0, minutesRaw)) : 0;
     return hours * 60 + minutes;
   }
 
@@ -560,10 +707,38 @@ class RouteOptimizer {
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
   }
 
-  private getDayOfWeek(dateStr: string): string {
+  private getDayOfWeek(dateValue: string | Date): string {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const date = new Date(dateStr);
+    const date = this.parseDateValue(dateValue);
     return days[date.getDay()];
+  }
+
+  private parseDateValue(dateValue: string | Date): Date {
+    if (dateValue instanceof Date) {
+      const safeDate = new Date(dateValue.getTime());
+      return Number.isNaN(safeDate.getTime()) ? new Date() : safeDate;
+    }
+
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      const [year, month, day] = dateValue.split('-').map(Number);
+      const parsedLocalDate = new Date(year, month - 1, day);
+      return Number.isNaN(parsedLocalDate.getTime()) ? new Date() : parsedLocalDate;
+    }
+
+    const parsed = new Date(dateValue);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  }
+
+  private toDateString(dateValue: string | Date): string {
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      return dateValue;
+    }
+
+    const parsed = this.parseDateValue(dateValue);
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   private createEmptyRoute(date: string, options: RouteOptimizationOptions): OptimizedRoute {
@@ -585,12 +760,14 @@ class RouteOptimizer {
   // ============================================
 
   saveRoute(route: OptimizedRoute): void {
+    if (typeof window === 'undefined' || !window.localStorage) return;
     const routes = this.getSavedRoutes();
     routes.push(route);
     localStorage.setItem('optimized_routes', JSON.stringify(routes));
   }
 
   getSavedRoutes(): OptimizedRoute[] {
+    if (typeof window === 'undefined' || !window.localStorage) return [];
     try {
       const stored = localStorage.getItem('optimized_routes');
       return stored ? JSON.parse(stored) : [];
@@ -605,6 +782,7 @@ class RouteOptimizer {
   }
 
   deleteRoute(routeId: string): void {
+    if (typeof window === 'undefined' || !window.localStorage) return;
     const routes = this.getSavedRoutes();
     const filtered = routes.filter(route => route.id !== routeId);
     localStorage.setItem('optimized_routes', JSON.stringify(filtered));

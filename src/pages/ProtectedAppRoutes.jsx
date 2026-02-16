@@ -1,15 +1,15 @@
 import { lazy, Suspense } from 'react';
 import Layout from './Layout.jsx';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
+import { getDefaultWorkOrdersSectionFromStorage } from '@/lib/workOrdersNavigation';
 
 const Home = lazy(() => importWithRetry(() => import('./Home'), 'Home'));
 const Clients = lazy(() => importWithRetry(() => import('./Clients'), 'Clients'));
 const NewClient = lazy(() => importWithRetry(() => import('./NewClient'), 'NewClient'));
 const NewServiceLog = lazy(() => importWithRetry(() => import('./NewServiceLog'), 'NewServiceLog'));
 const CustomerDetail = lazy(() => importWithRetry(() => import('./CustomerDetail'), 'CustomerDetail'));
-const History = lazy(() => importWithRetry(() => import('./History'), 'History'));
 const WeeklyReport = lazy(() => importWithRetry(() => import('./WeeklyReport'), 'WeeklyReport'));
 const RouteOptimizer = lazy(() => importWithRetry(() => import('./RouteOptimizer'), 'RouteOptimizer'));
 const EditClient = lazy(() => importWithRetry(() => import('./EditClient'), 'EditClient'));
@@ -18,6 +18,7 @@ const NewChemicalUsage = lazy(() => importWithRetry(() => import('./NewChemicalU
 const Notes = lazy(() => importWithRetry(() => import('./Notes'), 'Notes'));
 const Settings = lazy(() => importWithRetry(() => import('./Settings'), 'Settings'));
 const PoolSchool = lazy(() => importWithRetry(() => import('./PoolSchool'), 'PoolSchool'));
+const WorkOrders = lazy(() => importWithRetry(() => import('./WorkOrders'), 'WorkOrders'));
 const BillingDashboard = lazy(() =>
   importWithRetry(
     () => import('@/components/billing/BillingDashboard').then((m) => ({ default: m.BillingDashboard })),
@@ -33,13 +34,23 @@ function PageLoader() {
   );
 }
 
+function LegacyInvoicePayRedirect() {
+  const { invoiceId } = useParams();
+  const encodedId = invoiceId ? encodeURIComponent(invoiceId) : "";
+  return <Navigate to={`/workorders/invoices${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
+}
+
+function WorkOrdersRootRedirect() {
+  const defaultSection = getDefaultWorkOrdersSectionFromStorage();
+  return <Navigate to={`/workorders/${defaultSection}`} replace />;
+}
+
 const PAGES = {
   Home,
   Clients,
   NewClient,
   NewServiceLog,
   CustomerDetail,
-  History,
   WeeklyReport,
   RouteOptimizer,
   EditClient,
@@ -48,9 +59,14 @@ const PAGES = {
   Notes,
   Settings,
   PoolSchool,
+  WorkOrders,
 };
 
 function getCurrentPage(url) {
+  const normalized = url.toLowerCase();
+  if (normalized.startsWith('/workorders')) return 'WorkOrders';
+  if (normalized.startsWith('/routeoptimizer')) return 'RouteOptimizer';
+
   let normalizedUrl = url;
   if (normalizedUrl.endsWith('/')) {
     normalizedUrl = normalizedUrl.slice(0, -1);
@@ -79,7 +95,8 @@ export default function ProtectedAppRoutes() {
           <Route path="/NewClient" element={<NewClient />} />
           <Route path="/NewServiceLog" element={<NewServiceLog />} />
           <Route path="/CustomerDetail" element={<CustomerDetail />} />
-          <Route path="/History" element={<History />} />
+          <Route path="/History" element={<Navigate to="/clients" replace />} />
+          <Route path="/history" element={<Navigate to="/clients" replace />} />
           <Route path="/WeeklyReport" element={<WeeklyReport />} />
           <Route path="/RouteOptimizer" element={<RouteOptimizer />} />
           <Route path="/EditClient" element={<EditClient />} />
@@ -88,6 +105,10 @@ export default function ProtectedAppRoutes() {
           <Route path="/Notes" element={<Notes />} />
           <Route path="/Settings" element={<Settings />} />
           <Route path="/PoolSchool" element={<PoolSchool />} />
+          <Route path="/WorkOrders" element={<WorkOrdersRootRedirect />} />
+          <Route path="/workorders" element={<WorkOrdersRootRedirect />} />
+          <Route path="/workorders/:section" element={<WorkOrders />} />
+          <Route path="/invoice-pay/:invoiceId" element={<LegacyInvoicePayRedirect />} />
           <Route path="/Billing" element={<BillingDashboard />} />
         </Routes>
       </Suspense>

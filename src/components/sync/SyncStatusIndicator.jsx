@@ -1,7 +1,7 @@
 import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useSyncState } from '@/hooks/useSyncState';
 import { cn } from '@/lib/utils';
 import { 
@@ -40,25 +40,6 @@ export function SyncStatusIndicator({
     }
   };
 
-  const getTooltipContent = () => {
-    const lines = [getStatusText(status, pendingCount)];
-    
-    if (lastSyncAt) {
-      const lastSyncDate = new Date(lastSyncAt);
-      lines.push(`Last sync: ${lastSyncDate.toLocaleString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })}`);
-    }
-    
-    if (error) {
-      lines.push('Error: Sync failed. Please try again.');
-    }
-
-    return lines.join('\n');
-  };
-
   const handleSyncNow = async () => {
     if (isSyncButtonDisabled(status)) return;
     
@@ -70,44 +51,68 @@ export function SyncStatusIndicator({
   };
 
   return (
-    <TooltipProvider>
-      <div className={cn('flex items-center gap-2', className)}>
-        <Tooltip>
-          <TooltipTrigger asChild>
+    <div className={cn('flex items-center gap-2', className)}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isSyncButtonDisabled(status)}
+            className="h-8 rounded-full border-slate-200 bg-white/90 px-3 text-slate-700 hover:bg-slate-100"
+          >
+            {getStatusIcon()}
+            {showLabel && (
+              <span className="ml-2 text-sm text-slate-700">
+                {getStatusText(status, pendingCount)}
+              </span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-72 p-3">
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sync Status</p>
+              <p className="text-sm font-medium text-slate-900">{getStatusText(status, pendingCount)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Pending</p>
+                <p className="text-sm font-semibold text-slate-900">{pendingCount}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Last Sync</p>
+                <p className="text-xs font-medium text-slate-900">
+                  {lastSyncAt
+                    ? new Date(lastSyncAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                    : 'Not yet'}
+                </p>
+              </div>
+            </div>
+            {error && (
+              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2 py-1">
+                {error}
+              </p>
+            )}
             <Button
-              variant="ghost"
               size="sm"
+              variant="outline"
+              className="h-8 w-full"
               onClick={handleSyncNow}
               disabled={isSyncButtonDisabled(status)}
-              className="h-8 px-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100"
             >
-              {getStatusIcon()}
-              {showLabel && (
-                <span className="ml-2 text-sm text-slate-700">
-                  {getStatusText(status, pendingCount)}
-                </span>
-              )}
+              <RefreshCw className={cn('mr-2 h-3.5 w-3.5', status === 'syncing' && 'animate-spin')} />
+              Sync Now
             </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <div className="whitespace-pre-line text-slate-900">
-              {getTooltipContent()}
-              {status !== 'syncing' && status !== 'offline' && (
-                <div className="mt-1 text-xs text-slate-600">
-                  Click to sync now
-                </div>
-              )}
-            </div>
-          </TooltipContent>
-        </Tooltip>
+          </div>
+        </PopoverContent>
+      </Popover>
 
-        {showPendingCount && pendingCount > 0 && (
-          <Badge variant="secondary" className={cn('text-xs font-medium', getStatusColor(status, pendingCount))}>
-            {pendingCount}
-          </Badge>
-        )}
-      </div>
-    </TooltipProvider>
+      {showPendingCount && pendingCount > 0 && (
+        <Badge variant="secondary" className={cn('text-xs font-medium', getStatusColor(status, pendingCount))}>
+          {pendingCount}
+        </Badge>
+      )}
+        </div>
   );
 }
 
@@ -133,40 +138,31 @@ export function SyncStatusBadge({
   };
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge 
-            variant="outline" 
-            className={cn(
-              'flex items-center gap-1 text-xs cursor-default',
-              getRecordStatusColor(status),
-              status === 'error' && onRetry && 'cursor-pointer hover:opacity-80',
-              className
-            )}
-            onClick={status === 'error' && onRetry ? onRetry : undefined}
-          >
-            {getIcon()}
-            {getRecordStatusText(status)}
-          </Badge>
-        </TooltipTrigger>
-        <TooltipContent>
-          <div>
-            {status === 'synced' && 'Record is synced to cloud'}
-            {status === 'pending' && 'Record will sync when online'}
-            {status === 'error' && (
-              <div>
-                <div>Sync failed. Please try again.</div>
-                {onRetry && (
-                  <div className="mt-1 text-xs opacity-75">
-                    Click to retry
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <button
+      type="button"
+      role="button"
+      onClick={status === 'error' && onRetry ? onRetry : undefined}
+      className="bg-transparent p-0 border-0"
+      title={
+        status === 'synced'
+          ? 'Record is synced to cloud'
+          : status === 'pending'
+            ? 'Record will sync when online'
+            : 'Sync failed. Please try again.'
+      }
+    >
+      <Badge 
+        variant="outline" 
+        className={cn(
+          'flex items-center gap-1 text-xs cursor-default',
+          getRecordStatusColor(status),
+          status === 'error' && onRetry && 'cursor-pointer hover:opacity-80',
+          className
+        )}
+      >
+        {getIcon()}
+        {getRecordStatusText(status)}
+      </Badge>
+    </button>
   );
 }

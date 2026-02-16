@@ -264,6 +264,26 @@ export default function ReportPage() {
   }
 
   const report = reportResult.report;
+  const beforeCount = report?.photos?.before?.length || 0;
+  const afterCount = report?.photos?.after?.length || 0;
+  const hasNotes = Boolean(report?.notes && report.notes.trim().length > 0);
+  const hasReadings = Boolean(
+    report?.chemicalReadings
+    && (report.chemicalReadings.ph
+      || report.chemicalReadings.chlorine
+      || report.chemicalReadings.alkalinity
+      || report.chemicalReadings.stabilizer
+      || report.chemicalReadings.salt)
+  );
+  const confidenceScore = (
+    (beforeCount > 0 && afterCount > 0 ? 45 : 0)
+    + (hasReadings ? 35 : 0)
+    + (hasNotes ? 20 : 0)
+  );
+  const confidenceLabel = confidenceScore >= 80 ? 'High' : confidenceScore >= 50 ? 'Medium' : 'Basic';
+  const beforeAfterNarrative = beforeCount > 0 && afterCount > 0
+    ? `Documented before-and-after proof with ${beforeCount + afterCount} service photo${beforeCount + afterCount === 1 ? '' : 's'}.`
+    : 'Photo documentation is partial for this service.';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100">
@@ -278,6 +298,34 @@ export default function ReportPage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+        <Card className="overflow-hidden border-cyan-200 bg-gradient-to-r from-cyan-50 via-white to-blue-50">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Service Summary</p>
+              <Badge className="bg-cyan-100 text-cyan-700 hover:bg-cyan-100">
+                Confidence: {confidenceLabel}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-md border border-slate-200 bg-white p-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Overall</p>
+                <p className={`text-sm font-semibold ${report.overallStatus === 'good' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {report.overallStatus === 'good' ? 'All Good' : 'Needs Attention'}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white p-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Before</p>
+                <p className="text-sm font-semibold text-slate-900">{beforeCount}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white p-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">After</p>
+                <p className="text-sm font-semibold text-slate-900">{afterCount}</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed">{beforeAfterNarrative}</p>
+          </CardContent>
+        </Card>
+
         {/* Service Summary Card - Requirements: 3.2 */}
         {report.settings?.show_overall_status !== false && (
           <Card>

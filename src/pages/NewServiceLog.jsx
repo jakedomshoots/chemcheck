@@ -77,6 +77,11 @@ export default function NewServiceLog() {
     salt: "",
     notes: ""
   });
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const draftStorageKey = useMemo(() => (
+    customerIdParam ? `serviceLogDraft_${customerIdParam}` : null
+  ), [customerIdParam]);
+  const draftReadyRef = useRef(false);
 
   // Set default service type once serviceTypes are loaded
   useEffect(() => {
@@ -84,6 +89,47 @@ export default function NewServiceLog() {
       setFormData(prev => ({ ...prev, service_type: serviceTypes[0] }));
     }
   }, [serviceTypes]);
+
+  useEffect(() => {
+    if (!draftStorageKey || draftReadyRef.current) return;
+
+    if (typeof window === "undefined" || !window.localStorage) {
+      draftReadyRef.current = true;
+      return;
+    }
+
+    try {
+      const savedDraft = window.localStorage.getItem(draftStorageKey);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+
+        if (parsed?.formData) {
+          setFormData(prev => ({ ...prev, ...parsed.formData }));
+        }
+
+        if (parsed?.savedAt) {
+          setDraftSavedAt(parsed.savedAt);
+        }
+      }
+    } catch (error) {
+      console.error("[NewServiceLog] Failed to restore draft:", error);
+    } finally {
+      draftReadyRef.current = true;
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftStorageKey || !draftReadyRef.current) return;
+    if (typeof window === "undefined" || !window.localStorage) return;
+
+    try {
+      const savedAt = new Date().toISOString();
+      window.localStorage.setItem(draftStorageKey, JSON.stringify({ formData, savedAt }));
+      setDraftSavedAt(savedAt);
+    } catch (error) {
+      console.error("[NewServiceLog] Failed to save draft:", error);
+    }
+  }, [formData, draftStorageKey]);
 
   // Photo capture state - Requirements 1.1, 1.6, 1.7
   const [beforePhotos, setBeforePhotos] = useState([]);
@@ -147,6 +193,13 @@ export default function NewServiceLog() {
       })();
     }
   }, [customers, customerId, customerIdParam, customer]);
+
+  const formattedDraftTime = useMemo(() => {
+    if (!draftSavedAt) return null;
+    const savedAtDate = new Date(draftSavedAt);
+    if (Number.isNaN(savedAtDate.getTime())) return null;
+    return savedAtDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }, [draftSavedAt]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -253,6 +306,11 @@ export default function NewServiceLog() {
         colors: ['#06b6d4', '#3b82f6', '#a855f7'] // Cyan, Blue, Purple
       });
 
+      if (draftStorageKey && typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.removeItem(draftStorageKey);
+        setDraftSavedAt(null);
+      }
+
       // Navigate immediately - don't wait
       navigate(createPageUrl("Home"));
     } catch (error) {
@@ -291,6 +349,9 @@ export default function NewServiceLog() {
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900">Service Log</h2>
               <p className="text-sm font-medium text-slate-600">{customer.full_name}</p>
+              {formattedDraftTime && (
+                <p className="text-xs font-medium text-slate-500 mt-1">Draft saved at {formattedDraftTime}</p>
+              )}
             </div>
           </div>
           {/* Timer removed - no time tracking display */}

@@ -139,6 +139,9 @@ export default defineSchema({
       route_optimization: v.boolean(),
       require_photos: v.boolean(),
       require_signatures: v.boolean(),
+      default_workorders_section: v.optional(v.string()),
+      home_primary_action: v.optional(v.string()),
+      show_ops_brief: v.optional(v.boolean()),
       // Proof-of-service requirements - Requirements 5.1, 5.3
       proof_of_service: v.optional(v.object({
         require_before_photos: v.boolean(),
@@ -204,6 +207,143 @@ export default defineSchema({
     .index("by_service_log", ["service_log_id"])
     .index("by_token", ["report_token"])
     .index("by_expires_at", ["expires_at"]),
+
+  // Month 1 roadmap: work-order operations (one-off + recurring)
+  workOrders: defineTable({
+    customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
+    created_by: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.string(), // scheduled, in_progress, completed, cancelled
+    assignee_email: v.optional(v.string()),
+    scheduled_date: v.string(), // YYYY-MM-DD
+    is_recurring: v.boolean(),
+    recurrence_rule: v.optional(v.string()), // e.g. WEEKLY:Monday
+    source_quote_id: v.optional(v.id("quotes")),
+    priority: v.optional(v.string()), // low, medium, high
+    completed_at: v.optional(v.number()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_created_by", ["created_by"])
+    .index("by_status", ["status"])
+    .index("by_scheduled_date", ["scheduled_date"])
+    .index("by_created_by_and_scheduled_date", ["created_by", "scheduled_date"])
+    .index("by_assignee_email", ["assignee_email"]),
+
+  // Month 1 roadmap: invoice drafts for completed work
+  invoices: defineTable({
+    customer_id: v.id("customers"),
+    work_order_id: v.optional(v.id("workOrders")),
+    source_quote_id: v.optional(v.id("quotes")),
+    service_log_id: v.optional(v.id("serviceLogs")),
+    created_by: v.string(),
+    status: v.string(), // draft, sent, paid, cancelled
+    line_items: v.array(v.object({
+      description: v.string(),
+      quantity: v.number(),
+      unit_price: v.number(),
+      amount: v.number(),
+    })),
+    subtotal: v.number(),
+    tax: v.number(),
+    deposit_applied: v.optional(v.number()),
+    total: v.number(),
+    due_date: v.optional(v.string()), // YYYY-MM-DD
+    sent_at: v.optional(v.number()),
+    paid_at: v.optional(v.number()),
+    payment_url: v.optional(v.string()),
+    stripe_checkout_session_id: v.optional(v.string()),
+    stripe_payment_intent_id: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_created_by", ["created_by"])
+    .index("by_customer", ["customer_id"])
+    .index("by_status", ["status"])
+    .index("by_work_order", ["work_order_id"])
+    .index("by_source_quote", ["source_quote_id"])
+    .index("by_stripe_checkout_session", ["stripe_checkout_session_id"]),
+
+  // Phase 2 roadmap: quote/deposit workflow
+  quotes: defineTable({
+    customer_id: v.id("customers"),
+    created_by: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.string(), // draft, sent, approved, declined, converted
+    line_items: v.array(v.object({
+      description: v.string(),
+      quantity: v.number(),
+      unit_price: v.number(),
+      amount: v.number(),
+    })),
+    subtotal: v.number(),
+    tax: v.number(),
+    total: v.number(),
+    deposit_required: v.optional(v.number()),
+    deposit_status: v.optional(v.string()), // not_required, pending, paid
+    deposit_payment_url: v.optional(v.string()),
+    deposit_checkout_session_id: v.optional(v.string()),
+    deposit_paid_at: v.optional(v.number()),
+    deposit_paid_source: v.optional(v.string()), // manual, stripe
+    valid_until: v.optional(v.string()), // YYYY-MM-DD
+    converted_work_order_id: v.optional(v.id("workOrders")),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_created_by", ["created_by"])
+    .index("by_customer", ["customer_id"])
+    .index("by_status", ["status"])
+    .index("by_converted_work_order", ["converted_work_order_id"])
+    .index("by_deposit_checkout_session", ["deposit_checkout_session_id"]),
+
+  // Month 1 roadmap: service-text infrastructure and communication events
+  communications: defineTable({
+    type: v.string(), // service_text, reminder, system
+    channel: v.string(), // sms, email, push
+    recipient: v.string(),
+    customer_id: v.optional(v.id("customers")),
+    work_order_id: v.optional(v.id("workOrders")),
+    invoice_id: v.optional(v.id("invoices")),
+    quote_id: v.optional(v.id("quotes")),
+    template_key: v.optional(v.string()),
+    status: v.string(), // queued, sent, delivered, failed
+    message: v.string(),
+    scheduled_for: v.optional(v.number()),
+    sent_at: v.optional(v.number()),
+    delivered_at: v.optional(v.number()),
+    last_attempt_at: v.optional(v.number()),
+    attempts: v.optional(v.number()),
+    provider: v.optional(v.string()), // twilio, mailersend, etc.
+    provider_message_id: v.optional(v.string()),
+    error: v.optional(v.string()),
+    created_by: v.string(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_created_by", ["created_by"])
+    .index("by_status", ["status"])
+    .index("by_customer", ["customer_id"])
+    .index("by_work_order", ["work_order_id"])
+    .index("by_invoice", ["invoice_id"])
+    .index("by_quote", ["quote_id"]),
+
+  // Stripe webhook idempotency and delivery diagnostics
+  stripeWebhookEvents: defineTable({
+    event_id: v.string(),
+    event_type: v.string(),
+    status: v.string(), // processing, processed, failed
+    attempts: v.number(),
+    last_error: v.optional(v.string()),
+    processed_at: v.optional(v.number()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_event_id", ["event_id"])
+    .index("by_status", ["status"]),
 
   // Audit logging for public report access
   // Tracks all attempts to access reports for security monitoring

@@ -66,6 +66,12 @@ function toIsoDateFromEpochSeconds(epochSeconds: unknown): string {
   });
 }
 
+function getMetadataValue(source: unknown, key: string): string | undefined {
+  if (!source || typeof source !== "object") return undefined;
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 async function sendPaymentFailedNotificationEmail(
   args: {
     userEmail: string;
@@ -360,6 +366,28 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
 
   // Handle the event
   try {
+    const eventId = typeof event.id === "string" ? event.id : "";
+    const eventType = typeof event.type === "string" ? event.type : "unknown";
+
+    if (eventId) {
+      const existingEvent = await ctx.runQuery(internal.stripeEvents.getByEventId, {
+        event_id: eventId,
+      });
+
+      if (existingEvent?.status === "processed") {
+        console.log(`[Webhook] Duplicate processed event ignored: ${eventId}`);
+        return new Response(JSON.stringify({ received: true, duplicate: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runMutation(internal.stripeEvents.recordProcessing, {
+        event_id: eventId,
+        event_type: eventType,
+      });
+    }
+
     switch (event.type) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
@@ -471,8 +499,74 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
         break;
       }
 
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object;
+        const paymentStatus =
+          typeof session?.payment_status === "string"
+            ? session.payment_status
+            : "";
+        const paymentType =
+          getMetadataValue(session?.metadata, "payment_type")
+          || getMetadataValue(session?.metadata, "entity_type");
+        const stripeCheckoutSessionId = typeof session?.id === "string" ? session.id : undefined;
+        const stripePaymentIntentId =
+          typeof session?.payment_intent === "string"
+            ? session.payment_intent
+            : typeof session?.payment_intent?.id === "string"
+              ? session.payment_intent.id
+              : undefined;
+
+        if (paymentStatus !== "paid") {
+          console.log("[Webhook] checkout.session event received before payment was settled:", {
+            stripeCheckoutSessionId,
+            paymentType,
+            paymentStatus,
+            eventType: event.type,
+          });
+          break;
+        }
+
+        if (paymentType === "invoice") {
+          const invoiceId = getMetadataValue(session?.metadata, "invoice_id");
+          if (invoiceId) {
+            await ctx.runMutation(internal.invoices.markPaidFromStripe, {
+              invoice_id: invoiceId as any,
+              stripe_checkout_session_id: stripeCheckoutSessionId,
+              stripe_payment_intent_id: stripePaymentIntentId,
+            });
+            console.log("[Webhook] Marked invoice paid from checkout session:", stripeCheckoutSessionId);
+          } else {
+            console.log("[Webhook] Missing invoice_id metadata on checkout session:", stripeCheckoutSessionId);
+          }
+        } else if (paymentType === "quote_deposit") {
+          const quoteId = getMetadataValue(session?.metadata, "quote_id");
+          if (quoteId) {
+            await ctx.runMutation(internal.quotes.markDepositPaidFromStripe, {
+              quote_id: quoteId as any,
+              stripe_checkout_session_id: stripeCheckoutSessionId,
+            });
+            console.log("[Webhook] Marked quote deposit paid from checkout session:", stripeCheckoutSessionId);
+          } else {
+            console.log("[Webhook] Missing quote_id metadata on checkout session:", stripeCheckoutSessionId);
+          }
+        } else {
+          console.log("[Webhook] checkout.session completed without recognized payment_type metadata:", {
+            stripeCheckoutSessionId,
+            paymentType,
+          });
+        }
+        break;
+      }
+
       default:
         console.log(`[Webhook] Unhandled event type: ${event.type}`);
+    }
+
+    if (eventId) {
+      await ctx.runMutation(internal.stripeEvents.recordProcessed, {
+        event_id: eventId,
+      });
     }
 
     return new Response(JSON.stringify({ received: true }), {
@@ -480,6 +574,14 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
+    const eventId = typeof event?.id === "string" ? event.id : "";
+    if (eventId) {
+      await ctx.runMutation(internal.stripeEvents.recordFailed, {
+        event_id: eventId,
+        error: err instanceof Error ? err.message : "Unknown webhook error",
+      });
+    }
+
     // SECURITY: Log detailed error internally, return generic message to client
     logWebhookError('HANDLER_ERROR', {
       eventType: event.type,

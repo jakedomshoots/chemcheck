@@ -7,6 +7,18 @@ import { format, startOfWeek, endOfWeek, parseISO, isWithinInterval, addWeeks } 
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
+function downloadHtmlReport(filename, html) {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
 export default function WeeklyReport() {
   const user = useCurrentUser();
 
@@ -92,14 +104,6 @@ export default function WeeklyReport() {
       const raw = String(value ?? '').trim();
       return raw ? escapeHtml(raw.toUpperCase()) : '-';
     };
-
-    const printWindow = window.open('', '_blank');
-
-    if (!printWindow) {
-      setGenerating(false);
-      alert("Please allow popups to download the report");
-      return;
-    }
 
     const reportHTML = `
       <!DOCTYPE html>
@@ -306,13 +310,11 @@ export default function WeeklyReport() {
         </body>
       </html>
     `;
-
-    printWindow.document.write(reportHTML);
-    printWindow.document.close();
-
-    setTimeout(() => {
-      setGenerating(false);
-    }, 500);
+    downloadHtmlReport(
+      `weekly-service-report-${format(currentWeekStart, "yyyy-MM-dd")}.html`,
+      reportHTML
+    );
+    setGenerating(false);
   };
 
   if (loading) {

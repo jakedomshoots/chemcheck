@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import * as fc from 'fast-check';
 import { SyncStatusIndicator, SyncStatusBadge } from './SyncStatusIndicator';
 import { useSyncState } from '@/hooks/useSyncState';
@@ -68,6 +68,11 @@ const syncStateArb = fc.record({
   refreshPendingCount: mockFnArb,
 });
 
+function renderWithCleanup(ui: any) {
+  cleanup();
+  return render(ui);
+}
+
 // ============================================================================
 // Property-Based Tests
 // ============================================================================
@@ -98,7 +103,7 @@ describe('SyncStatusIndicator', () => {
           (syncState) => {
             (useSyncState as any).mockReturnValue(syncState);
 
-            render(<SyncStatusIndicator showLabel={true} />);
+            renderWithCleanup(<SyncStatusIndicator showLabel={true} />);
 
             // Verify the correct status text is displayed based on status and pending count
             let expectedText: string;
@@ -135,7 +140,7 @@ describe('SyncStatusIndicator', () => {
           (syncState) => {
             (useSyncState as any).mockReturnValue(syncState);
 
-            render(<SyncStatusIndicator showPendingCount={true} />);
+            renderWithCleanup(<SyncStatusIndicator showPendingCount={true} />);
 
             // Should display the pending count as a badge
             expect(screen.getByText(String(syncState.pendingCount))).toBeInTheDocument();
@@ -152,7 +157,7 @@ describe('SyncStatusIndicator', () => {
           (syncState) => {
             (useSyncState as any).mockReturnValue(syncState);
 
-            render(<SyncStatusIndicator showPendingCount={true} />);
+            renderWithCleanup(<SyncStatusIndicator showPendingCount={true} />);
 
             // Should not display any pending count badge
             const badges = screen.queryAllByText('0');
@@ -170,7 +175,7 @@ describe('SyncStatusIndicator', () => {
           (syncState) => {
             (useSyncState as any).mockReturnValue(syncState);
 
-            render(<SyncStatusIndicator showPendingCount={false} />);
+            renderWithCleanup(<SyncStatusIndicator showPendingCount={false} />);
 
             // Should not display the pending count badge even if count > 0
             expect(screen.queryByText(String(syncState.pendingCount))).not.toBeInTheDocument();
@@ -187,7 +192,7 @@ describe('SyncStatusIndicator', () => {
           (syncState) => {
             (useSyncState as any).mockReturnValue(syncState);
 
-            render(<SyncStatusIndicator />);
+            renderWithCleanup(<SyncStatusIndicator />);
 
             const button = screen.getByRole('button');
             expect(button).toBeDisabled();
@@ -204,7 +209,7 @@ describe('SyncStatusIndicator', () => {
           (syncState) => {
             (useSyncState as any).mockReturnValue(syncState);
 
-            render(<SyncStatusIndicator />);
+            renderWithCleanup(<SyncStatusIndicator />);
 
             const button = screen.getByRole('button');
             expect(button).not.toBeDisabled();
@@ -221,7 +226,7 @@ describe('SyncStatusIndicator', () => {
           (syncState) => {
             (useSyncState as any).mockReturnValue(syncState);
 
-            const { rerender } = render(<SyncStatusIndicator showLabel={false} />);
+            const { rerender } = renderWithCleanup(<SyncStatusIndicator showLabel={false} />);
 
             // Get expected text
             let expectedText: string;
@@ -274,7 +279,7 @@ describe('SyncStatusIndicator', () => {
 
             (useSyncState as any).mockReturnValue(syncState);
 
-            render(<SyncStatusIndicator showLabel={true} />);
+            renderWithCleanup(<SyncStatusIndicator showLabel={true} />);
 
             expect(screen.getByText(`${pendingCount} pending`)).toBeInTheDocument();
           }
@@ -297,7 +302,7 @@ describe('SyncStatusIndicator', () => {
 
       (useSyncState as any).mockReturnValue(syncState);
 
-      render(<SyncStatusIndicator showLabel={true} />);
+      renderWithCleanup(<SyncStatusIndicator showLabel={true} />);
 
       expect(screen.getByText('All synced')).toBeInTheDocument();
     });
@@ -327,7 +332,7 @@ describe('SyncStatusBadge', () => {
         fc.property(
           recordSyncStatusArb,
           (status) => {
-            render(<SyncStatusBadge status={status} />);
+            renderWithCleanup(<SyncStatusBadge status={status} />);
 
             // Verify the correct status text is displayed
             let expectedText: string;
@@ -359,7 +364,7 @@ describe('SyncStatusBadge', () => {
         fc.property(
           recordSyncStatusArb,
           (status) => {
-            const { rerender } = render(<SyncStatusBadge status={status} />);
+            const { rerender } = renderWithCleanup(<SyncStatusBadge status={status} />);
 
             const badge = screen.getByText(statusTextMap[status] ?? 'Unknown');
 
@@ -386,7 +391,7 @@ describe('SyncStatusBadge', () => {
         fc.property(
           recordSyncStatusArb,
           (status) => {
-            render(<SyncStatusBadge status={status} />);
+            renderWithCleanup(<SyncStatusBadge status={status} />);
 
             // The badge is rendered and contains the expected status text
             const badge = screen.getByText(statusTextMap[status] ?? 'Unknown');
@@ -405,7 +410,7 @@ describe('SyncStatusBadge', () => {
         fc.property(
           recordSyncStatusArb,
           (status) => {
-            render(<SyncStatusBadge status={status} />);
+            renderWithCleanup(<SyncStatusBadge status={status} />);
 
             // Verify that the displayed text matches the expected mapping
             const expectedMapping = {
@@ -424,7 +429,7 @@ describe('SyncStatusBadge', () => {
 
     it('unknown status defaults to Unknown text', () => {
       // @ts-expect-error - Testing invalid status
-      render(<SyncStatusBadge status="invalid-status" />);
+      renderWithCleanup(<SyncStatusBadge status="invalid-status" />);
 
       expect(screen.getByText('Unknown')).toBeInTheDocument();
     });
@@ -448,7 +453,7 @@ describe('Sync Status Display Integration', () => {
         (syncState) => {
           (useSyncState as any).mockReturnValue(syncState);
 
-          render(<SyncStatusIndicator showLabel={true} showPendingCount={true} />);
+          renderWithCleanup(<SyncStatusIndicator showLabel={true} showPendingCount={true} />);
 
           // When status is idle and pendingCount > 0, should show pending text
           if (syncState.status === 'idle' && syncState.pendingCount > 0) {
@@ -494,7 +499,7 @@ describe('Sync Status Display Integration', () => {
 
           (useSyncState as any).mockReturnValue(syncState);
 
-          render(<SyncStatusIndicator showLabel={true} />);
+          renderWithCleanup(<SyncStatusIndicator showLabel={true} />);
 
           // Should always show "Sync error" regardless of pending count
           expect(screen.getByText('Sync error')).toBeInTheDocument();
@@ -522,7 +527,7 @@ describe('Sync Status Display Integration', () => {
 
           (useSyncState as any).mockReturnValue(syncState);
 
-          render(<SyncStatusIndicator showLabel={true} />);
+          renderWithCleanup(<SyncStatusIndicator showLabel={true} />);
 
           // Should always show "Offline" regardless of pending count
           expect(screen.getByText('Offline')).toBeInTheDocument();
@@ -550,7 +555,7 @@ describe('Sync Status Display Integration', () => {
 
           (useSyncState as any).mockReturnValue(syncState);
 
-          render(<SyncStatusIndicator showLabel={true} />);
+          renderWithCleanup(<SyncStatusIndicator showLabel={true} />);
 
           // Should always show "Syncing..." regardless of pending count
           expect(screen.getByText('Syncing...')).toBeInTheDocument();

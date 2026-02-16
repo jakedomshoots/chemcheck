@@ -26,6 +26,9 @@ export interface UserPreferences {
   };
   defaultView: 'route' | 'customers' | 'calendar';
   autoBackup: boolean;
+  default_workorders_section?: 'dispatch' | 'quotes' | 'invoices' | 'comms';
+  home_primary_action?: 'start_next_pending' | 'open_route_plan' | 'add_client';
+  show_ops_brief?: boolean;
 }
 
 export interface Business {
@@ -52,6 +55,9 @@ export interface BusinessSettings {
   routeOptimization: boolean;
   requirePhotos: boolean;
   requireSignatures: boolean;
+  defaultWorkordersSection?: 'dispatch' | 'quotes' | 'invoices' | 'comms';
+  homePrimaryAction?: 'start_next_pending' | 'open_route_plan' | 'add_client';
+  showOpsBrief?: boolean;
 }
 
 class UserManager {
@@ -409,7 +415,10 @@ class UserManager {
         customerUpdates: true
       },
       defaultView: 'route',
-      autoBackup: true
+      autoBackup: true,
+      default_workorders_section: 'dispatch',
+      home_primary_action: 'start_next_pending',
+      show_ops_brief: true,
     };
   }
 
@@ -426,7 +435,10 @@ class UserManager {
       defaultSurfaceTypes: ['Plaster', 'Vinyl', 'Fiberglass', 'Tile'],
       routeOptimization: true,
       requirePhotos: false,
-      requireSignatures: false
+      requireSignatures: false,
+      defaultWorkordersSection: 'dispatch',
+      homePrimaryAction: 'start_next_pending',
+      showOpsBrief: true,
     };
   }
 
@@ -491,7 +503,10 @@ class UserManager {
           defaultSurfaceTypes: this.getDefaultBusinessSettings().defaultSurfaceTypes,
           routeOptimization: convexBusiness.settings?.route_optimization ?? true,
           requirePhotos: convexBusiness.settings?.require_photos ?? false,
-          requireSignatures: convexBusiness.settings?.require_signatures ?? false
+          requireSignatures: convexBusiness.settings?.require_signatures ?? false,
+          defaultWorkordersSection: convexBusiness.settings?.default_workorders_section || 'dispatch',
+          homePrimaryAction: convexBusiness.settings?.home_primary_action || 'start_next_pending',
+          showOpsBrief: convexBusiness.settings?.show_ops_brief ?? true,
         },
         createdAt: new Date(convexBusiness.created_at || Date.now()).toISOString()
       };
