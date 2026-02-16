@@ -45,34 +45,31 @@ async function listAccessibleCustomers(ctx: any, userEmail: string) {
     const business = await resolveBusinessContext(ctx, userEmail);
 
     if (business) {
-        const merged = new Map<string, any>();
-
-        const businessCustomers = await ctx.db
-            .query("customers")
-            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
-            .collect();
-        for (const customer of businessCustomers) {
-            merged.set(String(customer._id), customer);
-        }
-
         const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-        for (const email of allowedEmails) {
-            const createdByCustomers = await ctx.db
-                .query("customers")
-                .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
-                .collect();
-            for (const customer of createdByCustomers) {
-                merged.set(String(customer._id), customer);
-            }
-        }
+        const normalizedAllowedEmails = new Set(
+            [...allowedEmails]
+                .map((email) => String(email || "").trim().toLowerCase())
+                .filter(Boolean)
+        );
+        const businessId = String(business._id);
 
-        return [...merged.values()];
+        const allCustomers = await ctx.db.query("customers").collect();
+        return allCustomers.filter((customer: any) => {
+            const customerBusinessId = customer?.business_id ? String(customer.business_id) : "";
+            if (customerBusinessId && customerBusinessId === businessId) {
+                return true;
+            }
+
+            const createdBy = String(customer?.created_by || "").trim().toLowerCase();
+            return createdBy ? normalizedAllowedEmails.has(createdBy) : false;
+        });
     }
 
-    return await ctx.db
-        .query("customers")
-        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
-        .collect();
+    const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
+    const allCustomers = await ctx.db.query("customers").collect();
+    return allCustomers.filter((customer: any) =>
+        String(customer?.created_by || "").trim().toLowerCase() === normalizedUserEmail
+    );
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
