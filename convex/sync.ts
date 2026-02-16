@@ -9,6 +9,13 @@ import { enforceRateLimit } from "./rateLimit";
  * SECURITY: All sync mutations require authentication and enforce tenant isolation
  */
 
+async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: string): Promise<void> {
+  const customer = await ctx.db.get(customerId);
+  if (!customer || customer.created_by !== userEmail) {
+    throw new Error("Access denied: cannot sync data for another user's customer");
+  }
+}
+
 // ============================================
 // Customer Sync
 // ============================================
@@ -27,7 +34,7 @@ export const syncCustomer = mutation({
       pool_type: v.string(),
       surface_type: v.string(),
       sort_order: v.optional(v.number()),
-      created_by: v.string(),
+      created_by: v.optional(v.string()),
       report_settings: v.optional(v.object({
         show_chemical_readings: v.boolean(),
         show_photos: v.boolean(),
@@ -51,11 +58,12 @@ export const syncCustomer = mutation({
     await enforceRateLimit(ctx, identity.email!, 'customer.update');
 
     const { local_id, data, local_updated_at, convex_id } = args;
-
-    // SECURITY: Verify created_by matches authenticated user (tenant isolation)
-    if (data.created_by !== identity.email) {
-      throw new Error("Access denied: cannot sync data for another user");
-    }
+    const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
+    const customerData = {
+      ...data,
+      // Always derive tenancy from auth identity, not client payload.
+      created_by: identity.email!,
+    };
 
     // If convex_id provided, update existing record
     if (convex_id) {
@@ -71,7 +79,7 @@ export const syncCustomer = mutation({
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingCustomer.updated_at || 0;
-      if (remoteUpdatedAt > local_updated_at) {
+      if (remoteUpdatedAt > safeLocalUpdatedAt) {
         console.log(`Conflict detected for customer ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -83,7 +91,7 @@ export const syncCustomer = mutation({
           conflict: {
             remote_data: existingCustomer,
             remote_updated_at: remoteUpdatedAt,
-            local_updated_at,
+            local_updated_at: safeLocalUpdatedAt,
           },
         };
       }
@@ -91,7 +99,7 @@ export const syncCustomer = mutation({
       // Update the existing customer
       const now = Date.now();
       await ctx.db.patch(convex_id, {
-        ...data,
+        ...customerData,
         updated_at: now,
       });
 
@@ -107,7 +115,7 @@ export const syncCustomer = mutation({
     // Create new customer record
     const now = Date.now();
     const newCustomerId = await ctx.db.insert("customers", {
-      ...data,
+      ...customerData,
       created_at: now,
       updated_at: now,
     });
@@ -157,6 +165,7 @@ export const syncServiceLog = mutation({
     await enforceRateLimit(ctx, identity.email!, 'serviceLog.update');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
+    const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists AND belongs to authenticated user (tenant isolation)
     const customer = await ctx.db.get(convex_customer_id);
@@ -175,10 +184,11 @@ export const syncServiceLog = mutation({
       if (!existingServiceLog) {
         throw new Error(`ServiceLog with convex_id ${convex_id} not found`);
       }
+      await ensureCustomerOwnedByUser(ctx, existingServiceLog.customer_id, identity.email!);
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingServiceLog.updated_at || 0;
-      if (remoteUpdatedAt > local_updated_at) {
+      if (remoteUpdatedAt > safeLocalUpdatedAt) {
         console.log(`Conflict detected for service log ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -190,7 +200,7 @@ export const syncServiceLog = mutation({
           conflict: {
             remote_data: existingServiceLog,
             remote_updated_at: remoteUpdatedAt,
-            local_updated_at,
+            local_updated_at: safeLocalUpdatedAt,
           },
         };
       }
@@ -200,6 +210,7 @@ export const syncServiceLog = mutation({
       await ctx.db.patch(convex_id, {
         ...data,
         customer_id: convex_customer_id,
+        created_by: existingServiceLog.created_by || customer.created_by || identity.email!,
         updated_at: now,
       });
 
@@ -217,6 +228,7 @@ export const syncServiceLog = mutation({
     const newServiceLogId = await ctx.db.insert("serviceLogs", {
       ...data,
       customer_id: convex_customer_id,
+      created_by: customer.created_by || identity.email!,
       created_at: now,
       updated_at: now,
     });
@@ -259,6 +271,7 @@ export const syncChemicalUsage = mutation({
     await enforceRateLimit(ctx, identity.email!, 'chemical.create');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
+    const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists AND belongs to authenticated user (tenant isolation)
     const customer = await ctx.db.get(convex_customer_id);
@@ -277,10 +290,11 @@ export const syncChemicalUsage = mutation({
       if (!existingChemicalUsage) {
         throw new Error(`ChemicalUsage with convex_id ${convex_id} not found`);
       }
+      await ensureCustomerOwnedByUser(ctx, existingChemicalUsage.customer_id, identity.email!);
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingChemicalUsage.updated_at || 0;
-      if (remoteUpdatedAt > local_updated_at) {
+      if (remoteUpdatedAt > safeLocalUpdatedAt) {
         console.log(`Conflict detected for chemical usage ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -292,7 +306,7 @@ export const syncChemicalUsage = mutation({
           conflict: {
             remote_data: existingChemicalUsage,
             remote_updated_at: remoteUpdatedAt,
-            local_updated_at,
+            local_updated_at: safeLocalUpdatedAt,
           },
         };
       }
@@ -363,6 +377,7 @@ export const syncNote = mutation({
     await enforceRateLimit(ctx, identity.email!, 'note.create');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
+    const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists if customer_id provided AND belongs to user (tenant isolation)
     if (convex_customer_id) {
@@ -382,10 +397,15 @@ export const syncNote = mutation({
       if (!existingNote) {
         throw new Error(`Note with convex_id ${convex_id} not found`);
       }
+      if (existingNote.customer_id) {
+        await ensureCustomerOwnedByUser(ctx, existingNote.customer_id, identity.email!);
+      } else if (existingNote.created_by && existingNote.created_by !== identity.email) {
+        throw new Error("Access denied: cannot update another user's note");
+      }
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingNote.updated_at || 0;
-      if (remoteUpdatedAt > local_updated_at) {
+      if (remoteUpdatedAt > safeLocalUpdatedAt) {
         console.log(`Conflict detected for note ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -397,7 +417,7 @@ export const syncNote = mutation({
           conflict: {
             remote_data: existingNote,
             remote_updated_at: remoteUpdatedAt,
-            local_updated_at,
+            local_updated_at: safeLocalUpdatedAt,
           },
         };
       }
@@ -407,6 +427,7 @@ export const syncNote = mutation({
       await ctx.db.patch(convex_id, {
         ...data,
         customer_id: convex_customer_id,
+        created_by: existingNote.created_by || identity.email!,
         updated_at: now,
       });
 
@@ -467,6 +488,7 @@ export const syncSaltCellLog = mutation({
     await enforceRateLimit(ctx, identity.email!, 'customer.update');
 
     const { local_id, convex_customer_id, data, local_updated_at, convex_id } = args;
+    const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists AND belongs to authenticated user (tenant isolation)
     const customer = await ctx.db.get(convex_customer_id);
@@ -485,10 +507,11 @@ export const syncSaltCellLog = mutation({
       if (!existingSaltCellLog) {
         throw new Error(`SaltCellLog with convex_id ${convex_id} not found`);
       }
+      await ensureCustomerOwnedByUser(ctx, existingSaltCellLog.customer_id, identity.email!);
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingSaltCellLog.updated_at || 0;
-      if (remoteUpdatedAt > local_updated_at) {
+      if (remoteUpdatedAt > safeLocalUpdatedAt) {
         console.log(`Conflict detected for salt cell log ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -500,7 +523,7 @@ export const syncSaltCellLog = mutation({
           conflict: {
             remote_data: existingSaltCellLog,
             remote_updated_at: remoteUpdatedAt,
-            local_updated_at,
+            local_updated_at: safeLocalUpdatedAt,
           },
         };
       }
@@ -560,7 +583,7 @@ export const batchSyncCustomers = mutation({
         pool_type: v.string(),
         surface_type: v.string(),
         sort_order: v.optional(v.number()),
-        created_by: v.string(),
+        created_by: v.optional(v.string()),
         report_settings: v.optional(v.object({
           show_chemical_readings: v.boolean(),
           show_photos: v.boolean(),
@@ -587,19 +610,14 @@ export const batchSyncCustomers = mutation({
 
     for (const customer of args.customers) {
       try {
-        // SECURITY: Verify created_by matches authenticated user
-        if (customer.data.created_by !== identity.email) {
-          results.push({
-            local_id: customer.local_id,
-            convex_id: null,
-            success: false,
-            error: 'Access denied: cannot create customers for another user',
-          });
-          continue;
-        }
+        const customerData = {
+          ...customer.data,
+          // Always derive tenancy from auth identity, not client payload.
+          created_by: identity.email!,
+        };
 
         const newCustomerId = await ctx.db.insert("customers", {
-          ...customer.data,
+          ...customerData,
           created_at: Date.now(),
           updated_at: Date.now(),
         });

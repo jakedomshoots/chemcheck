@@ -346,14 +346,14 @@ export class SyncService {
   async getPendingCount(): Promise<number> {
     try {
       const [customers, serviceLogs, chemicalUsage, notes, saltCellLogs] = await Promise.all([
-        db.customers.where('sync_status').equals('pending').count(),
-        db.serviceLogs.where('sync_status').equals('pending').count(),
-        db.chemicalUsage.where('sync_status').equals('pending').count(),
-        db.notes.where('sync_status').equals('pending').count(),
-        db.saltCellLogs.where('sync_status').equals('pending').count(),
+        this.getPendingRecords(db.customers),
+        this.getPendingRecords(db.serviceLogs),
+        this.getPendingRecords(db.chemicalUsage),
+        this.getPendingRecords(db.notes),
+        this.getPendingRecords(db.saltCellLogs),
       ]);
 
-      return customers + serviceLogs + chemicalUsage + notes + saltCellLogs;
+      return customers.length + serviceLogs.length + chemicalUsage.length + notes.length + saltCellLogs.length;
     } catch (error) {
       console.error('Error getting pending count:', error);
       return 0;
@@ -399,6 +399,39 @@ export class SyncService {
     };
   }
 
+  private isPendingRecord(record: any): boolean {
+    if (!record) return false;
+    if (record.sync_status === 'pending') return true;
+    if (record.sync_status === 'synced') return false;
+    if (record.sync_status === 'error') return false;
+    // Legacy rows may predate sync metadata.
+    return !record.convex_id;
+  }
+
+  private normalizeLocalUpdatedAt(value: unknown): number {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : Date.now();
+  }
+
+  private async getPendingRecords(table: any): Promise<any[]> {
+    if (!table || typeof table.where !== 'function') {
+      return [];
+    }
+
+    const pending = await table.where('sync_status').equals('pending').toArray();
+
+    // Legacy records may have no sync_status set yet.
+    let legacyWithoutStatus: any[] = [];
+    try {
+      legacyWithoutStatus = await table.where('sync_status').equals(undefined).toArray();
+    } catch {
+      legacyWithoutStatus = [];
+    }
+
+    const legacyPending = legacyWithoutStatus.filter((record) => this.isPendingRecord(record));
+    return [...pending, ...legacyPending];
+  }
+
   // ============================================
   // Private Methods
   // ============================================
@@ -415,11 +448,11 @@ export class SyncService {
         // No items ready for retry, check database for new pending records
         // Note: SyncQueue.enqueue() automatically deduplicates by table+localId
         const [pendingCustomers, pendingServiceLogs, pendingChemicalUsage, pendingNotes, pendingSaltCellLogs] = await Promise.all([
-          db.customers.where('sync_status').equals('pending').toArray(),
-          db.serviceLogs.where('sync_status').equals('pending').toArray(),
-          db.chemicalUsage.where('sync_status').equals('pending').toArray(),
-          db.notes.where('sync_status').equals('pending').toArray(),
-          db.saltCellLogs.where('sync_status').equals('pending').toArray(),
+          this.getPendingRecords(db.customers),
+          this.getPendingRecords(db.serviceLogs),
+          this.getPendingRecords(db.chemicalUsage),
+          this.getPendingRecords(db.notes),
+          this.getPendingRecords(db.saltCellLogs),
         ]);
 
         // Add new pending records to queue (deduplication handled by queue)
@@ -564,6 +597,7 @@ export class SyncService {
 
     while (retryCount < MAX_RETRIES) {
       try {
+        const localUpdatedAt = this.normalizeLocalUpdatedAt(record.local_updated_at);
         let result: any;
 
         switch (table) {
@@ -584,7 +618,7 @@ export class SyncService {
                 created_by: record.created_by,
                 report_settings: record.report_settings,
               },
-              local_updated_at: record.local_updated_at,
+              local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"customers"> | undefined,
             });
             break;
@@ -638,7 +672,7 @@ export class SyncService {
                 end_time: record.end_time,
                 duration_ms: record.duration_ms,
               },
-              local_updated_at: record.local_updated_at,
+              local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"serviceLogs"> | undefined,
             });
             break;
@@ -678,7 +712,7 @@ export class SyncService {
                 notes: record.notes,
                 created_date: record.created_date,
               },
-              local_updated_at: record.local_updated_at,
+              local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"chemicalUsage"> | undefined,
             });
             break;
@@ -712,7 +746,7 @@ export class SyncService {
                 completed: record.completed,
                 created_date: record.created_date,
               },
-              local_updated_at: record.local_updated_at,
+              local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"notes"> | undefined,
             });
             break;
@@ -752,7 +786,7 @@ export class SyncService {
                 notes: record.notes,
                 next_cleaning_due: record.next_cleaning_due,
               },
-              local_updated_at: record.local_updated_at,
+              local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"saltCellLogs"> | undefined,
             });
             break;
