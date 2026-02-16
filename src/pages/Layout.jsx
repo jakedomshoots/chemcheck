@@ -1,7 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Home, Users, BarChart3, FileText, TestTube, StickyNote, Menu, X, Settings, BookOpen } from "lucide-react";
+import { Home, Users, FileText, TestTube, StickyNote, Menu, X, Settings, BookOpen, ClipboardList, Navigation } from "lucide-react";
 import { importWithRetry } from "@/lib/chunkErrorRecovery";
 import chemcheckLogo from "@/assets/chemcheck-logo.svg";
 
@@ -31,15 +31,21 @@ export default function Layout({ children, currentPageName }) {
   const navItems = [
     { name: "Home", path: createPageUrl("Home"), icon: Home },
     { name: "Clients", path: createPageUrl("Clients"), icon: Users },
-    { name: "History", path: createPageUrl("History"), icon: BarChart3 },
+    { name: "Work Orders", path: createPageUrl("WorkOrders"), icon: ClipboardList },
     { name: "Report", path: createPageUrl("WeeklyReport"), icon: FileText },
     { name: "Notes", path: createPageUrl("Notes"), icon: StickyNote },
     { name: "Chemicals", path: createPageUrl("ChemicalUsage"), icon: TestTube },
+    { name: "Route Plan", path: createPageUrl("RouteOptimizer"), icon: Navigation },
     { name: "Pool School", path: createPageUrl("PoolSchool"), icon: BookOpen },
     { name: "Settings", path: createPageUrl("Settings"), icon: Settings },
   ];
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => {
+    if (path === createPageUrl("WorkOrders")) {
+      return location.pathname.toLowerCase().startsWith("/workorders");
+    }
+    return location.pathname.toLowerCase() === path.toLowerCase();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-cyan-100/50 font-sans selection:bg-cyan-100">

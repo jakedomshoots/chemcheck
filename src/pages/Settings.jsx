@@ -29,6 +29,24 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { userManager } from '@/lib/userManager';
 import { autoBackup } from '@/lib/backup';
 import { notificationManager } from '@/lib/notifications';
@@ -123,7 +141,7 @@ function AccountSection({ userData, setUserData }) {
             value={userData.name}
             onChange={(e) => setUserData(prev => ({ ...prev, name: e.target.value }))}
             placeholder="Enter your full name"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
           />
         </div>
 
@@ -260,6 +278,12 @@ export default function Settings() {
     usagePercent: 0,
   });
   const [isStorageLoading, setIsStorageLoading] = useState(false);
+  const [privacyConfirmAction, setPrivacyConfirmAction] = useState(null);
+  const [dataSummaryRows, setDataSummaryRows] = useState([]);
+  const [isDataSummaryOpen, setIsDataSummaryOpen] = useState(false);
+  const [isDeleteAllDataDialogOpen, setIsDeleteAllDataDialogOpen] = useState(false);
+  const [deleteAllDataConfirmText, setDeleteAllDataConfirmText] = useState('');
+  const [isDeletingAllData, setIsDeletingAllData] = useState(false);
 
   // Convex hooks for business data
   const convexBusiness = useQuery(api.businesses.getCurrent);
@@ -287,7 +311,10 @@ export default function Settings() {
       customerUpdates: true
     },
     defaultView: 'route',
-    autoBackup: true
+    autoBackup: true,
+    default_workorders_section: 'dispatch',
+    home_primary_action: 'start_next_pending',
+    show_ops_brief: true,
   });
   const showPlaceholderLabels = import.meta.env.VITE_SHOW_PLACEHOLDERS === 'true';
 
@@ -300,7 +327,10 @@ export default function Settings() {
     defaultSurfaceTypes: ['Plaster', 'Vinyl', 'Fiberglass', 'Tile'],
     routeOptimization: true,
     requirePhotos: false,
-    requireSignatures: false
+    requireSignatures: false,
+    defaultWorkordersSection: 'dispatch',
+    homePrimaryAction: 'start_next_pending',
+    showOpsBrief: true,
   });
 
   useEffect(() => {
@@ -335,7 +365,10 @@ export default function Settings() {
           defaultSurfaceTypes: ['Plaster', 'Vinyl', 'Fiberglass', 'Tile'],
           routeOptimization: convexBusiness.settings.route_optimization ?? true,
           requirePhotos: convexBusiness.settings.require_photos ?? false,
-          requireSignatures: convexBusiness.settings.require_signatures ?? false
+          requireSignatures: convexBusiness.settings.require_signatures ?? false,
+          defaultWorkordersSection: convexBusiness.settings.default_workorders_section || 'dispatch',
+          homePrimaryAction: convexBusiness.settings.home_primary_action || 'start_next_pending',
+          showOpsBrief: convexBusiness.settings.show_ops_brief ?? true,
         });
       }
     }
@@ -376,7 +409,10 @@ export default function Settings() {
         timezone: currentUser.preferences?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         notifications: syncedNotifications,
         defaultView: currentUser.preferences?.defaultView || 'route',
-        autoBackup: currentUser.preferences?.autoBackup ?? true
+        autoBackup: currentUser.preferences?.autoBackup ?? true,
+        default_workorders_section: currentUser.preferences?.default_workorders_section || 'dispatch',
+        home_primary_action: currentUser.preferences?.home_primary_action || 'start_next_pending',
+        show_ops_brief: currentUser.preferences?.show_ops_brief ?? true,
       });
     } else {
       try {
@@ -426,7 +462,10 @@ export default function Settings() {
         defaultSurfaceTypes: settings.defaultSurfaceTypes || ['Plaster', 'Vinyl', 'Fiberglass', 'Tile'],
         routeOptimization: settings.routeOptimization ?? settings.route_optimization ?? true,
         requirePhotos: settings.requirePhotos ?? settings.require_photos ?? false,
-        requireSignatures: settings.requireSignatures ?? settings.require_signatures ?? false
+        requireSignatures: settings.requireSignatures ?? settings.require_signatures ?? false,
+        defaultWorkordersSection: settings.defaultWorkordersSection || settings.default_workorders_section || 'dispatch',
+        homePrimaryAction: settings.homePrimaryAction || settings.home_primary_action || 'start_next_pending',
+        showOpsBrief: settings.showOpsBrief ?? settings.show_ops_brief ?? true,
       });
     }
   };
@@ -444,9 +483,6 @@ export default function Settings() {
   };
 
   const handleClearSyncedPhotos = async () => {
-    const confirmed = window.confirm('Delete all synced photos from local storage?');
-    if (!confirmed) return;
-
     try {
       const deletedCount = await clearSyncedPhotos();
       setSaveMessage(`Synced photo cleanup successful: cleared ${deletedCount} photo${deletedCount === 1 ? '' : 's'}.`);
@@ -458,11 +494,6 @@ export default function Settings() {
   };
 
   const handleClearAllLocalPhotos = async () => {
-    const confirmed = window.confirm(
-      'Delete ALL locally stored photos? Synced photos stay in cloud storage, but local copies will be removed.'
-    );
-    if (!confirmed) return;
-
     try {
       await clearAllLocalPhotos();
       setSaveMessage('Local photo cleanup successful: cleared all local photos.');
@@ -473,9 +504,46 @@ export default function Settings() {
     }
   };
 
+  const handleLoadDataSummary = async () => {
+    try {
+      const summary = await getDataRetentionSummary();
+      setDataSummaryRows(summary?.dataTypes || []);
+      setIsDataSummaryOpen(true);
+    } catch (error) {
+      console.error('Failed to load data summary:', error);
+      setSaveMessage('Failed to load data summary. Please try again.');
+    }
+  };
+
+  const handleDeleteAllData = async () => {
+    if (deleteAllDataConfirmText.trim() !== 'DELETE') return;
+    setIsDeletingAllData(true);
+
+    try {
+      const result = await deleteAllUserData();
+      setSaveMessage(
+        `Data deleted: ${result.deleted.customers} customers, ${result.deleted.serviceLogs} service logs, ${result.deleted.chemicalUsage} chemical records, ${result.deleted.notes} notes.`
+      );
+      setIsDeleteAllDataDialogOpen(false);
+      setDeleteAllDataConfirmText('');
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to delete all data:', error);
+      setSaveMessage('Failed to delete all data. Please try again.');
+    } finally {
+      setIsDeletingAllData(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setSaveMessage('');
+    const normalizedPreferences = {
+      ...preferences,
+      default_workorders_section: businessSettings.defaultWorkordersSection,
+      home_primary_action: businessSettings.homePrimaryAction,
+      show_ops_brief: businessSettings.showOpsBrief,
+    };
 
     try {
       // Only update Convex if business exists
@@ -498,6 +566,9 @@ export default function Settings() {
           route_optimization: businessSettings.routeOptimization,
           require_photos: businessSettings.requirePhotos,
           require_signatures: businessSettings.requireSignatures,
+          default_workorders_section: businessSettings.defaultWorkordersSection,
+          home_primary_action: businessSettings.homePrimaryAction,
+          show_ops_brief: businessSettings.showOpsBrief,
         });
       } else {
         // Fallback to localStorage if no Convex business
@@ -529,11 +600,11 @@ export default function Settings() {
       // Update user preferences in active user profile when available.
       // Otherwise store a local fallback so simulator/dev bypass can still persist settings.
       if (currentUser) {
-        await userManager.updateUserPreferences(preferences);
+        await userManager.updateUserPreferences(normalizedPreferences);
       } else {
         localStorage.setItem('chemcheck_settings_fallback', JSON.stringify({
           userData,
-          preferences,
+          preferences: normalizedPreferences,
           savedAt: Date.now(),
         }));
       }
@@ -589,7 +660,8 @@ export default function Settings() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24">
+    <>
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <div className="mb-2">
@@ -608,7 +680,7 @@ export default function Settings() {
               key={section.id}
               onClick={() => setActiveSection(section.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${activeSection === section.id
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
                 : 'bg-white text-slate-700 border border-slate-200'
                 }`}
             >
@@ -629,7 +701,7 @@ export default function Settings() {
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${activeSection === section.id
-                    ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
                     : 'text-slate-700 hover:bg-slate-100'
                     }`}
                 >
@@ -664,7 +736,7 @@ export default function Settings() {
                       value={businessData.name}
                       onChange={(e) => setBusinessData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="Enter your business name"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
                     />
                   </div>
 
@@ -678,7 +750,7 @@ export default function Settings() {
                       onChange={(e) => setBusinessData(prev => ({ ...prev, address: e.target.value }))}
                       rows={2}
                       placeholder="Enter your business address"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
                     />
                   </div>
 
@@ -693,7 +765,7 @@ export default function Settings() {
                         value={businessData.phone}
                         onChange={(e) => setBusinessData(prev => ({ ...prev, phone: e.target.value }))}
                         placeholder="(555) 123-4567"
-                        className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-base text-slate-900 placeholder:text-gray-400"
+                        className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-base text-slate-900 placeholder:text-gray-400"
                       />
                     </div>
                     <div>
@@ -706,7 +778,7 @@ export default function Settings() {
                         value={businessData.email}
                         onChange={(e) => setBusinessData(prev => ({ ...prev, email: e.target.value }))}
                         placeholder="business@example.com"
-                        className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-base text-slate-900 placeholder:text-gray-400"
+                        className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-base text-slate-900 placeholder:text-gray-400"
                       />
                     </div>
                   </div>
@@ -739,7 +811,7 @@ export default function Settings() {
                     <select
                       value={preferences.language}
                       onChange={(e) => setPreferences(prev => ({ ...prev, language: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 disabled:text-slate-500 disabled:bg-slate-50"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 disabled:text-slate-500 disabled:bg-slate-50"
                       disabled
                     >
                       <option value="en">English</option>
@@ -756,7 +828,7 @@ export default function Settings() {
                     <select
                       value={preferences.defaultView}
                       onChange={(e) => setPreferences(prev => ({ ...prev, defaultView: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
                     >
                       <option value="route">Route View</option>
                       <option value="customers">Customer List</option>
@@ -764,6 +836,65 @@ export default function Settings() {
                     {showPlaceholderLabels && (
                       <p className="text-xs text-slate-500 mt-1">Calendar view coming soon</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Default Work Orders Section
+                    </label>
+                    <select
+                      value={businessSettings.defaultWorkordersSection}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setBusinessSettings((prev) => ({ ...prev, defaultWorkordersSection: nextValue }));
+                        setPreferences((prev) => ({ ...prev, default_workorders_section: nextValue }));
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
+                    >
+                      <option value="dispatch">Dispatch</option>
+                      <option value="quotes">Quotes</option>
+                      <option value="invoices">Invoices</option>
+                      <option value="comms">Communications</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Home Primary Action
+                    </label>
+                    <select
+                      value={businessSettings.homePrimaryAction}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setBusinessSettings((prev) => ({ ...prev, homePrimaryAction: nextValue }));
+                        setPreferences((prev) => ({ ...prev, home_primary_action: nextValue }));
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
+                    >
+                      <option value="start_next_pending">Start Next Pending</option>
+                      <option value="open_route_plan">Open Route Plan</option>
+                      <option value="add_client">Add Client</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-slate-900">Show Daily Ops Brief</p>
+                      <p className="text-sm text-slate-600">Display estimated route summary on Home.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={businessSettings.showOpsBrief}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setBusinessSettings((prev) => ({ ...prev, showOpsBrief: checked }));
+                          setPreferences((prev) => ({ ...prev, show_ops_brief: checked }));
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -798,7 +929,7 @@ export default function Settings() {
                           }))}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
                       </label>
                     </div>
                   ))}
@@ -825,7 +956,7 @@ export default function Settings() {
                         <label
                           key={day}
                           className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${businessSettings.workingDays.includes(day)
-                            ? 'bg-purple-600 text-white'
+                            ? 'bg-cyan-600 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                             }`}
                         >
@@ -868,7 +999,7 @@ export default function Settings() {
                             ...prev,
                             workingHours: { ...prev.workingHours, start: e.target.value }
                           }))}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
                         />
                       </div>
                       <div>
@@ -880,7 +1011,7 @@ export default function Settings() {
                             ...prev,
                             workingHours: { ...prev.workingHours, end: e.target.value }
                           }))}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
                         />
                       </div>
                     </div>
@@ -914,7 +1045,7 @@ export default function Settings() {
                               newTypes[index] = e.target.value;
                               setBusinessSettings(prev => ({ ...prev, serviceTypes: newTypes }));
                             }}
-                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
                           />
                           <Button
                             onClick={() => {
@@ -960,7 +1091,7 @@ export default function Settings() {
                               newTypes[index] = e.target.value;
                               setBusinessSettings(prev => ({ ...prev, chemicalTypes: newTypes }));
                             }}
-                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
                           />
                           <Button
                             onClick={() => {
@@ -1007,7 +1138,7 @@ export default function Settings() {
                           onChange={(e) => setBusinessSettings(prev => ({ ...prev, routeOptimization: e.target.checked }))}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
                       </label>
                     </div>
 
@@ -1043,7 +1174,7 @@ export default function Settings() {
                           }}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
                       </label>
                     </div>
 
@@ -1064,7 +1195,7 @@ export default function Settings() {
                             disabled
                             className="sr-only peer"
                           />
-                          <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                          <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
                         </label>
                       </div>
                     )}
@@ -1118,7 +1249,7 @@ export default function Settings() {
                           onChange={(e) => setPreferences(prev => ({ ...prev, autoBackup: e.target.checked }))}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
                       </label>
                     </div>
                   </div>
@@ -1194,7 +1325,7 @@ export default function Settings() {
                           }}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
                       </label>
                     </div>
                   </div>
@@ -1210,18 +1341,7 @@ export default function Settings() {
                       We retain your data as long as your account is active.
                     </p>
                     <Button
-                      onClick={async () => {
-                        try {
-                          const summary = await getDataRetentionSummary();
-                          const message = summary.dataTypes
-                            .map(d => `${d.type}: ${d.count} records`)
-                            .join('\n');
-                          alert(`Your Data Summary:\n\n${message}`);
-                        } catch (error) {
-                          console.error('Failed to load data summary:', error);
-                          setSaveMessage('Failed to load data summary. Please try again.');
-                        }
-                      }}
+                      onClick={handleLoadDataSummary}
                       variant="outline"
                       size="sm"
                     >
@@ -1238,7 +1358,7 @@ export default function Settings() {
                       </div>
                       <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                         <div
-                          className={`h-full transition-all ${photoStorage.usagePercent >= 85 ? 'bg-red-500' : 'bg-purple-600'}`}
+                          className={`h-full transition-all ${photoStorage.usagePercent >= 85 ? 'bg-red-500' : 'bg-cyan-600'}`}
                           style={{ width: `${Math.min(100, photoStorage.usagePercent)}%` }}
                         />
                       </div>
@@ -1247,14 +1367,14 @@ export default function Settings() {
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <Button
-                          onClick={handleClearSyncedPhotos}
+                          onClick={() => setPrivacyConfirmAction('clear_synced')}
                           variant="outline"
                           size="sm"
                         >
                           Clear Synced Photos
                         </Button>
                         <Button
-                          onClick={handleClearAllLocalPhotos}
+                          onClick={() => setPrivacyConfirmAction('clear_all')}
                           variant="outline"
                           size="sm"
                           className="border-red-300 text-red-700 hover:bg-red-100"
@@ -1278,36 +1398,7 @@ export default function Settings() {
                           We recommend exporting your data first.
                         </p>
                         <Button
-                          onClick={async () => {
-                            const confirmed = window.confirm(
-                              'Are you absolutely sure you want to delete ALL your data?\n\n' +
-                              'This will permanently remove:\n' +
-                              '• All customers\n' +
-                              '• All service logs\n' +
-                              '• All chemical usage records\n' +
-                              '• All notes\n\n' +
-                              'This action CANNOT be undone!'
-                            );
-                            if (confirmed) {
-                              const doubleConfirm = window.confirm(
-                                'Final confirmation: Type "DELETE" in the next prompt to proceed.'
-                              );
-                              if (doubleConfirm) {
-                                const typed = window.prompt('Type DELETE to confirm:');
-                                if (typed === 'DELETE') {
-                                  const result = await deleteAllUserData();
-                                  alert(
-                                    `Data deleted:\n` +
-                                    `• ${result.deleted.customers} customers\n` +
-                                    `• ${result.deleted.serviceLogs} service logs\n` +
-                                    `• ${result.deleted.chemicalUsage} chemical records\n` +
-                                    `• ${result.deleted.notes} notes`
-                                  );
-                                  window.location.reload();
-                                }
-                              }
-                            }
-                          }}
+                          onClick={() => setIsDeleteAllDataDialogOpen(true)}
                           variant="outline"
                           className="border-red-300 text-red-700 hover:bg-red-100"
                         >
@@ -1322,11 +1413,11 @@ export default function Settings() {
                   <div className="p-4 bg-slate-50 rounded-lg">
                     <p className="text-sm text-slate-600">
                       For more information about how we handle your data, please read our{' '}
-                      <a href="/privacy-policy.html" target="_blank" className="text-purple-600 hover:underline">
+                      <a href="/privacy-policy.html" target="_blank" className="text-cyan-600 hover:underline">
                         Privacy Policy
                       </a>{' '}
                       and{' '}
-                      <a href="/terms-of-service.html" target="_blank" className="text-purple-600 hover:underline">
+                      <a href="/terms-of-service.html" target="_blank" className="text-cyan-600 hover:underline">
                         Terms of Service
                       </a>.
                     </p>
@@ -1345,7 +1436,7 @@ export default function Settings() {
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="w-full sm:w-auto sm:ml-auto bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white py-3 sm:py-2"
+                className="w-full sm:w-auto sm:ml-auto bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white py-3 sm:py-2"
               >
                 {isSaving ? (
                   <>
@@ -1363,6 +1454,98 @@ export default function Settings() {
           </Card>
         </div>
       </div>
-    </div>
+      </div>
+
+      <AlertDialog open={Boolean(privacyConfirmAction)} onOpenChange={(open) => !open && setPrivacyConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {privacyConfirmAction === 'clear_all' ? 'Clear All Local Photos?' : 'Clear Synced Photos?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {privacyConfirmAction === 'clear_all'
+                ? 'This removes all local photo files from this device. Synced cloud copies remain available.'
+                : 'This removes only photos that are already synced to cloud from local storage.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (privacyConfirmAction === 'clear_all') {
+                  void handleClearAllLocalPhotos();
+                } else {
+                  void handleClearSyncedPhotos();
+                }
+                setPrivacyConfirmAction(null);
+              }}
+              className={privacyConfirmAction === 'clear_all' ? 'bg-red-600 hover:bg-red-700 text-white' : undefined}
+            >
+              {privacyConfirmAction === 'clear_all' ? 'Clear All Photos' : 'Clear Synced Photos'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={isDataSummaryOpen} onOpenChange={setIsDataSummaryOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Data Summary</DialogTitle>
+            <DialogDescription>Current retained records by data type.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {dataSummaryRows.length === 0 ? (
+              <p className="text-sm text-slate-600">No data available.</p>
+            ) : (
+              dataSummaryRows.map((item) => (
+                <div key={item.type} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+                  <span className="text-sm text-slate-700">{item.type}</span>
+                  <span className="text-sm font-semibold text-slate-900">{item.count}</span>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDataSummaryOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isDeleteAllDataDialogOpen} onOpenChange={setIsDeleteAllDataDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete All Data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes all customers, service logs, chemical usage records, and notes.
+              Type <span className="font-semibold">DELETE</span> to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <input
+            value={deleteAllDataConfirmText}
+            onChange={(e) => setDeleteAllDataConfirmText(e.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            placeholder="Type DELETE"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setDeleteAllDataConfirmText('')}
+              disabled={isDeletingAllData}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteAllData();
+              }}
+              disabled={deleteAllDataConfirmText.trim() !== 'DELETE' || isDeletingAllData}
+              className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+            >
+              {isDeletingAllData ? 'Deleting...' : 'Delete All Data'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

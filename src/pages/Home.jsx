@@ -2,13 +2,14 @@ import { useState, useEffect, useMemo } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl, parseLocalDate } from "@/utils";
-import { Calendar, Plus, AlertTriangle } from "lucide-react";
+import { Calendar, Plus, AlertTriangle, PlayCircle, ShieldAlert, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, subWeeks, startOfWeek, endOfWeek } from "date-fns";
 import CustomerCard from "../components/home/CustomerCard";
 import QuickStats from "../components/home/QuickStats";
 import { CustomerCardSkeleton, QuickStatsSkeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { trackUxEvent } from "@/lib/uxAnalytics";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -69,6 +70,12 @@ export default function Home() {
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const dayOfWeek = useMemo(() => format(new Date(), "EEEE"), []);
+  const homePrimaryAction = user?.preferences?.home_primary_action || 'start_next_pending';
+  const opsBriefFeatureEnabled = useMemo(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('chemcheck_ff_home_ops_brief') !== 'false';
+  }, []);
+  const showOpsBrief = opsBriefFeatureEnabled && (user?.preferences?.show_ops_brief ?? true);
 
   // Check user's default view preference and redirect if needed
   useEffect(() => {
@@ -216,6 +223,31 @@ export default function Home() {
   }, [lastWeekLogs]);
 
   const getLastWeekLog = (customerId) => lastWeekLogsMap.get(customerId);
+  const todayLogsMap = useMemo(() => {
+    const map = new Map();
+    todayLogs.forEach((log) => {
+      map.set(log.customer_id, log);
+    });
+    return map;
+  }, [todayLogs]);
+
+  const getServiceConfidence = (customerId) => {
+    const log = todayLogsMap.get(customerId);
+    if (!log) return null;
+
+    const hasCoreReadings = Boolean(log.ph && log.chlorine && log.alkalinity && log.stabilizer);
+    const hasRequiredPhotos = Boolean(log.has_before_photos && log.has_after_photos);
+    const hasNotes = Boolean(log.notes && String(log.notes).trim().length > 0);
+
+    let score = 0;
+    if (hasCoreReadings) score += 35;
+    if (hasRequiredPhotos) score += 40;
+    if (hasNotes) score += 25;
+
+    if (score >= 80) return { score, label: "High" };
+    if (score >= 50) return { score, label: "Medium" };
+    return { score, label: "Low" };
+  };
 
   const handleCustomerClick = (customer) => {
     if (isCompleted(customer._id)) {
@@ -231,9 +263,15 @@ export default function Home() {
     }
   };
 
-  const handleHistoryClick = (customer) => {
-    // Navigate to History page with customer ID for filtered view
-    navigate(createPageUrl("History") + `?customerId=${customer._id}`);
+  const handleCallCustomer = (customer) => {
+    if (!customer?.phone) return;
+    window.location.href = `tel:${customer.phone}`;
+  };
+
+  const handleMapCustomer = (customer) => {
+    if (!customer?.address) return;
+    const query = encodeURIComponent(customer.address);
+    window.open(`https://maps.google.com/?q=${query}`, "_blank", "noopener,noreferrer");
   };
 
   const stats = useMemo(() => {
@@ -244,6 +282,55 @@ export default function Home() {
       pending: customers.length - completed
     };
   }, [customers, isCompleted]);
+
+  const nextPendingCustomer = useMemo(
+    () => customers.find((customer) => !isCompleted(customer._id)) || null,
+    [customers, isCompleted]
+  );
+
+  const opsBrief = useMemo(() => {
+    const pendingStops = customers.filter((customer) => !isCompleted(customer._id)).length;
+    const estimatedRouteMinutes = customers.length * 25;
+    return {
+      pendingStops,
+      estimatedRouteMinutes,
+    };
+  }, [customers, isCompleted]);
+
+  const handlePrimaryHomeAction = () => {
+    trackUxEvent('ux_task_started', { flow: 'home_primary_action', action: homePrimaryAction });
+
+    if (homePrimaryAction === 'open_route_plan') {
+      navigate(createPageUrl("RouteOptimizer"));
+      trackUxEvent('ux_task_completed', { flow: 'home_primary_action', action: homePrimaryAction });
+      return;
+    }
+
+    if (homePrimaryAction === 'add_client') {
+      navigate(createPageUrl("NewClient"));
+      trackUxEvent('ux_task_completed', { flow: 'home_primary_action', action: homePrimaryAction });
+      return;
+    }
+
+    if (!nextPendingCustomer) {
+      trackUxEvent('ux_task_abandoned', { flow: 'home_primary_action', reason: 'no_pending_customer' });
+      return;
+    }
+    navigate(createPageUrl("NewServiceLog") + `?customerId=${nextPendingCustomer._id}`, {
+      state: { customer: nextPendingCustomer },
+    });
+    trackUxEvent('ux_task_completed', { flow: 'home_primary_action', action: homePrimaryAction });
+  };
+
+  const primaryActionConfig = homePrimaryAction === 'open_route_plan'
+    ? { icon: Route, label: 'Open Route Plan', disabled: false }
+    : homePrimaryAction === 'add_client'
+      ? { icon: Plus, label: 'Add Client', disabled: false }
+      : {
+          icon: PlayCircle,
+          label: nextPendingCustomer ? `Start Next: ${nextPendingCustomer.full_name}` : "No Pending Stops",
+          disabled: !nextPendingCustomer,
+        };
 
   if (loading) {
     // Show skeleton immediately instead of blocking spinner
@@ -344,6 +431,35 @@ export default function Home() {
         </div>
       )}
 
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button
+          onClick={handlePrimaryHomeAction}
+          disabled={primaryActionConfig.disabled}
+          className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg"
+        >
+          <primaryActionConfig.icon className="w-4 h-4 mr-2" />
+          {primaryActionConfig.label}
+        </Button>
+      </div>
+
+      {showOpsBrief && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldAlert className="w-4 h-4 text-cyan-700" />
+            <h3 className="text-sm font-semibold text-slate-900">Daily Ops Brief</h3>
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Estimated Route</p>
+              <p className="text-lg font-bold text-cyan-700 flex items-center gap-1">
+                <Route className="w-3.5 h-3.5" />
+                {opsBrief.pendingStops} stops · {opsBrief.estimatedRouteMinutes} min
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <QuickStats total={stats.total} completed={stats.completed} pending={stats.pending} />
 
       {customers.length === 0 ? (
@@ -374,7 +490,11 @@ export default function Home() {
                 isCompleted={isCompleted(customer._id)}
                 lastWeekLog={getLastWeekLog(customer._id)}
                 onClick={() => handleCustomerClick(customer)}
-                onHistoryClick={handleHistoryClick}
+                onStart={() => handleCustomerClick(customer)}
+                onSkip={() => handleSkipCustomer(customer)}
+                onCall={() => handleCallCustomer(customer)}
+                onMap={() => handleMapCustomer(customer)}
+                serviceConfidence={getServiceConfidence(customer._id)}
               />
             </div>
           ))}
