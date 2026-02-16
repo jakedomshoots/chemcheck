@@ -9,6 +9,24 @@ import { enforceRateLimit } from "./rateLimit";
  * SECURITY: All sync mutations require authentication and enforce tenant isolation
  */
 
+async function resolveBusinessContext(ctx: any, userEmail: string) {
+  const teamMember = await ctx.db
+    .query("team_members")
+    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
+    .filter((q: any) => q.eq(q.field("is_active"), true))
+    .first();
+
+  if (teamMember) {
+    const teamBusiness = await ctx.db.get(teamMember.business_id);
+    if (teamBusiness) return teamBusiness;
+  }
+
+  return await ctx.db
+    .query("businesses")
+    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
+    .first();
+}
+
 async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: string): Promise<void> {
   const customer = await ctx.db.get(customerId);
   if (!customer || customer.created_by !== userEmail) {
@@ -59,10 +77,17 @@ export const syncCustomer = mutation({
 
     const { local_id, data, local_updated_at, convex_id } = args;
     const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
+
+    // Resolve business context so we can set business_id (matches customers.create behavior)
+    const business = await resolveBusinessContext(ctx, identity.email!);
+    const createdBy = business ? business.owner_email : identity.email!;
+    const businessId = business ? String(business._id) : undefined;
+
     const customerData = {
       ...data,
       // Always derive tenancy from auth identity, not client payload.
-      created_by: identity.email!,
+      created_by: createdBy,
+      business_id: businessId,
     };
 
     // If convex_id provided, update existing record
@@ -608,12 +633,18 @@ export const batchSyncCustomers = mutation({
 
     const results = [];
 
+    // Resolve business context so we can set business_id (matches customers.create behavior)
+    const business = await resolveBusinessContext(ctx, identity.email!);
+    const createdBy = business ? business.owner_email : identity.email!;
+    const businessId = business ? String(business._id) : undefined;
+
     for (const customer of args.customers) {
       try {
         const customerData = {
           ...customer.data,
           // Always derive tenancy from auth identity, not client payload.
-          created_by: identity.email!,
+          created_by: createdBy,
+          business_id: businessId,
         };
 
         const newCustomerId = await ctx.db.insert("customers", {

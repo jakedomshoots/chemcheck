@@ -42,6 +42,13 @@ async function getActiveBusinessMemberEmails(
 }
 
 async function listAccessibleCustomers(ctx: any, userEmail: string) {
+    // Guard: if userEmail is undefined/empty (e.g. Clerk token missing email claim),
+    // throw a clear error instead of silently returning an empty list.
+    const normalizedEmail = String(userEmail || "").trim().toLowerCase();
+    if (!normalizedEmail) {
+        throw new Error("listAccessibleCustomers: userEmail is empty or undefined. Check that the Clerk JWT includes an email claim.");
+    }
+
     const business = await resolveBusinessContext(ctx, userEmail);
 
     if (business) {

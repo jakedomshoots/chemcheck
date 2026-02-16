@@ -9,6 +9,7 @@
  */
 
 import type * as account from "../account.js";
+import type * as backfillCustomerBusinessId from "../backfillCustomerBusinessId.js";
 import type * as businesses from "../businesses.js";
 import type * as chemicalUsage from "../chemicalUsage.js";
 import type * as communications from "../communications.js";
@@ -41,6 +42,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   account: typeof account;
+  backfillCustomerBusinessId: typeof backfillCustomerBusinessId;
   businesses: typeof businesses;
   chemicalUsage: typeof chemicalUsage;
   communications: typeof communications;
