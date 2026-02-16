@@ -51,12 +51,12 @@ export default function Layout({ children, currentPageName }) {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-cyan-100/50 font-sans selection:bg-cyan-100">
       {/* Header - Mobile Only */}
       <header className="lg:hidden sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm safe-area-top">
-        <div className="flex items-center justify-between px-4 h-14">
+        <div className="flex items-center justify-between px-3 h-12 sm:h-14">
           <div className="flex items-center">
             <img
               src={chemcheckLogo}
               alt="ChemCheck"
-              className="h-7 sm:h-8 w-auto max-w-[150px] sm:max-w-[200px]"
+              className="h-6 sm:h-8 w-auto max-w-[135px] sm:max-w-[200px]"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -65,10 +65,10 @@ export default function Layout({ children, currentPageName }) {
             </Suspense>
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-4 -mr-3 hover:bg-slate-100/80 active:bg-slate-200/80 active:scale-90 rounded-2xl transition-all touch-manipulation flex items-center justify-center min-w-[48px] min-h-[48px]"
+              className="p-2.5 -mr-1 hover:bg-slate-100/80 active:bg-slate-200/80 active:scale-90 rounded-xl transition-all touch-manipulation flex items-center justify-center min-w-[40px] min-h-[40px]"
               aria-label="Open navigation menu"
             >
-              <Menu className="w-8 h-8 stroke-[2]" />
+              <Menu className="w-7 h-7 stroke-[2]" />
             </button>
           </div>
         </div>

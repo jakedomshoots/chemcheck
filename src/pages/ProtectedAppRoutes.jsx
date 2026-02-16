@@ -4,6 +4,8 @@ import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-do
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
 import { getDefaultWorkOrdersSectionFromStorage } from '@/lib/workOrdersNavigation';
+import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
+import { useSyncInitialization } from '@/hooks/useSyncInitialization';
 
 const Home = lazy(() => importWithRetry(() => import('./Home'), 'Home'));
 const Clients = lazy(() => importWithRetry(() => import('./Clients'), 'Clients'));
@@ -83,7 +85,9 @@ function getCurrentPage(url) {
 
 export default function ProtectedAppRoutes() {
   const location = useLocation();
+  const auth = useAuthContext();
   const currentPage = getCurrentPage(location.pathname);
+  useSyncInitialization(Boolean(auth?.isSignedIn));
 
   return (
     <Layout currentPageName={currentPage}>

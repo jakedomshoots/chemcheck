@@ -2637,31 +2637,33 @@ export default function WorkOrders() {
     };
   }, [reminderAutopilotEnabled, reminderAutopilotIntervalMinutes, reminderAutopilotNextRunAt]);
 
+  const hideOverviewPanelsOnMobile = activeSection !== "dispatch";
+
   return (
-    <div className={`w-full px-4 sm:px-6 lg:px-8 py-6 ${isCompactView ? "space-y-4" : "space-y-6"}`}>
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <ClipboardList className="w-6 h-6 text-cyan-600" />
+    <div className={`w-full px-3 sm:px-6 lg:px-8 py-3 sm:py-6 ${isCompactView ? "space-y-3 sm:space-y-4" : "space-y-4 sm:space-y-6"}`}>
+      <div className="flex flex-col gap-1.5 sm:gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-600" />
           Work Orders & Dispatch
         </h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-xs sm:text-sm text-slate-600">
           Build dispatch, quotes, and invoicing in one flow for solo operators and small teams.
         </p>
         {cloudEnabled ? (
-          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+          <p className="text-[11px] sm:text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2.5 py-1.5 sm:px-3 sm:py-2">
             Cloud mode active. Work orders, quotes, and invoices save to Convex.
           </p>
         ) : (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+          <p className="text-[11px] sm:text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 sm:px-3 sm:py-2">
             Local mode active. Work orders, quotes, and invoices are saved locally on this device.
           </p>
         )}
       </div>
 
-      <Card className="p-3 sm:p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <Card className="p-2.5 sm:p-4">
+        <div className="flex flex-col gap-2.5 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
           {workOrdersSplitEnabled ? (
-            <div className="inline-flex w-full lg:w-auto rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <div className="inline-flex w-full lg:w-auto rounded-xl border border-slate-200 bg-slate-50 p-1 overflow-x-auto">
               {[
                 { id: "dispatch", label: "Dispatch" },
                 { id: "quotes", label: "Quotes" },
@@ -2672,7 +2674,7 @@ export default function WorkOrders() {
                   key={section.id}
                   type="button"
                   onClick={() => handleSectionChange(section.id)}
-                  className={`flex-1 lg:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-all ${
+                  className={`flex-1 shrink-0 lg:flex-none px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-all ${
                     activeSection === section.id
                       ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow"
                       : "text-slate-600 hover:text-slate-900"
@@ -2691,7 +2693,7 @@ export default function WorkOrders() {
             <button
               type="button"
               onClick={() => handleViewModeChange("detailed")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium rounded-lg transition-colors ${
                 viewMode === "detailed" ? "bg-cyan-50 text-cyan-700" : "text-slate-500"
               }`}
             >
@@ -2700,7 +2702,7 @@ export default function WorkOrders() {
             <button
               type="button"
               onClick={() => handleViewModeChange("compact")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium rounded-lg transition-colors ${
                 viewMode === "compact" ? "bg-cyan-50 text-cyan-700" : "text-slate-500"
               }`}
             >
@@ -2711,19 +2713,19 @@ export default function WorkOrders() {
       </Card>
 
       {activeSection === "dispatch" && (
-      <Card className="p-4 sm:p-6">
-        <div className="flex flex-col md:flex-row md:items-end gap-4">
+      <Card className="p-3 sm:p-6">
+        <div className="flex flex-col md:flex-row md:items-end gap-3 sm:gap-4">
           <div>
-            <Label htmlFor="dispatch-date" className="text-sm">Dispatch Date</Label>
+            <Label htmlFor="dispatch-date" className="text-xs sm:text-sm">Dispatch Date</Label>
             <Input
               id="dispatch-date"
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-[220px]"
+              className="w-full sm:w-[220px]"
             />
           </div>
-          <div className="flex items-center gap-2 text-sm text-slate-600">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600">
             <CalendarClock className="w-4 h-4 text-cyan-600" />
             {workOrders.length} work order{workOrders.length === 1 ? "" : "s"} on {selectedDate}
           </div>
@@ -2731,36 +2733,36 @@ export default function WorkOrders() {
       </Card>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500">Open Quotes</p>
-          <p className="text-2xl font-semibold text-slate-900">{dashboardMetrics.openQuotes}</p>
+      <div className={`${hideOverviewPanelsOnMobile ? "hidden sm:grid" : "grid"} grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3`}>
+        <Card className="p-2.5 sm:p-3">
+          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Open Quotes</p>
+          <p className="text-xl sm:text-2xl font-semibold text-slate-900">{dashboardMetrics.openQuotes}</p>
         </Card>
-        <Card className="p-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500">Pending Deposits</p>
-          <p className={`text-2xl font-semibold ${dashboardMetrics.pendingDeposits > 0 ? "text-amber-700" : "text-slate-900"}`}>
+        <Card className="p-2.5 sm:p-3">
+          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Pending Deposits</p>
+          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.pendingDeposits > 0 ? "text-amber-700" : "text-slate-900"}`}>
             {dashboardMetrics.pendingDeposits}
           </p>
         </Card>
-        <Card className="p-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500">Unpaid Invoices</p>
-          <p className={`text-2xl font-semibold ${dashboardMetrics.unpaidInvoices > 0 ? "text-blue-700" : "text-slate-900"}`}>
+        <Card className="p-2.5 sm:p-3">
+          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Unpaid Invoices</p>
+          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.unpaidInvoices > 0 ? "text-blue-700" : "text-slate-900"}`}>
             {dashboardMetrics.unpaidInvoices}
           </p>
         </Card>
-        <Card className="p-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500">Overdue Invoices</p>
-          <p className={`text-2xl font-semibold ${dashboardMetrics.overdueInvoices > 0 ? "text-rose-700" : "text-slate-900"}`}>
+        <Card className="p-2.5 sm:p-3">
+          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Overdue Invoices</p>
+          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.overdueInvoices > 0 ? "text-rose-700" : "text-slate-900"}`}>
             {dashboardMetrics.overdueInvoices}
           </p>
         </Card>
       </div>
 
-      <Card className="p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h2 className="text-sm sm:text-base font-bold tracking-tight text-slate-950">Billing Reliability</h2>
+      <Card className={`${hideOverviewPanelsOnMobile ? "hidden sm:block" : "block"} p-3 sm:p-5`}>
+        <div className="flex items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+          <h2 className="text-xs sm:text-base font-bold tracking-tight text-slate-950">Billing Reliability</h2>
           <span
-            className={`text-xs px-2 py-1 rounded-full font-medium ${
+            className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-medium ${
               billingHealth.totalIssues > 0
                 ? "bg-amber-100 text-amber-800"
                 : "bg-emerald-100 text-emerald-700"
@@ -2771,32 +2773,32 @@ export default function WorkOrders() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
           <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">Failed Sends</p>
-            <p className={`text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-rose-700" : "text-slate-900"}`}>
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Failed Sends</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-rose-700" : "text-slate-900"}`}>
               {billingHealth.failedDeliveries}
             </p>
           </div>
           <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">Stuck Queue</p>
-            <p className={`text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-amber-700" : "text-slate-900"}`}>
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Stuck Queue</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-amber-700" : "text-slate-900"}`}>
               {billingHealth.queuedStale}
             </p>
           </div>
           <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">Old Drafts</p>
-            <p className={`text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-blue-700" : "text-slate-900"}`}>
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Old Drafts</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-blue-700" : "text-slate-900"}`}>
               {billingHealth.staleDrafts}
             </p>
           </div>
           <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">Missing Pay Link</p>
-            <p className={`text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-rose-700" : "text-slate-900"}`}>
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Missing Pay Link</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-rose-700" : "text-slate-900"}`}>
               {billingHealth.sentMissingPayLink}
             </p>
           </div>
           <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">30+ Days Unpaid</p>
-            <p className={`text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-rose-700" : "text-slate-900"}`}>
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">30+ Days Unpaid</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-rose-700" : "text-slate-900"}`}>
               {billingHealth.unpaidThirtyPlus}
             </p>
           </div>
