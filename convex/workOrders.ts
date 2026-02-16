@@ -5,6 +5,82 @@ import { normalizeTaxRate } from "./tax";
 const VALID_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
 
+async function resolveBusinessContext(ctx: any, userEmail: string) {
+  const teamMember = await ctx.db
+    .query("team_members")
+    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
+    .filter((q: any) => q.eq(q.field("is_active"), true))
+    .first();
+
+  if (teamMember) {
+    const teamBusiness = await ctx.db.get(teamMember.business_id);
+    if (teamBusiness) return teamBusiness;
+  }
+
+  return await ctx.db
+    .query("businesses")
+    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
+    .first();
+}
+
+async function getActiveBusinessMemberEmails(
+  ctx: any,
+  businessId: any,
+  ownerEmail: string
+): Promise<Set<string>> {
+  const members = await ctx.db
+    .query("team_members")
+    .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
+    .filter((q: any) => q.eq(q.field("is_active"), true))
+    .collect();
+
+  const emails = new Set<string>([ownerEmail]);
+  for (const member of members) {
+    if (member.user_email) {
+      emails.add(member.user_email);
+    }
+  }
+  return emails;
+}
+
+async function getAllowedCreatedByEmails(ctx: any, userEmail: string): Promise<Set<string>> {
+  const business = await resolveBusinessContext(ctx, userEmail);
+  if (!business) return new Set([userEmail]);
+  return await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
+}
+
+async function listAccessibleWorkOrders(ctx: any, userEmail: string) {
+  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
+  const merged = new Map<string, any>();
+
+  for (const email of allowedEmails) {
+    const records = await ctx.db
+      .query("workOrders")
+      .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
+      .collect();
+
+    for (const record of records) {
+      merged.set(String(record._id), record);
+    }
+  }
+
+  return [...merged.values()];
+}
+
+async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
+  if (!customer) return false;
+  if (customer.created_by === userEmail) return true;
+  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
+  return allowedEmails.has(customer.created_by);
+}
+
+async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): Promise<boolean> {
+  if (!workOrder) return false;
+  if (workOrder.created_by === userEmail) return true;
+  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
+  return allowedEmails.has(workOrder.created_by);
+}
+
 function normalizeWorkOrderDate(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim();
@@ -42,10 +118,7 @@ export const list = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    let workOrders = await ctx.db
-      .query("workOrders")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    let workOrders = await listAccessibleWorkOrders(ctx, identity.email!);
 
     if (args.scheduled_date) {
       workOrders = workOrders.filter(
@@ -79,7 +152,7 @@ export const get = query({
 
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
-    if (workOrder.created_by !== identity.email) throw new Error("Access denied");
+    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
 
     return workOrder;
   },
@@ -102,7 +175,10 @@ export const create = mutation({
     if (!identity) throw new Error("Not authenticated");
 
     const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer) {
+      throw new Error("Customer not found or access denied");
+    }
+    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
       throw new Error("Customer not found or access denied");
     }
 
@@ -112,7 +188,7 @@ export const create = mutation({
     const workOrderId = await ctx.db.insert("workOrders", {
       customer_id: args.customer_id,
       business_id: undefined,
-      created_by: identity.email!,
+      created_by: customer.created_by || identity.email!,
       title: args.title.trim(),
       description: args.description?.trim(),
       status: "scheduled",
@@ -149,7 +225,7 @@ export const update = mutation({
 
     const current = await ctx.db.get(args.id);
     if (!current) throw new Error("Work order not found");
-    if (current.created_by !== identity.email) throw new Error("Access denied");
+    if (!(await canAccessWorkOrder(ctx, current, identity.email!))) throw new Error("Access denied");
 
     if (args.status) validateStatus(args.status);
     if (args.priority) validatePriority(args.priority);
@@ -187,10 +263,13 @@ export const complete = mutation({
 
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
-    if (workOrder.created_by !== identity.email) throw new Error("Access denied");
+    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
 
     const customer = await ctx.db.get(workOrder.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer) {
+      throw new Error("Customer not found or access denied");
+    }
+    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
       throw new Error("Customer not found or access denied");
     }
 
@@ -315,7 +394,7 @@ export const remove = mutation({
 
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
-    if (workOrder.created_by !== identity.email) throw new Error("Access denied");
+    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
 
     await ctx.db.delete(args.id);
   },
