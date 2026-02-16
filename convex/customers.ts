@@ -21,30 +21,64 @@ async function resolveBusinessContext(ctx: any, userEmail: string) {
         .first();
 }
 
+async function getActiveBusinessMemberEmails(
+    ctx: any,
+    businessId: any,
+    ownerEmail: string
+): Promise<Set<string>> {
+    const members = await ctx.db
+        .query("team_members")
+        .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
+        .filter((q: any) => q.eq(q.field("is_active"), true))
+        .collect();
+
+    const emails = new Set<string>([ownerEmail]);
+    for (const member of members) {
+        if (member.user_email) {
+            emails.add(member.user_email);
+        }
+    }
+    return emails;
+}
+
 async function listAccessibleCustomers(ctx: any, userEmail: string) {
     const business = await resolveBusinessContext(ctx, userEmail);
 
     if (business) {
+        const merged = new Map<string, any>();
+
         const businessCustomers = await ctx.db
             .query("customers")
             .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
             .collect();
-
-        if (businessCustomers.length > 0) {
-            return businessCustomers;
+        for (const customer of businessCustomers) {
+            merged.set(String(customer._id), customer);
         }
 
-        // Backwards compatibility for legacy records without business_id
-        return await ctx.db
-            .query("customers")
-            .withIndex("by_created_by", (q: any) => q.eq("created_by", business.owner_email))
-            .collect();
+        const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
+        for (const email of allowedEmails) {
+            const createdByCustomers = await ctx.db
+                .query("customers")
+                .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
+                .collect();
+            for (const customer of createdByCustomers) {
+                merged.set(String(customer._id), customer);
+            }
+        }
+
+        return [...merged.values()];
     }
 
     return await ctx.db
         .query("customers")
         .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
         .collect();
+}
+
+async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
+    if (!customer) return false;
+    const customers = await listAccessibleCustomers(ctx, userEmail);
+    return customers.some((item: any) => String(item._id) === String(customer._id));
 }
 
 // Get all customers for the current user
@@ -69,18 +103,22 @@ export const listPaginated = query({
         if (!identity) throw new Error("Not authenticated");
 
         const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
-        const result = await ctx.db
-            .query("customers")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-            .paginate({
-                cursor: args.cursor ?? null,
-                numItems: limit,
-            });
+        const allCustomers = await listAccessibleCustomers(ctx, identity.email!);
+        const sortedCustomers = allCustomers.sort((a: any, b: any) =>
+            String(a.full_name || "").localeCompare(String(b.full_name || ""))
+        );
+
+        const offset = args.cursor && Number.isFinite(Number(args.cursor))
+            ? Math.max(0, Number(args.cursor))
+            : 0;
+        const page = sortedCustomers.slice(offset, offset + limit);
+        const nextOffset = offset + page.length;
+        const hasMore = nextOffset < sortedCustomers.length;
 
         return {
-            customers: result.page,
-            cursor: result.continueCursor,
-            hasMore: !result.isDone,
+            customers: page,
+            cursor: hasMore ? String(nextOffset) : undefined,
+            hasMore,
         };
     },
 });
@@ -197,7 +235,7 @@ export const update = mutation({
         // Verify ownership (tenant isolation)
         const customer = await ctx.db.get(args.id);
         if (!customer) throw new Error("Customer not found");
-        if (customer.created_by !== identity.email) {
+        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
 
@@ -263,7 +301,7 @@ export const remove = mutation({
         // Verify ownership (tenant isolation)
         const customer = await ctx.db.get(args.id);
         if (!customer) throw new Error("Customer not found");
-        if (customer.created_by !== identity.email) {
+        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
 
