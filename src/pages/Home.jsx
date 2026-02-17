@@ -13,6 +13,11 @@ import { trackUxEvent } from "@/lib/uxAnalytics";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
+function normalizeSkippedCustomerIds(customerIds) {
+  if (!Array.isArray(customerIds)) return [];
+  return [...new Set(customerIds.filter((id) => id !== null && id !== undefined))];
+}
+
 // Get the current week key for localStorage
 function getWeekKey() {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -24,7 +29,7 @@ function getSkippedCustomers() {
   try {
     const key = getWeekKey();
     const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : [];
+    return stored ? normalizeSkippedCustomerIds(JSON.parse(stored)) : [];
   } catch {
     return [];
   }
@@ -34,7 +39,8 @@ function getSkippedCustomers() {
 function saveSkippedCustomers(customerIds) {
   try {
     const key = getWeekKey();
-    localStorage.setItem(key, JSON.stringify(customerIds));
+    const normalizedIds = normalizeSkippedCustomerIds(customerIds);
+    localStorage.setItem(key, JSON.stringify(normalizedIds));
 
     // Clean up old week keys (only once per week)
     const lastCleanup = localStorage.getItem('skipped_services_last_cleanup');
@@ -209,20 +215,53 @@ export default function Home() {
     return missedCustomers;
   }, [allCustomers, allThisWeekLogs, dayOfWeek, skippedCustomers]);
 
-  // Handle skipping a customer for this week
+  const completedCustomerIds = useMemo(
+    () => new Set(todayLogs.map((log) => log.customer_id)),
+    [todayLogs]
+  );
+  const servicedCustomerIdsThisWeek = useMemo(
+    () => new Set(allThisWeekLogs.map((log) => log.customer_id)),
+    [allThisWeekLogs]
+  );
+
+  // Drop stale skipped entries after service is completed this week.
+  useEffect(() => {
+    if (!skippedCustomers.length) return;
+    const cleanedSkipped = skippedCustomers.filter(
+      (customerId) => !servicedCustomerIdsThisWeek.has(customerId)
+    );
+    if (cleanedSkipped.length === skippedCustomers.length) return;
+    setSkippedCustomers(cleanedSkipped);
+    saveSkippedCustomers(cleanedSkipped);
+  }, [skippedCustomers, servicedCustomerIdsThisWeek]);
+
+  const skippedCustomerIds = useMemo(
+    () => new Set(skippedCustomers),
+    [skippedCustomers]
+  );
+  const isCompleted = (customerId) => completedCustomerIds.has(customerId);
+  const isSkipped = (customerId) => !isCompleted(customerId) && skippedCustomerIds.has(customerId);
+
   const handleSkipCustomer = (customer) => {
-    const customerId = customer._id;
-    const newSkipped = [...skippedCustomers, customerId];
+    const customerId = customer?._id;
+    if (!customerId || isCompleted(customerId) || isSkipped(customerId)) return;
+    const newSkipped = normalizeSkippedCustomerIds([...skippedCustomers, customerId]);
     setSkippedCustomers(newSkipped);
     saveSkippedCustomers(newSkipped);
     toast.success(`Skipped ${customer.full_name || 'Customer'} for this week`);
   };
 
-  // Memoized computed values
-  const isCompleted = useMemo(() => {
-    const completedIds = new Set(todayLogs.map(log => log.customer_id));
-    return (customerId) => completedIds.has(customerId);
-  }, [todayLogs]);
+  const handleUnskipCustomer = (customer, options = {}) => {
+    const customerId = customer?._id;
+    const { silent = false } = options;
+    if (!customerId || !isSkipped(customerId)) return;
+    const newSkipped = skippedCustomers.filter((id) => id !== customerId);
+    setSkippedCustomers(newSkipped);
+    saveSkippedCustomers(newSkipped);
+    if (!silent) {
+      toast.success(`Moved ${customer.full_name || 'Customer'} back to pending`);
+    }
+  };
 
   const lastWeekLogsMap = useMemo(() => {
     const map = new Map();
@@ -275,6 +314,13 @@ export default function Home() {
     }
   };
 
+  const handleCustomerStart = (customer) => {
+    if (isSkipped(customer?._id)) {
+      handleUnskipCustomer(customer, { silent: true });
+    }
+    handleCustomerClick(customer);
+  };
+
   const handleCallCustomer = (customer) => {
     if (!customer?.phone) return;
     window.location.href = `tel:${customer.phone}`;
@@ -288,26 +334,29 @@ export default function Home() {
 
   const stats = useMemo(() => {
     const completed = customers.filter((c) => isCompleted(c._id)).length;
+    const skipped = customers.filter((c) => isSkipped(c._id)).length;
+    const pending = customers.filter((c) => !isCompleted(c._id) && !isSkipped(c._id)).length;
     return {
       total: customers.length,
       completed,
-      pending: customers.length - completed
+      skipped,
+      pending
     };
-  }, [customers, isCompleted]);
+  }, [customers, completedCustomerIds, skippedCustomerIds]);
 
   const nextPendingCustomer = useMemo(
-    () => customers.find((customer) => !isCompleted(customer._id)) || null,
-    [customers, isCompleted]
+    () => customers.find((customer) => !isCompleted(customer._id) && !isSkipped(customer._id)) || null,
+    [customers, completedCustomerIds, skippedCustomerIds]
   );
 
   const opsBrief = useMemo(() => {
-    const pendingStops = customers.filter((customer) => !isCompleted(customer._id)).length;
+    const pendingStops = customers.filter((customer) => !isCompleted(customer._id) && !isSkipped(customer._id)).length;
     const estimatedRouteMinutes = customers.length * 25;
     return {
       pendingStops,
       estimatedRouteMinutes,
     };
-  }, [customers, isCompleted]);
+  }, [customers, completedCustomerIds, skippedCustomerIds]);
 
   const handlePrimaryHomeAction = () => {
     trackUxEvent('ux_task_started', { flow: 'home_primary_action', action: homePrimaryAction });
@@ -472,7 +521,12 @@ export default function Home() {
         </div>
       )}
 
-      <QuickStats total={stats.total} completed={stats.completed} pending={stats.pending} />
+      <QuickStats
+        total={stats.total}
+        completed={stats.completed}
+        skipped={stats.skipped}
+        pending={stats.pending}
+      />
 
       {customers.length === 0 ? (
         <div className="text-center py-12">
@@ -500,10 +554,12 @@ export default function Home() {
               <CustomerCard
                 customer={customer}
                 isCompleted={isCompleted(customer._id)}
+                isSkipped={isSkipped(customer._id)}
                 lastWeekLog={getLastWeekLog(customer._id)}
                 onClick={() => handleCustomerClick(customer)}
-                onStart={() => handleCustomerClick(customer)}
+                onStart={() => handleCustomerStart(customer)}
                 onSkip={() => handleSkipCustomer(customer)}
+                onUnskip={() => handleUnskipCustomer(customer)}
                 onCall={() => handleCallCustomer(customer)}
                 onMap={() => handleMapCustomer(customer)}
                 serviceConfidence={getServiceConfidence(customer._id)}

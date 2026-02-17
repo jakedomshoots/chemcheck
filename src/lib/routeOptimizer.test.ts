@@ -71,4 +71,41 @@ describe("routeOptimizer", () => {
     expect(routeOne.stops.map((stop) => stop.customer.id)).toEqual(routeTwo.stops.map((stop) => stop.customer.id));
     expect(routeOne.totalTime).toBeGreaterThanOrEqual(75);
   });
+
+  it("uses a conservative default duration when none is provided", async () => {
+    const customers = [
+      {
+        _id: 6,
+        full_name: "Same Place A",
+        address: "500 Shared St, Los Angeles, CA 90021",
+        service_day: "Monday",
+      },
+      {
+        _id: 7,
+        full_name: "Same Place B",
+        address: "500 Shared St, Los Angeles, CA 90021",
+        service_day: "Monday",
+      },
+    ];
+
+    const route = await routeOptimizer.optimizeRoute(customers, "2026-02-16");
+    expect(route.stops).toHaveLength(2);
+    expect(route.totalTime).toBe(30);
+  });
+
+  it("accepts duration_ms source fields and converts them to minutes", async () => {
+    const customers = [
+      {
+        _id: 8,
+        full_name: "Duration MS Customer",
+        address: "700 Time Ave, Los Angeles, CA 90011",
+        service_day: "Tuesday",
+        duration_ms: 12 * 60 * 1000,
+      },
+    ];
+
+    const route = await routeOptimizer.optimizeRoute(customers, "2026-02-17");
+    expect(route.stops).toHaveLength(1);
+    expect(route.totalTime).toBe(12);
+  });
 });

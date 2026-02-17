@@ -1,7 +1,7 @@
 import React, { memo } from "react";
-import { CheckCircle2, Clock, TrendingUp } from "lucide-react";
+import { CheckCircle2, Clock, SkipForward, TrendingUp } from "lucide-react";
 
-const QuickStats = memo(function QuickStats({ total, completed, pending }) {
+const QuickStats = memo(function QuickStats({ total, completed, pending, skipped = 0 }) {
   const stats = [
     {
       label: "Done",
@@ -19,6 +19,16 @@ const QuickStats = memo(function QuickStats({ total, completed, pending }) {
       bgColor: "bg-cyan-50",
       textColor: "text-cyan-700"
     },
+    ...(skipped > 0
+      ? [{
+          label: "Skipped",
+          value: skipped,
+          icon: SkipForward,
+          color: "from-amber-500 to-orange-500",
+          bgColor: "bg-amber-50",
+          textColor: "text-amber-700"
+        }]
+      : []),
     {
       label: "Total",
       value: total,
@@ -30,7 +40,7 @@ const QuickStats = memo(function QuickStats({ total, completed, pending }) {
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-2 mb-4">
+    <div className={`grid gap-2 mb-4 ${skipped > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
       {stats.map((stat) => (
         <div
           key={stat.label}

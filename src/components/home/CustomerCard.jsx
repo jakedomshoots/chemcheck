@@ -18,21 +18,45 @@ import { formatServiceDate } from "@/utils";
 const CustomerCard = memo(function CustomerCard({
   customer,
   isCompleted,
+  isSkipped,
   lastWeekLog,
   onClick,
   onStart,
   onSkip,
+  onUnskip,
   onCall,
   onMap,
   serviceConfidence,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const cardState = isCompleted ? "done" : isSkipped ? "skipped" : "pending";
+  const statusBadgeClassName = cardState === "done"
+    ? "bg-emerald-100/80 text-emerald-700"
+    : cardState === "skipped"
+      ? "bg-amber-100/80 text-amber-700"
+      : "bg-cyan-100/80 text-cyan-700";
+  const statusLabel = cardState === "done" ? "Done" : cardState === "skipped" ? "Skipped" : "Pending";
+  const cardClassName = cardState === "done"
+    ? "bg-gradient-to-r from-emerald-50/90 to-teal-50/90 border-emerald-200"
+    : cardState === "skipped"
+      ? "bg-gradient-to-r from-amber-50/80 to-orange-50/70 border-amber-200"
+      : "bg-white/60 border-slate-200/60 hover:border-cyan-300 active:border-cyan-400 hover:bg-white/80";
+  const rowClassName = cardState === "done"
+    ? "bg-emerald-50/30"
+    : cardState === "skipped"
+      ? "bg-amber-50/30"
+      : "bg-slate-50/30";
+  const detailsClassName = cardState === "done"
+    ? "bg-emerald-50/40"
+    : cardState === "skipped"
+      ? "bg-amber-50/20"
+      : "bg-slate-50/40";
+  const borderClassName = cardState === "done" ? "border-emerald-200" : "border-slate-200/60";
+  const startLabel = isCompleted ? "View" : isSkipped ? "Resume" : "Start";
+  const skipLabel = isSkipped ? "Unskip" : "Skip";
 
   return (
-    <Card className={`overflow-hidden transition-all duration-200 border-2 ${isCompleted
-      ? 'bg-gradient-to-r from-emerald-50/90 to-teal-50/90 border-emerald-200'
-      : 'bg-white/60 border-slate-200/60 hover:border-cyan-300 active:border-cyan-400 hover:bg-white/80'
-      }`}>
+    <Card className={`overflow-hidden transition-all duration-200 border-2 ${cardClassName}`}>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
         className="p-3 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
@@ -45,17 +69,14 @@ const CustomerCard = memo(function CustomerCard({
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${isCompleted
-            ? 'bg-emerald-100/80 text-emerald-700'
-            : 'bg-cyan-100/80 text-cyan-700'
-            }`}>
-            {isCompleted ? 'Done' : 'Pending'}
+          <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${statusBadgeClassName}`}>
+            {statusLabel}
           </span>
           <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
       </div>
 
-      <div className={`px-3 pb-2 ${isCompleted ? 'bg-emerald-50/30' : 'bg-slate-50/30'}`}>
+      <div className={`px-3 pb-2 ${rowClassName}`}>
         <div className="grid grid-cols-4 gap-1">
           <Button
             variant="ghost"
@@ -67,7 +88,7 @@ const CustomerCard = memo(function CustomerCard({
             }}
           >
             <Clock className="w-3 h-3 mr-1" />
-            {isCompleted ? "View" : "Start"}
+            {startLabel}
           </Button>
           <Button
             variant="ghost"
@@ -75,12 +96,16 @@ const CustomerCard = memo(function CustomerCard({
             className="h-8 text-[11px]"
             onClick={(e) => {
               e.stopPropagation();
+              if (isSkipped) {
+                onUnskip?.();
+                return;
+              }
               onSkip?.();
             }}
             disabled={isCompleted}
           >
             <SkipForward className="w-3 h-3 mr-1" />
-            Skip
+            {skipLabel}
           </Button>
           <Button
             variant="ghost"
@@ -112,8 +137,8 @@ const CustomerCard = memo(function CustomerCard({
       </div>
 
       {isExpanded && (
-        <div className={`border-t ${isCompleted ? 'border-emerald-200' : 'border-slate-200/60'}`}>
-          <div className={`p-3 space-y-2 ${isCompleted ? 'bg-emerald-50/40' : 'bg-slate-50/40'}`}>
+        <div className={`border-t ${borderClassName}`}>
+          <div className={`p-3 space-y-2 ${detailsClassName}`}>
             {isCompleted && serviceConfidence && (
               <div className="flex items-center gap-2 bg-cyan-50 border border-cyan-200 rounded-lg p-2">
                 <ShieldCheck className="w-3.5 h-3.5 text-cyan-700" />
@@ -198,7 +223,9 @@ const CustomerCard = memo(function CustomerCard({
                 }}
                 className={`w-full text-sm h-9 ${isCompleted
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700'
-                  : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
+                  : isSkipped
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
+                    : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
                   } text-white`}
               >
                 {isCompleted ? (
@@ -209,7 +236,7 @@ const CustomerCard = memo(function CustomerCard({
                 ) : (
                   <>
                     <Clock className="w-4 h-4 mr-2" />
-                    Start Service
+                    {isSkipped ? "Resume Service" : "Start Service"}
                   </>
                 )}
               </Button>

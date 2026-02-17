@@ -38,6 +38,9 @@ export interface OptimizedRoute {
   stops: RouteStop[];
   totalDistance: number;
   totalTime: number;
+  totalTravelTime: number;
+  totalServiceTime: number;
+  totalWaitTime: number;
   startLocation?: Location;
   endLocation?: Location;
   optimizationMethod: string;
@@ -423,6 +426,9 @@ class RouteOptimizer {
     const stops: RouteStop[] = [];
     let totalDistance = 0;
     let totalTime = 0;
+    let totalTravelTime = 0;
+    let totalServiceTime = 0;
+    let totalWaitTime = 0;
 
     let currentLocation = options.startLocation || customers[0]?.location;
     let currentTime = this.parseTime(options.startTime || '08:00');
@@ -439,6 +445,7 @@ class RouteOptimizer {
         distance = result.distance;
         totalDistance += distance;
         totalTime += travelTime;
+        totalTravelTime += travelTime;
         currentTime += travelTime;
       }
 
@@ -446,6 +453,9 @@ class RouteOptimizer {
       if (customer.timeWindow) {
         const windowStart = this.parseTime(customer.timeWindow.start);
         if (currentTime < windowStart) {
+          const waitTime = windowStart - currentTime;
+          totalTime += waitTime;
+          totalWaitTime += waitTime;
           currentTime = windowStart; // Wait until window opens
         }
       }
@@ -453,6 +463,7 @@ class RouteOptimizer {
       const arrivalTime = this.formatTime(currentTime);
       currentTime += serviceDuration;
       totalTime += serviceDuration;
+      totalServiceTime += serviceDuration;
       const departureTime = this.formatTime(currentTime);
 
       stops.push({
@@ -472,6 +483,9 @@ class RouteOptimizer {
       stops,
       totalDistance,
       totalTime,
+      totalTravelTime,
+      totalServiceTime,
+      totalWaitTime,
       startLocation: options.startLocation,
       endLocation: options.endLocation,
       optimizationMethod: options.algorithm || 'nearest-neighbor',
@@ -508,14 +522,31 @@ class RouteOptimizer {
     }
 
     try {
-      const hash = this.hashString(normalizedAddress || 'unknown-address');
-      const latOffset = (((hash % 2000) / 2000) - 0.5) * 0.3;
-      const lngOffset = ((((Math.floor(hash / 2000)) % 2000) / 2000) - 0.5) * 0.3;
+      const { zipCode, localityKey, streetName, houseNumber } = this.parseAddressComponents(normalizedAddress);
+      const localitySeed = zipCode || localityKey || 'default-locality';
+      const localityHash = this.hashString(localitySeed);
+      const baseLatOffset = (((localityHash % 10000) / 10000) - 0.5) * 0.16;
+      const baseLngOffset = ((((Math.floor(localityHash / 10000)) % 10000) / 10000) - 0.5) * 0.16;
 
-      // Deterministic fallback location (stable between app loads)
+      const streetSeed = `${localitySeed}|${streetName || 'unknown-street'}`;
+      const streetHash = this.hashString(streetSeed);
+      const streetAngleRadians = ((streetHash % 360) * Math.PI) / 180;
+      const streetRadius = ((((Math.floor(streetHash / 360)) % 1000) / 1000) - 0.5) * 0.02;
+
+      const baseLatitude = 34.0522 + baseLatOffset;
+      const baseLongitude = -118.2437 + baseLngOffset;
+      const streetLatitude = baseLatitude + Math.cos(streetAngleRadians) * streetRadius;
+      const streetLongitude = baseLongitude + Math.sin(streetAngleRadians) * streetRadius;
+
+      const normalizedHouse = Number.isFinite(houseNumber as number) && houseNumber !== null
+        ? (((houseNumber as number) % 2000) - 1000) / 1000
+        : 0;
+      const alongStreetStep = 0.0035; // ~0.2-0.3 miles per 1000-number range
+
+      // Deterministic, address-aware fallback location.
       const location: Location = {
-        latitude: 34.0522 + latOffset,
-        longitude: -118.2437 + lngOffset,
+        latitude: streetLatitude + Math.cos(streetAngleRadians) * normalizedHouse * alongStreetStep,
+        longitude: streetLongitude + Math.sin(streetAngleRadians) * normalizedHouse * alongStreetStep,
         address
       };
 
@@ -585,6 +616,34 @@ class RouteOptimizer {
       hash |= 0;
     }
     return Math.abs(hash);
+  }
+
+  private parseAddressComponents(normalizedAddress: string): {
+    zipCode: string | null;
+    localityKey: string;
+    streetName: string;
+    houseNumber: number | null;
+  } {
+    const safeAddress = normalizedAddress || '';
+    const parts = safeAddress.split(',').map((part) => part.trim()).filter(Boolean);
+    const streetPart = parts[0] || safeAddress;
+    const localityKey = parts.slice(1).join(',') || '';
+    const zipMatch = safeAddress.match(/\b\d{5}(?:-\d{4})?\b/);
+    const zipCode = zipMatch ? zipMatch[0].slice(0, 5) : null;
+
+    const houseMatch = streetPart.match(/\b\d{1,6}\b/);
+    const parsedHouse = houseMatch ? Number(houseMatch[0]) : NaN;
+    const houseNumber = Number.isFinite(parsedHouse) ? parsedHouse : null;
+
+    const streetName = streetPart
+      .replace(/\b\d{1,6}\b/g, ' ')
+      .replace(/\b(apt|apartment|unit|ste|suite|#)\s*[a-z0-9-]+\b/g, ' ')
+      .replace(/\b(off|near|at|by)\b/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim() || 'unknown-street';
+
+    return { zipCode, localityKey, streetName, houseNumber };
   }
 
   private normalizeDayName(day: string | null | undefined): string {
@@ -684,13 +743,35 @@ class RouteOptimizer {
 
   private getEstimatedDuration(customer: Partial<Customer> | Record<string, unknown>): number {
     const record = customer as Record<string, unknown>;
-    const durationCandidate =
-      record.estimatedDuration ??
-      record.estimated_duration ??
-      record.duration;
-    const duration = Number(durationCandidate);
-    if (!Number.isFinite(duration) || duration <= 0) return 30;
-    return Math.min(180, duration);
+    const durationCandidates = [
+      record.estimatedDuration,
+      record.estimated_duration,
+      record.average_duration_minutes,
+      record.avg_duration_minutes,
+      record.typical_duration_minutes,
+      record.duration,
+      Number(record.duration_ms) / 60000,
+    ];
+
+    for (const candidate of durationCandidates) {
+      const parsed = Number(candidate);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.min(180, Math.max(10, parsed));
+      }
+    }
+
+    const gallons = Number(record.pool_gallons ?? record.poolGallons);
+    const isSaltPool = String(record.pool_type ?? record.poolType ?? '').toLowerCase() === 'salt';
+
+    let inferredDuration = 15;
+    if (Number.isFinite(gallons)) {
+      if (gallons >= 35000) inferredDuration = 30;
+      else if (gallons >= 20000) inferredDuration = 24;
+      else if (gallons >= 10000) inferredDuration = 18;
+    }
+    if (isSaltPool) inferredDuration += 2;
+
+    return Math.min(180, Math.max(10, inferredDuration));
   }
 
   private parseTime(timeStr: string): number {
@@ -748,6 +829,9 @@ class RouteOptimizer {
       stops: [],
       totalDistance: 0,
       totalTime: 0,
+      totalTravelTime: 0,
+      totalServiceTime: 0,
+      totalWaitTime: 0,
       startLocation: options.startLocation,
       endLocation: options.endLocation,
       optimizationMethod: options.algorithm || 'nearest-neighbor',
