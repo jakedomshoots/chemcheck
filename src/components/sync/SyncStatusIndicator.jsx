@@ -21,7 +21,8 @@ export function SyncStatusIndicator({
   showLabel = false, 
   showPendingCount = true 
 }) {
-  const { status, pendingCount, lastSyncAt, error, syncNow } = useSyncState();
+  const { status, pendingCount, lastSyncAt, error, failedCount, lastResult, syncNow } = useSyncState();
+  const actionableError = lastResult?.failures?.[0]?.error || error;
 
   const getStatusIcon = () => {
     switch (status) {
@@ -68,16 +69,20 @@ export function SyncStatusIndicator({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-72 p-3">
+        <PopoverContent align="end" className="w-80 p-3">
           <div className="space-y-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sync Status</p>
               <p className="text-sm font-medium text-slate-900">{getStatusText(status, pendingCount)}</p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500">Pending</p>
                 <p className="text-sm font-semibold text-slate-900">{pendingCount}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Failed</p>
+                <p className="text-sm font-semibold text-slate-900">{failedCount}</p>
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500">Last Sync</p>
@@ -88,9 +93,14 @@ export function SyncStatusIndicator({
                 </p>
               </div>
             </div>
-            {error && (
+            {actionableError && (
               <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2 py-1">
-                {error}
+                {actionableError}
+              </p>
+            )}
+            {lastResult && (
+              <p className="text-[11px] text-slate-500">
+                Attempted {lastResult.attemptedCount} item{lastResult.attemptedCount === 1 ? '' : 's'} this run.
               </p>
             )}
             <Button

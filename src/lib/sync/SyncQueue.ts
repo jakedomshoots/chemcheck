@@ -111,6 +111,10 @@ export class SyncQueue {
     return this.queue.length;
   }
 
+  getRetryableCount(): number {
+    return this.getRetryableItems().length;
+  }
+
   getCapacityStatus(): { current: number; max: number; warningThreshold: number; usagePercent: number } {
     const current = this.queue.length;
     return {
@@ -198,6 +202,31 @@ export class SyncQueue {
    */
   findItem(table: SyncQueueItem['table'], localId: number): SyncQueueItem | undefined {
     return this.queue.find(item => item.table === table && item.localId === localId);
+  }
+
+  /**
+   * Update an existing queue item and persist the change
+   */
+  updateItem(
+    table: SyncQueueItem['table'],
+    localId: number,
+    updates: Partial<Omit<SyncQueueItem, 'table' | 'localId'>>
+  ): void {
+    const item = this.findItem(table, localId);
+    if (!item) {
+      console.warn(`Item ${table}[${localId}] not found in queue for update`);
+      return;
+    }
+
+    Object.assign(item, updates);
+    item.priority = this.getPriority(table, item.operation);
+    this.queue.sort((a, b) => a.priority - b.priority);
+    try {
+      this.saveToStorage();
+    } catch (error) {
+      console.error(`Failed to persist queue update for ${table}[${localId}]:`, error);
+      throw error;
+    }
   }
 
   /**

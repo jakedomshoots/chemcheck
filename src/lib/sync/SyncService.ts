@@ -12,12 +12,47 @@ export interface SyncResult {
   error?: string;
   syncedCount: number;
   failedCount: number;
+  attemptedCount: number;
+  pendingCountAfter: number;
+  failures?: SyncFailureDetail[];
 }
 
 export interface RecordSyncStatus {
   status: 'synced' | 'pending' | 'error';
   error?: string;
   lastSyncAt?: number;
+}
+
+export interface SyncFailureDetail {
+  table: SyncQueueItem['table'];
+  localId: number;
+  error: string;
+}
+
+export interface SyncDiagnostics {
+  status: SyncStatus;
+  isOnline: boolean;
+  pendingCount: number;
+  errorCount: number;
+  queue: {
+    pending: number;
+    retryable: number;
+    capacity: {
+      current: number;
+      max: number;
+      warningThreshold: number;
+      usagePercent: number;
+    };
+    recentItems: Array<Pick<SyncQueueItem, 'table' | 'localId' | 'operation' | 'retryCount' | 'error'>>;
+  };
+  records: Record<string, {
+    pending: number;
+    synced: number;
+    error: number;
+    recentErrors: Array<{ localId: number; error?: string }>;
+  }>;
+  lastResult: SyncResult | null;
+  lastSyncAt: number | null;
 }
 
 /**
@@ -35,6 +70,9 @@ export class SyncService {
   private offlineHandler: (() => void) | null = null;
   private syncQueue: SyncQueue;
   private conflictResolver: ConflictResolver;
+  private activeSyncPromise: Promise<SyncResult> | null = null;
+  private lastSyncResult: SyncResult | null = null;
+  private lastSyncAt: number | null = null;
 
   constructor() {
     this.syncQueue = new SyncQueue();
@@ -86,6 +124,14 @@ export class SyncService {
     return this.isOnline;
   }
 
+  getLastSyncResult(): SyncResult | null {
+    return this.lastSyncResult;
+  }
+
+  getLastSyncAt(): number | null {
+    return this.lastSyncAt;
+  }
+
   /**
    * Start automatic background sync (prevents duplicate intervals)
    */
@@ -110,7 +156,7 @@ export class SyncService {
     // Sync every 30 seconds when online
     this.autoSyncInterval = setInterval(() => {
       if (this.isOnline && this.convexClient) {
-        this.syncPendingRecords().catch(error => {
+        this.runSyncCycle().catch(error => {
           console.error('Auto-sync failed:', error);
         });
       }
@@ -135,6 +181,7 @@ export class SyncService {
    */
   private cleanup(): void {
     this.stopAutoSync();
+    this.activeSyncPromise = null;
     this.convexClient = null;
     this.isInitialized = false;
     console.log('SyncService cleaned up');
@@ -171,16 +218,7 @@ export class SyncService {
       throw new Error('Cannot sync while offline');
     }
 
-    this.setStatus('syncing');
-
-    try {
-      const result = await this.syncPendingRecords();
-      this.setStatus('idle');
-      return result;
-    } catch (error) {
-      this.setStatus('error');
-      throw error;
-    }
+    return this.runSyncCycle();
   }
 
   /**
@@ -228,6 +266,13 @@ export class SyncService {
         success,
         syncedCount: success ? 1 : 0,
         failedCount: success ? 0 : 1,
+        attemptedCount: 1,
+        pendingCountAfter: await this.getPendingCount(),
+        failures: success ? [] : [{
+          table: table as SyncQueueItem['table'],
+          localId,
+          error: (await this.getRecordByTable(table, localId))?.sync_error || 'Sync failed',
+        }],
       };
     } catch (error) {
       console.error(`Failed to sync ${table}[${localId}]:`, error);
@@ -236,6 +281,13 @@ export class SyncService {
         error: error instanceof Error ? error.message : 'Unknown error',
         syncedCount: 0,
         failedCount: 1,
+        attemptedCount: 1,
+        pendingCountAfter: await this.getPendingCount(),
+        failures: [{
+          table: table as SyncQueueItem['table'],
+          localId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        }],
       };
     }
   }
@@ -245,6 +297,60 @@ export class SyncService {
    */
   getSyncStatus(): SyncStatus {
     return this.currentStatus;
+  }
+
+  async getDiagnostics(limit = 5): Promise<SyncDiagnostics> {
+    const queueStatus = this.getQueueStatus();
+    const tableConfigs = [
+      { key: 'customers', table: db.customers },
+      { key: 'serviceLogs', table: db.serviceLogs },
+      { key: 'chemicalUsage', table: db.chemicalUsage },
+      { key: 'notes', table: db.notes },
+      { key: 'saltCellLogs', table: db.saltCellLogs },
+    ] as const;
+
+    const records = Object.fromEntries(await Promise.all(
+      tableConfigs.map(async ({ key, table }) => {
+        const [pending, synced, error, recentErrors] = await Promise.all([
+          this.countRecordsWithStatus(table, 'pending'),
+          this.countRecordsWithStatus(table, 'synced'),
+          this.countRecordsWithStatus(table, 'error'),
+          this.getRecentErrorRecords(table, limit),
+        ]);
+
+        return [key, {
+          pending,
+          synced,
+          error,
+          recentErrors: (recentErrors || []).map((item: any) => ({
+            localId: item.id,
+            error: item.sync_error,
+          })),
+        }];
+      })
+    ));
+
+    return {
+      status: this.currentStatus,
+      isOnline: this.isOnline,
+      pendingCount: await this.getPendingCount(),
+      errorCount: Object.values(records).reduce((sum, item) => sum + item.error, 0),
+      queue: {
+        pending: queueStatus.pending,
+        retryable: this.syncQueue.getRetryableCount(),
+        capacity: queueStatus.capacity,
+        recentItems: queueStatus.items.slice(0, limit).map((item) => ({
+          table: item.table,
+          localId: item.localId,
+          operation: item.operation,
+          retryCount: item.retryCount,
+          error: item.error,
+        })),
+      },
+      records,
+      lastResult: this.lastSyncResult,
+      lastSyncAt: this.lastSyncAt,
+    };
   }
 
   /**
@@ -373,10 +479,13 @@ export class SyncService {
     // Check for existing queue item to prevent duplicates
     const existingItem = this.syncQueue.findItem(table as SyncQueueItem['table'], localId);
     if (existingItem) {
-      // Update existing item with latest data and operation
-      existingItem.operation = operation;
-      existingItem.data = data;
-      existingItem.lastAttempt = undefined; // Reset retry timing
+      this.syncQueue.updateItem(table as SyncQueueItem['table'], localId, {
+        operation,
+        data,
+        retryCount: 0,
+        lastAttempt: undefined,
+        error: undefined,
+      });
       return;
     }
 
@@ -432,17 +541,80 @@ export class SyncService {
     return [...pending, ...legacyPending];
   }
 
+  private async countRecordsWithStatus(table: any, status: 'pending' | 'synced' | 'error'): Promise<number> {
+    if (!table || typeof table.where !== 'function') {
+      return 0;
+    }
+
+    return table.where('sync_status').equals(status).count();
+  }
+
+  private async getRecentErrorRecords(table: any, limit: number): Promise<any[]> {
+    if (!table || typeof table.where !== 'function') {
+      return [];
+    }
+
+    const collection = table.where('sync_status').equals('error');
+    if (typeof collection.limit === 'function') {
+      return collection.limit(limit).toArray();
+    }
+
+    const allErrors = await collection.toArray();
+    return allErrors.slice(0, limit);
+  }
+
   // ============================================
   // Private Methods
   // ============================================
 
+  private async runSyncCycle(): Promise<SyncResult> {
+    if (this.activeSyncPromise) {
+      return this.activeSyncPromise;
+    }
+
+    this.setStatus('syncing');
+
+    this.activeSyncPromise = (async () => {
+      try {
+        const result = await this.syncPendingRecords();
+        this.lastSyncResult = result;
+
+        if (result.attemptedCount > 0) {
+          this.lastSyncAt = Date.now();
+        }
+
+        this.setStatus('idle');
+        return result;
+      } catch (error) {
+        const failureResult: SyncResult = {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          syncedCount: 0,
+          failedCount: 1,
+          attemptedCount: 0,
+          pendingCountAfter: await this.getPendingCount(),
+          failures: [],
+        };
+        this.lastSyncResult = failureResult;
+        this.setStatus('error');
+        throw error;
+      } finally {
+        this.activeSyncPromise = null;
+      }
+    })();
+
+    return this.activeSyncPromise;
+  }
+
   private async syncPendingRecords(): Promise<SyncResult> {
     let syncedCount = 0;
     let failedCount = 0;
+    const failures: SyncFailureDetail[] = [];
+    const batchSize = this.syncQueue.getBatchSize();
 
     try {
       // Get retryable items from queue (respects exponential backoff)
-      const retryableItems = this.syncQueue.getRetryableItems();
+      let retryableItems = this.syncQueue.getRetryableItems();
 
       if (retryableItems.length === 0) {
         // No items ready for retry, check database for new pending records
@@ -503,28 +675,26 @@ export class SyncService {
         }
 
         // Get updated retryable items
-        const updatedRetryableItems = this.syncQueue.getRetryableItems();
+        retryableItems = this.syncQueue.getRetryableItems();
+      }
 
-        // Process items with priority order (customers first)
-        for (const item of updatedRetryableItems) {
-          const success = await this.syncQueueItem(item);
-          if (success) {
-            syncedCount++;
-            this.syncQueue.markSynced(item.table, item.localId);
-          } else {
-            failedCount++;
-          }
+      const batch = retryableItems.slice(0, batchSize);
+
+      for (const item of batch) {
+        const result = await this.syncQueueItem(item);
+        if (result.success) {
+          syncedCount++;
+          this.syncQueue.markSynced(item.table, item.localId);
+          continue;
         }
-      } else {
-        // Process retryable items
-        for (const item of retryableItems) {
-          const success = await this.syncQueueItem(item);
-          if (success) {
-            syncedCount++;
-            this.syncQueue.markSynced(item.table, item.localId);
-          } else {
-            failedCount++;
-          }
+
+        failedCount++;
+        if (failures.length < 10) {
+          failures.push({
+            table: item.table,
+            localId: item.localId,
+            error: result.error || 'Sync failed',
+          });
         }
       }
 
@@ -532,6 +702,9 @@ export class SyncService {
         success: failedCount === 0,
         syncedCount,
         failedCount,
+        attemptedCount: batch.length,
+        pendingCountAfter: await this.getPendingCount(),
+        failures,
       };
     } catch (error) {
       console.error('Error during sync:', error);
@@ -540,43 +713,37 @@ export class SyncService {
         error: error instanceof Error ? error.message : 'Unknown error',
         syncedCount,
         failedCount: failedCount + 1,
+        attemptedCount: syncedCount + failedCount,
+        pendingCountAfter: await this.getPendingCount(),
+        failures,
       };
     }
   }
 
-  private async syncQueueItem(item: SyncQueueItem): Promise<boolean> {
+  private async syncQueueItem(item: SyncQueueItem): Promise<{ success: boolean; error?: string }> {
     try {
       // Get fresh record from database
-      let record: any;
-
-      switch (item.table) {
-        case 'customers':
-          record = await db.customers.get(item.localId);
-          break;
-        case 'serviceLogs':
-          record = await db.serviceLogs.get(item.localId);
-          break;
-        case 'chemicalUsage':
-          record = await db.chemicalUsage.get(item.localId);
-          break;
-        case 'notes':
-          record = await db.notes.get(item.localId);
-          break;
-        case 'saltCellLogs':
-          record = await db.saltCellLogs.get(item.localId);
-          break;
-        default:
-          throw new Error(`Unknown table: ${item.table}`);
-      }
+      const record = await this.getRecordByTable(item.table, item.localId);
 
       if (!record) {
         // Record was deleted, remove from queue
         this.syncQueue.markSynced(item.table, item.localId);
-        return true;
+        return { success: true };
       }
 
       // Use existing sync logic
-      return await this.syncSingleRecord(item.table, record);
+      const success = await this.syncSingleRecord(item.table, record);
+      if (success) {
+        return { success: true };
+      }
+
+      const refreshedRecord = await this.getRecordByTable(item.table, item.localId);
+      const errorMessage = refreshedRecord?.sync_error || 'Sync failed';
+      this.syncQueue.markFailed(item.table, item.localId, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Failed to sync queue item ${item.table}[${item.localId}]:`, errorMessage);
@@ -584,8 +751,73 @@ export class SyncService {
       // Mark as failed in queue (handles retry logic with exponential backoff)
       this.syncQueue.markFailed(item.table, item.localId, errorMessage);
 
-      return false;
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
+  }
+
+  private getRecordByTable(table: string, localId: number): Promise<any> {
+    switch (table) {
+      case 'customers':
+        return db.customers.get(localId);
+      case 'serviceLogs':
+        return db.serviceLogs.get(localId);
+      case 'chemicalUsage':
+        return db.chemicalUsage.get(localId);
+      case 'notes':
+        return db.notes.get(localId);
+      case 'saltCellLogs':
+        return db.saltCellLogs.get(localId);
+      default:
+        throw new Error(`Unknown table: ${table}`);
+    }
+  }
+
+  private normalizeOptionalString(value: unknown): string | undefined {
+    if (value === null || value === undefined || value === '') {
+      return undefined;
+    }
+
+    return String(value);
+  }
+
+  private normalizeOptionalNumber(value: unknown): number | undefined {
+    if (value === null || value === undefined || value === '') {
+      return undefined;
+    }
+
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : undefined;
+  }
+
+  private normalizeOptionalBoolean(value: unknown): boolean | undefined {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+
+    return Boolean(value);
+  }
+
+  private normalizeReportSettings(value: unknown) {
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+
+    const settings = value as Record<string, unknown>;
+    const normalized = {
+      show_chemical_readings: Boolean(settings.show_chemical_readings),
+      show_photos: Boolean(settings.show_photos),
+      show_service_notes: Boolean(settings.show_service_notes),
+      show_technician_name: Boolean(settings.show_technician_name),
+      show_service_duration: Boolean(settings.show_service_duration),
+      show_overall_status: Boolean(settings.show_overall_status),
+    };
+
+    return Object.values(normalized).some((flag) => flag) || Object.keys(settings).length > 0
+      ? normalized
+      : undefined;
   }
 
   private async syncSingleRecord(table: string, record: any, conflictRetryCount = 0): Promise<boolean> {
@@ -607,16 +839,16 @@ export class SyncService {
               data: {
                 full_name: record.full_name,
                 address: record.address,
-                phone: record.phone,
-                email: record.email,
-                gate_code: record.gate_code,
+                phone: this.normalizeOptionalString(record.phone),
+                email: this.normalizeOptionalString(record.email),
+                gate_code: this.normalizeOptionalString(record.gate_code),
                 service_day: record.service_day,
-                pool_gallons: record.pool_gallons,
+                pool_gallons: this.normalizeOptionalNumber(record.pool_gallons),
                 pool_type: record.pool_type,
                 surface_type: record.surface_type,
-                sort_order: record.sort_order,
-                created_by: record.created_by,
-                report_settings: record.report_settings,
+                sort_order: this.normalizeOptionalNumber(record.sort_order),
+                created_by: this.normalizeOptionalString(record.created_by),
+                report_settings: this.normalizeReportSettings(record.report_settings),
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"customers"> | undefined,
@@ -662,15 +894,15 @@ export class SyncService {
               data: {
                 service_date: record.service_date,
                 status: record.status,
-                notes: record.notes,
+                notes: this.normalizeOptionalString(record.notes),
                 ph: record.ph,
                 chlorine: record.chlorine,
                 alkalinity: record.alkalinity,
                 stabilizer: record.stabilizer,
-                salt: record.salt,
-                start_time: record.start_time,
-                end_time: record.end_time,
-                duration_ms: record.duration_ms,
+                salt: this.normalizeOptionalNumber(record.salt),
+                start_time: this.normalizeOptionalString(record.start_time),
+                end_time: this.normalizeOptionalString(record.end_time),
+                duration_ms: this.normalizeOptionalNumber(record.duration_ms),
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"serviceLogs"> | undefined,
@@ -709,8 +941,8 @@ export class SyncService {
               data: {
                 chemical_type: record.chemical_type,
                 quantity: record.quantity,
-                notes: record.notes,
-                created_date: record.created_date,
+                notes: this.normalizeOptionalString(record.notes),
+                created_date: this.normalizeOptionalString(record.created_date),
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"chemicalUsage"> | undefined,
@@ -743,8 +975,8 @@ export class SyncService {
                 content: record.content,
                 category: record.category,
                 priority: record.priority,
-                completed: record.completed,
-                created_date: record.created_date,
+                completed: this.normalizeOptionalBoolean(record.completed),
+                created_date: this.normalizeOptionalString(record.created_date),
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"notes"> | undefined,
@@ -783,8 +1015,8 @@ export class SyncService {
               data: {
                 cleaning_date: record.cleaning_date,
                 condition: record.condition,
-                notes: record.notes,
-                next_cleaning_due: record.next_cleaning_due,
+                notes: this.normalizeOptionalString(record.notes),
+                next_cleaning_due: this.normalizeOptionalString(record.next_cleaning_due),
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"saltCellLogs"> | undefined,
@@ -1051,7 +1283,7 @@ export class SyncService {
 
     // Trigger immediate sync when coming online if initialized
     if (this.convexClient && this.isInitialized) {
-      this.syncPendingRecords().catch(error => {
+      this.runSyncCycle().catch(error => {
         console.error('Error syncing after coming online:', error);
         this.setStatus('error');
       });

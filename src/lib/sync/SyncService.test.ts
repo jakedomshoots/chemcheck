@@ -49,6 +49,17 @@ vi.mock('@/db/chemcheck-db', () => ({
       })),
       update: vi.fn(),
     },
+    saltCellLogs: {
+      get: vi.fn(),
+      add: vi.fn(),
+      where: vi.fn(() => ({
+        equals: vi.fn(() => ({
+          count: vi.fn(() => Promise.resolve(0)),
+          toArray: vi.fn(() => Promise.resolve([])),
+        })),
+      })),
+      update: vi.fn(),
+    },
   },
 }));
 
@@ -60,6 +71,7 @@ vi.mock('../../../convex/_generated/api', () => ({
       syncServiceLog: 'syncServiceLog',
       syncChemicalUsage: 'syncChemicalUsage',
       syncNote: 'syncNote',
+      syncSaltCellLog: 'syncSaltCellLog',
     },
   },
 }));
@@ -71,10 +83,13 @@ vi.mock('./SyncQueue', () => {
   MockSyncQueue.prototype.dequeue = vi.fn();
   MockSyncQueue.prototype.getPending = vi.fn(() => []);
   MockSyncQueue.prototype.getPendingCount = vi.fn(() => 0);
+  MockSyncQueue.prototype.getBatchSize = vi.fn(() => 20);
   MockSyncQueue.prototype.markSynced = vi.fn();
   MockSyncQueue.prototype.markFailed = vi.fn();
   MockSyncQueue.prototype.getRetryableItems = vi.fn(() => []);
+  MockSyncQueue.prototype.getRetryableCount = vi.fn(() => 0);
   MockSyncQueue.prototype.findItem = vi.fn(() => undefined);
+  MockSyncQueue.prototype.updateItem = vi.fn();
   
   return { SyncQueue: MockSyncQueue };
 });
@@ -171,6 +186,91 @@ describe('SyncService', () => {
       (syncService as any).isOnline = false;
       
       await expect(syncService.syncNow()).rejects.toThrow('offline');
+    });
+
+    it('reuses the in-flight sync promise for concurrent sync requests', async () => {
+      syncService.initialize(mockConvexClient);
+
+      let resolveSync: ((value: any) => void) | null = null;
+      const syncPendingRecordsSpy = vi
+        .spyOn(syncService as any, 'syncPendingRecords')
+        .mockImplementation(() => new Promise((resolve) => {
+          resolveSync = resolve;
+        }));
+
+      const firstSync = syncService.syncNow();
+      const secondSync = syncService.syncNow();
+
+      expect(syncPendingRecordsSpy).toHaveBeenCalledTimes(1);
+
+      resolveSync?.({
+        success: true,
+        syncedCount: 2,
+        failedCount: 0,
+        attemptedCount: 2,
+        pendingCountAfter: 0,
+        failures: [],
+      });
+
+      const [firstResult, secondResult] = await Promise.all([firstSync, secondSync]);
+
+      expect(firstResult).toEqual(secondResult);
+      expect(syncPendingRecordsSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('processes only one queue batch per sync cycle', async () => {
+      syncService.initialize(mockConvexClient);
+
+      const queue = (syncService as any).syncQueue;
+      const items = Array.from({ length: 59 }, (_, index) => ({
+        table: 'customers',
+        localId: index + 1,
+        operation: 'create',
+        data: { id: index + 1 },
+        retryCount: 0,
+        priority: 10,
+      }));
+
+      queue.getRetryableItems.mockReturnValue(items);
+      queue.getBatchSize.mockReturnValue(20);
+
+      const syncQueueItemSpy = vi
+        .spyOn(syncService as any, 'syncQueueItem')
+        .mockResolvedValue({ success: true });
+
+      const result = await syncService.syncNow();
+
+      expect(syncQueueItemSpy).toHaveBeenCalledTimes(20);
+      expect(result.attemptedCount).toBe(20);
+    });
+
+    it('returns per-record failure details from the sync batch', async () => {
+      syncService.initialize(mockConvexClient);
+
+      const queue = (syncService as any).syncQueue;
+      queue.getRetryableItems.mockReturnValue([
+        {
+          table: 'customers',
+          localId: 9,
+          operation: 'update',
+          data: { id: 9 },
+          retryCount: 0,
+          priority: 10,
+        },
+      ]);
+
+      vi.spyOn(syncService as any, 'syncQueueItem').mockResolvedValue({
+        success: false,
+        error: 'Not authenticated',
+      });
+
+      const result = await syncService.syncNow();
+
+      expect(result.success).toBe(false);
+      expect(result.failedCount).toBe(1);
+      expect(result.failures).toEqual([
+        { table: 'customers', localId: 9, error: 'Not authenticated' },
+      ]);
     });
   });
 
@@ -309,6 +409,48 @@ describe('SyncService', () => {
       const result = await syncService.syncRecord('unknown', 1);
       expect(result.success).toBe(false);
       expect(result.failedCount).toBe(1);
+    });
+
+    it('normalizes null optional fields before sending customer sync payloads', async () => {
+      syncService.initialize(mockConvexClient);
+      mockConvexClient.mutation.mockResolvedValue({
+        success: true,
+        convex_id: 'convex-1',
+        updated_at: Date.now(),
+      });
+
+      const { db } = await import('@/db/chemcheck-db');
+      vi.mocked(db.customers.get).mockResolvedValue({
+        id: 1,
+        full_name: 'Test Customer',
+        address: '123 Main St',
+        phone: null,
+        email: null,
+        gate_code: null,
+        service_day: 'Monday',
+        pool_gallons: null,
+        pool_type: 'Chlorine',
+        surface_type: 'Plaster',
+        sort_order: null,
+        created_by: 'owner@example.com',
+        report_settings: null,
+        local_updated_at: Date.now(),
+        sync_status: 'pending',
+      } as any);
+      vi.mocked(db.customers.update).mockResolvedValue(1);
+
+      await syncService.syncRecord('customers', 1);
+
+      expect(mockConvexClient.mutation).toHaveBeenCalledWith('syncCustomer', expect.objectContaining({
+        data: expect.objectContaining({
+          phone: undefined,
+          email: undefined,
+          gate_code: undefined,
+          pool_gallons: undefined,
+          sort_order: undefined,
+          report_settings: undefined,
+        }),
+      }));
     });
   });
 

@@ -54,6 +54,7 @@ import { BackupManager } from '@/components/BackupManager';
 import { downloadUserData, deleteAllUserData, getDataRetentionSummary } from '@/lib/gdpr';
 import { optOutAnalytics, optInAnalytics, hasOptedOut } from '@/lib/analytics';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
+import { syncService } from '@/lib/sync/SyncService';
 import {
   getPhotoStorageStats,
   clearSyncedPhotos,
@@ -277,6 +278,8 @@ export default function Settings() {
     maxSizeBytes: 100 * 1024 * 1024,
     usagePercent: 0,
   });
+  const [syncDiagnostics, setSyncDiagnostics] = useState(null);
+  const [isSyncDiagnosticsLoading, setIsSyncDiagnosticsLoading] = useState(false);
   const [isStorageLoading, setIsStorageLoading] = useState(false);
   const [privacyConfirmAction, setPrivacyConfirmAction] = useState(null);
   const [dataSummaryRows, setDataSummaryRows] = useState([]);
@@ -340,6 +343,7 @@ export default function Settings() {
   useEffect(() => {
     if (activeSection === 'privacy') {
       void refreshPhotoStorageStats();
+      void refreshSyncDiagnostics();
     }
   }, [activeSection]);
 
@@ -479,6 +483,18 @@ export default function Settings() {
       console.error('Failed to load photo storage stats:', error);
     } finally {
       setIsStorageLoading(false);
+    }
+  };
+
+  const refreshSyncDiagnostics = async () => {
+    setIsSyncDiagnosticsLoading(true);
+    try {
+      const diagnostics = await syncService.getDiagnostics(5);
+      setSyncDiagnostics(diagnostics);
+    } catch (error) {
+      console.error('Failed to load sync diagnostics:', error);
+    } finally {
+      setIsSyncDiagnosticsLoading(false);
     }
   };
 
@@ -1381,6 +1397,107 @@ export default function Settings() {
                         >
                           Clear All Local Photos
                         </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-500 rounded-lg">
+                        <Activity className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1 space-y-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="font-medium text-slate-900">Sync Diagnostics</p>
+                            <p className="text-sm text-slate-600">
+                              Review queued items, error counts, and the latest sync failure details.
+                            </p>
+                          </div>
+                          <Button
+                            onClick={() => void refreshSyncDiagnostics()}
+                            variant="outline"
+                            size="sm"
+                            disabled={isSyncDiagnosticsLoading}
+                          >
+                            {isSyncDiagnosticsLoading ? 'Refreshing...' : 'Refresh'}
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <div className="rounded-md border border-amber-200 bg-white/80 p-2">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-500">Status</p>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {syncDiagnostics?.status || 'Loading...'}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-amber-200 bg-white/80 p-2">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-500">Pending</p>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {syncDiagnostics?.pendingCount ?? '...'}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-amber-200 bg-white/80 p-2">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-500">Errors</p>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {syncDiagnostics?.errorCount ?? '...'}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-amber-200 bg-white/80 p-2">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-500">Queue</p>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {syncDiagnostics?.queue?.pending ?? '...'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {syncDiagnostics?.lastResult && (
+                          <div className="rounded-md border border-amber-200 bg-white/80 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Sync Run</p>
+                            <p className="mt-1 text-sm text-slate-900">
+                              Attempted {syncDiagnostics.lastResult.attemptedCount}, synced {syncDiagnostics.lastResult.syncedCount}, failed {syncDiagnostics.lastResult.failedCount}, pending after run {syncDiagnostics.lastResult.pendingCountAfter}.
+                            </p>
+                            {syncDiagnostics.lastResult.failures?.[0] && (
+                              <p className="mt-2 text-xs text-rose-700">
+                                Latest failure: {syncDiagnostics.lastResult.failures[0].table}[{syncDiagnostics.lastResult.failures[0].localId}] {syncDiagnostics.lastResult.failures[0].error}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {syncDiagnostics?.queue?.recentItems?.length > 0 && (
+                          <div className="rounded-md border border-amber-200 bg-white/80 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Queued Items</p>
+                            <div className="mt-2 space-y-1">
+                              {syncDiagnostics.queue.recentItems.map((item) => (
+                                <p key={`${item.table}-${item.localId}`} className="text-xs text-slate-700">
+                                  {item.table}[{item.localId}] {item.operation} retry {item.retryCount}
+                                  {item.error ? ` - ${item.error}` : ''}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {syncDiagnostics?.records && (
+                          <div className="rounded-md border border-amber-200 bg-white/80 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Per-Table Status</p>
+                            <div className="mt-2 space-y-2">
+                              {Object.entries(syncDiagnostics.records).map(([tableName, tableStats]) => (
+                                <div key={tableName}>
+                                  <p className="text-xs font-medium text-slate-900">
+                                    {tableName}: {tableStats.pending} pending, {tableStats.error} errors, {tableStats.synced} synced
+                                  </p>
+                                  {tableStats.recentErrors?.slice(0, 1).map((item) => (
+                                    <p key={`${tableName}-error-${item.localId}`} className="text-[11px] text-rose-700">
+                                      {tableName}[{item.localId}] {item.error || 'Unknown error'}
+                                    </p>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

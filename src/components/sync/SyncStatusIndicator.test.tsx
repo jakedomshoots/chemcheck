@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as fc from 'fast-check';
 import { SyncStatusIndicator, SyncStatusBadge } from './SyncStatusIndicator';
 import { useSyncState } from '@/hooks/useSyncState';
@@ -62,6 +63,26 @@ const syncStateArb = fc.record({
   pendingCount: pendingCountArb,
   lastSyncAt: fc.oneof(fc.constant(null), timestampArb),
   error: errorMessageArb,
+  failedCount: fc.integer({ min: 0, max: 50 }),
+  lastResult: fc.oneof(
+    fc.constant(null),
+    fc.record({
+      success: fc.boolean(),
+      syncedCount: fc.integer({ min: 0, max: 50 }),
+      failedCount: fc.integer({ min: 0, max: 50 }),
+      attemptedCount: fc.integer({ min: 0, max: 50 }),
+      pendingCountAfter: fc.integer({ min: 0, max: 50 }),
+      error: fc.option(fc.string({ minLength: 1, maxLength: 100 }), { nil: undefined }),
+      failures: fc.array(
+        fc.record({
+          table: fc.constantFrom('customers', 'serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs'),
+          localId: fc.integer({ min: 1, max: 1000 }),
+          error: fc.string({ minLength: 1, maxLength: 100 }),
+        }),
+        { maxLength: 3 }
+      ),
+    })
+  ),
   syncNow: mockFnArb,
   isRecordSynced: mockFnArb,
   getRecordSyncStatus: mockFnArb,
@@ -96,6 +117,38 @@ describe('SyncStatusIndicator', () => {
    * **Validates: Requirements 5.1, 5.2, 5.4**
    */
   describe('Property 5: Sync Status Displayed Correctly', () => {
+    it('shows failed count and latest failure details in the popover', async () => {
+      const user = userEvent.setup();
+      (useSyncState as any).mockReturnValue({
+        status: 'idle',
+        pendingCount: 12,
+        failedCount: 2,
+        lastSyncAt: Date.now(),
+        error: 'Fallback error',
+        lastResult: {
+          success: false,
+          syncedCount: 4,
+          failedCount: 2,
+          attemptedCount: 6,
+          pendingCountAfter: 12,
+          failures: [{ table: 'customers', localId: 42, error: 'Not authenticated' }],
+        },
+        syncNow: vi.fn(),
+        isRecordSynced: vi.fn(),
+        getRecordSyncStatus: vi.fn(),
+        refreshPendingCount: vi.fn(),
+      });
+
+      renderWithCleanup(<SyncStatusIndicator showLabel={true} />);
+
+      await user.click(screen.getByRole('button'));
+
+      expect(screen.getByText('Failed')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+      expect(screen.getByText('Not authenticated')).toBeInTheDocument();
+      expect(screen.getByText(/Attempted 6 items this run/)).toBeInTheDocument();
+    });
+
     it('displays correct status text for any sync status', () => {
       fc.assert(
         fc.property(

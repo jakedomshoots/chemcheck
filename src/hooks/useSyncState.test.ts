@@ -7,6 +7,8 @@ import { syncService } from '@/lib/sync/SyncService';
 vi.mock('@/lib/sync/SyncService', () => ({
   syncService: {
     getSyncStatus: vi.fn(),
+    getLastSyncResult: vi.fn(),
+    getLastSyncAt: vi.fn(),
     onSyncStatusChange: vi.fn(),
     getPendingCount: vi.fn(),
     syncNow: vi.fn(),
@@ -22,9 +24,18 @@ describe('useSyncState', () => {
     
     // Default mock implementations
     (syncService.getSyncStatus as any).mockReturnValue('idle');
+    (syncService.getLastSyncResult as any).mockReturnValue(null);
+    (syncService.getLastSyncAt as any).mockReturnValue(null);
     (syncService.onSyncStatusChange as any).mockReturnValue(() => {});
     (syncService.getPendingCount as any).mockResolvedValue(0);
-    (syncService.syncNow as any).mockResolvedValue({ success: true, syncedCount: 0, failedCount: 0 });
+    (syncService.syncNow as any).mockResolvedValue({
+      success: true,
+      syncedCount: 0,
+      failedCount: 0,
+      attemptedCount: 0,
+      pendingCountAfter: 0,
+      failures: [],
+    });
     (syncService.isRecordSynced as any).mockResolvedValue(true);
     (syncService.getRecordSyncStatus as any).mockResolvedValue({ status: 'synced' });
   });
@@ -40,6 +51,8 @@ describe('useSyncState', () => {
     expect(result.current.pendingCount).toBe(0);
     expect(result.current.lastSyncAt).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(result.current.failedCount).toBe(0);
+    expect(result.current.lastResult).toBeNull();
     expect(typeof result.current.syncNow).toBe('function');
     expect(typeof result.current.isRecordSynced).toBe('function');
     expect(typeof result.current.getRecordSyncStatus).toBe('function');
@@ -59,7 +72,15 @@ describe('useSyncState', () => {
   });
 
   it('should call syncNow and handle success', async () => {
-    (syncService.syncNow as any).mockResolvedValue({ success: true, syncedCount: 5, failedCount: 0 });
+    (syncService.getLastSyncAt as any).mockReturnValue(123456);
+    (syncService.syncNow as any).mockResolvedValue({
+      success: true,
+      syncedCount: 5,
+      failedCount: 0,
+      attemptedCount: 5,
+      pendingCountAfter: 3,
+      failures: [],
+    });
     (syncService.getPendingCount as any).mockResolvedValue(3);
 
     const { result } = renderHook(() => useSyncState());
@@ -69,13 +90,24 @@ describe('useSyncState', () => {
     });
 
     expect(syncService.syncNow).toHaveBeenCalled();
-    expect(result.current.lastSyncAt).toBeGreaterThan(0);
+    expect(result.current.lastSyncAt).toBe(123456);
     expect(result.current.error).toBeNull();
+    expect(result.current.failedCount).toBe(0);
   });
 
-  it('should call syncNow and handle failure', async () => {
-    const errorMessage = 'Sync failed';
-    (syncService.syncNow as any).mockResolvedValue({ success: false, error: errorMessage, syncedCount: 0, failedCount: 1 });
+  it('should refresh counts and keep last sync time on partial failure', async () => {
+    const errorMessage = 'customers[12] Not authenticated';
+    (syncService.getLastSyncAt as any).mockReturnValue(999999);
+    (syncService.syncNow as any).mockResolvedValue({
+      success: false,
+      error: 'Sync failed',
+      syncedCount: 0,
+      failedCount: 1,
+      attemptedCount: 1,
+      pendingCountAfter: 2,
+      failures: [{ table: 'customers', localId: 12, error: errorMessage }],
+    });
+    (syncService.getPendingCount as any).mockResolvedValue(2);
 
     const { result } = renderHook(() => useSyncState());
 
@@ -84,7 +116,9 @@ describe('useSyncState', () => {
     });
 
     expect(result.current.error).toBe(errorMessage);
-    expect(result.current.lastSyncAt).toBeNull();
+    expect(result.current.lastSyncAt).toBe(999999);
+    expect(result.current.pendingCount).toBe(2);
+    expect(result.current.failedCount).toBe(1);
   });
 
   it('should check if record is synced', async () => {

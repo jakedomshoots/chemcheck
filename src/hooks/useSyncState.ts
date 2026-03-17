@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { syncService, SyncStatus, RecordSyncStatus } from '@/lib/sync/SyncService';
+import { syncService, SyncStatus, RecordSyncStatus, SyncResult } from '@/lib/sync/SyncService';
 
 export interface UseSyncStateReturn {
   // Overall sync status
@@ -13,6 +13,12 @@ export interface UseSyncStateReturn {
   
   // Current error if any
   error: string | null;
+
+  // Number of failed records from the last sync attempt
+  failedCount: number;
+
+  // Last sync result details
+  lastResult: SyncResult | null;
   
   // Trigger manual sync
   syncNow: () => Promise<void>;
@@ -32,19 +38,31 @@ export interface UseSyncStateReturn {
  * Provides real-time sync status, pending counts, and sync controls
  */
 export function useSyncState(): UseSyncStateReturn {
+  const initialResult = syncService.getLastSyncResult();
   const [status, setStatus] = useState<SyncStatus>(syncService.getSyncStatus());
   const [pendingCount, setPendingCount] = useState<number>(0);
-  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(syncService.getLastSyncAt());
+  const [error, setError] = useState<string | null>(initialResult?.failures?.[0]?.error || initialResult?.error || null);
+  const [lastResult, setLastResult] = useState<SyncResult | null>(initialResult);
+  const [failedCount, setFailedCount] = useState<number>(initialResult?.failedCount ?? 0);
 
   // Subscribe to sync status changes
   useEffect(() => {
     const unsubscribe = syncService.onSyncStatusChange((newStatus) => {
       setStatus(newStatus);
-      
-      // Clear error when status changes to non-error state
-      if (newStatus !== 'error') {
-        setError(null);
+
+      if (newStatus !== 'syncing') {
+        const latestResult = syncService.getLastSyncResult();
+        setLastResult(latestResult);
+        setFailedCount(latestResult?.failedCount ?? 0);
+        setLastSyncAt(syncService.getLastSyncAt());
+
+        const latestError = latestResult?.failures?.[0]?.error || latestResult?.error || null;
+        setError(latestError);
+
+        if (!latestError && newStatus !== 'error') {
+          setError(null);
+        }
       }
     });
 
@@ -78,12 +96,17 @@ export function useSyncState(): UseSyncStateReturn {
     try {
       setError(null);
       const result = await syncService.syncNow();
-      
-      if (result.success) {
-        setLastSyncAt(Date.now());
-        await refreshPendingCount();
-      } else {
-        setError(result.error || 'Sync failed');
+
+      setLastResult(result);
+      setFailedCount(result.failedCount);
+      if (result.attemptedCount > 0) {
+        setLastSyncAt(syncService.getLastSyncAt());
+      }
+
+      await refreshPendingCount();
+
+      if (!result.success) {
+        setError(result.failures?.[0]?.error || result.error || 'Sync failed');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown sync error';
@@ -118,6 +141,8 @@ export function useSyncState(): UseSyncStateReturn {
     pendingCount,
     lastSyncAt,
     error,
+    failedCount,
+    lastResult,
     syncNow,
     isRecordSynced,
     getRecordSyncStatus,
