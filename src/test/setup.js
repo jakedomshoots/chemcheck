@@ -72,19 +72,27 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
-// Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+class ResizeObserverMock {
+  observe() {}
 
-// Mock IntersectionObserver
-global.IntersectionObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+  unobserve() {}
+
+  disconnect() {}
+}
+
+class IntersectionObserverMock {
+  observe() {}
+
+  unobserve() {}
+
+  disconnect() {}
+}
+
+// Mock observers with constructor-safe classes for Radix/Floating UI
+global.ResizeObserver = ResizeObserverMock;
+window.ResizeObserver = ResizeObserverMock;
+global.IntersectionObserver = IntersectionObserverMock;
+window.IntersectionObserver = IntersectionObserverMock;
 
 // Mock scrollTo
 window.scrollTo = vi.fn();

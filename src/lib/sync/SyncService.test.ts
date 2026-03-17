@@ -298,9 +298,26 @@ describe('SyncService', () => {
       testSyncService2.destroy();
     });
 
-    it('should handle online/offline events and update sync behavior', () => {
+    it('should handle online/offline events and resume syncing when connection returns', async () => {
       const testSyncService = new SyncService();
       testSyncService.initialize(mockConvexClient);
+      const syncPendingRecordsSpy = vi
+        .spyOn(testSyncService as any, 'syncPendingRecords')
+        .mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(() => {
+                resolve({
+                  success: true,
+                  syncedCount: 0,
+                  failedCount: 0,
+                  attemptedCount: 0,
+                  pendingCountAfter: 0,
+                  failures: [],
+                });
+              }, 0);
+            })
+        );
       
       // Mock the status callback to track status changes
       const statusCallback = vi.fn();
@@ -323,10 +340,17 @@ describe('SyncService', () => {
       const onlineEvent = new Event('online');
       window.dispatchEvent(onlineEvent);
       
-      // Should update status back to idle
-      expect(testSyncService.getSyncStatus()).toBe('idle');
+      // Reconnecting should clear offline state and immediately start a sync cycle
       expect(testSyncService.isOnlineStatus()).toBe(true);
       expect(statusCallback).toHaveBeenCalledWith('idle');
+      expect(testSyncService.getSyncStatus()).toBe('syncing');
+      expect(statusCallback).toHaveBeenCalledWith('syncing');
+      expect(syncPendingRecordsSpy).toHaveBeenCalledTimes(1);
+
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Once the reconnect sync finishes, status should settle back to idle
+      expect(testSyncService.getSyncStatus()).toBe('idle');
       
       testSyncService.destroy();
     });
