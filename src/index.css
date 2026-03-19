@@ -80,6 +80,66 @@
   .role-critical {
     color: hsl(var(--role-critical));
   }
+
+  .home-primary-cta {
+    transition-property: transform, box-shadow, background-color, border-color, color;
+    transition-duration: 140ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .home-primary-cta:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  .home-primary-cta:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .home-primary-cta:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  .home-primary-cta.state-start_next_pending {
+    @apply border-cyan-600/80 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md;
+  }
+
+  .home-primary-cta.state-open_route_plan {
+    @apply border-cyan-500/80 bg-white text-cyan-800 border-2;
+  }
+
+  .home-primary-cta.state-add_client {
+    @apply border-cyan-500/80 bg-gradient-to-r from-blue-600 to-sky-600 text-white;
+  }
+
+  .customer-card-focus-transition {
+    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  }
+
+  .customer-card-focus-transition:focus-within,
+  .customer-card-focus-transition:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 16px -10px rgba(15, 23, 42, 0.35);
+  }
+
+  .cta-state-chip {
+    transition: color 120ms ease, background-color 120ms ease;
+  }
+
+  .flow-strip-enter {
+    animation: fade-slide-up 180ms ease-out;
+  }
+
+  @keyframes fade-slide-up {
+    0% {
+      opacity: 0.6;
+      transform: translateY(4px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 /* Chemical Gradient Animations */

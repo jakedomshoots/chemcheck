@@ -1,93 +1,170 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
-import NewServiceLog from './NewServiceLog';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import NewServiceLog from './NewServiceLog';
 
-// Mock stable data
-const mockUser = { email: 'test@example.com' };
-const mockCustomers = [{ _id: 1, full_name: 'Alice Smith', address: '123 St', pool_type: 'chlorine' }];
 const mockCreateServiceLog = vi.fn();
+let mockNavigate;
+let mockLocation = {
+  pathname: '/page/NewServiceLog',
+  search: '?customerId=1',
+  state: null,
+};
 
-// Mock hooks - returns mock data immediately (no loading state simulation)
+const mockCustomers = [
+  { _id: 1, full_name: 'Alice Smith', address: '123 St', pool_type: 'chlorine' },
+  { _id: 2, full_name: 'Bob Jones', address: '456 St', pool_type: 'salt' },
+];
+
 vi.mock('@/api/convexHooks', () => ({
-    useCurrentUser: () => mockUser,
-    useCustomers: () => mockCustomers,
-    useServiceLogCreate: () => mockCreateServiceLog
+  useCurrentUser: () => ({ email: 'test@example.com' }),
+  useCustomers: () => mockCustomers,
+  useServiceLogCreate: () => mockCreateServiceLog,
 }));
 
-// Mock utils
+vi.mock('convex/react', () => ({
+  useQuery: vi.fn(() => ({ settings: { service_types: ['Regular Cleaning', 'Chemical Balance'] } })),
+}));
+
 vi.mock('@/utils', () => ({
-    createPageUrl: (page) => `/page/${page}`
+  createPageUrl: (page) => `/page/${page}`,
 }));
 
-// Mock toast
-vi.mock('sonner', () => ({
-    toast: { success: vi.fn(), error: vi.fn() }
-}));
-
-// Mock child components
-vi.mock('../components/servicelog/SimplifiedChemicalInput', () => ({
-    default: ({ label }) => <div>{label} Input</div>
-}));
-
-// Mock time tracker hook
-vi.mock('@/hooks/useTimeTracker', () => ({
-    useTimeTracker: () => ({
-        state: { isTracking: false, startTime: null, endTime: null },
-        startTracking: vi.fn(),
-        stopTracking: vi.fn(),
-        resetTracking: vi.fn(),
-        getDurationDisplay: () => '0 min'
-    })
-}));
-
-// Mock business settings hook
 vi.mock('@/hooks/useBusinessSettings', () => ({
-    useBusinessSettings: () => ({
-        proofOfServiceSettings: { requirePhotos: false, requireBeforePhotos: false, requireAfterPhotos: false },
-        isLoading: false
-    })
+  useBusinessSettings: () => ({
+    proofOfServiceSettings: {
+      requirePhotos: false,
+      require_before_photos: false,
+      require_after_photos: false,
+      min_photos_before: 0,
+      min_photos_after: 0,
+      beforePhotosRequiredForCompletion: false,
+      afterPhotosRequiredForCompletion: false,
+    },
+    isLoading: false,
+  }),
 }));
 
-// Mock proof-of-service components
 vi.mock('@/components/proof-of-service', () => ({
-    PhotoCaptureSection: ({ title }) => <div>{title}</div>
+  PhotoCaptureSection: ({ title }) => <div>{title}</div>,
 }));
 
-// Mock proof-of-service lib
-vi.mock('@/lib/proof-of-service', () => ({
-    validateServiceCompletion: () => ({ isValid: true, errors: [] }),
-    getValidationErrorMessage: () => '',
-    hasAnyRequirements: () => false,
-    getRequirementsSummary: () => []
-}));
-
-// Mock canvas-confetti
 vi.mock('canvas-confetti', () => ({
-    default: vi.fn()
+  default: vi.fn(),
 }));
 
 vi.mock('react-router-dom', async () => {
-    const actual = await vi.importActual('react-router-dom');
-    return {
-        ...actual,
-        useNavigate: () => vi.fn(),
-    };
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    useLocation: () => mockLocation,
+  };
 });
 
-describe('New Service Log Page', () => {
-    it('renders the form', () => {
-        window.history.pushState({}, 'Test Page', '/?customerId=1');
-        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
-        expect(screen.getByText(/Service Log/i)).toBeInTheDocument();
-        expect(screen.getByText(/Alice Smith/i)).toBeInTheDocument();
-    });
+vi.mock('@/lib/proof-of-service', () => ({
+  deleteUnlinkedPhotos: vi.fn(),
+  linkPhotosToServiceLog: vi.fn(),
+  getPhotos: vi.fn(() => Promise.resolve([])),
+  validateServiceCompletion: vi.fn(() => ({ isValid: true, errors: [] })),
+  getValidationErrorMessage: () => '',
+  hasAnyRequirements: vi.fn(() => true),
+  getRequirementsSummary: vi.fn(() => ['Chemical readings', 'Service type']),
+}));
 
-    it('allows entering readings', () => {
-        window.history.pushState({}, 'Test Page', '/?customerId=1');
-        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+vi.mock('@/components/servicelog/SimplifiedChemicalInput', () => ({
+  default: ({ label }) => <div>{label}</div>,
+}));
 
-        expect(screen.getByText(/pH Balance Input/i)).toBeInTheDocument();
-        expect(screen.getByText(/Chlorine Level Input/i)).toBeInTheDocument();
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+describe('New Service Log - flow polish', () => {
+  beforeEach(() => {
+    mockNavigate = vi.fn();
+    mockCreateServiceLog.mockResolvedValue(101);
+    mockLocation = {
+      pathname: '/page/NewServiceLog',
+      search: '?customerId=1',
+      state: null,
+    };
+    window.history.replaceState({}, 'Test Page', '/page/NewServiceLog?customerId=1');
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    window.history.replaceState({}, 'Test Page', '/');
+    localStorage.clear();
+  });
+
+  it('shows route readiness strip with customer and field checklist', () => {
+    render(
+      <BrowserRouter>
+        <NewServiceLog />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByTestId('service-log-readiness-strip')).toBeInTheDocument();
+    expect(screen.getByText('Customer: Alice Smith')).toBeInTheDocument();
+    expect(screen.getByText('Required for completion: Chemical readings, Service type')).toBeInTheDocument();
+    expect(screen.getByText('Customer loaded')).toBeInTheDocument();
+    expect(screen.getByText('Service type selected')).toBeInTheDocument();
+  });
+
+  it('stores a draft and shows draft saved time in readiness strip', () => {
+    render(
+      <BrowserRouter>
+        <NewServiceLog />
+      </BrowserRouter>
+    );
+
+    // localStorage draft persistence and strip indicator should appear shortly after mount.
+    return waitFor(() => {
+      expect(within(screen.getByTestId('service-log-readiness-strip')).getByText(/Draft saved at/i)).toBeInTheDocument();
+      expect(localStorage.getItem('serviceLogDraft_1')).toBeTruthy();
     });
+  });
+
+  it('shows one clear next action after save and routes to next stop when continuing route', async () => {
+    mockLocation = {
+      pathname: '/page/NewServiceLog',
+      search: '?customerId=1',
+      state: {
+        returnIntent: 'continue_route',
+        routeOrderIds: [1, 2],
+        routeDay: 'Monday',
+        customer: mockCustomers[0],
+      },
+    };
+    mockCreateServiceLog.mockResolvedValue(123);
+
+    render(
+      <BrowserRouter>
+        <NewServiceLog />
+      </BrowserRouter>
+    );
+
+    const saveButton = screen.getByRole('button', { name: /Complete Service/i });
+    fireEvent.click(saveButton);
+
+    const nextAction = await screen.findByTestId('service-log-next-action');
+    expect(nextAction).toBeInTheDocument();
+    expect(nextAction).toHaveTextContent('Continue to Bob Jones');
+
+    fireEvent.click(nextAction);
+    expect(mockNavigate).toHaveBeenCalledWith('/page/NewServiceLog?customerId=2', expect.any(Object));
+  });
+});
+
+describe('New Service Log - validation summary', () => {
+  it('shows required field summary whenever requirements exist', () => {
+    render(
+      <BrowserRouter>
+        <NewServiceLog />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByTestId('service-log-validation-summary')).toBeInTheDocument();
+  });
 });

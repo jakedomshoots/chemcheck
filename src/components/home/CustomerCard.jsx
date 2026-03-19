@@ -19,6 +19,7 @@ const CustomerCard = memo(function CustomerCard({
   customer,
   isCompleted,
   isSkipped,
+  isNextInFlow,
   lastWeekLog,
   onClick,
   onStart,
@@ -54,9 +55,23 @@ const CustomerCard = memo(function CustomerCard({
   const borderClassName = cardState === "done" ? "border-emerald-200" : "border-slate-200/60";
   const startLabel = isCompleted ? "View" : isSkipped ? "Resume" : "Start";
   const skipLabel = isSkipped ? "Unskip" : "Skip";
+  const hasPhone = Boolean(customer?.phone);
+  const hasAddress = Boolean(customer?.address);
+  const nextActionLabel = isCompleted
+    ? "View for history"
+    : isSkipped
+      ? "Resume when ready"
+      : isNextInFlow
+        ? "Next in flow"
+        : "Complete now";
+  const callLabel = hasPhone ? "Call" : "No phone";
+  const mapLabel = hasAddress ? "Map" : "No address";
 
   return (
-    <Card className={`overflow-hidden transition-all duration-200 border-2 ${cardClassName}`}>
+    <Card
+      data-state={cardState}
+      className={`overflow-hidden border-2 customer-card-focus-transition ${cardClassName}`}
+    >
       <div
         onClick={() => setIsExpanded(!isExpanded)}
         className="p-3 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
@@ -65,6 +80,9 @@ const CustomerCard = memo(function CustomerCard({
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-sm text-slate-900 truncate">{customer.full_name}</h3>
             <p className="text-xs text-slate-500 truncate">{customer.address}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              {statusLabel} · {nextActionLabel}
+            </p>
           </div>
         </div>
 
@@ -78,10 +96,10 @@ const CustomerCard = memo(function CustomerCard({
 
       <div className={`px-3 pb-2 ${rowClassName}`}>
         <div className="grid grid-cols-4 gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-[11px]"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-[11px]"
             onClick={(e) => {
               e.stopPropagation();
               (onStart || onClick)?.();
@@ -115,10 +133,12 @@ const CustomerCard = memo(function CustomerCard({
               e.stopPropagation();
               onCall?.();
             }}
-            disabled={!customer.phone}
+            disabled={!hasPhone}
+            title={hasPhone ? "Call customer" : "No phone on file"}
+            aria-label={callLabel}
           >
             <PhoneCall className="w-3 h-3 mr-1" />
-            Call
+            {callLabel}
           </Button>
           <Button
             variant="ghost"
@@ -128,10 +148,12 @@ const CustomerCard = memo(function CustomerCard({
               e.stopPropagation();
               onMap?.();
             }}
-            disabled={!customer.address}
+            disabled={!hasAddress}
+            title={hasAddress ? "Open in maps" : "No address on file"}
+            aria-label={mapLabel}
           >
             <MapPin className="w-3 h-3 mr-1" />
-            Map
+            {mapLabel}
           </Button>
         </div>
       </div>

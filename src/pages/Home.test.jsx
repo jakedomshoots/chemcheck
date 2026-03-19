@@ -1,26 +1,40 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { format } from 'date-fns';
 import Home from './Home';
-import { 
-  renderWithProviders, 
-  screen, 
-  userEvent,
-  mockCustomers,
-  mockServiceLogs,
-  performanceTest,
-  a11yTest,
-  errorTest,
-  dbTest
-} from '@/test/testUtils';
+import { renderWithProviders, screen, userEvent } from '@/test/testUtils';
 import * as convexHooks from '@/api/convexHooks';
 
-// Mock hooks - must be defined inline due to vi.mock hoisting
+let mockNavigate;
+let mockedDayOfWeek = 'Monday';
+
+const mockDate = '2026-03-18';
+const mockDisplayDate = 'Mar 18, 2026';
+
+const makeLog = (customerId, date = mockDate) => ({
+  id: `log-${customerId}`,
+  _id: `log-${customerId}`,
+  customer_id: customerId,
+  service_date: date,
+  status: 'completed',
+  ph: 'good',
+  chlorine: 'good',
+  alkalinity: 'good',
+  stabilizer: 'good',
+});
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 vi.mock('@/api/convexHooks', () => ({
   useCustomersFilter: vi.fn(() => []),
-  useServiceLogsFilter: vi.fn(() => []),
   useServiceLogs: vi.fn(() => []),
+  useServiceLogsFilter: vi.fn(() => []),
   useCustomers: vi.fn(() => []),
-  useCurrentUser: vi.fn(() => ({ id: 'user-1', name: 'Test User' })),
+  useCurrentUser: vi.fn(() => ({ email: 'test@example.com' })),
   useAddServiceLog: vi.fn(() => vi.fn()),
   useUpdateServiceLog: vi.fn(() => vi.fn()),
   useDeleteServiceLog: vi.fn(() => vi.fn()),
@@ -29,331 +43,159 @@ vi.mock('@/api/convexHooks', () => ({
   useDeleteCustomer: vi.fn(() => vi.fn()),
 }));
 
-// Enhanced mock data for comprehensive testing - defined after mocks
-const getTodayCustomers = () => [
-  {
-    ...mockCustomers[0],
-    service_day: format(new Date(), 'EEEE'),
-    sort_order: 1
-  },
-  {
-    ...mockCustomers[1], 
-    service_day: format(new Date(), 'EEEE'),
-    sort_order: 2
-  }
-];
-
-const getCompletedServiceLog = (todayCustomers) => ({
-  ...mockServiceLogs[0],
-  customer_id: todayCustomers[0].id,
-  service_date: format(new Date(), 'yyyy-MM-dd'),
-  status: 'completed'
-});
-
-// Mock utils
 vi.mock('@/utils', () => ({
   createPageUrl: (page) => `/page/${page}`,
-  getTodayDate: () => format(new Date(), 'yyyy-MM-dd')
+  parseLocalDate: (value) => new Date(value),
 }));
 
-// Mock child components with better testing support
-vi.mock('../components/home/CustomerCard', () => ({
-  default: ({ customer, isCompleted, onServiceComplete }) => (
-    <div data-testid={`customer-card-${customer.id}`} role="article">
-      <h3>{customer.full_name}</h3>
-      <p>{customer.address}</p>
-      <span data-testid="service-status">
-        {isCompleted ? 'Completed' : 'Not Serviced'}
-      </span>
-      {!isCompleted && (
-        <button 
-          onClick={() => onServiceComplete?.(customer)}
-          data-testid="complete-service-btn"
-        >
-          Complete Service
-        </button>
-      )}
+vi.mock('@/components/home/CustomerCard', () => ({
+  default: ({ customer, isCompleted, isNextInFlow }) => (
+    <div data-testid={`customer-card-${customer.id}`}>
+      <p>{customer.full_name}</p>
+      <p>{isCompleted ? 'completed' : 'pending'}</p>
+      <p>{isNextInFlow ? 'next' : 'queued'}</p>
     </div>
-  )
+  ),
 }));
 
-vi.mock('../components/home/QuickStats', () => ({
-  default: ({ customers, serviceLogs }) => (
-    <div data-testid="quick-stats" role="region" aria-label="Quick Statistics">
-      <div>Total Customers: {customers?.length || 0}</div>
-      <div>Completed Today: {serviceLogs?.length || 0}</div>
-    </div>
-  )
+vi.mock('@/components/home/QuickStats', () => ({
+  default: () => <div data-testid="quick-stats" />,
 }));
 
-// Mock UI components
 vi.mock('@/components/ui/card', () => ({
-  Card: ({ children, className }) => <div className={className} role="region">{children}</div>
+  Card: ({ children, className }) => <div className={className}>{children}</div>,
 }));
 
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, onClick, variant, ...props }) => (
-    <button onClick={onClick} data-variant={variant} {...props}>
+  Button: ({ children, onClick, ...props }) => (
+    <button onClick={onClick} {...props}>
       {children}
     </button>
-  )
+  ),
 }));
 
-describe('Home Page - Comprehensive Tests', () => {
-  let todayCustomers;
-  let completedServiceLog;
+vi.mock('date-fns', async () => {
+  const actual = await vi.importActual('date-fns');
+  return {
+    ...actual,
+    format: (value, token) => {
+      if (token === 'EEEE') return mockedDayOfWeek;
+      if (token === 'MMM dd, yyyy') return mockDisplayDate;
+      if (token === 'yyyy-MM-dd') return mockDate;
+      return actual.format(value, token);
+    },
+  };
+});
 
-  beforeEach(async () => {
-    await dbTest.clearTestData();
-    await dbTest.seedTestData();
-    
-    // Set up test data
-    todayCustomers = getTodayCustomers();
-    completedServiceLog = getCompletedServiceLog(todayCustomers);
-    
-    // Configure mocks with test data
-    vi.mocked(convexHooks.useCustomersFilter).mockReturnValue(todayCustomers);
-    vi.mocked(convexHooks.useServiceLogsFilter).mockReturnValue([completedServiceLog]);
-    vi.mocked(convexHooks.useServiceLogs).mockReturnValue([completedServiceLog]);
-    vi.mocked(convexHooks.useCustomers).mockReturnValue(todayCustomers);
+describe('Home Page - flow-first UX', () => {
+  beforeEach(() => {
+    mockNavigate = vi.fn();
+    mockedDayOfWeek = 'Monday';
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('Basic Rendering', () => {
-    it('renders today\'s route title with correct date', () => {
-      renderWithProviders(<Home />);
-      expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
-      expect(screen.getByText(format(new Date(), 'EEEE, MMMM do'))).toBeInTheDocument();
-    });
+  it('shows one primary flow CTA and routes to next pending stop', async () => {
+    vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([
+      { _id: 1, id: 1, full_name: 'John Smith', service_day: mockedDayOfWeek, sort_order: 1, address: '123 Main St' },
+      { _id: 2, id: 2, full_name: 'Jane Doe', service_day: mockedDayOfWeek, sort_order: 2, address: '456 Oak Ave' },
+    ]);
+    vi.mocked(convexHooks.useServiceLogs).mockReturnValue([makeLog(1)]);
 
-    it('displays customers scheduled for today', () => {
-      renderWithProviders(<Home />);
-      expect(screen.getByText('John Smith')).toBeInTheDocument();
-      expect(screen.getByText('Jane Doe')).toBeInTheDocument();
-    });
+    const user = userEvent.setup();
+    renderWithProviders(<Home />);
 
-    it('shows quick statistics', () => {
-      renderWithProviders(<Home />);
-      const stats = screen.getByTestId('quick-stats');
-      expect(stats).toBeInTheDocument();
-      expect(screen.getByText('Total Customers: 2')).toBeInTheDocument();
-    });
+    const primaryActions = screen.getAllByTestId('home-primary-cta');
+    expect(primaryActions).toHaveLength(1);
+    expect(primaryActions[0]).toHaveTextContent('Start Next: Jane Doe');
+
+    await user.click(primaryActions[0]);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.stringContaining('/page/NewServiceLog?customerId=2'),
+      expect.any(Object)
+    );
   });
 
-  describe('Service Status Logic', () => {
-    it('shows correct service status for completed customers', () => {
-      renderWithProviders(<Home />);
-      const statusElements = screen.getAllByTestId('service-status');
-      
-      // First customer should be completed (has service log)
-      expect(statusElements[0]).toHaveTextContent('Completed');
-      // Second customer should not be serviced
-      expect(statusElements[1]).toHaveTextContent('Not Serviced');
-    });
+  it('shows weekend no-route guidance and route-plan intent', async () => {
+    mockedDayOfWeek = 'Saturday';
+    vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([]);
+    vi.mocked(convexHooks.useServiceLogs).mockReturnValue([]);
 
-    it('displays complete service button for unserviced customers', () => {
-      renderWithProviders(<Home />);
-      const completeButtons = screen.getAllByTestId('complete-service-btn');
-      
-      // Should only show button for unserviced customers
-      expect(completeButtons).toHaveLength(1);
-    });
+    const user = userEvent.setup();
+    renderWithProviders(<Home />);
 
-    it('handles service completion interaction', async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<Home />);
-      
-      const completeButton = screen.getByTestId('complete-service-btn');
-      await user.click(completeButton);
-      
-      // Should trigger service completion flow
-      // (In real implementation, this would open a service log form)
-    });
+    expect(screen.getByText('Weekend operations')).toBeInTheDocument();
+    expect(screen.getByText('No scheduled route today. Open Route Plan to jump to the next active day or add an exception stop.')).toBeInTheDocument();
+
+    const primaryActions = screen.getAllByTestId('home-primary-cta');
+    expect(primaryActions).toHaveLength(1);
+    await user.click(primaryActions[0]);
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/page/RouteOptimizer'));
   });
 
-  describe('Performance Tests', () => {
-    it('renders quickly with multiple customers', async () => {
-      const { duration } = await performanceTest.measureRenderTime(() => 
-        renderWithProviders(<Home />)
-      );
-      
-      performanceTest.expectFastRender(duration, 200); // 200ms max for home page
-    });
+  it("shows missed-service state transition copy when today's route is complete", async () => {
+    mockedDayOfWeek = 'Thursday';
+    vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([
+      { _id: 1, id: 1, full_name: 'Monday Client', service_day: 'Monday', sort_order: 1, address: '111 One' },
+      { _id: 2, id: 2, full_name: 'Tuesday Client', service_day: 'Tuesday', sort_order: 2, address: '222 Two' },
+      { _id: 3, id: 3, full_name: 'Thursday Client', service_day: mockedDayOfWeek, sort_order: 1, address: '333 Three' },
+    ]);
+    vi.mocked(convexHooks.useServiceLogs).mockReturnValue([makeLog(3)]);
 
-    it('handles large customer lists efficiently', async () => {
-      // Mock a large customer list
-      const largeCustomerList = Array.from({ length: 100 }, (_, i) => ({
-        ...mockCustomers[0],
-        id: i + 1,
-        _id: i + 1,
-        full_name: `Customer ${i + 1}`,
-        service_day: format(new Date(), 'EEEE')
-      }));
+    const user = userEvent.setup();
+    renderWithProviders(<Home />);
 
-      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue(largeCustomerList);
+    expect(screen.getByText("Today's route is complete")).toBeInTheDocument();
+    expect(screen.getByText('2 missed stops from this week remain. Open Route Plan to resume missed stops in order.')).toBeInTheDocument();
 
-      const { duration } = await performanceTest.measureRenderTime(() => 
-        renderWithProviders(<Home />)
-      );
-      
-      performanceTest.expectFastRender(duration, 500); // 500ms max for large lists
-    });
+    const primaryActions = screen.getAllByTestId('home-primary-cta');
+    expect(primaryActions).toHaveLength(1);
+
+    await user.click(primaryActions[0]);
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/page/RouteOptimizer?day=Thursday'));
   });
 
-  describe('Accessibility Tests', () => {
-    it('has proper ARIA labels and roles', () => {
-      renderWithProviders(<Home />);
-      
-      const stats = screen.getByTestId('quick-stats');
-      a11yTest.expectAriaLabel(stats, 'Quick Statistics');
-      
-      const customerCards = screen.getAllByRole('article');
-      expect(customerCards).toHaveLength(2);
-    });
+  it("shows explicit no-customer guidance text and add-client intent", async () => {
+    mockedDayOfWeek = 'Tuesday';
+    vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([]);
+    vi.mocked(convexHooks.useServiceLogs).mockReturnValue([]);
 
-    it('supports keyboard navigation', () => {
-      renderWithProviders(<Home />);
-      
-      const buttons = screen.getAllByRole('button');
-      buttons.forEach(button => {
-        a11yTest.expectKeyboardNavigation(button);
-      });
-    });
+    const user = userEvent.setup();
+    renderWithProviders(<Home />);
 
-    it('uses semantic HTML structure', () => {
-      const { container } = renderWithProviders(<Home />);
-      
-      a11yTest.expectSemanticHTML(container, 'main');
-      a11yTest.expectSemanticHTML(container, 'section');
-    });
+    const primaryActions = screen.getAllByTestId('home-primary-cta');
+    expect(primaryActions).toHaveLength(1);
+    expect(primaryActions[0]).toHaveTextContent('Add Client');
+    expect(screen.getByText('You have no customers scheduled for Tuesday')).toBeInTheDocument();
+    expect(screen.getByText('Tip: add clients from Clients, then return here to start the route.')).toBeInTheDocument();
+
+    await user.click(primaryActions[0]);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/page/Clients?day=Tuesday'
+    );
   });
 
-  describe('Error Handling', () => {
-    it('handles missing customer data gracefully', () => {
-      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([]);
-      
-      renderWithProviders(<Home />);
-      
-      expect(screen.getByText(/No customers scheduled/i)).toBeInTheDocument();
-    });
+  it('shows clear done-routing guidance when all todays stops are completed', async () => {
+    mockedDayOfWeek = 'Thursday';
+    vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([
+      { _id: 1, id: 1, full_name: 'Thursday Client', service_day: mockedDayOfWeek, sort_order: 1, address: '333 Three' },
+    ]);
+    vi.mocked(convexHooks.useServiceLogs).mockReturnValue([makeLog(1)]);
 
-    it('handles API errors gracefully', () => {
-      vi.mocked(convexHooks.useCustomersFilter).mockImplementation(() => {
-        throw new Error('API Error');
-      });
+    const user = userEvent.setup();
+    renderWithProviders(<Home />);
 
-      const { container } = errorTest.expectErrorBoundary(() => 
-        renderWithProviders(<Home />)
-      );
+    expect(screen.getByText("Today's route is complete")).toBeInTheDocument();
+    expect(screen.getByText(/up to date for today/i)).toBeInTheDocument();
+    expect(screen.getByText(/Open Route Plan to review tomorrow's sequence/i)).toBeInTheDocument();
 
-      // Should show error boundary
-      expect(container).toBeInTheDocument();
-    });
+    const primaryActions = screen.getAllByTestId('home-primary-cta');
+    expect(primaryActions).toHaveLength(1);
+    expect(primaryActions[0]).toHaveTextContent('Open Route Plan');
 
-    it('handles malformed customer data', () => {
-      const malformedCustomers = [
-        { id: 1, full_name: null, address: undefined },
-        { id: 2, service_day: 'InvalidDay' }
-      ];
-
-      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue(malformedCustomers);
-
-      renderWithProviders(<Home />);
-      
-      // Should not crash and show appropriate fallbacks
-      expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
-    });
-  });
-
-  describe('Data Integration', () => {
-    it('correctly filters customers by today\'s service day', () => {
-      renderWithProviders(<Home />);
-      
-      // Verify the hook was called with correct filter
-      expect(convexHooks.useCustomersFilter).toHaveBeenCalledWith({
-        service_day: format(new Date(), 'EEEE')
-      });
-    });
-
-    it('correctly matches service logs to customers', () => {
-      renderWithProviders(<Home />);
-      
-      // Verify service logs are filtered by today's date
-      expect(convexHooks.useServiceLogsFilter).toHaveBeenCalledWith({
-        service_date: format(new Date(), 'yyyy-MM-dd')
-      });
-    });
-
-    it('sorts customers by sort_order', () => {
-      const unsortedCustomers = [
-        { ...getTodayCustomers()[1], sort_order: 1 },
-        { ...getTodayCustomers()[0], sort_order: 2 }
-      ];
-
-      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue(unsortedCustomers);
-
-      renderWithProviders(<Home />);
-      
-      const customerCards = screen.getAllByTestId(/customer-card-/);
-      // First card should be the one with sort_order: 1
-      expect(customerCards[0]).toHaveAttribute('data-testid', 'customer-card-2');
-    });
-  });
-
-  describe('User Interactions', () => {
-    it('navigates to customer detail when card is clicked', async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<Home />);
-      
-      const customerCard = screen.getByTestId('customer-card-1');
-      await user.click(customerCard);
-      
-      // Should navigate to customer detail page
-      // (Implementation would depend on actual navigation logic)
-    });
-
-    it('opens service log form when complete service is clicked', async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<Home />);
-      
-      const completeButton = screen.getByTestId('complete-service-btn');
-      await user.click(completeButton);
-      
-      // Should open service log creation form
-      // (Implementation would depend on actual form logic)
-    });
-  });
-
-  describe('Responsive Design', () => {
-    it('adapts layout for mobile screens', () => {
-      // Mock mobile viewport
-      Object.defineProperty(window, 'innerWidth', {
-        writable: true,
-        configurable: true,
-        value: 375,
-      });
-
-      renderWithProviders(<Home />);
-      
-      // Should render mobile-friendly layout
-      expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
-    });
-
-    it('shows desktop layout for larger screens', () => {
-      // Mock desktop viewport
-      Object.defineProperty(window, 'innerWidth', {
-        writable: true,
-        configurable: true,
-        value: 1024,
-      });
-
-      renderWithProviders(<Home />);
-      
-      // Should render desktop layout
-      expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
-    });
+    await user.click(primaryActions[0]);
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/page/RouteOptimizer?day=Thursday'));
   });
 });

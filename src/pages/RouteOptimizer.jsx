@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Navigation, MapPin, Clock, Zap, ChevronRight, AlertTriangle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { routeOptimizer } from "@/lib/routeOptimizer";
 
@@ -98,6 +99,7 @@ const getReferenceDateForDay = (dayName) => {
 };
 
 export default function RouteOptimizer() {
+  const location = useLocation();
   const user = useCurrentUser();
   const allCustomers = useCustomersFilter({ created_by: user?.email });
   const recentServiceLogs = useServiceLogs("-service_date", 1500);
@@ -119,6 +121,10 @@ export default function RouteOptimizer() {
   }, [convexBusiness?.settings?.working_days]);
 
   const [customers, setCustomers] = useState([]);
+  const requestedDay = useMemo(
+    () => normalizeDayName(new URLSearchParams(location.search || "").get("day")),
+    [location.search]
+  );
   const [selectedDay, setSelectedDay] = useState(() => normalizeDayName(format(new Date(), "EEEE")) || "Monday");
   const [optimizedRoute, setOptimizedRoute] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -137,6 +143,13 @@ export default function RouteOptimizer() {
       setSelectedDay(daysOfWeek[0]);
     }
   }, [daysOfWeek, selectedDay]);
+
+  useEffect(() => {
+    if (!requestedDay || !daysOfWeek.includes(requestedDay) || requestedDay === selectedDay) {
+      return;
+    }
+    setSelectedDay(requestedDay);
+  }, [requestedDay, selectedDay, daysOfWeek]);
 
   const customerDayCounts = useMemo(() => {
     const counts = new Map();

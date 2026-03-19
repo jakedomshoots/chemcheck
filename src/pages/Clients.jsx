@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useCustomersFilter, useCurrentUser, useCustomerUpdate, useCustomerDelete } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Plus, Users, Search, ArrowUp, Check } from "lucide-react";
+import { Plus, Users, Search, ArrowUp, Check, PlayCircle, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,22 @@ import ClientListItem from "../components/clients/ClientListItem";
 import { toast } from "sonner";
 import { getEffectiveWorkingDays } from "@/lib/workingDays";
 
+const normalizeDayName = (value) => {
+  if (!value) return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (["monday", "mon"].includes(normalized)) return "Monday";
+  if (["tuesday", "tue", "tues"].includes(normalized)) return "Tuesday";
+  if (["wednesday", "wed", "weds"].includes(normalized)) return "Wednesday";
+  if (["thursday", "thu", "thur", "thurs"].includes(normalized)) return "Thursday";
+  if (["friday", "fri"].includes(normalized)) return "Friday";
+  if (["saturday", "sat"].includes(normalized)) return "Saturday";
+  if (["sunday", "sun"].includes(normalized)) return "Sunday";
+  return null;
+};
+
 export default function Clients() {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useCurrentUser();
 
   // Get business settings for working days
@@ -36,13 +50,19 @@ export default function Clients() {
 
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeDay, setActiveDay] = useState("Monday");
+  const requestedDay = useMemo(
+    () => normalizeDayName(new URLSearchParams(location.search || "").get("day")),
+    [location.search]
+  );
+  const [activeDay, setActiveDay] = useState(() => requestedDay || "Monday");
   const [deleteCustomer, setDeleteCustomer] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [reorderMode, setReorderMode] = useState(false);
   const [movingCustomerId, setMovingCustomerId] = useState(null);
   const dayTabRefs = useRef({});
   const hasAutoScrolledDayRef = useRef(false);
+  const lastSyncedRequestedDayRef = useRef(requestedDay);
+  const hasRequestedDaySyncedRef = useRef(false);
 
   // Get working days from cloud settings with local fallback for offline/dev mode.
   const daysOfWeek = useMemo(() => {
@@ -57,6 +77,16 @@ export default function Clients() {
       setActiveDay(validWorkingDays[0]);
     }
   }, [validWorkingDays, activeDay]);
+
+  useEffect(() => {
+    if (!requestedDay || !validWorkingDays.includes(requestedDay)) return;
+
+    if (!hasRequestedDaySyncedRef.current || lastSyncedRequestedDayRef.current !== requestedDay) {
+      setActiveDay(requestedDay);
+      hasRequestedDaySyncedRef.current = true;
+      lastSyncedRequestedDayRef.current = requestedDay;
+    }
+  }, [requestedDay, activeDay, validWorkingDays]);
 
   useEffect(() => {
     const activeTab = dayTabRefs.current[activeDay];
@@ -220,6 +250,19 @@ export default function Clients() {
     return customers.filter(c => daysOfWeek.includes(c.service_day)).length;
   }, [customers, daysOfWeek]);
 
+  const activeDayCustomers = useMemo(() => {
+    return customers.filter((c) => c.service_day === activeDay);
+  }, [customers, activeDay]);
+  const nextDueNowCustomer = useMemo(() => {
+    if (!activeDayCustomers.length) return null;
+    return [...activeDayCustomers].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))[0];
+  }, [activeDayCustomers]);
+  const contextFromHomeDay = requestedDay === activeDay && Boolean(requestedDay);
+  const quickActionLabel = activeDayCustomers.length > 0 ? "Open first due now" : "View today's order";
+  const viewOrderPath = contextFromHomeDay && activeDay
+    ? createPageUrl("RouteOptimizer") + `?day=${encodeURIComponent(activeDay)}`
+    : null;
+
   if (loading || convexBusiness === undefined) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -274,6 +317,38 @@ export default function Clients() {
           )}
         </div>
       </div>
+
+      {requestedDay && quickActionLabel && contextFromHomeDay && (
+        <div className="mb-4">
+          <Button
+            className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-md"
+            onClick={() => {
+              if (activeDayCustomers.length > 0 && nextDueNowCustomer) {
+                const orderedIds = [...activeDayCustomers]
+                  .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                  .map((customer) => Number(customer._id));
+
+                navigate(createPageUrl("NewServiceLog") + `?customerId=${nextDueNowCustomer._id}`, {
+                  state: {
+                    customer: nextDueNowCustomer,
+                    returnIntent: "continue_route",
+                    routeOrderIds: orderedIds,
+                    routeDay: activeDay,
+                  },
+                });
+                return;
+              }
+
+              if (viewOrderPath) {
+                navigate(viewOrderPath);
+              }
+            }}
+          >
+            <PlayCircle className="w-4 h-4 mr-2" />
+            {quickActionLabel}
+          </Button>
+        </div>
+      )}
 
       {reorderMode && (
         <Card className="p-4 mb-4 bg-blue-50 border-2 border-blue-200">
@@ -353,8 +428,22 @@ export default function Clients() {
                     {searchQuery ? "No Matching Clients" : `No Clients for ${day}`}
                   </h3>
                   <p className="text-slate-900 mb-4">
-                    {searchQuery ? "Try adjusting your search" : "Add clients to this day's route"}
+                    {searchQuery
+                      ? "Try adjusting your search"
+                      : contextFromHomeDay && day === activeDay && viewOrderPath
+                        ? "Route has no customers yet. Continue directly to Route Plan to review today."
+                        : "Add clients to this day's route"}
                   </p>
+                  {contextFromHomeDay && day === activeDay && viewOrderPath && !searchQuery && (
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate(viewOrderPath)}
+                      className="mx-auto"
+                    >
+                      <Navigation className="w-4 h-4 mr-2" />
+                      {quickActionLabel}
+                    </Button>
+                  )}
                 </Card>
               ) : (
                 <div className="space-y-2">
