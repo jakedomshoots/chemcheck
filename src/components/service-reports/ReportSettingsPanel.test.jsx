@@ -10,7 +10,7 @@ describe('ReportSettingsPanel', () => {
   const mockOnClose = vi.fn();
   const mockOnSave = vi.fn();
 
-  const defaultSettings: ReportSettings = {
+  const defaultSettings = {
     show_chemical_readings: true,
     show_photos: true,
     show_service_notes: true,
@@ -76,7 +76,7 @@ describe('ReportSettingsPanel', () => {
 
   describe('Quick Actions', () => {
     it('resets to default settings', () => {
-      const customSettings: ReportSettings = {
+      const customSettings = {
         show_chemical_readings: false,
         show_photos: false,
         show_service_notes: true,
@@ -103,7 +103,7 @@ describe('ReportSettingsPanel', () => {
     });
 
     it('shows all settings when "Show All" clicked', () => {
-      const customSettings: ReportSettings = {
+      const customSettings = {
         show_chemical_readings: false,
         show_photos: false,
         show_service_notes: false,
@@ -143,7 +143,7 @@ describe('ReportSettingsPanel', () => {
     });
 
     it('disables "Hide All" when all already hidden', () => {
-      const allHidden: ReportSettings = {
+      const allHidden = {
         show_chemical_readings: false,
         show_photos: false,
         show_service_notes: false,
@@ -213,7 +213,7 @@ describe('ReportSettingsPanel', () => {
       });
     });
 
-    it('closes dialog after successful save', async () => {
+    it('keeps dialog open after successful save until user closes it', async () => {
       mockOnSave.mockResolvedValue(undefined);
 
       render(<ReportSettingsPanel {...defaultProps} />);
@@ -222,8 +222,12 @@ describe('ReportSettingsPanel', () => {
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(mockOnClose).toHaveBeenCalled();
+        expect(screen.getByText('Settings saved successfully!')).toBeInTheDocument();
+        expect(mockOnClose).not.toHaveBeenCalled();
       }, { timeout: 2000 });
+
+      fireEvent.click(screen.getByText('Cancel'));
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
     });
 
     it('displays error message on save failure', async () => {

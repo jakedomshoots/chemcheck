@@ -26,6 +26,7 @@ describe('Monitoring System', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
     
     // Reset monitoring state
     monitoring.clearData();
@@ -34,6 +35,7 @@ describe('Monitoring System', () => {
 
   afterEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   describe('Error Reporting', () => {
@@ -240,8 +242,8 @@ describe('Monitoring System', () => {
       reportError({ message: 'Persist error', severity: 'low' });
       
       // Check that data was stored
-      const storedMetrics = localStorage.getItem('monitoring_metrics');
-      const storedErrors = localStorage.getItem('monitoring_errors');
+      const storedMetrics = sessionStorage.getItem('monitoring_metrics');
+      const storedErrors = sessionStorage.getItem('monitoring_errors');
       
       expect(storedMetrics).toBeDefined();
       expect(storedErrors).toBeDefined();
@@ -254,7 +256,7 @@ describe('Monitoring System', () => {
     });
 
     it('should load persisted data on initialization', () => {
-      // Pre-populate localStorage
+      // Pre-populate sessionStorage
       const testMetrics = [{ name: 'loaded_metric', value: 456, timestamp: Date.now() }];
       const testErrors = [{ 
         id: 'test_error', 
@@ -266,8 +268,8 @@ describe('Monitoring System', () => {
         userId: 'test'
       }];
       
-      localStorage.setItem('monitoring_metrics', JSON.stringify(testMetrics));
-      localStorage.setItem('monitoring_errors', JSON.stringify(testErrors));
+      sessionStorage.setItem('monitoring_metrics', JSON.stringify(testMetrics));
+      sessionStorage.setItem('monitoring_errors', JSON.stringify(testErrors));
       
       // Record a new metric to trigger data loading (monitoring loads on first operation after clear)
       // The monitoring singleton already exists, so we need to add data that will be persisted
@@ -280,8 +282,8 @@ describe('Monitoring System', () => {
     });
 
     it('should handle localStorage errors gracefully', () => {
-      const originalSetItem = localStorage.setItem;
-      localStorage.setItem = vi.fn(() => {
+      const originalSetItem = sessionStorage.setItem;
+      sessionStorage.setItem = vi.fn(() => {
         throw new Error('Storage full');
       });
       
@@ -295,7 +297,7 @@ describe('Monitoring System', () => {
       );
       
       // Restore
-      localStorage.setItem = originalSetItem;
+      sessionStorage.setItem = originalSetItem;
       consoleSpy.mockRestore();
     });
   });

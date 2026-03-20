@@ -1,10 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { format } from 'date-fns';
 import ChemicalUsage from './ChemicalUsage';
 import { BrowserRouter } from 'react-router-dom';
 
 // Mock stable data - use fixed current month date for deterministic tests
-const fixedDate = '2025-12-15';
+const fixedDate = format(new Date(), 'yyyy-MM-15');
 const mockUser = { email: 'test@example.com' };
 const mockUsage = [
     { _id: 'u1', chemical_type: 'chlorine_tabs', quantity: '2', customer_id: 1, created_date: fixedDate, notes: 'Test notes' }

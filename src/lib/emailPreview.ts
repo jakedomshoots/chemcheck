@@ -17,6 +17,8 @@ export interface EmailContentParams {
   customNote?: string;
   businessName?: string;
   reportLink?: string;
+  beforePhotoUrls?: string[];
+  afterPhotoUrls?: string[];
 }
 
 /**
@@ -116,7 +118,16 @@ export function sanitizeForSubject(text: string): string {
  * Requirements: 1.1, 1.2, 3.2, 3.6, 3.7, 4.4
  */
 export function generateSimpleEmailContent(params: EmailContentParams): GeneratedEmailContent {
-  const { customerName, serviceDate, poolStatus, customNote, businessName: inputBusinessName, reportLink } = params;
+  const {
+    customerName,
+    serviceDate,
+    poolStatus,
+    customNote,
+    businessName: inputBusinessName,
+    reportLink,
+    beforePhotoUrls = [],
+    afterPhotoUrls = [],
+  } = params;
 
   // Keep preview output identical to backend by using centralized safe fields.
   const safeFields = createSafeEmailFields({
@@ -176,6 +187,34 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
     `;
     optionalCustomMessageText = `\nCustom Message:\n${customNote}\n`;
   }
+
+  const safeBeforePhotoUrls = beforePhotoUrls
+    .map((url) => escapeUrlForHtml(url))
+    .filter((url) => url.length > 0)
+    .slice(0, 6);
+  const safeAfterPhotoUrls = afterPhotoUrls
+    .map((url) => escapeUrlForHtml(url))
+    .filter((url) => url.length > 0)
+    .slice(0, 6);
+  const hasPhotoUrls = safeBeforePhotoUrls.length > 0 || safeAfterPhotoUrls.length > 0;
+
+  const photoThumbStyle = "width: 108px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; margin: 0 8px 8px 0; display: inline-block;";
+  const renderPhotoLinks = (urls: string[]) =>
+    urls.map((url) => `<a href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="Service photo" style="${photoThumbStyle}" /></a>`).join("");
+
+  const photoSectionHtml = hasPhotoUrls ? `
+      <div style="background: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+        <p style="margin: 0 0 10px 0; font-size: 15px; font-weight: 600; color: #0f172a;">Service Photos</p>
+        ${safeBeforePhotoUrls.length > 0 ? `
+          <p style="margin: 0 0 6px 0; font-size: 13px; color: #64748b;">Before (${safeBeforePhotoUrls.length})</p>
+          <div style="margin-bottom: 10px;">${renderPhotoLinks(safeBeforePhotoUrls)}</div>
+        ` : ''}
+        ${safeAfterPhotoUrls.length > 0 ? `
+          <p style="margin: 0 0 6px 0; font-size: 13px; color: #64748b;">After (${safeAfterPhotoUrls.length})</p>
+          <div>${renderPhotoLinks(safeAfterPhotoUrls)}</div>
+        ` : ''}
+      </div>
+  ` : '';
   
   // Generate report link section if provided and URL is safe
   const reportLinkHtml = safeReportLink ? `
@@ -185,6 +224,13 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   ` : '';
   
   const reportLinkText = reportLink && isValidReportLink(reportLink) ? `\nView your full report: ${reportLink}\n` : '';
+  const validBeforePhotoUrlsText = beforePhotoUrls.filter(isValidReportLink).slice(0, 6);
+  const validAfterPhotoUrlsText = afterPhotoUrls.filter(isValidReportLink).slice(0, 6);
+  const photoSectionText = (validBeforePhotoUrlsText.length > 0 || validAfterPhotoUrlsText.length > 0) ? `
+Service Photos:
+${validBeforePhotoUrlsText.length > 0 ? `Before:\n- ${validBeforePhotoUrlsText.join('\n- ')}` : ''}
+${validAfterPhotoUrlsText.length > 0 ? `After:\n- ${validAfterPhotoUrlsText.join('\n- ')}` : ''}
+` : '';
   
   const htmlBody = `
     <!DOCTYPE html>
@@ -214,6 +260,7 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
         
         ${messageContent}
         ${optionalCustomMessageHtml}
+        ${photoSectionHtml}
         ${reportLinkHtml}
         
         <p style="font-size: 14px; color: #64748b; margin-top: 30px;">If you have any questions about your service, please don't hesitate to contact us.</p>
@@ -243,7 +290,7 @@ Your pool service has been completed by ${businessName}.
 Service Date: ${serviceDate}
 Pool Status: ${statusText} ${statusIcon}
 
-${textMessageContent}${optionalCustomMessageText}${reportLinkText}
+${textMessageContent}${optionalCustomMessageText}${photoSectionText}${reportLinkText}
 If you have any questions about your service, please don't hesitate to contact us.
 
 ${businessName}

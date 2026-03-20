@@ -34,7 +34,7 @@ vi.mock('react-router-dom', async () => {
 describe('New Client Page', () => {
     it('renders the new client form', () => {
         render(<BrowserRouter><NewClient /></BrowserRouter>);
-        expect(screen.getByRole('heading', { name: /New Client/i })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /Basic Information/i })).toBeInTheDocument();
         expect(screen.getByText(/Full Name/i)).toBeInTheDocument();
         expect(screen.getByText(/Service Address/i)).toBeInTheDocument();
     });

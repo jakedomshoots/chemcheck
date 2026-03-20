@@ -1,15 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { createPageUrl, parseLocalDate } from "@/utils";
 import { Calendar, Plus, AlertTriangle, PlayCircle, ShieldAlert, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, subWeeks, startOfWeek, endOfWeek } from "date-fns";
 import CustomerCard from "../components/home/CustomerCard";
+import OffDayServicePickerDialog from "@/components/home/OffDayServicePickerDialog";
 import QuickStats from "../components/home/QuickStats";
 import { CustomerCardSkeleton, QuickStatsSkeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { trackUxEvent } from "@/lib/uxAnalytics";
+import { getEffectiveWorkingDays } from "@/lib/workingDays";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -72,8 +76,9 @@ function formatRouteDuration(totalMinutes) {
 export default function Home() {
   const navigate = useNavigate();
   const user = useCurrentUser();
+  const convexBusiness = useQuery(api.businesses.getCurrent);
 
-  const allCustomersData = useCustomersFilter({ created_by: user.email });
+  const allCustomersData = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
   const allLogsData = useServiceLogs("-service_date", 100);
 
   const [allCustomers, setAllCustomers] = useState([]);
@@ -85,15 +90,34 @@ export default function Home() {
   const [skippedCustomers, setSkippedCustomers] = useState(() => getSkippedCustomers());
   const [hasCheckedDefaultView, setHasCheckedDefaultView] = useState(false);
   const [missedExpanded, setMissedExpanded] = useState(false);
+  const [offDayPickerOpen, setOffDayPickerOpen] = useState(false);
+  const [offDaySearchQuery, setOffDaySearchQuery] = useState("");
+  const [selectedOffDay, setSelectedOffDay] = useState(null);
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const dayOfWeek = useMemo(() => format(new Date(), "EEEE"), []);
   const homePrimaryAction = user?.preferences?.home_primary_action || 'start_next_pending';
+  const workingDays = useMemo(() => getEffectiveWorkingDays(convexBusiness), [convexBusiness]);
+  const availableOffDays = useMemo(
+    () => workingDays.filter((day) => day !== dayOfWeek),
+    [workingDays, dayOfWeek]
+  );
   const opsBriefFeatureEnabled = useMemo(() => {
     if (typeof window === 'undefined') return true;
     return localStorage.getItem('chemcheck_ff_home_ops_brief') !== 'false';
   }, []);
   const showOpsBrief = opsBriefFeatureEnabled && (user?.preferences?.show_ops_brief ?? true);
+
+  useEffect(() => {
+    if (availableOffDays.length === 0) {
+      setSelectedOffDay(null);
+      return;
+    }
+
+    if (!selectedOffDay || !availableOffDays.includes(selectedOffDay)) {
+      setSelectedOffDay(availableOffDays[0]);
+    }
+  }, [availableOffDays, selectedOffDay]);
 
   // Check user's default view preference and redirect if needed
   useEffect(() => {
@@ -219,6 +243,19 @@ export default function Home() {
     () => new Set(todayLogs.map((log) => log.customer_id)),
     [todayLogs]
   );
+  const offDayClients = useMemo(() => {
+    if (!selectedOffDay) return [];
+
+    const query = offDaySearchQuery.trim().toLowerCase();
+    return allCustomers
+      .filter((customer) => customer.service_day === selectedOffDay)
+      .filter((customer) => !completedCustomerIds.has(customer._id))
+      .filter((customer) => {
+        if (!query) return true;
+        return customer.full_name.toLowerCase().includes(query) || customer.address.toLowerCase().includes(query);
+      })
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  }, [allCustomers, selectedOffDay, offDaySearchQuery, completedCustomerIds]);
   const servicedCustomerIdsThisWeek = useMemo(
     () => new Set(allThisWeekLogs.map((log) => log.customer_id)),
     [allThisWeekLogs]
@@ -383,6 +420,34 @@ export default function Home() {
     trackUxEvent('ux_task_completed', { flow: 'home_primary_action', action: homePrimaryAction });
   };
 
+  const handleOpenOffDayPicker = () => {
+    setOffDaySearchQuery("");
+    setOffDayPickerOpen(true);
+    if (!selectedOffDay || !availableOffDays.includes(selectedOffDay)) {
+      setSelectedOffDay(availableOffDays[0] || null);
+    }
+  };
+
+  const handleStartOffDayClient = (customer) => {
+    if (!customer) return;
+
+    trackUxEvent('ux_task_started', { flow: 'home_off_day_service', selected_day: selectedOffDay || 'unknown' });
+    setOffDayPickerOpen(false);
+    setOffDaySearchQuery("");
+    navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`, {
+      state: {
+        customer,
+        serviceFlow: {
+          source: 'home_off_day_picker',
+          selectedDay: selectedOffDay,
+          returnPolicy: 'reset_to_today',
+          todayDay: dayOfWeek,
+        },
+      },
+    });
+    trackUxEvent('ux_task_completed', { flow: 'home_off_day_service', selected_day: selectedOffDay || 'unknown' });
+  };
+
   const primaryActionConfig = homePrimaryAction === 'open_route_plan'
     ? { icon: Route, label: 'Open Route Plan', disabled: false }
     : homePrimaryAction === 'add_client'
@@ -396,7 +461,7 @@ export default function Home() {
   if (loading) {
     // Show skeleton immediately instead of blocking spinner
     return (
-      <div className="max-w-7xl mx-auto px-3 py-4 font-sans">
+      <main className="max-w-7xl mx-auto px-3 py-4 font-sans" aria-label="Home">
         <div className="mb-4">
           <div className="mb-1">
             <div>
@@ -414,12 +479,12 @@ export default function Home() {
           <CustomerCardSkeleton />
           <CustomerCardSkeleton />
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-3 py-4 font-sans">
+    <main className="max-w-7xl mx-auto px-3 py-4 font-sans" aria-label="Home">
       <div className="mb-4">
         <div className="mb-1">
           <div>
@@ -501,6 +566,15 @@ export default function Home() {
           <primaryActionConfig.icon className="w-4 h-4 mr-2" />
           {primaryActionConfig.label}
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleOpenOffDayPicker}
+          className="border-2 border-slate-200 hover:border-cyan-500 text-slate-700"
+        >
+          <Calendar className="w-4 h-4 mr-2" />
+          Service Another Day
+        </Button>
       </div>
 
       {showOpsBrief && (
@@ -548,7 +622,7 @@ export default function Home() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <section className="space-y-3" aria-label="Today's customers">
           {customers.map((customer) => (
             <div key={customer._id}>
               <CustomerCard
@@ -566,8 +640,21 @@ export default function Home() {
               />
             </div>
           ))}
-        </div>
+        </section>
       )}
-    </div>
+
+      <OffDayServicePickerDialog
+        open={offDayPickerOpen}
+        onOpenChange={setOffDayPickerOpen}
+        todayDay={dayOfWeek}
+        availableDays={availableOffDays}
+        selectedDay={selectedOffDay}
+        onSelectedDayChange={setSelectedOffDay}
+        searchQuery={offDaySearchQuery}
+        onSearchQueryChange={setOffDaySearchQuery}
+        clients={offDayClients}
+        onStartClient={handleStartOffDayClient}
+      />
+    </main>
   );
 }

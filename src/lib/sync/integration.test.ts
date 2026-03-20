@@ -66,6 +66,13 @@ vi.mock('./SyncQueue', () => {
   MockSyncQueue.prototype.markSynced = vi.fn();
   MockSyncQueue.prototype.markFailed = vi.fn();
   MockSyncQueue.prototype.getRetryableItems = vi.fn(() => []);
+  MockSyncQueue.prototype.getBatchSize = vi.fn(() => 10);
+  MockSyncQueue.prototype.getCapacityStatus = vi.fn(() => ({
+    current: 0,
+    max: 1000,
+    warningThreshold: 800,
+    usagePercent: 0,
+  }));
   MockSyncQueue.prototype.findItem = vi.fn(() => undefined);
   
   return { SyncQueue: MockSyncQueue };
@@ -154,8 +161,10 @@ describe('Integration Tests: Data Sync', () => {
         Object.defineProperty(navigator, 'onLine', { value: true, writable: true });
         window.dispatchEvent(new Event('online'));
         
-        // Verify status changed to idle
-        expect(syncService.getSyncStatus()).toBe('idle');
+        // Verify status eventually returns to idle after online sync trigger finishes
+        await vi.waitFor(() => {
+          expect(syncService.getSyncStatus()).toBe('idle');
+        });
         expect(syncService.isOnlineStatus()).toBe(true);
       } finally {
         syncService.destroy();

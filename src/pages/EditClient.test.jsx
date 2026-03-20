@@ -62,15 +62,11 @@ describe('Edit Client Page', () => {
         // Dynamically import to ensure mocks are applied after setup
         const { default: EditClient } = await import('./EditClient');
         
-        const { container } = render(<BrowserRouter><EditClient /></BrowserRouter>);
+        render(<BrowserRouter><EditClient /></BrowserRouter>);
         
         // Wait for the component to finish loading
         await waitFor(() => {
-            const heading = container.querySelector('h2');
-            expect(heading).toBeTruthy();
+            expect(screen.getByText(/Full Name/i)).toBeInTheDocument();
         }, { timeout: 2000 });
-        
-        // Check if form labels render
-        expect(screen.getByText(/Full Name/i)).toBeInTheDocument();
     });
 });

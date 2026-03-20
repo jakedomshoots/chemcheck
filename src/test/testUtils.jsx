@@ -1,6 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { vi } from 'vitest';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ============================================
@@ -130,29 +131,29 @@ export const createMockHooks = (data = {}) => {
     // Customer hooks
     useCustomers: () => customers,
     useCustomer: (id) => customers.find(c => c.id === id || c._id === id),
-    useCustomerCreate: () => jest.fn().mockResolvedValue(customers.length + 1),
-    useCustomerUpdate: () => jest.fn().mockResolvedValue(true),
-    useCustomerDelete: () => jest.fn().mockResolvedValue(true),
+    useCustomerCreate: () => vi.fn().mockResolvedValue(customers.length + 1),
+    useCustomerUpdate: () => vi.fn().mockResolvedValue(true),
+    useCustomerDelete: () => vi.fn().mockResolvedValue(true),
 
     // Service log hooks
     useServiceLogs: () => serviceLogs,
     useServiceLogsByCustomer: (customerId) => 
       serviceLogs.filter(log => log.customer_id === customerId),
-    useServiceLogCreate: () => jest.fn().mockResolvedValue(serviceLogs.length + 1),
-    useServiceLogUpdate: () => jest.fn().mockResolvedValue(true),
-    useServiceLogDelete: () => jest.fn().mockResolvedValue(true),
+    useServiceLogCreate: () => vi.fn().mockResolvedValue(serviceLogs.length + 1),
+    useServiceLogUpdate: () => vi.fn().mockResolvedValue(true),
+    useServiceLogDelete: () => vi.fn().mockResolvedValue(true),
 
     // Chemical usage hooks
     useChemicalUsage: () => chemicalUsage,
-    useChemicalUsageCreate: () => jest.fn().mockResolvedValue(chemicalUsage.length + 1),
-    useChemicalUsageUpdate: () => jest.fn().mockResolvedValue(true),
-    useChemicalUsageDelete: () => jest.fn().mockResolvedValue(true),
+    useChemicalUsageCreate: () => vi.fn().mockResolvedValue(chemicalUsage.length + 1),
+    useChemicalUsageUpdate: () => vi.fn().mockResolvedValue(true),
+    useChemicalUsageDelete: () => vi.fn().mockResolvedValue(true),
 
     // Note hooks
     useNotes: () => notes,
-    useNoteCreate: () => jest.fn().mockResolvedValue(notes.length + 1),
-    useNoteUpdate: () => jest.fn().mockResolvedValue(true),
-    useNoteDelete: () => jest.fn().mockResolvedValue(true),
+    useNoteCreate: () => vi.fn().mockResolvedValue(notes.length + 1),
+    useNoteUpdate: () => vi.fn().mockResolvedValue(true),
+    useNoteDelete: () => vi.fn().mockResolvedValue(true),
 
     // Auth hook
     useCurrentUser: () => ({ email: 'local', name: 'Local User' })
@@ -240,7 +241,7 @@ export const errorTest = {
   expectErrorBoundary: (renderFn) => {
     // Mock console.error to avoid noise in tests
     const originalError = console.error;
-    console.error = jest.fn();
+    console.error = vi.fn();
 
     try {
       const result = renderFn();

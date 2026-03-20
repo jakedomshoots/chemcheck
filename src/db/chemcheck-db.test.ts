@@ -135,10 +135,10 @@ describe('ChemCheckDB Schema and Sync Fields', () => {
     expect(errorRecord.sync_error).toBe('Network timeout');
   });
 
-  it('should have database version 2 with sync field indexes', () => {
+  it('should have latest database version with sync field indexes', () => {
     const db = new ChemCheckDB();
     
-    // Check that the database has version 2 defined
-    expect(db.verno).toBe(2);
+    // Schema currently includes v3 (salt cell logs + composite customer index)
+    expect(db.verno).toBe(3);
   });
 });

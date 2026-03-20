@@ -139,7 +139,6 @@ export function ReportSettingsPanel({
               <div
                 key={key}
                 className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors"
-                onClick={() => handleToggle(key)}
               >
                 <div className="flex items-center h-5 mt-0.5">
                   <input

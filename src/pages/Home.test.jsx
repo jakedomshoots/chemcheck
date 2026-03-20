@@ -17,7 +17,6 @@ import * as convexHooks from '@/api/convexHooks';
 // Mock hooks - must be defined inline due to vi.mock hoisting
 vi.mock('@/api/convexHooks', () => ({
   useCustomersFilter: vi.fn(() => []),
-  useServiceLogsFilter: vi.fn(() => []),
   useServiceLogs: vi.fn(() => []),
   useCustomers: vi.fn(() => []),
   useCurrentUser: vi.fn(() => ({ id: 'user-1', name: 'Test User' })),
@@ -27,6 +26,10 @@ vi.mock('@/api/convexHooks', () => ({
   useAddCustomer: vi.fn(() => vi.fn()),
   useUpdateCustomer: vi.fn(() => vi.fn()),
   useDeleteCustomer: vi.fn(() => vi.fn()),
+}));
+
+vi.mock('convex/react', () => ({
+  useQuery: vi.fn(() => ({ settings: { working_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] } })),
 }));
 
 // Enhanced mock data for comprehensive testing - defined after mocks
@@ -58,7 +61,7 @@ vi.mock('@/utils', () => ({
 
 // Mock child components with better testing support
 vi.mock('../components/home/CustomerCard', () => ({
-  default: ({ customer, isCompleted, onServiceComplete }) => (
+  default: ({ customer, isCompleted, onStart }) => (
     <div data-testid={`customer-card-${customer.id}`} role="article">
       <h3>{customer.full_name}</h3>
       <p>{customer.address}</p>
@@ -67,8 +70,9 @@ vi.mock('../components/home/CustomerCard', () => ({
       </span>
       {!isCompleted && (
         <button 
-          onClick={() => onServiceComplete?.(customer)}
+          onClick={() => onStart?.(customer)}
           data-testid="complete-service-btn"
+          tabIndex={0}
         >
           Complete Service
         </button>
@@ -78,10 +82,10 @@ vi.mock('../components/home/CustomerCard', () => ({
 }));
 
 vi.mock('../components/home/QuickStats', () => ({
-  default: ({ customers, serviceLogs }) => (
+  default: ({ total, completed }) => (
     <div data-testid="quick-stats" role="region" aria-label="Quick Statistics">
-      <div>Total Customers: {customers?.length || 0}</div>
-      <div>Completed Today: {serviceLogs?.length || 0}</div>
+      <div>Total Customers: {total || 0}</div>
+      <div>Completed Today: {completed || 0}</div>
     </div>
   )
 }));
@@ -93,7 +97,7 @@ vi.mock('@/components/ui/card', () => ({
 
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, variant, ...props }) => (
-    <button onClick={onClick} data-variant={variant} {...props}>
+    <button onClick={onClick} data-variant={variant} tabIndex={0} {...props}>
       {children}
     </button>
   )
@@ -113,9 +117,9 @@ describe('Home Page - Comprehensive Tests', () => {
     
     // Configure mocks with test data
     vi.mocked(convexHooks.useCustomersFilter).mockReturnValue(todayCustomers);
-    vi.mocked(convexHooks.useServiceLogsFilter).mockReturnValue([completedServiceLog]);
     vi.mocked(convexHooks.useServiceLogs).mockReturnValue([completedServiceLog]);
     vi.mocked(convexHooks.useCustomers).mockReturnValue(todayCustomers);
+    vi.mocked(convexHooks.useCurrentUser).mockReturnValue({ id: 'user-1', email: 'test@example.com', name: 'Test User' });
   });
 
   afterEach(() => {
@@ -126,7 +130,7 @@ describe('Home Page - Comprehensive Tests', () => {
     it('renders today\'s route title with correct date', () => {
       renderWithProviders(<Home />);
       expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
-      expect(screen.getByText(format(new Date(), 'EEEE, MMMM do'))).toBeInTheDocument();
+      expect(screen.getByText(format(new Date(), 'EEEE, MMM dd, yyyy'))).toBeInTheDocument();
     });
 
     it('displays customers scheduled for today', () => {
@@ -237,7 +241,7 @@ describe('Home Page - Comprehensive Tests', () => {
       
       renderWithProviders(<Home />);
       
-      expect(screen.getByText(/No customers scheduled/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /No Customers Scheduled/i })).toBeInTheDocument();
     });
 
     it('handles API errors gracefully', () => {
@@ -272,19 +276,16 @@ describe('Home Page - Comprehensive Tests', () => {
     it('correctly filters customers by today\'s service day', () => {
       renderWithProviders(<Home />);
       
-      // Verify the hook was called with correct filter
+      // Home fetches all owned customers, then filters for today in-memory
       expect(convexHooks.useCustomersFilter).toHaveBeenCalledWith({
-        service_day: format(new Date(), 'EEEE')
+        created_by: 'test@example.com'
       });
     });
 
     it('correctly matches service logs to customers', () => {
       renderWithProviders(<Home />);
       
-      // Verify service logs are filtered by today's date
-      expect(convexHooks.useServiceLogsFilter).toHaveBeenCalledWith({
-        service_date: format(new Date(), 'yyyy-MM-dd')
-      });
+      expect(convexHooks.useServiceLogs).toHaveBeenCalledWith('-service_date', 100);
     });
 
     it('sorts customers by sort_order', () => {

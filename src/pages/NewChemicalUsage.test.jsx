@@ -5,7 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 // Mock stable data
 const mockUser = { email: 'test@example.com' };
-const mockCustomers = [{ _id: 'c1', full_name: 'Alice Smith' }];
+const mockCustomers = [{ _id: 1, full_name: 'Alice Smith' }];
 const mockCreateChemicalUsage = vi.fn();
 
 // Mock hooks
@@ -25,6 +25,10 @@ vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() }
 }));
 
+vi.mock('convex/react', () => ({
+    useQuery: () => ({ settings: { chemical_types: ['Liquid Chlorine'] } })
+}));
+
 vi.mock('react-router-dom', async () => {
     const actual = await vi.importActual('react-router-dom');
     return {
@@ -35,9 +39,9 @@ vi.mock('react-router-dom', async () => {
 
 describe('New Chemical Usage Page', () => {
     it('renders the form', () => {
-        window.history.pushState({}, 'Test Page', '/?customerId=c1');
+        window.history.pushState({}, 'Test Page', '/?customerId=1');
         render(<BrowserRouter><NewChemicalUsage /></BrowserRouter>);
         expect(screen.getByRole('heading', { name: /Add Chemical Usage/i })).toBeInTheDocument();
-        expect(screen.getByText(/Alice Smith/i)).toBeInTheDocument();
+        expect(screen.getAllByText(/Alice Smith/i).length).toBeGreaterThan(0);
     });
 });
