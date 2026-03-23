@@ -14,6 +14,7 @@ import { CustomerCardSkeleton, QuickStatsSkeleton } from "@/components/ui/skelet
 import { toast } from "sonner";
 import { trackUxEvent } from "@/lib/uxAnalytics";
 import { getEffectiveWorkingDays } from "@/lib/workingDays";
+import { buildDurationProfile, calculateServiceTimingSummary } from "@/lib/routeTimingEstimator";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -386,14 +387,22 @@ export default function Home() {
     [customers, completedCustomerIds, skippedCustomerIds]
   );
 
+  const durationProfile = useMemo(
+    () => buildDurationProfile(allLogsData),
+    [allLogsData]
+  );
+
   const opsBrief = useMemo(() => {
-    const pendingStops = customers.filter((customer) => !isCompleted(customer._id) && !isSkipped(customer._id)).length;
-    const estimatedRouteMinutes = customers.length * 25;
+    const serviceSummary = calculateServiceTimingSummary(customers, {
+      customerMedianById: durationProfile.customerMedianById,
+      fallback: 15,
+    });
+
     return {
-      pendingStops,
-      estimatedRouteMinutes,
+      pendingStops: serviceSummary.stopsAssigned,
+      estimatedRouteMinutes: serviceSummary.totalServiceMinutes,
     };
-  }, [customers, completedCustomerIds, skippedCustomerIds]);
+  }, [customers, durationProfile]);
 
   const handlePrimaryHomeAction = () => {
     trackUxEvent('ux_task_started', { flow: 'home_primary_action', action: homePrimaryAction });

@@ -9,6 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { routeOptimizer } from "@/lib/routeOptimizer";
+import {
+  buildDurationProfile,
+  calculateServiceTimingSummary,
+  parseClockToMinutes,
+  resolveServiceDurationMinutes,
+} from "@/lib/routeTimingEstimator";
 
 const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -43,15 +49,6 @@ const normalizeDayName = (value) => {
     default:
       return null;
   }
-};
-
-const parseClockToMinutes = (timeValue) => {
-  if (!timeValue || !String(timeValue).includes(":")) return null;
-  const [hoursRaw, minutesRaw] = String(timeValue).split(":");
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return Math.min(23, Math.max(0, hours)) * 60 + Math.min(59, Math.max(0, minutes));
 };
 
 const formatMinutes = (minutes) => {
@@ -153,57 +150,10 @@ export default function RouteOptimizer() {
     [customers, selectedDay]
   );
 
-  const durationProfile = useMemo(() => {
-    const durationsByCustomer = new Map();
-    const allDurations = [];
-    const median = (values) => {
-      if (!values.length) return null;
-      const sorted = [...values].sort((a, b) => a - b);
-      const middle = Math.floor(sorted.length / 2);
-      if (sorted.length % 2 === 0) {
-        return (sorted[middle - 1] + sorted[middle]) / 2;
-      }
-      return sorted[middle];
-    };
-
-    for (const log of recentServiceLogs || []) {
-      const customerId = Number(log?.customer_id);
-      const durationMs = Number(log?.duration_ms);
-      if (!Number.isFinite(customerId) || !Number.isFinite(durationMs) || durationMs <= 0) {
-        continue;
-      }
-
-      const durationMinutes = durationMs / 60000;
-      if (!Number.isFinite(durationMinutes) || durationMinutes < 5 || durationMinutes > 180) {
-        continue;
-      }
-
-      if (!durationsByCustomer.has(customerId)) {
-        durationsByCustomer.set(customerId, []);
-      }
-      durationsByCustomer.get(customerId).push(durationMinutes);
-      allDurations.push(durationMinutes);
-    }
-
-    const averageByCustomer = new Map();
-    for (const [customerId, durations] of durationsByCustomer.entries()) {
-      const recent = durations.slice(0, 8);
-      if (!recent.length) continue;
-      const medianDuration = median(recent);
-      if (!Number.isFinite(medianDuration)) continue;
-      averageByCustomer.set(customerId, Math.round(Math.min(90, Math.max(10, medianDuration))));
-    }
-
-    const fallbackMedian = median(allDurations);
-    const fallbackAverage = Number.isFinite(fallbackMedian)
-      ? Math.round(Math.min(90, Math.max(10, fallbackMedian)))
-      : null;
-
-    return {
-      averageByCustomer,
-      fallbackAverage,
-    };
-  }, [recentServiceLogs]);
+  const durationProfile = useMemo(
+    () => buildDurationProfile(recentServiceLogs),
+    [recentServiceLogs]
+  );
 
   useEffect(() => {
     setOptimizedRoute(null);
@@ -219,23 +169,13 @@ export default function RouteOptimizer() {
       const targetDate = getReferenceDateForDay(selectedDay);
       const customersForOptimization = dayCustomers.map((customer) => {
         const customerId = Number(customer?._id ?? customer?.id);
-        const historicalDuration = durationProfile.averageByCustomer.get(customerId);
-        const explicitDuration = Number(
-          customer?.estimatedDuration ??
-          customer?.estimated_duration ??
-          customer?.duration
-        );
+        const historicalDuration = durationProfile.customerMedianById.get(customerId) ?? null;
+        const estimatedDuration = resolveServiceDurationMinutes(customer, {
+          customerMedian: historicalDuration,
+          fallback: 15,
+        });
 
-        if (Number.isFinite(explicitDuration) && explicitDuration > 0) {
-          return customer;
-        }
-        if (Number.isFinite(historicalDuration) && historicalDuration > 0) {
-          return { ...customer, estimatedDuration: historicalDuration };
-        }
-        if (Number.isFinite(durationProfile.fallbackAverage) && durationProfile.fallbackAverage > 0) {
-          return { ...customer, estimatedDuration: durationProfile.fallbackAverage };
-        }
-        return customer;
+        return { ...customer, estimatedDuration };
       });
 
       const route = await routeOptimizer.optimizeRoute(customersForOptimization, targetDate, {
@@ -265,16 +205,18 @@ export default function RouteOptimizer() {
         };
       });
 
-      const totalMinutes = Math.round(route.totalTime);
+      const serviceSummary = calculateServiceTimingSummary(dayCustomers, {
+        customerMedianById: durationProfile.customerMedianById,
+        fallback: 15,
+      });
+      const totalMinutes = serviceSummary.totalServiceMinutes;
       const estimatedDistanceMiles = Number(route.totalDistance.toFixed(1));
 
       setOptimizedRoute({
         optimized_order: optimizedStops,
         total_estimated_minutes: totalMinutes,
         total_estimated_time: formatMinutes(totalMinutes),
-        total_service_minutes: Math.round(route.totalServiceTime || 0),
-        total_travel_minutes: Math.round(route.totalTravelTime || 0),
-        total_wait_minutes: Math.round(route.totalWaitTime || 0),
+        total_service_minutes: totalMinutes,
         total_estimated_distance: `${estimatedDistanceMiles} mi`,
         optimization_summary: `Route optimized with ${route.optimizationMethod} for ${selectedDay}.`
       });
@@ -408,15 +350,9 @@ export default function RouteOptimizer() {
               <div>{optimizedRoute.optimization_summary}</div>
             </div>
 
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+            <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
               <div className="rounded-lg bg-white/70 border border-emerald-200/40 px-3 py-2 text-slate-700">
                 Service: <span className="font-semibold text-slate-900">{formatMinutes(optimizedRoute.total_service_minutes || 0)}</span>
-              </div>
-              <div className="rounded-lg bg-white/70 border border-blue-200/40 px-3 py-2 text-slate-700">
-                Travel: <span className="font-semibold text-slate-900">{formatMinutes(optimizedRoute.total_travel_minutes || 0)}</span>
-              </div>
-              <div className="rounded-lg bg-white/70 border border-amber-200/60 px-3 py-2 text-slate-700">
-                Wait: <span className="font-semibold text-slate-900">{formatMinutes(optimizedRoute.total_wait_minutes || 0)}</span>
               </div>
             </div>
 

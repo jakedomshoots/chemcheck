@@ -145,6 +145,11 @@ describe('Home Page - Comprehensive Tests', () => {
       expect(stats).toBeInTheDocument();
       expect(screen.getByText('Total Customers: 2')).toBeInTheDocument();
     });
+
+    it('uses service-only timing in daily ops brief', () => {
+      renderWithProviders(<Home />);
+      expect(screen.getByText('2 stops · 30 min')).toBeInTheDocument();
+    });
   });
 
   describe('Service Status Logic', () => {
