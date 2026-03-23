@@ -15,11 +15,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Readiness Gates
+        run: npm run test:gates
 
       - name: Check auth bypass flag
         run: |
