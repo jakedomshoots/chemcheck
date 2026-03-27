@@ -1,17 +1,18 @@
+/* eslint-disable react/prop-types */
 import { useAuth } from '@clerk/clerk-react';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
+import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
+import {
+  getAuthBypassReason,
+  shouldUseIosSimulatorAuthBypass,
+  shouldUseLocalhostAuthBypass,
+} from '@/lib/platformPolicy';
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
-
-const isIosSimulatorBypass = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true'
-  && typeof window !== 'undefined'
-  && window.Capacitor
-  && window.Capacitor.getPlatform?.() === 'ios';
-
-const isDevBypass = import.meta.env.DEV
-  && typeof window !== 'undefined'
-  && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const isIosSimulatorBypass = shouldUseIosSimulatorAuthBypass();
+const isDevBypass = shouldUseLocalhostAuthBypass();
+const authBypassReason = getAuthBypassReason();
 
 function ConvexAuthProviderBypass({ children }) {
   return (
@@ -31,6 +32,7 @@ function ConvexAuthProviderClerk({ children }) {
 
 export function ConvexAuthProvider({ children }) {
   if (isIosSimulatorBypass || isDevBypass) {
+    warnAuthBypassOnce('Convex', authBypassReason);
     return <ConvexAuthProviderBypass>{children}</ConvexAuthProviderBypass>;
   }
 

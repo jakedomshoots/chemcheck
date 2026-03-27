@@ -1,85 +1,15 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import {
+  ensureCustomerAccess,
+  ensureQuoteAccess,
+  ensureWorkOrderAccess,
+  getAccessibleCustomerIds,
+} from "./authz";
 import { normalizeTaxRate } from "./tax";
 
 const VALID_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
-
-async function resolveBusinessContext(ctx: any, userEmail: string) {
-  const teamMember = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-
-  if (teamMember) {
-    const teamBusiness = await ctx.db.get(teamMember.business_id);
-    if (teamBusiness) return teamBusiness;
-  }
-
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-    .first();
-}
-
-async function getActiveBusinessMemberEmails(
-  ctx: any,
-  businessId: any,
-  ownerEmail: string
-): Promise<Set<string>> {
-  const members = await ctx.db
-    .query("team_members")
-    .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .collect();
-
-  const emails = new Set<string>([ownerEmail]);
-  for (const member of members) {
-    if (member.user_email) {
-      emails.add(member.user_email);
-    }
-  }
-  return emails;
-}
-
-async function getAllowedCreatedByEmails(ctx: any, userEmail: string): Promise<Set<string>> {
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return new Set([userEmail]);
-  return await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-}
-
-async function listAccessibleWorkOrders(ctx: any, userEmail: string) {
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  const merged = new Map<string, any>();
-
-  for (const email of allowedEmails) {
-    const records = await ctx.db
-      .query("workOrders")
-      .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
-      .collect();
-
-    for (const record of records) {
-      merged.set(String(record._id), record);
-    }
-  }
-
-  return [...merged.values()];
-}
-
-async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-  if (!customer) return false;
-  if (customer.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(customer.created_by);
-}
-
-async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): Promise<boolean> {
-  if (!workOrder) return false;
-  if (workOrder.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(workOrder.created_by);
-}
 
 function normalizeWorkOrderDate(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -118,7 +48,10 @@ export const list = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    let workOrders = await listAccessibleWorkOrders(ctx, identity.email!);
+    const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+    let workOrders = (await ctx.db.query("workOrders").collect()).filter((workOrder: any) =>
+      accessibleCustomerIds.has(workOrder.customer_id.toString()),
+    );
 
     if (args.scheduled_date) {
       workOrders = workOrders.filter(
@@ -150,10 +83,7 @@ export const get = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const workOrder = await ctx.db.get(args.id);
-    if (!workOrder) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
-
+    const { workOrder } = await ensureWorkOrderAccess(ctx, args.id, identity.email!, "read");
     return workOrder;
   },
 });
@@ -174,20 +104,14 @@ export const create = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const customer = await ctx.db.get(args.customer_id);
-    if (!customer) {
-      throw new Error("Customer not found or access denied");
-    }
-    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { customer } = await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "write");
 
     validatePriority(args.priority);
 
     const now = Date.now();
     const workOrderId = await ctx.db.insert("workOrders", {
       customer_id: args.customer_id,
-      business_id: undefined,
+      business_id: customer.business_id as any,
       created_by: customer.created_by || identity.email!,
       title: args.title.trim(),
       description: args.description?.trim(),
@@ -223,9 +147,7 @@ export const update = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const current = await ctx.db.get(args.id);
-    if (!current) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, current, identity.email!))) throw new Error("Access denied");
+    await ensureWorkOrderAccess(ctx, args.id, identity.email!, "write");
 
     if (args.status) validateStatus(args.status);
     if (args.priority) validatePriority(args.priority);
@@ -261,17 +183,7 @@ export const complete = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const workOrder = await ctx.db.get(args.id);
-    if (!workOrder) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
-
-    const customer = await ctx.db.get(workOrder.customer_id);
-    if (!customer) {
-      throw new Error("Customer not found or access denied");
-    }
-    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { workOrder, customer } = await ensureWorkOrderAccess(ctx, args.id, identity.email!, "write");
 
     const now = Date.now();
 
@@ -284,23 +196,22 @@ export const complete = mutation({
     let invoiceBlockedReason: string | undefined;
     let depositApplied = 0;
     if (workOrder.source_quote_id) {
-      const quote = await ctx.db.get(workOrder.source_quote_id);
-      if (
-        quote &&
-        quote.created_by === identity.email &&
-        quote.deposit_required &&
-        quote.deposit_required > 0 &&
-        quote.deposit_status !== "paid"
-      ) {
-        invoiceBlockedReason = "deposit_pending";
-      } else if (
-        quote &&
-        quote.created_by === identity.email &&
-        quote.deposit_status === "paid" &&
-        quote.deposit_required &&
-        quote.deposit_required > 0
-      ) {
-        depositApplied = quote.deposit_required;
+      const existingQuote = await ctx.db.get(workOrder.source_quote_id);
+      if (existingQuote) {
+        const { quote } = await ensureQuoteAccess(ctx, workOrder.source_quote_id, identity.email!, "read");
+        if (
+          quote.deposit_required &&
+          quote.deposit_required > 0 &&
+          quote.deposit_status !== "paid"
+        ) {
+          invoiceBlockedReason = "deposit_pending";
+        } else if (
+          quote.deposit_status === "paid" &&
+          quote.deposit_required &&
+          quote.deposit_required > 0
+        ) {
+          depositApplied = quote.deposit_required;
+        }
       }
     }
 
@@ -327,7 +238,7 @@ export const complete = mutation({
         work_order_id: args.id,
         source_quote_id: workOrder.source_quote_id,
         service_log_id: undefined,
-        created_by: identity.email!,
+        created_by: customer.created_by || identity.email!,
         status: initialStatus,
         line_items: [
           {
@@ -392,10 +303,7 @@ export const remove = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const workOrder = await ctx.db.get(args.id);
-    if (!workOrder) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
-
+    await ensureWorkOrderAccess(ctx, args.id, identity.email!, "write");
     await ctx.db.delete(args.id);
   },
 });

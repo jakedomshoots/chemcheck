@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+/* eslint-disable react/prop-types */
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import NewServiceLog from './NewServiceLog';
 import { BrowserRouter } from 'react-router-dom';
@@ -56,10 +57,21 @@ vi.mock('@/components/proof-of-service', () => ({
 
 // Mock proof-of-service lib
 vi.mock('@/lib/proof-of-service', () => ({
+    deleteUnlinkedPhotos: vi.fn(async () => {}),
+    linkPhotosToServiceLog: vi.fn(async () => []),
+    getPhotos: vi.fn(async () => []),
     validateServiceCompletion: () => ({ isValid: true, errors: [] }),
     getValidationErrorMessage: () => '',
     hasAnyRequirements: () => false,
     getRequirementsSummary: () => []
+}));
+
+vi.mock('convex/react', () => ({
+    useQuery: () => ({
+        settings: {
+            service_types: ['Regular Cleaning', 'Chemical Balance'],
+        },
+    }),
 }));
 
 // Mock canvas-confetti

@@ -1,15 +1,13 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import {
+    canAccessCreatedBy,
+    ensureCustomerAccess,
+    ensureNoteAccess,
+    getAccessibleCustomerIds,
+    resolveBusinessAccess,
+} from "./authz";
 import { enforceRateLimit } from "./rateLimit";
-
-// Helper: Get all customer IDs owned by the current user (for tenant isolation)
-async function getUserCustomerIds(ctx: any, userEmail: string): Promise<Set<string>> {
-    const customers = await ctx.db
-        .query("customers")
-        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
-        .collect();
-    return new Set(customers.map((c: any) => c._id.toString()));
-}
 
 // Valid category values for notes
 const VALID_CATEGORIES = ['general', 'equipment', 'chemical', 'customer', 'billing', 'maintenance', 'other'] as const;
@@ -40,28 +38,14 @@ export const list = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Get user's customer IDs for tenant isolation
-        const userCustomerIds = await getUserCustomerIds(ctx, identity.email!);
-
-        // Query records for each customer using index
-        const customerNotePromises = Array.from(userCustomerIds).map(customerId =>
-            ctx.db.query("notes")
-                .withIndex("by_customer", (q) => q.eq("customer_id", customerId as any))
-                .collect()
+        const access = await resolveBusinessAccess(ctx, identity.email!);
+        const userCustomerIds = await getAccessibleCustomerIds(ctx, access);
+        const allNotes = await ctx.db.query("notes").collect();
+        const userNotes = allNotes.filter((note: any) =>
+            note.customer_id
+                ? userCustomerIds.has(note.customer_id.toString())
+                : canAccessCreatedBy(access, note.created_by),
         );
-
-        // Query general notes created by this user
-        const generalNotePromise = ctx.db.query("notes")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-            .filter(q => q.eq(q.field("customer_id"), undefined))
-            .collect();
-
-        const [customerNotesResults, generalNotes] = await Promise.all([
-            Promise.all(customerNotePromises),
-            generalNotePromise
-        ]);
-
-        const userNotes = [...customerNotesResults.flat(), ...generalNotes];
 
         // Sort after collecting
         userNotes.sort((a, b) => {
@@ -88,53 +72,26 @@ export const filter = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Get user's customer IDs for tenant isolation
-        const userCustomerIds = await getUserCustomerIds(ctx, identity.email!);
+        const access = await resolveBusinessAccess(ctx, identity.email!);
+        const userCustomerIds = await getAccessibleCustomerIds(ctx, access);
 
         let userNotes;
         if (args.customer_id !== undefined) {
-            // Verify ownership first
-            const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Customer not found or access denied");
-            }
+            await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "read");
             userNotes = await ctx.db.query("notes")
                 .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id!))
                 .collect();
-        } else if (args.completed !== undefined) {
-            // Parallel indexed queries per customer
-            const customerNotePromises = Array.from(userCustomerIds).map(customerId =>
-                ctx.db.query("notes")
-                    .withIndex("by_customer", (q) => q.eq("customer_id", customerId as any))
-                    .filter(q => q.eq(q.field("completed"), args.completed!))
-                    .collect()
-            );
-
-            // General notes for this user
-            const generalNotePromise = ctx.db.query("notes")
-                .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-                .filter(q => q.eq(q.field("customer_id"), undefined) && q.eq(q.field("completed"), args.completed!))
-                .collect();
-
-            const [customerNotesResults, generalNotes] = await Promise.all([
-                Promise.all(customerNotePromises),
-                generalNotePromise
-            ]);
-            userNotes = [...customerNotesResults.flat(), ...generalNotes];
         } else {
-            // Same as list pattern
-            const customerNotePromises = Array.from(userCustomerIds).map(customerId =>
-                ctx.db.query("notes")
-                    .withIndex("by_customer", (q) => q.eq("customer_id", customerId as any))
-                    .collect()
+            const allNotes = await ctx.db.query("notes").collect();
+            userNotes = allNotes.filter((note: any) =>
+                note.customer_id
+                    ? userCustomerIds.has(note.customer_id.toString())
+                    : canAccessCreatedBy(access, note.created_by),
             );
-            const generalNotes = await ctx.db.query("notes")
-                .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-                .filter(q => q.eq(q.field("customer_id"), undefined))
-                .collect();
+        }
 
-            const customerNotesResults = await Promise.all(customerNotePromises);
-            userNotes = [...customerNotesResults.flat(), ...generalNotes];
+        if (args.completed !== undefined) {
+            userNotes = userNotes.filter((note: any) => note.completed === args.completed);
         }
 
         if (args.category) {
@@ -153,10 +110,7 @@ export const getByCustomer = query({
         if (!identity) throw new Error("Not authenticated");
 
         // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "read");
 
         const notes = await ctx.db
             .query("notes")
@@ -190,10 +144,7 @@ export const create = mutation({
 
         // If note is linked to a customer, verify ownership (tenant isolation)
         if (args.customer_id) {
-            const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Customer not found or access denied");
-            }
+            await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "write");
         }
 
         const now = new Date();
@@ -229,21 +180,10 @@ export const update = mutation({
         await enforceRateLimit(ctx, identity.email!, 'note.create');
 
         // Verify note access (tenant isolation)
-        const note = await ctx.db.get(args.id);
-        if (!note) throw new Error("Note not found");
+        await ensureNoteAccess(ctx, args.id, identity.email!, "write");
 
-        // SECURITY: Verify ownership - check both customer-linked and general notes
-        if (note.customer_id) {
-            // Note is linked to a customer - verify customer ownership
-            const customer = await ctx.db.get(note.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Access denied");
-            }
-        } else {
-            // General note (no customer_id) - verify created_by matches user
-            if (note.created_by !== identity.email) {
-                throw new Error("Access denied: cannot modify another user's note");
-            }
+        if (args.customer_id) {
+            await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "write");
         }
 
         const { id, ...updates } = args;
@@ -264,22 +204,7 @@ export const remove = mutation({
         await enforceRateLimit(ctx, identity.email!, 'note.create');
 
         // Verify note access (tenant isolation)
-        const note = await ctx.db.get(args.id);
-        if (!note) throw new Error("Note not found");
-
-        // SECURITY: Verify ownership - check both customer-linked and general notes
-        if (note.customer_id) {
-            // Note is linked to a customer - verify customer ownership
-            const customer = await ctx.db.get(note.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Access denied");
-            }
-        } else {
-            // General note (no customer_id) - verify created_by matches user
-            if (note.created_by !== identity.email) {
-                throw new Error("Access denied: cannot delete another user's note");
-            }
-        }
+        await ensureNoteAccess(ctx, args.id, identity.email!, "write");
 
         await ctx.db.delete(args.id);
     },

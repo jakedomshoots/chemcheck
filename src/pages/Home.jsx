@@ -14,6 +14,7 @@ import { CustomerCardSkeleton, QuickStatsSkeleton } from "@/components/ui/skelet
 import { toast } from "sonner";
 import { trackUxEvent } from "@/lib/uxAnalytics";
 import { getEffectiveWorkingDays } from "@/lib/workingDays";
+import { buildDurationProfile, calculateServiceTimingSummary } from "@/lib/routeTimingEstimator";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -174,7 +175,7 @@ export default function Home() {
           try {
             const logDate = parseLocalDate(log.service_date);
             return logDate && logDate >= weekStart && logDate <= weekEnd;
-          } catch (e) {
+          } catch {
             return false;
           }
         });
@@ -188,7 +189,7 @@ export default function Home() {
           try {
             const logDate = parseLocalDate(log.service_date);
             return logDate && logDate >= lastWeekStart && logDate <= lastWeekEnd;
-          } catch (e) {
+          } catch {
             return false;
           }
         });
@@ -386,14 +387,22 @@ export default function Home() {
     [customers, completedCustomerIds, skippedCustomerIds]
   );
 
+  const durationProfile = useMemo(
+    () => buildDurationProfile(allLogsData),
+    [allLogsData]
+  );
+
   const opsBrief = useMemo(() => {
-    const pendingStops = customers.filter((customer) => !isCompleted(customer._id) && !isSkipped(customer._id)).length;
-    const estimatedRouteMinutes = customers.length * 25;
+    const serviceSummary = calculateServiceTimingSummary(customers, {
+      customerMedianById: durationProfile.customerMedianById,
+      fallback: 15,
+    });
+
     return {
-      pendingStops,
-      estimatedRouteMinutes,
+      pendingStops: serviceSummary.stopsAssigned,
+      estimatedRouteMinutes: serviceSummary.totalServiceMinutes,
     };
-  }, [customers, completedCustomerIds, skippedCustomerIds]);
+  }, [customers, durationProfile]);
 
   const handlePrimaryHomeAction = () => {
     trackUxEvent('ux_task_started', { flow: 'home_primary_action', action: homePrimaryAction });
@@ -465,7 +474,7 @@ export default function Home() {
         <div className="mb-4">
           <div className="mb-1">
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
+              <h2 className="text-xl font-bold tracking-tight text-slate-900">Today&apos;s Route</h2>
               <p className="text-xs font-medium text-slate-600">
                 {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
               </p>
@@ -488,7 +497,7 @@ export default function Home() {
       <div className="mb-4">
         <div className="mb-1">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">Today&apos;s Route</h2>
             <p className="text-xs font-medium text-slate-600">
               {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
             </p>

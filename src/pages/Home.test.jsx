@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { format } from 'date-fns';
 import Home from './Home';
@@ -144,6 +145,11 @@ describe('Home Page - Comprehensive Tests', () => {
       const stats = screen.getByTestId('quick-stats');
       expect(stats).toBeInTheDocument();
       expect(screen.getByText('Total Customers: 2')).toBeInTheDocument();
+    });
+
+    it('uses service-only timing in daily ops brief', () => {
+      renderWithProviders(<Home />);
+      expect(screen.getByText('2 stops · 30 min')).toBeInTheDocument();
     });
   });
 
