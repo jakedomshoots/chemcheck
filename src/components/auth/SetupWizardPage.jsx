@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { useAuthContext } from './ClerkAuthProvider';
-import { userManager } from '@/lib/userManager';
 import {
   Droplets,
   Building2,
@@ -19,30 +18,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
-// Default business settings constants
-const DEFAULT_BUSINESS_SETTINGS = {
-  workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-  workingHours: { start: '08:00', end: '17:00' },
-  serviceTypes: ['Regular Cleaning', 'Chemical Balance', 'Equipment Check', 'Repair'],
-  chemicalTypes: ['Chlorine Tablets', 'Liquid Chlorine', 'pH Up', 'pH Down', 'Alkalinity Up', 'Stabilizer'],
-  defaultPoolTypes: ['Chlorine', 'Salt'],
-  defaultSurfaceTypes: ['Plaster', 'Vinyl', 'Fiberglass', 'Tile'],
-  routeOptimization: true,
-  requirePhotos: false,
-  requireSignatures: false
-};
-
-const DEFAULT_USER_PREFERENCES = {
-  language: 'en',
-  notifications: {
-    serviceReminders: true,
-    lowChemicals: true,
-    customerUpdates: true
-  },
-  defaultView: 'route',
-  autoBackup: true
-};
-
 export function SetupWizardPage() {
   const navigate = useNavigate();
   const auth = useAuthContext();
@@ -50,7 +25,7 @@ export function SetupWizardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Convex mutation for syncing business to cloud
+  const createConvexBusiness = useMutation(api.businesses.create);
   const updateConvexBusiness = useMutation(api.businesses.update);
 
   const [formData, setFormData] = useState({
@@ -75,10 +50,10 @@ export function SetupWizardPage() {
 
   // Redirect if already set up
   useEffect(() => {
-    if (auth.hasCompletedSetup) {
+    if (auth.authState === 'ready') {
       navigate('/', { replace: true });
     }
-  }, [auth.hasCompletedSetup, navigate]);
+  }, [auth.authState, navigate]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -121,58 +96,38 @@ export function SetupWizardPage() {
 
     try {
       const userEmail = auth.clerkUser.primaryEmailAddress.emailAddress;
-
-      // Create business
-      const business = await userManager.createBusiness({
+      const businessPayload = {
         name: formData.businessName.trim(),
-        address: formData.businessAddress.trim(),
-        phone: formData.businessPhone.trim(),
+        address: formData.businessAddress.trim() || undefined,
+        phone: formData.businessPhone.trim() || undefined,
         email: formData.businessEmail.trim() || userEmail,
-        ownerId: '', // Will be set after user creation
-        settings: DEFAULT_BUSINESS_SETTINGS
-      });
+      };
 
-      // Create user
-      const user = await userManager.createUser({
-        name: formData.ownerName.trim(),
-        email: userEmail,
-        role: 'owner',
-        businessId: business.id,
-        preferences: {
-          ...DEFAULT_USER_PREFERENCES,
-          timezone: formData.timezone
-        }
-      });
-
-      // Login the user FIRST to provide context for the ownership update
-      await userManager.loginUser(user.email, business.id);
-
-      // Update business owner using service method
-      await userManager.updateBusinessOwner(business.id, user.id);
-
-      // Sync business to Convex cloud (so Settings page can read it)
       try {
-        await updateConvexBusiness({
-          name: formData.businessName.trim(),
-          address: formData.businessAddress.trim() || undefined,
-          phone: formData.businessPhone.trim() || undefined,
-          email: formData.businessEmail.trim() || userEmail,
-        });
-      } catch (convexErr) {
-        console.warn('Failed to sync business to Convex, will retry on next load:', convexErr);
-        // Non-blocking: setup can still proceed with localStorage
+        if (auth.authState === 'setup_missing') {
+          await createConvexBusiness(businessPayload);
+        } else {
+          await updateConvexBusiness(businessPayload);
+        }
+      } catch (mutationError) {
+        const message = mutationError instanceof Error ? mutationError.message : '';
+        if (auth.authState === 'setup_missing' && /already has a business/i.test(message)) {
+          await updateConvexBusiness(businessPayload);
+        } else {
+          throw mutationError;
+        }
       }
 
-      // Refresh the auth context to pick up the new user
-      // This is critical to update hasCompletedSetup
-      const refreshedUser = await auth.refreshUser();
+      const refreshedAuth = auth.refreshAuthState
+        ? await auth.refreshAuthState({ forceCanonicalBusinessRead: true })
+        : {
+            authState: (await auth.refreshUser?.()) ? 'ready' : 'setup_missing',
+          };
 
-      if (refreshedUser) {
+      if (refreshedAuth?.authState === 'ready') {
         navigate('/', { replace: true });
       } else {
-        // If refresh failed, try navigating anyway - the auth guard will handle it
-        console.warn('User refresh returned null, navigating anyway');
-        navigate('/', { replace: true });
+        setError('We could not verify your workspace setup yet. Please try again.');
       }
     } catch (err) {
       console.error('Setup failed:', err);

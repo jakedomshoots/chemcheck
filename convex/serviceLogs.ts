@@ -1,5 +1,10 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import {
+    ensureCustomerAccess,
+    ensureServiceLogAccess,
+    getAccessibleCustomerIds,
+} from "./authz";
 import { enforceRateLimit } from "./rateLimit";
 
 /**
@@ -46,15 +51,6 @@ function calculateDuration(startTime: string | undefined, endTime: string | unde
     return duration;
 }
 
-// Helper: Get all customer IDs owned by the current user (for tenant isolation)
-async function getUserCustomerIds(ctx: any, userEmail: string): Promise<Set<string>> {
-    const customers = await ctx.db
-        .query("customers")
-        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
-        .collect();
-    return new Set(customers.map((c: any) => c._id.toString()));
-}
-
 function sortLogsByServiceDate<T extends { service_date: string }>(logs: T[], descending: boolean): T[] {
     logs.sort((a, b) => descending
         ? b.service_date.localeCompare(a.service_date)
@@ -78,7 +74,7 @@ function dedupeLogsById<T extends { _id: any }>(logs: T[]): T[] {
 }
 
 async function getLegacyLogsForUser(ctx: any, userEmail: string, serviceDate?: string) {
-    const userCustomerIds = await getUserCustomerIds(ctx, userEmail);
+    const userCustomerIds = await getAccessibleCustomerIds(ctx, userEmail);
     const logPromises = Array.from(userCustomerIds).map(customerId => {
         if (serviceDate) {
             return ctx.db.query("serviceLogs")
@@ -119,24 +115,13 @@ export const list = query({
 
         const descending = args.order === "-service_date";
         const limit = Math.max(1, Math.min(args.limit || 100, 500));
+        const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+        const allLogs = await ctx.db.query("serviceLogs").collect();
+        const accessibleLogs = allLogs.filter((log: any) =>
+            accessibleCustomerIds.has(log.customer_id.toString()),
+        );
 
-        // Primary path: single indexed tenant query
-        const indexedLogs = await ctx.db
-            .query("serviceLogs")
-            .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!)
-            )
-            .order(descending ? "desc" : "asc")
-            .take(limit);
-
-        // Temporary fallback while backfill is rolling out
-        if (indexedLogs.length >= limit) {
-            return indexedLogs;
-        }
-
-        const legacyLogs = await getLegacyLogsForUser(ctx, identity.email!);
-        const merged = dedupeLogsById([...indexedLogs, ...legacyLogs]);
-        return sortLogsByServiceDate(merged, descending).slice(0, limit);
+        return sortLogsByServiceDate(dedupeLogsById(accessibleLogs), descending).slice(0, limit);
     },
 });
 
@@ -151,11 +136,7 @@ export const filter = query({
         if (!identity) throw new Error("Not authenticated");
 
         if (args.customer_id) {
-            // Verify ownership first
-            const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Customer not found or access denied");
-            }
+            await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "read");
             // Query with index
             return await ctx.db.query("serviceLogs")
                 .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id!))
@@ -163,29 +144,13 @@ export const filter = query({
         }
 
         if (args.service_date) {
-            const indexedLogs = await ctx.db.query("serviceLogs")
-                .withIndex("by_created_by_and_service_date", (q: any) =>
-                    q.eq("created_by", identity.email!).eq("service_date", args.service_date!)
-                )
+            const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+            const allLogs = await ctx.db.query("serviceLogs")
+                .withIndex("by_service_date", (q: any) => q.eq("service_date", args.service_date!))
                 .collect();
-
-            if (indexedLogs.length > 0) {
-                return indexedLogs;
-            }
-
-            // Temporary fallback while backfill is rolling out
-            return await getLegacyLogsForUser(ctx, identity.email!, args.service_date);
+            return allLogs.filter((log: any) => accessibleCustomerIds.has(log.customer_id.toString()));
         }
 
-        const indexedLogs = await ctx.db.query("serviceLogs")
-            .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
-            .collect();
-
-        if (indexedLogs.length > 0) {
-            return indexedLogs;
-        }
-
-        // Temporary fallback while backfill is rolling out
         return await getLegacyLogsForUser(ctx, identity.email!);
     },
 });
@@ -198,10 +163,7 @@ export const getByCustomer = query({
         if (!identity) throw new Error("Not authenticated");
 
         // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "read");
 
         const logs = await ctx.db
             .query("serviceLogs")
@@ -220,18 +182,11 @@ export const getByDate = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        const indexedLogs = await ctx.db.query("serviceLogs")
-            .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!).eq("service_date", args.service_date)
-            )
+        const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+        const logs = await ctx.db.query("serviceLogs")
+            .withIndex("by_service_date", (q: any) => q.eq("service_date", args.service_date))
             .collect();
-
-        if (indexedLogs.length > 0) {
-            return indexedLogs;
-        }
-
-        // Temporary fallback while backfill is rolling out
-        return await getLegacyLogsForUser(ctx, identity.email!, args.service_date);
+        return logs.filter((log: any) => accessibleCustomerIds.has(log.customer_id.toString()));
     },
 });
 
@@ -264,10 +219,7 @@ export const create = mutation({
         await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
 
         // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        const { customer } = await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "write");
 
         // Calculate duration with validation (throws if dates are invalid)
         const duration_ms = calculateDuration(args.start_time, args.end_time);
@@ -328,13 +280,7 @@ export const update = mutation({
         if (!identity) throw new Error("Not authenticated");
 
         // Verify log belongs to user's customer (tenant isolation)
-        const log = await ctx.db.get(args.id);
-        if (!log) throw new Error("Service log not found");
-
-        const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Access denied");
-        }
+        const { customer, serviceLog: log } = await ensureServiceLogAccess(ctx, args.id, identity.email!, "write");
 
         const { id, ...updates } = args;
 
@@ -367,13 +313,7 @@ export const remove = mutation({
         if (!identity) throw new Error("Not authenticated");
 
         // Verify log belongs to user's customer (tenant isolation)
-        const log = await ctx.db.get(args.id);
-        if (!log) throw new Error("Service log not found");
-
-        const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Access denied");
-        }
+        await ensureServiceLogAccess(ctx, args.id, identity.email!, "write");
 
         await ctx.db.delete(args.id);
     },

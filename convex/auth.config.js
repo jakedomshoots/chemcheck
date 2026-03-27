@@ -7,6 +7,20 @@ const productionDomain = "https://clerk.chemcheck.xyz";
 // Development Clerk domain - only included in non-production environments
 const developmentDomain = "https://game-sloth-45.clerk.accounts.dev";
 
+export function isProductionEnvironment(env = process.env) {
+    const convexDeployEnv = env.CONVEX_DEPLOYMENT_ENV;
+    const convexCloudUrl = env.CONVEX_CLOUD_URL;
+    const nodeEnv = env.NODE_ENV;
+    const vercelEnv = env.VERCEL_ENV;
+
+    return (
+        convexDeployEnv === 'production' ||
+        convexCloudUrl?.includes('convex.cloud') ||
+        nodeEnv === 'production' ||
+        vercelEnv === 'production'
+    );
+}
+
 /**
  * Build the providers array based on environment
  * - Production: Only the production Clerk domain is allowed
@@ -15,7 +29,7 @@ const developmentDomain = "https://game-sloth-45.clerk.accounts.dev";
  * SECURITY: This prevents tokens from the development Clerk instance
  * from being accepted in production, reducing attack surface.
  */
-function buildProviders() {
+export function buildProviders(env = process.env) {
     const providers = [
         {
             // Production Clerk domain - used for chemcheck.xyz
@@ -32,10 +46,10 @@ function buildProviders() {
     // 2. CONVEX_CLOUD_URL - Indicates production Convex deployment
     // 3. NODE_ENV - Standard Node.js environment indicator
     // 4. VERCEL_ENV - Vercel deployment environment
-    const convexDeployEnv = process.env.CONVEX_DEPLOYMENT_ENV;
-    const convexCloudUrl = process.env.CONVEX_CLOUD_URL;
-    const nodeEnv = process.env.NODE_ENV;
-    const vercelEnv = process.env.VERCEL_ENV;
+    const convexDeployEnv = env.CONVEX_DEPLOYMENT_ENV;
+    const convexCloudUrl = env.CONVEX_CLOUD_URL;
+    const nodeEnv = env.NODE_ENV;
+    const vercelEnv = env.VERCEL_ENV;
 
     // Debug logging during Convex build (visible in deployment logs)
     console.debug('[auth.config] Environment detection:', {
@@ -45,11 +59,7 @@ function buildProviders() {
         VERCEL_ENV: vercelEnv || 'not set',
     });
 
-    const isProduction =
-        convexDeployEnv === 'production' ||
-        convexCloudUrl?.includes('convex.cloud') ||
-        nodeEnv === 'production' ||
-        vercelEnv === 'production';
+    const isProduction = isProductionEnvironment(env);
 
     console.debug('[auth.config] Production mode:', isProduction);
 

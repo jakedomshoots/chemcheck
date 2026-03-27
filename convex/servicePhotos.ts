@@ -1,15 +1,34 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { enforceRateLimit } from "./rateLimit";
+import {
+  ensureCustomerAccess,
+  ensurePhotoAccess,
+  ensureOperationalReadAccess,
+  ensureOperationalWriteAccess,
+  getAccessibleCustomerIds,
+  resolveBusinessAccess,
+  canAccessCustomerDoc,
+} from "./authz";
 
-const runtimeEnv =
-  process.env.CONVEX_DEPLOYMENT_ENV ||
-  process.env.VERCEL_ENV ||
-  process.env.NODE_ENV;
-const allowUnauthenticatedPhotoUpload =
-  process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true" ||
-  runtimeEnv !== "production";
+export function shouldAllowUnauthenticatedPhotoUpload(env = process.env): boolean {
+  return env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true";
+}
+
+const allowUnauthenticatedPhotoUpload = shouldAllowUnauthenticatedPhotoUpload();
+
+export function getStaleUnreferencedStorageIds(args: {
+  storageFiles: Array<{ _id: string; _creationTime?: number; creationTime?: number }>;
+  referencedStorageIds: Set<string>;
+  now: number;
+  ttlMs: number;
+}): string[] {
+  return args.storageFiles
+    .filter((file) => !args.referencedStorageIds.has(String(file._id)))
+    .filter((file) => args.now - Number(file._creationTime ?? file.creationTime ?? 0) >= args.ttlMs)
+    .map((file) => String(file._id));
+}
 
 /**
  * Service Photos mutations and queries for Proof of Service feature
@@ -23,13 +42,15 @@ async function verifyServiceLogOwnership(
   serviceLogId: Id<"serviceLogs">,
   userEmail: string
 ): Promise<{ serviceLog: any; customer: any }> {
+  const access = await resolveBusinessAccess(ctx, userEmail);
+  ensureOperationalReadAccess(access);
   const serviceLog = await ctx.db.get(serviceLogId);
   if (!serviceLog) {
     throw new Error("Service log not found");
   }
 
   const customer = await ctx.db.get(serviceLog.customer_id);
-  if (!customer || customer.created_by !== userEmail) {
+  if (!customer || !canAccessCustomerDoc(access, customer)) {
     throw new Error("Access denied");
   }
 
@@ -65,10 +86,7 @@ async function verifyCustomerOwnership(
   customerId: Id<"customers">,
   userEmail: string
 ): Promise<any> {
-  const customer = await ctx.db.get(customerId);
-  if (!customer || customer.created_by !== userEmail) {
-    throw new Error("Customer not found or access denied");
-  }
+  const { customer } = await ensureCustomerAccess(ctx, customerId, userEmail, "read");
   return customer;
 }
 
@@ -109,12 +127,15 @@ export const uploadPhoto = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (identity) {
+      const access = await resolveBusinessAccess(ctx, identity.email!);
+      ensureOperationalWriteAccess(access);
+
       // Enforce rate limiting (database-backed for distributed rate limiting)
       await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
 
       // Verify ownership of service log and customer
       await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
-      await verifyCustomerOwnership(ctx, args.customer_id, identity.email!);
+      await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "write");
     } else {
       if (!allowUnauthenticatedPhotoUpload) {
         throw new Error("Not authenticated");
@@ -175,6 +196,8 @@ export const getPhotosByServiceLog = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+    const access = await resolveBusinessAccess(ctx, identity.email!);
+    ensureOperationalReadAccess(access);
 
     // Verify ownership
     await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
@@ -220,9 +243,11 @@ export const getPhotosByCustomer = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+    const access = await resolveBusinessAccess(ctx, identity.email!);
+    ensureOperationalReadAccess(access);
 
     // Verify ownership
-    await verifyCustomerOwnership(ctx, args.customer_id, identity.email!);
+    await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "read");
 
     const photos = await ctx.db
       .query("servicePhotos")
@@ -262,14 +287,10 @@ export const getPhoto = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+    const access = await resolveBusinessAccess(ctx, identity.email!);
+    ensureOperationalReadAccess(access);
 
-    const photo = await ctx.db.get(args.photo_id);
-    if (!photo) {
-      throw new Error("Photo not found");
-    }
-
-    // Verify ownership through customer
-    await verifyCustomerOwnership(ctx, photo.customer_id, identity.email!);
+    const { photo } = await ensurePhotoAccess(ctx, args.photo_id, identity.email!, "read");
 
     const url = await ctx.storage.getUrl(photo.storage_id);
 
@@ -294,17 +315,13 @@ export const deletePhoto = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+    const access = await resolveBusinessAccess(ctx, identity.email!);
+    ensureOperationalWriteAccess(access);
 
     // Enforce rate limiting (database-backed for distributed rate limiting)
     await enforceRateLimit(ctx, identity.email!, 'serviceLog.delete');
 
-    const photo = await ctx.db.get(args.photo_id);
-    if (!photo) {
-      throw new Error("Photo not found");
-    }
-
-    // Verify ownership through customer
-    await verifyCustomerOwnership(ctx, photo.customer_id, identity.email!);
+    const { photo } = await ensurePhotoAccess(ctx, args.photo_id, identity.email!, "write");
 
     // Delete database record first, then storage
     // This ordering ensures that if storage deletion fails, we don't have
@@ -354,3 +371,86 @@ async function updateServiceLogPhotoCounts(
     has_after_photos: afterPhotos.length > 0,
   });
 }
+
+const ORPHANED_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function cleanupUnreferencedStorage(ctx: any, ttlMs: number) {
+  const now = Date.now();
+  const storageFiles = await ctx.db.system.query("_storage").collect();
+  const referencedStorageIds = new Set<string>(
+    (await ctx.db.query("servicePhotos").collect()).map((photo: any) => String(photo.storage_id))
+  );
+
+  const staleIds = getStaleUnreferencedStorageIds({
+    storageFiles: storageFiles.map((file: any) => ({
+      _id: String(file._id),
+      _creationTime: Number(file._creationTime ?? file.creationTime ?? 0),
+    })),
+    referencedStorageIds,
+    now,
+    ttlMs,
+  });
+
+  for (const storageId of staleIds) {
+    await ctx.storage.delete(storageId as Id<"_storage">);
+  }
+
+  return {
+    deleted: staleIds.length,
+    storage_ids: staleIds,
+  };
+}
+
+export const cleanupOrphanedUploads = mutation({
+  args: {
+    min_age_ms: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const access = await resolveBusinessAccess(ctx, identity.email!);
+    ensureOperationalWriteAccess(access);
+
+    const minAgeMs = args.min_age_ms ?? ORPHANED_STORAGE_TTL_MS;
+    const now = Date.now();
+    const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+    const allPhotos = await ctx.db.query("servicePhotos").collect();
+    const accessiblePhotos = allPhotos.filter((photo: any) =>
+      accessibleCustomerIds.has(String(photo.customer_id)),
+    );
+
+    let deletedPhotoRecords = 0;
+    const affectedServiceLogs = new Set<string>();
+    for (const photo of accessiblePhotos) {
+      const storageDoc = await ctx.db.system.get(photo.storage_id);
+      if (storageDoc) continue;
+      if (now - Number(photo.created_at || 0) < minAgeMs) continue;
+
+      await ctx.db.delete(photo._id);
+      affectedServiceLogs.add(String(photo.service_log_id));
+      deletedPhotoRecords += 1;
+    }
+
+    for (const serviceLogId of affectedServiceLogs) {
+      await updateServiceLogPhotoCounts(ctx, serviceLogId as Id<"serviceLogs">);
+    }
+
+    const cleanupResult = await cleanupUnreferencedStorage(ctx, minAgeMs);
+
+    return {
+      deleted_photo_records: deletedPhotoRecords,
+      deleted_storage_objects: cleanupResult.deleted,
+      deleted_storage_ids: cleanupResult.storage_ids,
+    };
+  },
+});
+
+export const cleanupOrphanedStorage = internalMutation({
+  args: {
+    ttl_ms: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await cleanupUnreferencedStorage(ctx, args.ttl_ms ?? ORPHANED_STORAGE_TTL_MS);
+  },
+});

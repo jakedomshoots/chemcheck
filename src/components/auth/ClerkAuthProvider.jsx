@@ -2,28 +2,28 @@ import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { logLogin, logLogout } from '@/lib/auditLog';
 import { setUserContext, clearUserContext } from '@/lib/sentry';
+import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
+import {
+  getAuthBypassReason,
+  shouldUseIosSimulatorAuthBypass,
+  shouldUseLocalhostAuthBypass,
+} from '@/lib/platformPolicy';
 
 // Get Clerk publishable key from environment
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const clerkDomain = import.meta.env.VITE_CLERK_DOMAIN;
-const bypassFlagEnabled = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true';
-const bypassFlagEnabledInNonDev = bypassFlagEnabled && !import.meta.env.DEV;
-
-if (bypassFlagEnabledInNonDev) {
-  console.error('SECURITY WARNING: VITE_IOS_SIM_AUTH_BYPASS is enabled outside development. Bypass disabled.');
-}
-
-const isIosSimulatorBypass = bypassFlagEnabled
-  && import.meta.env.DEV
-  && typeof window !== 'undefined'
-  && window.Capacitor
-  && window.Capacitor.getPlatform?.() === 'ios';
-
-// Dev mode bypass for localhost development
-const isDevBypass = import.meta.env.DEV
-  && typeof window !== 'undefined'
-  && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const AUTH_STATES = {
+  loading: 'loading',
+  signedOut: 'signed_out',
+  bootstrapping: 'bootstrapping',
+  setupMissing: 'setup_missing',
+  ready: 'ready',
+  error: 'error',
+};
+const isIosSimulatorBypass = shouldUseIosSimulatorAuthBypass();
+const isDevBypass = shouldUseLocalhostAuthBypass();
+const authBypassReason = getAuthBypassReason();
 
 // Auth context for app-wide auth state
 const AuthContext = createContext(null);
@@ -75,26 +75,102 @@ function AuthContextProvider({ children }) {
   const [localUser, setLocalUser] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [authState, setAuthState] = useState(AUTH_STATES.loading);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
-  // Function to sync/refresh user state from userManager
-  const refreshUser = async () => {
-    if (!user) return null;
+  async function loadCanonicalAuthState() {
+    if (!user) {
+      return {
+        authState: AUTH_STATES.signedOut,
+        localUser: null,
+      };
+    }
 
     const email = user.primaryEmailAddress?.emailAddress || '';
-    if (!email) return null;
+    if (!email) {
+      setAuthError('No email address found. Please ensure your account has a verified email.');
+      setAuthState(AUTH_STATES.error);
+      setLocalUser(null);
+      return {
+        authState: AUTH_STATES.error,
+        localUser: null,
+      };
+    }
 
     const userManager = await getUserManager();
-
-    // Get the current user from userManager (checks localStorage)
+    const name = user.fullName || user.firstName || 'User';
     let existingUser = userManager.getCurrentUser();
-
-    // If no current user or email doesn't match, try to login
     if (!existingUser || existingUser.email !== email) {
       existingUser = await userManager.loginUser(email);
     }
 
-    setLocalUser(existingUser);
-    return existingUser;
+    try {
+      const convexClient = await getConvexClient();
+      const api = await getApi();
+      const convexBusiness = await convexClient.query(api.businesses.getCurrent);
+
+      if (!convexBusiness) {
+        setLocalUser(null);
+        setAuthError(null);
+        setAuthState(AUTH_STATES.setupMissing);
+        return {
+          authState: AUTH_STATES.setupMissing,
+          localUser: null,
+        };
+      }
+
+      if (!existingUser || existingUser.businessId !== convexBusiness._id) {
+        const { user: bootstrappedUser } = await userManager.bootstrapFromConvex(convexBusiness, email);
+        existingUser = bootstrappedUser;
+      }
+
+      setLocalUser(existingUser);
+      logLogin(true);
+      setUserContext({
+        id: userId,
+        email,
+        username: name,
+      });
+      setAuthError(null);
+      setAuthState(AUTH_STATES.ready);
+      return {
+        authState: AUTH_STATES.ready,
+        localUser: existingUser,
+      };
+    } catch (error) {
+      console.error('Failed to sync canonical auth state:', error);
+      setLocalUser(existingUser || null);
+      setAuthError('Authentication sync failed. Please try signing out and back in.');
+      setAuthState(AUTH_STATES.error);
+      return {
+        authState: AUTH_STATES.error,
+        localUser: existingUser || null,
+      };
+    }
+  }
+
+  const refreshAuthState = async () => {
+    if (!user) {
+      return {
+        authState: AUTH_STATES.signedOut,
+        localUser: null,
+      };
+    }
+
+    setIsInitialized(false);
+    setAuthState(AUTH_STATES.bootstrapping);
+
+    try {
+      return await loadCanonicalAuthState();
+    } finally {
+      setIsInitialized(true);
+    }
+  };
+
+  // Backwards-compatible alias for untouched consumers.
+  const refreshUser = async () => {
+    const refreshResult = await refreshAuthState();
+    return refreshResult.localUser;
   };
 
   useEffect(() => {
@@ -103,77 +179,26 @@ function AuthContextProvider({ children }) {
     const syncUser = async () => {
       try {
         if (isSignedIn && user) {
-          const userManager = await getUserManager();
-          const email = user.primaryEmailAddress?.emailAddress || '';
-          const name = user.fullName || user.firstName || 'User';
-
-          if (!email) {
-            setAuthError('No email address found. Please ensure your account has a verified email.');
-            setIsInitialized(true);
-            return;
-          }
-
-          // Try to find existing user in localStorage
-          let existingUser = userManager.getCurrentUser();
-
-          // If no current user or email doesn't match, try to login
-          if (!existingUser || existingUser.email !== email) {
-            existingUser = await userManager.loginUser(email);
-          }
-
-          // If still no user, check Convex for existing business
-          if (!existingUser) {
-            console.log('User not found in localStorage, checking Convex...');
-            try {
-              const convexClient = await getConvexClient();
-              const api = await getApi();
-              const convexBusiness = await convexClient.query(api.businesses.getCurrent);
-
-              if (convexBusiness) {
-                console.log('Business found in Convex, bootstrapping local state...');
-                const { user: bootstrappedUser } = await userManager.bootstrapFromConvex(convexBusiness, email);
-                setLocalUser(bootstrappedUser);
-                existingUser = bootstrappedUser;
-              } else {
-                console.log('New user detected, will need setup');
-                setLocalUser(null);
-              }
-            } catch (convexError) {
-              console.error('Failed to check Convex for existing business:', convexError);
-              setLocalUser(null);
-            }
-          } else {
-            setLocalUser(existingUser);
-          }
-
-          // Only log successful login and set context if we have a valid user
-          if (existingUser) {
-            logLogin(true);
-
-            // Set Sentry user context
-            setUserContext({
-              id: userId,
-              email: email,
-              username: name
-            });
-          }
-
-          setAuthError(null);
+          setIsInitialized(false);
+          setAuthState(AUTH_STATES.bootstrapping);
+          await loadCanonicalAuthState();
         } else {
-          // User signed out - clear local state
           setLocalUser(null);
+          setAuthError(null);
+          setAuthState(AUTH_STATES.signedOut);
           clearUserContext();
         }
       } catch (error) {
         console.error('Auth sync error:', error);
         setAuthError('Authentication sync failed. Please try signing out and back in.');
+        setAuthState(AUTH_STATES.error);
       } finally {
         setIsInitialized(true);
       }
     };
 
     syncUser();
-  }, [isLoaded, isSignedIn, user, userId]);
+  }, [isLoaded, isSignedIn, user, userId, refreshNonce]);
 
   const logout = async () => {
     try {
@@ -198,13 +223,19 @@ function AuthContextProvider({ children }) {
     // Local state
     isInitialized,
     localUser,
-    hasCompletedSetup: !!localUser?.businessId,
+    hasCompletedSetup: authState === AUTH_STATES.ready,
     authError,
+    authState,
 
     // Actions
     logout,
+    refreshAuthState,
     refreshUser,
-    clearAuthError: () => setAuthError(null)
+    clearAuthError: () => {
+      setAuthError(null);
+      setIsInitialized(false);
+      setRefreshNonce((value) => value + 1);
+    }
   };
 
   return (
@@ -217,6 +248,8 @@ function AuthContextProvider({ children }) {
 // Main ClerkAuthProvider component
 export function ClerkAuthProvider({ children }) {
   if (isIosSimulatorBypass || isDevBypass) {
+    warnAuthBypassOnce('Clerk', authBypassReason);
+
     const bypassValue = {
       isLoaded: true,
       isSignedIn: true,
@@ -226,7 +259,12 @@ export function ClerkAuthProvider({ children }) {
       localUser: null,
       hasCompletedSetup: true,
       authError: null,
+      authState: AUTH_STATES.ready,
       logout: async () => { },
+      refreshAuthState: async () => ({
+        authState: AUTH_STATES.ready,
+        localUser: null,
+      }),
       refreshUser: async () => null,
       clearAuthError: () => { }
     };

@@ -56,10 +56,21 @@ vi.mock('@/components/proof-of-service', () => ({
 
 // Mock proof-of-service lib
 vi.mock('@/lib/proof-of-service', () => ({
+    deleteUnlinkedPhotos: vi.fn(async () => {}),
+    linkPhotosToServiceLog: vi.fn(async () => []),
+    getPhotos: vi.fn(async () => []),
     validateServiceCompletion: () => ({ isValid: true, errors: [] }),
     getValidationErrorMessage: () => '',
     hasAnyRequirements: () => false,
     getRequirementsSummary: () => []
+}));
+
+vi.mock('convex/react', () => ({
+    useQuery: () => ({
+        settings: {
+            service_types: ['Regular Cleaning', 'Chemical Balance'],
+        },
+    }),
 }));
 
 // Mock canvas-confetti

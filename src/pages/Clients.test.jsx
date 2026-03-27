@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import Clients from './Clients';
@@ -11,6 +12,11 @@ const mockCustomers = [
 const mockUpdateCustomer = vi.fn();
 const mockDeleteCustomer = vi.fn();
 const mockUser = { email: 'test@example.com' };
+const mockBusiness = {
+    settings: {
+        working_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+    },
+};
 
 // Mock hooks
 vi.mock('@/api/convexHooks', () => ({
@@ -18,6 +24,10 @@ vi.mock('@/api/convexHooks', () => ({
     useCustomersFilter: () => mockCustomers,
     useCustomerUpdate: () => mockUpdateCustomer,
     useCustomerDelete: () => mockDeleteCustomer
+}));
+
+vi.mock('convex/react', () => ({
+    useQuery: () => mockBusiness,
 }));
 
 // Mock utils
@@ -39,7 +49,7 @@ vi.mock('../components/clients/ClientListItem', () => ({
 vi.mock('@/components/ui/tabs', () => ({
     Tabs: ({ children }) => <div>{children}</div>,
     TabsList: ({ children }) => <div>{children}</div>,
-    TabsTrigger: ({ children, onClick }) => <button onClick={onClick}>{children}</button>,
+    TabsTrigger: forwardRef(({ children, onClick }, ref) => <button ref={ref} onClick={onClick}>{children}</button>),
     TabsContent: ({ children }) => <div>{children}</div>
 }));
 

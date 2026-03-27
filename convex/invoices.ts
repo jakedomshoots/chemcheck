@@ -1,5 +1,12 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  ensureCustomerAccess,
+  ensureInvoiceAccess,
+  ensureQuoteAccess,
+  ensureWorkOrderAccess,
+  getAccessibleCustomerIds,
+} from "./authz";
 import { validateEmail, validatePhone } from "./validation";
 import { normalizeTaxRate } from "./tax";
 
@@ -124,10 +131,10 @@ export const list = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    let invoices = await ctx.db
-      .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+    let invoices = (await ctx.db.query("invoices").collect()).filter((invoice: any) =>
+      accessibleCustomerIds.has(invoice.customer_id.toString()),
+    );
 
     if (args.status) {
       invoices = invoices.filter((invoice) => invoice.status === args.status);
@@ -152,10 +159,7 @@ export const get = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const invoice = await ctx.db.get(args.id);
-    if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
-
+    const { invoice } = await ensureInvoiceAccess(ctx, args.id, identity.email!, "read");
     return invoice;
   },
 });
@@ -166,16 +170,7 @@ export const getForPayment = internalQuery({
     user_email: v.string(),
   },
   handler: async (ctx, args) => {
-    const invoice = await ctx.db.get(args.id);
-    if (!invoice || invoice.created_by !== args.user_email) {
-      throw new Error("Invoice not found or access denied");
-    }
-
-    const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
-      throw new Error("Customer not found or access denied");
-    }
-
+    const { invoice, customer } = await ensureInvoiceAccess(ctx, args.id, args.user_email, "write");
     return { invoice, customer };
   },
 });
@@ -199,20 +194,14 @@ export const createDraft = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { customer } = await ensureCustomerAccess(ctx, args.customer_id, identity.email!, "write");
 
     let resolvedWorkOrderId = args.work_order_id;
     let resolvedSourceQuoteId = args.source_quote_id;
     let resolvedQuote: any = null;
 
     if (resolvedSourceQuoteId) {
-      const quote = await ctx.db.get(resolvedSourceQuoteId);
-      if (!quote || quote.created_by !== identity.email) {
-        throw new Error("Quote not found or access denied");
-      }
+      const { quote } = await ensureQuoteAccess(ctx, resolvedSourceQuoteId, identity.email!, "read");
       if (quote.customer_id !== args.customer_id) {
         throw new Error("Quote customer does not match invoice customer");
       }
@@ -221,10 +210,7 @@ export const createDraft = mutation({
     }
 
     if (resolvedWorkOrderId) {
-      const workOrder = await ctx.db.get(resolvedWorkOrderId);
-      if (!workOrder || workOrder.created_by !== identity.email) {
-        throw new Error("Work order not found or access denied");
-      }
+      const { workOrder } = await ensureWorkOrderAccess(ctx, resolvedWorkOrderId, identity.email!, "read");
       if (workOrder.customer_id !== args.customer_id) {
         throw new Error("Work order customer does not match invoice customer");
       }
@@ -246,10 +232,7 @@ export const createDraft = mutation({
     }
 
     if (resolvedSourceQuoteId) {
-      const quote = await ctx.db.get(resolvedSourceQuoteId);
-      if (!quote || quote.created_by !== identity.email) {
-        throw new Error("Quote not found or access denied");
-      }
+      const { quote } = await ensureQuoteAccess(ctx, resolvedSourceQuoteId, identity.email!, "read");
       if (quote.customer_id !== args.customer_id) {
         throw new Error("Quote customer does not match invoice customer");
       }
@@ -288,7 +271,7 @@ export const createDraft = mutation({
       work_order_id: resolvedWorkOrderId,
       source_quote_id: resolvedSourceQuoteId,
       service_log_id: undefined,
-      created_by: identity.email!,
+      created_by: customer.created_by || identity.email!,
       status: initialStatus,
       line_items: args.line_items,
       subtotal,
@@ -329,13 +312,12 @@ export const backfillMissingNotesBatch = mutation({
       1,
       Math.min(args.batch_size ?? DEFAULT_BACKFILL_BATCH_SIZE, MAX_BACKFILL_BATCH_SIZE)
     );
-    const page = await ctx.db
-      .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .paginate({
-        cursor: args.cursor ?? null,
-        numItems: batchSize,
-      });
+    const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+    const allInvoices = (await ctx.db.query("invoices").collect()).filter((invoice: any) =>
+      accessibleCustomerIds.has(invoice.customer_id.toString()),
+    );
+    const offset = args.cursor && Number.isFinite(Number(args.cursor)) ? Math.max(0, Number(args.cursor)) : 0;
+    const pageItems = allInvoices.slice(offset, offset + batchSize);
 
     let updated = 0;
     let wouldUpdate = 0;
@@ -343,7 +325,7 @@ export const backfillMissingNotesBatch = mutation({
     let skippedNoCandidate = 0;
     const now = Date.now();
 
-    for (const invoice of page.page) {
+    for (const invoice of pageItems) {
       if (invoice.notes?.trim()) {
         skippedAlreadySet += 1;
         continue;
@@ -366,13 +348,13 @@ export const backfillMissingNotesBatch = mutation({
     }
 
     return {
-      processed: page.page.length,
+      processed: pageItems.length,
       updated,
       would_update: wouldUpdate,
       skipped_already_set: skippedAlreadySet,
       skipped_no_candidate: skippedNoCandidate,
-      continueCursor: page.continueCursor,
-      isDone: page.isDone,
+      continueCursor: offset + pageItems.length < allInvoices.length ? String(offset + pageItems.length) : undefined,
+      isDone: offset + pageItems.length >= allInvoices.length,
     };
   },
 });
@@ -383,10 +365,10 @@ export const countMissingNotes = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const invoices = await ctx.db
-      .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+    const invoices = (await ctx.db.query("invoices").collect()).filter((invoice: any) =>
+      accessibleCustomerIds.has(invoice.customer_id.toString()),
+    );
 
     let missing = 0;
     let missingWithCandidate = 0;
@@ -430,10 +412,10 @@ export const batchCreateFromCompletedWorkOrders = mutation({
     const dueInDays = Math.max(0, Math.min(60, Math.floor(args.due_in_days ?? 7)));
     const limit = Math.max(1, Math.min(200, Math.floor(args.limit ?? 100)));
 
-    const allWorkOrders = await ctx.db
-      .query("workOrders")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+    const allWorkOrders = (await ctx.db.query("workOrders").collect()).filter((workOrder: any) =>
+      accessibleCustomerIds.has(workOrder.customer_id.toString()),
+    );
 
     const candidates = allWorkOrders
       .filter((workOrder) =>
@@ -456,6 +438,12 @@ export const batchCreateFromCompletedWorkOrders = mutation({
 
     for (const workOrder of candidates) {
       try {
+        const customer = await ctx.db.get(workOrder.customer_id);
+        if (!customer || !accessibleCustomerIds.has(customer._id.toString())) {
+          failed += 1;
+          continue;
+        }
+
         const existingWorkOrderInvoice = await ctx.db
           .query("invoices")
           .withIndex("by_work_order", (q) => q.eq("work_order_id", workOrder._id))
@@ -468,8 +456,8 @@ export const batchCreateFromCompletedWorkOrders = mutation({
         let linkedQuote: any = null;
         if (workOrder.source_quote_id) {
           const quote = await ctx.db.get(workOrder.source_quote_id);
-          if (quote && quote.created_by === identity.email) {
-            linkedQuote = quote;
+          if (quote) {
+            linkedQuote = (await ensureQuoteAccess(ctx, workOrder.source_quote_id, identity.email!, "read")).quote;
           }
         }
 
@@ -521,7 +509,7 @@ export const batchCreateFromCompletedWorkOrders = mutation({
           work_order_id: workOrder._id,
           source_quote_id: linkedQuote?._id || workOrder.source_quote_id,
           service_log_id: undefined,
-          created_by: identity.email!,
+          created_by: customer.created_by || identity.email!,
           status: initialStatus,
           line_items: lineItems,
           subtotal,
@@ -570,9 +558,7 @@ export const updateStatus = mutation({
 
     validateStatus(args.status);
 
-    const invoice = await ctx.db.get(args.id);
-    if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    const { invoice } = await ensureInvoiceAccess(ctx, args.id, identity.email!, "write");
 
     const now = Date.now();
     await ctx.db.patch(args.id, {
@@ -598,16 +584,9 @@ export const sendInvoice = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const invoice = await ctx.db.get(args.id);
-    if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    const { invoice, customer } = await ensureInvoiceAccess(ctx, args.id, identity.email!, "write");
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       throw new Error("Cannot send an invoice that is paid or cancelled");
-    }
-
-    const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
-      throw new Error("Customer not found or access denied");
     }
 
     const trimmedBase = (args.base_url || "").trim().replace(/\/+$/, "");
@@ -646,7 +625,7 @@ export const sendInvoice = mutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
-      created_by: identity.email!,
+      created_by: customer.created_by || identity.email!,
       created_at: now,
       updated_at: now,
     });
@@ -669,18 +648,10 @@ export const finalizeSend = internalMutation({
     recipient_override: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const invoice = await ctx.db.get(args.id);
-    if (!invoice || invoice.created_by !== args.user_email) {
-      throw new Error("Invoice not found or access denied");
-    }
+    const { invoice, customer } = await ensureInvoiceAccess(ctx, args.id, args.user_email, "write");
 
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       throw new Error("Cannot send an invoice that is paid or cancelled");
-    }
-
-    const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
-      throw new Error("Customer not found or access denied");
     }
 
     const now = Date.now();
@@ -735,9 +706,7 @@ export const markPaid = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const invoice = await ctx.db.get(args.id);
-    if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    const { invoice } = await ensureInvoiceAccess(ctx, args.id, identity.email!, "write");
     if (invoice.stripe_checkout_session_id && invoice.status === "sent") {
       throw new Error("This invoice is linked to Stripe. It will be marked paid automatically after Stripe confirms payment.");
     }
@@ -782,14 +751,13 @@ export const queueUnpaidReminders = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const invoices = await ctx.db
-      .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
-    const communications = await ctx.db
-      .query("communications")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    const accessibleCustomerIds = await getAccessibleCustomerIds(ctx, identity.email!);
+    const invoices = (await ctx.db.query("invoices").collect()).filter((invoice: any) =>
+      accessibleCustomerIds.has(invoice.customer_id.toString()),
+    );
+    const communications = (await ctx.db.query("communications").collect()).filter((communication: any) =>
+      accessibleCustomerIds.has(communication.customer_id?.toString?.() || ""),
+    );
 
     const pending = invoices.filter((invoice) => invoice.status === "sent");
     const now = Date.now();
@@ -822,7 +790,7 @@ export const queueUnpaidReminders = mutation({
       }
 
       const customer = await ctx.db.get(invoice.customer_id);
-      if (!customer || customer.created_by !== identity.email) continue;
+      if (!customer || !accessibleCustomerIds.has(customer._id.toString())) continue;
 
       const destination = resolveReminderDestination(customer);
       if (!destination) continue;
@@ -846,7 +814,7 @@ export const queueUnpaidReminders = mutation({
         provider: undefined,
         provider_message_id: undefined,
         error: undefined,
-        created_by: identity.email!,
+        created_by: customer.created_by || identity.email!,
         created_at: now,
         updated_at: now,
       });

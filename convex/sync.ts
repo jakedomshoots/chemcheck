@@ -1,6 +1,12 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { enforceRateLimit } from "./rateLimit";
+import {
+  assertPermission,
+  ensureCustomerAccess,
+  ensureNoteAccess,
+  resolveBusinessAccess,
+} from "./authz";
 
 /**
  * Convex mutations for syncing data from Dexie (local IndexedDB) to Convex (cloud)
@@ -8,31 +14,6 @@ import { enforceRateLimit } from "./rateLimit";
  * 
  * SECURITY: All sync mutations require authentication and enforce tenant isolation
  */
-
-async function resolveBusinessContext(ctx: any, userEmail: string) {
-  const teamMember = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-
-  if (teamMember) {
-    const teamBusiness = await ctx.db.get(teamMember.business_id);
-    if (teamBusiness) return teamBusiness;
-  }
-
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-    .first();
-}
-
-async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: string): Promise<void> {
-  const customer = await ctx.db.get(customerId);
-  if (!customer || customer.created_by !== userEmail) {
-    throw new Error("Access denied: cannot sync data for another user's customer");
-  }
-}
 
 // ============================================
 // Customer Sync
@@ -79,9 +60,10 @@ export const syncCustomer = mutation({
     const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Resolve business context so we can set business_id (matches customers.create behavior)
-    const business = await resolveBusinessContext(ctx, identity.email!);
-    const createdBy = business ? business.owner_email : identity.email!;
-    const businessId = business ? String(business._id) : undefined;
+    const access = await resolveBusinessAccess(ctx, identity.email!);
+    assertPermission(access, "operational:write");
+    const createdBy = access.ownerEmail || identity.email!;
+    const businessId = access.businessId ?? undefined;
 
     const customerData = {
       ...data,
@@ -92,15 +74,7 @@ export const syncCustomer = mutation({
 
     // If convex_id provided, update existing record
     if (convex_id) {
-      const existingCustomer = await ctx.db.get(convex_id);
-      if (!existingCustomer) {
-        throw new Error(`Customer with convex_id ${convex_id} not found`);
-      }
-
-      // SECURITY: Verify ownership of existing record
-      if (existingCustomer.created_by !== identity.email) {
-        throw new Error("Access denied: cannot update another user's customer");
-      }
+      const { customer: existingCustomer } = await ensureCustomerAccess(ctx, convex_id, identity.email!, "write");
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingCustomer.updated_at || 0;
@@ -193,15 +167,7 @@ export const syncServiceLog = mutation({
     const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists AND belongs to authenticated user (tenant isolation)
-    const customer = await ctx.db.get(convex_customer_id);
-    if (!customer) {
-      throw new Error(`Customer with id ${convex_customer_id} not found`);
-    }
-
-    // SECURITY: Verify customer ownership
-    if (customer.created_by !== identity.email) {
-      throw new Error("Access denied: cannot sync data for another user's customer");
-    }
+    const { customer } = await ensureCustomerAccess(ctx, convex_customer_id, identity.email!, "write");
 
     // If convex_id provided, update existing record
     if (convex_id) {
@@ -209,7 +175,7 @@ export const syncServiceLog = mutation({
       if (!existingServiceLog) {
         throw new Error(`ServiceLog with convex_id ${convex_id} not found`);
       }
-      await ensureCustomerOwnedByUser(ctx, existingServiceLog.customer_id, identity.email!);
+      await ensureCustomerAccess(ctx, existingServiceLog.customer_id, identity.email!, "write");
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingServiceLog.updated_at || 0;
@@ -299,15 +265,7 @@ export const syncChemicalUsage = mutation({
     const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists AND belongs to authenticated user (tenant isolation)
-    const customer = await ctx.db.get(convex_customer_id);
-    if (!customer) {
-      throw new Error(`Customer with id ${convex_customer_id} not found`);
-    }
-
-    // SECURITY: Verify customer ownership
-    if (customer.created_by !== identity.email) {
-      throw new Error("Access denied: cannot sync data for another user's customer");
-    }
+    const { customer } = await ensureCustomerAccess(ctx, convex_customer_id, identity.email!, "write");
 
     // If convex_id provided, update existing record
     if (convex_id) {
@@ -315,7 +273,7 @@ export const syncChemicalUsage = mutation({
       if (!existingChemicalUsage) {
         throw new Error(`ChemicalUsage with convex_id ${convex_id} not found`);
       }
-      await ensureCustomerOwnedByUser(ctx, existingChemicalUsage.customer_id, identity.email!);
+      await ensureCustomerAccess(ctx, existingChemicalUsage.customer_id, identity.email!, "write");
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingChemicalUsage.updated_at || 0;
@@ -406,14 +364,7 @@ export const syncNote = mutation({
 
     // Verify customer exists if customer_id provided AND belongs to user (tenant isolation)
     if (convex_customer_id) {
-      const customer = await ctx.db.get(convex_customer_id);
-      if (!customer) {
-        throw new Error(`Customer with id ${convex_customer_id} not found`);
-      }
-      // SECURITY: Verify customer ownership
-      if (customer.created_by !== identity.email) {
-        throw new Error("Access denied: cannot sync notes for another user's customer");
-      }
+      await ensureCustomerAccess(ctx, convex_customer_id, identity.email!, "write");
     }
 
     // If convex_id provided, update existing record
@@ -422,11 +373,7 @@ export const syncNote = mutation({
       if (!existingNote) {
         throw new Error(`Note with convex_id ${convex_id} not found`);
       }
-      if (existingNote.customer_id) {
-        await ensureCustomerOwnedByUser(ctx, existingNote.customer_id, identity.email!);
-      } else if (existingNote.created_by && existingNote.created_by !== identity.email) {
-        throw new Error("Access denied: cannot update another user's note");
-      }
+      await ensureNoteAccess(ctx, convex_id, identity.email!, "write");
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingNote.updated_at || 0;
@@ -516,15 +463,7 @@ export const syncSaltCellLog = mutation({
     const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists AND belongs to authenticated user (tenant isolation)
-    const customer = await ctx.db.get(convex_customer_id);
-    if (!customer) {
-      throw new Error(`Customer with id ${convex_customer_id} not found`);
-    }
-
-    // SECURITY: Verify customer ownership
-    if (customer.created_by !== identity.email) {
-      throw new Error("Access denied: cannot sync data for another user's customer");
-    }
+    await ensureCustomerAccess(ctx, convex_customer_id, identity.email!, "write");
 
     // If convex_id provided, update existing record
     if (convex_id) {
@@ -532,7 +471,7 @@ export const syncSaltCellLog = mutation({
       if (!existingSaltCellLog) {
         throw new Error(`SaltCellLog with convex_id ${convex_id} not found`);
       }
-      await ensureCustomerOwnedByUser(ctx, existingSaltCellLog.customer_id, identity.email!);
+      await ensureCustomerAccess(ctx, existingSaltCellLog.customer_id, identity.email!, "write");
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingSaltCellLog.updated_at || 0;
@@ -634,9 +573,10 @@ export const batchSyncCustomers = mutation({
     const results = [];
 
     // Resolve business context so we can set business_id (matches customers.create behavior)
-    const business = await resolveBusinessContext(ctx, identity.email!);
-    const createdBy = business ? business.owner_email : identity.email!;
-    const businessId = business ? String(business._id) : undefined;
+    const access = await resolveBusinessAccess(ctx, identity.email!);
+    assertPermission(access, "operational:write");
+    const createdBy = access.ownerEmail || identity.email!;
+    const businessId = access.businessId ?? undefined;
 
     for (const customer of args.customers) {
       try {

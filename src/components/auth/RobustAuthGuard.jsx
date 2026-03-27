@@ -36,12 +36,54 @@ function isPublicPath(pathname) {
 
 // Auth loading timeout in milliseconds
 const AUTH_LOADING_TIMEOUT = 15000;
+const AUTH_RETURN_TO_SESSION_KEY = 'chemcheck_auth_return_to';
+
+function getStoredReturnTo() {
+  try {
+    return typeof sessionStorage === 'undefined' ? '' : (sessionStorage.getItem(AUTH_RETURN_TO_SESSION_KEY) || '');
+  } catch {
+    return '';
+  }
+}
+
+function setStoredReturnTo(path) {
+  try {
+    if (path && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(AUTH_RETURN_TO_SESSION_KEY, path);
+    }
+  } catch {
+    // Best effort only.
+  }
+}
+
+function clearStoredReturnTo() {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(AUTH_RETURN_TO_SESSION_KEY);
+    }
+  } catch {
+    // Best effort only.
+  }
+}
+
+function normalizeReturnTo(rawReturnTo) {
+  if (typeof rawReturnTo !== 'string' || !rawReturnTo.startsWith('/') || rawReturnTo.startsWith('//')) {
+    return '';
+  }
+
+  return rawReturnTo;
+}
 
 export function RobustAuthGuard({ children }) {
   const auth = useAuthContext();
   const navigate = useNavigate();
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const location = useLocation();
+  const storedReturnTo = getStoredReturnTo();
+  const returnTo = normalizeReturnTo(
+    typeof location.state?.returnTo === 'string' ? location.state.returnTo : storedReturnTo
+  );
+  const requestedPath = `${location.pathname}${location.search}`;
 
   // Check if current path is public
   const isPublicRoute = isPublicPath(location.pathname);
@@ -71,14 +113,14 @@ export function RobustAuthGuard({ children }) {
     if (!auth.isLoaded || !auth.isInitialized) return;
 
     const currentPath = location.pathname;
-    const returnTo = location.state?.returnTo;
 
     // Handle unauthenticated users
     if (!auth.isSignedIn) {
       if (!isPublicRoute) {
+        setStoredReturnTo(requestedPath);
         navigate('/login', {
           replace: true,
-          state: { returnTo: currentPath }
+          state: { returnTo: requestedPath }
         });
       }
       return;
@@ -96,9 +138,10 @@ export function RobustAuthGuard({ children }) {
 
       // If user is on login page and already signed in, redirect appropriately
       if (currentPath === '/login') {
-        if (auth.hasCompletedSetup) {
+        clearStoredReturnTo();
+        if (auth.authState === 'ready') {
           navigate(returnTo || '/', { replace: true });
-        } else {
+        } else if (auth.authState === 'setup_missing') {
           navigate('/setup', { replace: true });
         }
         return;
@@ -106,9 +149,10 @@ export function RobustAuthGuard({ children }) {
 
       // If user is on signup page and already signed in, redirect appropriately
       if (currentPath === '/signup') {
-        if (auth.hasCompletedSetup) {
+        clearStoredReturnTo();
+        if (auth.authState === 'ready') {
           navigate('/', { replace: true });
-        } else {
+        } else if (auth.authState === 'setup_missing') {
           navigate('/setup', { replace: true });
         }
         return;
@@ -116,13 +160,15 @@ export function RobustAuthGuard({ children }) {
 
       // If user hasn't completed setup and not on setup page, redirect to setup
       // But don't redirect from public routes
-      if (!auth.hasCompletedSetup && currentPath !== '/setup' && !isPublicRoute) {
+      if (auth.authState === 'setup_missing' && currentPath !== '/setup' && !isPublicRoute) {
+        clearStoredReturnTo();
         navigate('/setup', { replace: true });
         return;
       }
 
       // If user has completed setup but is on setup page, redirect to home
-      if (auth.hasCompletedSetup && currentPath === '/setup') {
+      if (auth.authState === 'ready' && currentPath === '/setup') {
+        clearStoredReturnTo();
         navigate('/', { replace: true });
         return;
       }
@@ -132,10 +178,14 @@ export function RobustAuthGuard({ children }) {
     auth.isInitialized,
     auth.isSignedIn,
     auth.hasCompletedSetup,
+    auth.authState,
     location.pathname,
+    location.search,
     location.state?.returnTo,
     navigate,
-    isPublicRoute
+    isPublicRoute,
+    requestedPath,
+    returnTo,
   ]);
 
   // Allow public routes immediately, without waiting for auth
@@ -153,7 +203,7 @@ export function RobustAuthGuard({ children }) {
   }
 
   // Show error if there's an auth error
-  if (auth.authError) {
+  if (auth.authError || auth.authState === 'error') {
     return <AuthErrorScreen error={auth.authError} onRetry={auth.clearAuthError} />;
   }
 

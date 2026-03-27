@@ -1,89 +1,13 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import {
+    assertPermission,
+    ensureCustomerAccess,
+    listAccessibleCustomers,
+    resolveAccessContextForEmail,
+} from "./authz";
 import { enforceRateLimit } from "./rateLimit";
 import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
-
-async function resolveBusinessContext(ctx: any, userEmail: string) {
-    const teamMember = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .first();
-
-    if (teamMember) {
-        const teamBusiness = await ctx.db.get(teamMember.business_id);
-        if (teamBusiness) return teamBusiness;
-    }
-
-    return await ctx.db
-        .query("businesses")
-        .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-        .first();
-}
-
-async function getActiveBusinessMemberEmails(
-    ctx: any,
-    businessId: any,
-    ownerEmail: string
-): Promise<Set<string>> {
-    const members = await ctx.db
-        .query("team_members")
-        .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .collect();
-
-    const emails = new Set<string>([ownerEmail]);
-    for (const member of members) {
-        if (member.user_email) {
-            emails.add(member.user_email);
-        }
-    }
-    return emails;
-}
-
-async function listAccessibleCustomers(ctx: any, userEmail: string) {
-    // Guard: if userEmail is undefined/empty (e.g. Clerk token missing email claim),
-    // throw a clear error instead of silently returning an empty list.
-    const normalizedEmail = String(userEmail || "").trim().toLowerCase();
-    if (!normalizedEmail) {
-        throw new Error("listAccessibleCustomers: userEmail is empty or undefined. Check that the Clerk JWT includes an email claim.");
-    }
-
-    const business = await resolveBusinessContext(ctx, userEmail);
-
-    if (business) {
-        const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-        const normalizedAllowedEmails = new Set(
-            [...allowedEmails]
-                .map((email) => String(email || "").trim().toLowerCase())
-                .filter(Boolean)
-        );
-        const businessId = String(business._id);
-
-        const allCustomers = await ctx.db.query("customers").collect();
-        return allCustomers.filter((customer: any) => {
-            const customerBusinessId = customer?.business_id ? String(customer.business_id) : "";
-            if (customerBusinessId && customerBusinessId === businessId) {
-                return true;
-            }
-
-            const createdBy = String(customer?.created_by || "").trim().toLowerCase();
-            return createdBy ? normalizedAllowedEmails.has(createdBy) : false;
-        });
-    }
-
-    const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
-    const allCustomers = await ctx.db.query("customers").collect();
-    return allCustomers.filter((customer: any) =>
-        String(customer?.created_by || "").trim().toLowerCase() === normalizedUserEmail
-    );
-}
-
-async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-    if (!customer) return false;
-    const customers = await listAccessibleCustomers(ctx, userEmail);
-    return customers.some((item: any) => String(item._id) === String(customer._id));
-}
 
 // Get all customers for the current user
 export const list = query({
@@ -155,15 +79,7 @@ export const get = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        const customer = await ctx.db.get(args.id);
-        if (!customer) throw new Error("Customer not found");
-
-        const accessibleCustomers = await listAccessibleCustomers(ctx, identity.email!);
-        const canAccess = accessibleCustomers.some((item: any) => String(item._id) === String(customer._id));
-        if (!canAccess) {
-            throw new Error("Access denied");
-        }
-
+        const { customer } = await ensureCustomerAccess(ctx, args.id, identity.email!, "read");
         return customer;
     },
 });
@@ -192,14 +108,13 @@ export const create = mutation({
         // SECURITY: Server-side validation and sanitization
         // This cannot be bypassed by attackers sending data directly to Convex
         const validatedData = validateCustomerCreate(args);
-        const business = await resolveBusinessContext(ctx, identity.email!);
-        const createdBy = business ? business.owner_email : identity.email!;
-        const businessId = business ? String(business._id) : undefined;
+        const access = await resolveAccessContextForEmail(ctx, identity.email!);
+        assertPermission(access, "operational:write");
 
         const customerId = await ctx.db.insert("customers", {
             ...validatedData,
-            created_by: createdBy,
-            business_id: businessId,
+            created_by: access.business ? access.ownerEmail : access.userEmail,
+            business_id: access.businessId ?? undefined,
         });
 
         return customerId;
@@ -237,11 +152,7 @@ export const update = mutation({
         await enforceRateLimit(ctx, identity.email!, 'customer.update');
 
         // Verify ownership (tenant isolation)
-        const customer = await ctx.db.get(args.id);
-        if (!customer) throw new Error("Customer not found");
-        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-            throw new Error("Access denied");
-        }
+        const { customer } = await ensureCustomerAccess(ctx, args.id, identity.email!, "write");
 
         const { id, report_settings, ...otherArgs } = args;
 
@@ -303,11 +214,7 @@ export const remove = mutation({
         await enforceRateLimit(ctx, identity.email!, 'customer.delete');
 
         // Verify ownership (tenant isolation)
-        const customer = await ctx.db.get(args.id);
-        if (!customer) throw new Error("Customer not found");
-        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-            throw new Error("Access denied");
-        }
+        await ensureCustomerAccess(ctx, args.id, identity.email!, "write");
 
         await ctx.db.delete(args.id);
     },
