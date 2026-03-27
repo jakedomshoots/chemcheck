@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { forwardRef } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
@@ -49,7 +50,11 @@ vi.mock('../components/clients/ClientListItem', () => ({
 vi.mock('@/components/ui/tabs', () => ({
     Tabs: ({ children }) => <div>{children}</div>,
     TabsList: ({ children }) => <div>{children}</div>,
-    TabsTrigger: forwardRef(({ children, onClick }, ref) => <button ref={ref} onClick={onClick}>{children}</button>),
+    TabsTrigger: (() => {
+        const MockTabsTrigger = forwardRef(({ children, onClick }, ref) => <button ref={ref} onClick={onClick}>{children}</button>);
+        MockTabsTrigger.displayName = 'TabsTrigger';
+        return MockTabsTrigger;
+    })(),
     TabsContent: ({ children }) => <div>{children}</div>
 }));
 

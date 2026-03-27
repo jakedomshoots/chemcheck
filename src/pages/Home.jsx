@@ -175,7 +175,7 @@ export default function Home() {
           try {
             const logDate = parseLocalDate(log.service_date);
             return logDate && logDate >= weekStart && logDate <= weekEnd;
-          } catch (e) {
+          } catch {
             return false;
           }
         });
@@ -189,7 +189,7 @@ export default function Home() {
           try {
             const logDate = parseLocalDate(log.service_date);
             return logDate && logDate >= lastWeekStart && logDate <= lastWeekEnd;
-          } catch (e) {
+          } catch {
             return false;
           }
         });
@@ -474,7 +474,7 @@ export default function Home() {
         <div className="mb-4">
           <div className="mb-1">
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
+              <h2 className="text-xl font-bold tracking-tight text-slate-900">Today&apos;s Route</h2>
               <p className="text-xs font-medium text-slate-600">
                 {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
               </p>
@@ -497,7 +497,7 @@ export default function Home() {
       <div className="mb-4">
         <div className="mb-1">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">Today&apos;s Route</h2>
             <p className="text-xs font-medium text-slate-600">
               {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
             </p>

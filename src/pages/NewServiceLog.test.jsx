@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+/* eslint-disable react/prop-types */
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import NewServiceLog from './NewServiceLog';
 import { BrowserRouter } from 'react-router-dom';

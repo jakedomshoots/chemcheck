@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { logLogin, logLogout } from '@/lib/auditLog';

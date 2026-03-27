@@ -84,7 +84,7 @@ export function SetupWizardPage() {
     }
 
     if (formData.businessPhone.trim()) {
-      const phoneRegex = /^[\d\s\-\(\)\+]+$/;
+      const phoneRegex = /^[\d\s()+-]+$/;
       if (!phoneRegex.test(formData.businessPhone.trim()) || formData.businessPhone.trim().length < 10) {
         setError('Please enter a valid phone number');
         return;
@@ -157,7 +157,7 @@ export function SetupWizardPage() {
             <Droplets className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900">Welcome to ChemCheck!</h1>
-          <p className="text-slate-600">Let's set up your business profile</p>
+          <p className="text-slate-600">Let&apos;s set up your business profile</p>
         </div>
 
         <Card className="p-6 shadow-xl">
@@ -323,7 +323,7 @@ export function SetupWizardPage() {
         {/* Help Text */}
         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-800 text-center">
-            Don't worry - you can change these settings anytime in your account preferences.
+            Don&apos;t worry - you can change these settings anytime in your account preferences.
           </p>
         </div>
       </div>

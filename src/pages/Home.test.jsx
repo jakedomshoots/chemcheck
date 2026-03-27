@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { format } from 'date-fns';
 import Home from './Home';

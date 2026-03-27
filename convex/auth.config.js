@@ -6,8 +6,9 @@ const productionDomain = "https://clerk.chemcheck.xyz";
 
 // Development Clerk domain - only included in non-production environments
 const developmentDomain = "https://game-sloth-45.clerk.accounts.dev";
+const defaultEnv = globalThis.process?.env ?? {};
 
-export function isProductionEnvironment(env = process.env) {
+export function isProductionEnvironment(env = defaultEnv) {
     const convexDeployEnv = env.CONVEX_DEPLOYMENT_ENV;
     const convexCloudUrl = env.CONVEX_CLOUD_URL;
     const nodeEnv = env.NODE_ENV;
@@ -29,7 +30,7 @@ export function isProductionEnvironment(env = process.env) {
  * SECURITY: This prevents tokens from the development Clerk instance
  * from being accepted in production, reducing attack surface.
  */
-export function buildProviders(env = process.env) {
+export function buildProviders(env = defaultEnv) {
     const providers = [
         {
             // Production Clerk domain - used for chemcheck.xyz

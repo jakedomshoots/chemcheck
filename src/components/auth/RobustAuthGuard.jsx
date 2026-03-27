@@ -1,7 +1,8 @@
+/* eslint-disable react/prop-types */
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthContext } from './ClerkAuthProvider';
-import { Droplets, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
+import { Droplets, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Routes that don't require authentication

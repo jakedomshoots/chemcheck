@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useAuth } from '@clerk/clerk-react';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
