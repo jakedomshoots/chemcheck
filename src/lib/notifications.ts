@@ -3,6 +3,7 @@
 
 import { monitoring } from './monitoring';
 import { userManager } from './userManager';
+import { APP_ROUTES } from '@/lib/routeConfig';
 
 export interface NotificationConfig {
   enabled: boolean;
@@ -132,14 +133,15 @@ class NotificationManager {
       notification.onclick = (event) => {
         event.preventDefault();
         window.focus();
-        
+
+        const customerId = options.data?.customerId;
         // Handle specific notification types
-        if (options.data?.type === 'service-reminder' && options.data?.customerId) {
+        if (options.data?.type === 'service-reminder' && customerId) {
           // Navigate to customer detail or service log
-          window.location.hash = `#/CustomerDetail?id=${options.data.customerId}`;
+          window.location.href = `${window.location.origin}${APP_ROUTES.CustomerDetail}?id=${encodeURIComponent(customerId)}`;
         } else if (options.data?.type === 'route-ready') {
           // Navigate to route optimizer
-          window.location.hash = '#/RouteOptimizer';
+          window.location.href = `${window.location.origin}${APP_ROUTES.RouteOptimizer}`;
         }
         
         notification.close();

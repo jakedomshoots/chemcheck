@@ -3,10 +3,40 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { useAuthContext } from './ClerkAuthProvider';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
+import { getCanonicalRoute } from '@/lib/routeConfig';
 
 const ClerkSignIn = lazy(() =>
   importWithRetry(() => import('@/components/auth/ClerkSignInBridge.jsx'), 'ClerkSignInBridge')
 );
+const AUTH_RETURN_TO_SESSION_KEY = 'chemcheck_auth_return_to';
+
+function getStoredReturnTo() {
+  try {
+    return typeof sessionStorage === 'undefined' ? '' : (sessionStorage.getItem(AUTH_RETURN_TO_SESSION_KEY) || '');
+  } catch {
+    return '';
+  }
+}
+
+function clearStoredReturnTo() {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(AUTH_RETURN_TO_SESSION_KEY);
+    }
+  } catch {
+    // Best effort only for navigation intent recovery.
+  }
+}
+
+function normalizeReturnTo(rawReturnTo = '/') {
+  if (typeof rawReturnTo !== 'string' || rawReturnTo.startsWith('//') || !rawReturnTo.startsWith('/')) {
+    return '/';
+  }
+
+  const [pathOnly, search = ''] = rawReturnTo.split('?');
+  const canonicalPath = getCanonicalRoute(pathOnly);
+  return `${canonicalPath}${search ? `?${search}` : ''}`;
+}
 
 export function RobustLoginPage() {
   const location = useLocation();
@@ -24,19 +54,8 @@ export function RobustLoginPage() {
                           location.pathname.includes('/login/sso-callback') ||
                           location.pathname.includes('/login/factor');
   
-  // Validate returnTo is a relative path to prevent open redirect
-  const rawReturnTo = location.state?.returnTo || '/';
-  const returnTo = (() => {
-    try {
-      // Only allow relative URLs (starting with /) 
-      if (typeof rawReturnTo === 'string' && rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')) {
-        return rawReturnTo;
-      }
-    } catch (e) {
-      // Invalid URL, use default
-    }
-    return '/';
-  })();
+  const storedReturnTo = getStoredReturnTo();
+  const returnTo = normalizeReturnTo(location.state?.returnTo || storedReturnTo || '/');
 
   // Wait a moment after Clerk loads to let OAuth state settle
   useEffect(() => {
@@ -52,6 +71,7 @@ export function RobustLoginPage() {
   // Redirect if user is already signed in
   useEffect(() => {
     if (isLoaded && isSignedIn && auth.isInitialized) {
+      clearStoredReturnTo();
       if (auth.hasCompletedSetup) {
         navigate(returnTo, { replace: true });
       } else {

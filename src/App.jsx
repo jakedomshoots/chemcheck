@@ -31,7 +31,7 @@ function App() {
         const { autoBackup } = backupMod;
         const { monitoring } = monitoringMod;
         const { initializeMigrations } = migrationMod;
-        const { registerServiceWorker } = serviceWorkerMod;
+        const { registerServiceWorker, cleanupServiceWorker } = serviceWorkerMod;
 
         const getAutoBackupPreference = () => {
           try {
@@ -63,10 +63,8 @@ function App() {
         if (unmounted) return;
         
         // Register service worker for PWA functionality
-        if (import.meta.env.PROD) {
-          await registerServiceWorker();
-          if (unmounted) return;
-        }
+        await registerServiceWorker();
+        if (unmounted) return;
         
         // Start auto-backup system based on saved user preference
         syncAutoBackupState();
@@ -82,6 +80,7 @@ function App() {
         teardown = () => {
           window.removeEventListener('sw-backup-request', handleBackupRequest);
           autoBackup.stop();
+          cleanupServiceWorker();
         };
       } catch (error) {
         console.error('App initialization failed:', error);

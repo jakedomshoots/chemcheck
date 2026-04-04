@@ -56,10 +56,17 @@ vi.mock('@/components/proof-of-service', () => ({
 
 // Mock proof-of-service lib
 vi.mock('@/lib/proof-of-service', () => ({
+    deleteUnlinkedPhotos: vi.fn().mockResolvedValue(undefined),
+    linkPhotosToServiceLog: vi.fn().mockResolvedValue(undefined),
+    getPhotos: vi.fn().mockResolvedValue([]),
     validateServiceCompletion: () => ({ isValid: true, errors: [] }),
     getValidationErrorMessage: () => '',
     hasAnyRequirements: () => false,
     getRequirementsSummary: () => []
+}));
+
+vi.mock('convex/react', () => ({
+    useQuery: () => null
 }));
 
 // Mock canvas-confetti

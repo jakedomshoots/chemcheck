@@ -1,6 +1,6 @@
 /**
  * SyncQueue manages the queue of records pending synchronization
- * Provides persistence to localStorage for crash recovery
+ * and keeps the queue persisted safely in localStorage.
  */
 
 export interface SyncQueueItem {
@@ -19,10 +19,13 @@ const MAX_RETRIES = 3;
 const MAX_QUEUE_SIZE = 500; // Prevent unbounded growth
 const QUEUE_WARNING_THRESHOLD = Math.floor(MAX_QUEUE_SIZE * 0.8);
 const BATCH_SIZE = 20; // Process this many items per sync cycle
+const PERSIST_ERROR_THROTTLE_MS = 15_000;
 
 export class SyncQueue {
   private queue: SyncQueueItem[] = [];
   private highWatermarkWarned = false;
+  private lastPersistErrorAt = 0;
+  private isPersisting = false;
 
   constructor() {
     this.loadFromStorage();
@@ -39,61 +42,47 @@ export class SyncQueue {
    * Add record to sync queue
    */
   enqueue(item: Omit<SyncQueueItem, 'retryCount' | 'priority'>): void {
-    const queueItem: SyncQueueItem = {
+    const queueItem: SyncQueueItem = this.normalizeQueueItem({
       ...item,
       retryCount: 0,
       priority: this.getPriority(item.table, item.operation),
-    };
+    });
 
-    // Remove existing item for same record if exists
-    this.queue = this.queue.filter(
-      existing => !(existing.table === item.table && existing.localId === item.localId)
+    const nextQueue = [...this.queue];
+    const existingIndex = nextQueue.findIndex(
+      entry => entry.table === queueItem.table && entry.localId === queueItem.localId
     );
 
-    // Add new item
-    this.queue.push(queueItem);
+    if (existingIndex >= 0) {
+      nextQueue[existingIndex] = queueItem;
+    } else {
+      nextQueue.push(queueItem);
+    }
 
-    // Sort by priority (lower number = higher priority)
-    this.queue.sort((a, b) => a.priority - b.priority);
+    this.queue = this.sanitizeQueue(nextQueue);
 
-    // Enforce queue size limit - remove oldest low-priority items if exceeded
+    // Enforce queue size limit - remove lowest priority items if exceeded
     if (this.queue.length > MAX_QUEUE_SIZE) {
       const overflow = this.queue.length - MAX_QUEUE_SIZE;
-      // Remove from end (lowest priority items)
       this.queue.splice(-overflow, overflow);
-      console.warn(`Sync queue overflow: removed ${overflow} low-priority items to maintain limit of ${MAX_QUEUE_SIZE}`);
+      console.warn(
+        `Sync queue overflow: removed ${overflow} low-priority items to maintain limit of ${MAX_QUEUE_SIZE}`
+      );
     }
 
-    if (this.queue.length >= QUEUE_WARNING_THRESHOLD) {
-      if (!this.highWatermarkWarned) {
-        console.warn(
-          `Sync queue is ${this.queue.length}/${MAX_QUEUE_SIZE} (${Math.round((this.queue.length / MAX_QUEUE_SIZE) * 100)}%).`
-        );
-        this.highWatermarkWarned = true;
-      }
-    } else {
-      this.highWatermarkWarned = false;
-    }
+    this.updateHighWatermarkState();
+    this.persistQueueState('enqueue');
 
-    try {
-      this.saveToStorage();
-      console.log(`Enqueued ${item.table}[${item.localId}] for ${item.operation}`);
-    } catch (error) {
-      console.error(`Failed to persist enqueue operation for ${item.table}[${item.localId}]:`, error);
-      // Continue execution - the item is still in memory queue
-    }
+    console.log(`Enqueued ${item.table}[${item.localId}] for ${item.operation}`);
   }
 
   /**
    * Get next item to sync (without removing from queue)
-   * Use getRetryableItems() + markSynced()/markFailed() for the primary workflow
    */
   peekNext(): SyncQueueItem | null {
     if (this.queue.length === 0) {
       return null;
     }
-
-    // Return highest priority item without removing
     return this.queue[0];
   }
 
@@ -122,20 +111,73 @@ export class SyncQueue {
   }
 
   /**
+   * Get items ready for retry (past their backoff period)
+   */
+  getRetryableItems(): SyncQueueItem[] {
+    const now = Date.now();
+
+    const retryable = this.queue.filter((item) => {
+      if (item.retryCount === 0) return true; // Never attempted
+      if (!item.lastAttempt) return true; // No last attempt recorded
+
+      // Exponential backoff: 1s, 2s, 4s
+      const backoffMs = Math.pow(2, item.retryCount - 1) * 1000;
+      return (now - item.lastAttempt) >= backoffMs;
+    });
+
+    return [...retryable].sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      return (a.lastAttempt || 0) - (b.lastAttempt || 0);
+    });
+  }
+
+  /**
+   * Remove all entries for a given record from queue
+   */
+  clearForItem(table: SyncQueueItem['table'], localId: number): boolean {
+    const nextQueue = this.queue.filter(
+      (item) => !(item.table === table && item.localId === localId)
+    );
+    if (nextQueue.length === this.queue.length) {
+      return false;
+    }
+
+    this.queue = this.sanitizeQueue(nextQueue);
+    this.updateHighWatermarkState();
+    this.persistQueueState('clearForItem');
+    return true;
+  }
+
+  /**
    * Mark item as synced (remove from queue)
    */
-  markSynced(table: string, localId: number): void {
-    this.queue = this.queue.filter(
+  markSynced(table: string, localId: number): boolean {
+    if (this.queue.length === 0) {
+      return false;
+    }
+
+    const nextQueue = this.queue.filter(
       item => !(item.table === table && item.localId === localId)
     );
 
+    if (nextQueue.length === this.queue.length) {
+      return false;
+    }
+
+    this.queue = this.sanitizeQueue(nextQueue);
+    this.updateHighWatermarkState();
+
     try {
-      this.saveToStorage();
+      this.persistQueueState('markSynced');
       console.log(`Marked ${table}[${localId}] as synced`);
     } catch (error) {
       console.error(`Failed to persist sync completion for ${table}[${localId}]:`, error);
       // Continue execution - the item is still removed from memory queue
     }
+
+    return true;
   }
 
   /**
@@ -152,7 +194,7 @@ export class SyncQueue {
     }
 
     const item = this.queue[itemIndex];
-    item.retryCount++;
+    item.retryCount += 1;
     item.lastAttempt = Date.now();
     item.error = error;
 
@@ -160,37 +202,31 @@ export class SyncQueue {
       // Remove from queue after max retries
       this.queue.splice(itemIndex, 1);
       console.log(`Removed ${table}[${localId}] from queue after ${MAX_RETRIES} failed attempts`);
-    } else {
+    }
+    else {
       // Keep in queue for retry with exponential backoff
       console.log(`Marked ${table}[${localId}] as failed (attempt ${item.retryCount}/${MAX_RETRIES})`);
     }
 
-    this.saveToStorage();
-  }
-
-  /**
-   * Get items ready for retry (past their backoff period)
-   */
-  getRetryableItems(): SyncQueueItem[] {
-    const now = Date.now();
-
-    return this.queue.filter(item => {
-      if (item.retryCount === 0) return true; // Never attempted
-      if (!item.lastAttempt) return true; // No last attempt recorded
-
-      // Exponential backoff: 1s, 2s, 4s
-      const backoffMs = Math.pow(2, item.retryCount - 1) * 1000;
-      return (now - item.lastAttempt) >= backoffMs;
-    });
+    this.queue = this.sanitizeQueue(this.queue);
+    this.updateHighWatermarkState();
+    this.persistQueueState('markFailed');
   }
 
   /**
    * Clear all items from queue
    */
-  clear(): void {
+  clear(): boolean {
+    if (this.queue.length === 0) {
+      this.highWatermarkWarned = false;
+      return false;
+    }
+
     this.queue = [];
-    this.saveToStorage();
+    this.highWatermarkWarned = false;
+    this.persistQueueState('clear');
     console.log('Sync queue cleared');
+    return true;
   }
 
   /**
@@ -234,43 +270,138 @@ export class SyncQueue {
   }
 
   private loadFromStorage(): void {
+    if (!this.isStorageAvailable()) return;
+
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // Validate structure
-        if (Array.isArray(parsed) && parsed.every(item =>
-          item.table && typeof item.localId === 'number' && item.operation &&
-          typeof item.priority === 'number' && typeof item.retryCount === 'number' &&
-          item.data && typeof item.data === 'object'
-        )) {
-          this.queue = parsed;
-          console.log(`Loaded ${this.queue.length} items from sync queue storage`);
-        } else {
-          console.warn('Invalid sync queue data in storage, resetting');
-          this.queue = [];
-        }
+      if (!stored) {
+        return;
       }
+
+      const parsed = JSON.parse(stored);
+      this.queue = this.sanitizeQueue(parsed, false);
+      this.updateHighWatermarkState();
+      console.log(`Loaded ${this.queue.length} items from sync queue storage`);
     } catch (error) {
       console.error('Failed to load sync queue from storage:', error);
       this.queue = [];
     }
   }
 
-  private saveToStorage(): void {
+  private isStorageAvailable(): boolean {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.queue));
-    } catch (error) {
-      console.error('Failed to save sync queue to storage:', error);
-
-      // Handle quota exceeded error specifically
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('LocalStorage quota exceeded. Consider clearing old data or reducing queue size.');
-        // Could implement queue size limits or cleanup here
-      }
-
-      // Notify callers of save failure by throwing
-      throw new Error('Failed to persist sync queue: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      return typeof window !== 'undefined' && !!window.localStorage;
+    } catch {
+      return false;
     }
+  }
+
+  private sanitizeQueue(items: unknown, log = true): SyncQueueItem[] {
+    if (!Array.isArray(items)) {
+      if (log) {
+        console.warn('Invalid sync queue data in storage, resetting');
+      }
+      return [];
+    }
+
+    const valid = items.filter(this.isValidQueueItem).map((item) => this.normalizeQueueItem(item));
+    const deduped: SyncQueueItem[] = [];
+    const seen = new Set<string>();
+
+    for (const item of valid) {
+      const key = `${item.table}:${item.localId}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      deduped.push(item);
+    }
+
+    const sorted = deduped.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      return (a.lastAttempt || 0) - (b.lastAttempt || 0);
+    });
+
+    if (sorted.length !== valid.length && log) {
+      console.warn(`Sync queue stored with duplicate/invalid records. Loaded ${sorted.length}/${valid.length} unique items.`);
+    }
+
+    if (sorted.length > MAX_QUEUE_SIZE) {
+      sorted.splice(MAX_QUEUE_SIZE);
+      if (log) {
+        console.warn(`Sync queue contains more than ${MAX_QUEUE_SIZE} items. Truncated oldest entries.`);
+      }
+    }
+
+    return sorted;
+  }
+
+  private normalizeQueueItem(item: SyncQueueItem): SyncQueueItem {
+    return {
+      ...item,
+      retryCount: Number.isFinite(item.retryCount) ? Math.max(0, item.retryCount) : 0,
+      priority: Number.isFinite(item.priority) ? item.priority : this.getPriority(item.table, item.operation),
+      lastAttempt: item.lastAttempt && Number.isFinite(item.lastAttempt) ? item.lastAttempt : undefined,
+      error: typeof item.error === 'string' ? item.error : undefined,
+    };
+  }
+
+  private updateHighWatermarkState(): void {
+    if (this.queue.length >= QUEUE_WARNING_THRESHOLD) {
+      if (!this.highWatermarkWarned) {
+        console.warn(
+          `Sync queue is ${this.queue.length}/${MAX_QUEUE_SIZE} (${Math.round((this.queue.length / MAX_QUEUE_SIZE) * 100)}%).`
+        );
+        this.highWatermarkWarned = true;
+      }
+    } else {
+      this.highWatermarkWarned = false;
+    }
+  }
+
+  private saveToStorage(): void {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.queue));
+  }
+
+  private shouldThrottlePersistError(now: number): boolean {
+    if (this.lastPersistErrorAt && (now - this.lastPersistErrorAt) < PERSIST_ERROR_THROTTLE_MS) {
+      return true;
+    }
+
+    this.lastPersistErrorAt = now;
+    return false;
+  }
+
+  private persistQueueState(action: string): void {
+    if (!this.isStorageAvailable()) return;
+
+    if (this.isPersisting) return;
+    this.isPersisting = true;
+
+    try {
+      this.saveToStorage();
+    } catch (error) {
+      const now = Date.now();
+      if (!this.shouldThrottlePersistError(now)) {
+        console.error(`Sync queue persist failed during ${action}:`, error);
+      }
+      // Keep queue in memory and continue operation
+    } finally {
+      this.isPersisting = false;
+    }
+  }
+
+  private isValidQueueItem(item: unknown): item is SyncQueueItem {
+    return !!item &&
+      typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).table === 'string' &&
+      typeof (item as Record<string, unknown>).localId === 'number' &&
+      typeof (item as Record<string, unknown>).operation === 'string' &&
+      typeof (item as Record<string, unknown>).priority === 'number' &&
+      typeof (item as Record<string, unknown>).retryCount === 'number' &&
+      (item as Record<string, unknown>).data !== undefined &&
+      typeof (item as Record<string, unknown>).data === 'object';
   }
 }

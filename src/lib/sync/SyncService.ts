@@ -4,6 +4,7 @@ import { db } from '@/db/chemcheck-db';
 import { api } from '../../../convex/_generated/api';
 import { SyncQueue, SyncQueueItem } from './SyncQueue';
 import { ConflictResolver } from './ConflictResolver';
+import { monitoring } from '@/lib/monitoring';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
@@ -31,22 +32,23 @@ export class SyncService {
   private statusCallbacks: ((status: SyncStatus) => void)[] = [];
   private isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
   private isInitialized = false;
+  private isConnectivityListening = false;
   private onlineHandler: (() => void) | null = null;
   private offlineHandler: (() => void) | null = null;
   private syncQueue: SyncQueue;
   private conflictResolver: ConflictResolver;
+  private isSyncCycleRunning = false;
+  private lastSyncStartedAt = 0;
+  private readonly MAX_RETRIES = 3;
+  private readonly MAX_CONFLICT_RETRIES = 2;
+  private readonly AUTO_SYNC_INTERVAL_MS = 30_000;
 
   constructor() {
     this.syncQueue = new SyncQueue();
     this.conflictResolver = new ConflictResolver();
 
     // Listen for online/offline events (SSR safe)
-    if (typeof window !== 'undefined') {
-      this.onlineHandler = this.handleOnline.bind(this);
-      this.offlineHandler = this.handleOffline.bind(this);
-      window.addEventListener('online', this.onlineHandler);
-      window.addEventListener('offline', this.offlineHandler);
-    }
+    this.registerConnectivityListeners();
   }
 
   /**
@@ -65,6 +67,8 @@ export class SyncService {
 
     this.convexClient = convexClient;
     this.isInitialized = true;
+    this.setStatus('idle');
+    this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
     // Register sync service with database for automatic sync triggers
     // Use try-catch to handle test environments where db might be mocked
@@ -95,10 +99,19 @@ export class SyncService {
       return;
     }
 
+    if (!this.convexClient) {
+      console.warn('Cannot start auto-sync: Convex client missing');
+      return;
+    }
+
     // Don't start auto-sync if offline
     if (!this.isOnline) {
       console.log('Cannot start auto-sync: device is offline');
       return;
+    }
+
+    if (this.currentStatus === 'error') {
+      this.setStatus('idle');
     }
 
     // Prevent duplicate intervals
@@ -110,11 +123,12 @@ export class SyncService {
     // Sync every 30 seconds when online
     this.autoSyncInterval = setInterval(() => {
       if (this.isOnline && this.convexClient) {
-        this.syncPendingRecords().catch(error => {
+        this.syncPendingRecords('auto').catch(error => {
           console.error('Auto-sync failed:', error);
+          this.setStatus('error');
         });
       }
-    }, 30000);
+    }, this.AUTO_SYNC_INTERVAL_MS);
 
     console.log('Auto-sync started');
   }
@@ -145,15 +159,9 @@ export class SyncService {
    */
   destroy(): void {
     this.cleanup();
+    this.unregisterConnectivityListeners();
 
     // Remove event listeners
-    if (typeof window !== 'undefined' && this.onlineHandler && this.offlineHandler) {
-      window.removeEventListener('online', this.onlineHandler);
-      window.removeEventListener('offline', this.offlineHandler);
-      this.onlineHandler = null;
-      this.offlineHandler = null;
-    }
-
     // Clear all callbacks
     this.statusCallbacks = [];
     console.log('SyncService destroyed');
@@ -171,16 +179,19 @@ export class SyncService {
       throw new Error('Cannot sync while offline');
     }
 
-    this.setStatus('syncing');
+    return this.syncPendingRecords('manual');
+  }
 
-    try {
-      const result = await this.syncPendingRecords();
-      this.setStatus('idle');
-      return result;
-    } catch (error) {
-      this.setStatus('error');
-      throw error;
-    }
+  private recordQueueDepth(phase: 'cycle_start' | 'before_batch' | 'after_batch', trigger: 'manual' | 'auto', extra?: Record<string, unknown>): void {
+    const queueStatus = this.getQueueStatus();
+    monitoring.recordMetric('sync_queue_depth', queueStatus.pending, {
+      phase,
+      trigger,
+      capacity: queueStatus.capacity.max,
+      warningThreshold: queueStatus.capacity.warningThreshold,
+      usagePercent: queueStatus.capacity.usagePercent,
+      ...extra,
+    });
   }
 
   /**
@@ -251,6 +262,11 @@ export class SyncService {
    * Subscribe to sync status changes
    */
   onSyncStatusChange(callback: (status: SyncStatus) => void): () => void {
+    if (this.statusCallbacks.includes(callback)) {
+      const existingIndex = this.statusCallbacks.indexOf(callback);
+      this.statusCallbacks.splice(existingIndex, 1);
+    }
+
     this.statusCallbacks.push(callback);
 
     // Return unsubscribe function
@@ -374,9 +390,12 @@ export class SyncService {
     const existingItem = this.syncQueue.findItem(table as SyncQueueItem['table'], localId);
     if (existingItem) {
       // Update existing item with latest data and operation
-      existingItem.operation = operation;
-      existingItem.data = data;
-      existingItem.lastAttempt = undefined; // Reset retry timing
+      this.syncQueue.enqueue({
+        table: table as SyncQueueItem['table'],
+        localId,
+        operation,
+        data,
+      });
       return;
     }
 
@@ -421,14 +440,20 @@ export class SyncService {
     const pending = await table.where('sync_status').equals('pending').toArray();
 
     // Legacy records may have no sync_status set yet.
-    let legacyWithoutStatus: any[] = [];
+    // Avoid querying equals(undefined), which Dexie rejects with "Invalid key provided".
+    let legacyPending: any[] = [];
     try {
-      legacyWithoutStatus = await table.where('sync_status').equals(undefined).toArray();
+      if (typeof table.toCollection === 'function') {
+        const allRecords = await table.toCollection().toArray();
+        legacyPending = allRecords.filter(
+          (record: any) =>
+            typeof record?.sync_status === 'undefined' && this.isPendingRecord(record)
+        );
+      }
     } catch {
-      legacyWithoutStatus = [];
+      legacyPending = [];
     }
 
-    const legacyPending = legacyWithoutStatus.filter((record) => this.isPendingRecord(record));
     return [...pending, ...legacyPending];
   }
 
@@ -436,13 +461,50 @@ export class SyncService {
   // Private Methods
   // ============================================
 
-  private async syncPendingRecords(): Promise<SyncResult> {
+  private async syncPendingRecords(trigger: 'manual' | 'auto' = 'auto'): Promise<SyncResult> {
+    if (!this.convexClient) {
+      return {
+        success: false,
+        error: 'Cannot sync while sync service is uninitialized',
+        syncedCount: 0,
+        failedCount: 0,
+      };
+    }
+
+    if (!this.isOnline) {
+      this.setStatus('offline');
+      return {
+        success: false,
+        error: 'Cannot sync while offline',
+        syncedCount: 0,
+        failedCount: 0,
+      };
+    }
+
+    if (this.isSyncCycleRunning) {
+      return {
+        success: false,
+        error: 'Sync already in progress',
+        syncedCount: 0,
+        failedCount: 0,
+      };
+    }
+
+    this.isSyncCycleRunning = true;
+    this.lastSyncStartedAt = performance.now();
+    this.setStatus('syncing');
+    this.recordQueueDepth('cycle_start', trigger, { status: this.currentStatus });
+    monitoring.recordMetric('sync_cycle_started', this.lastSyncStartedAt, { trigger });
+
     let syncedCount = 0;
     let failedCount = 0;
 
     try {
+      this.recordQueueDepth('before_batch', trigger);
+
       // Get retryable items from queue (respects exponential backoff)
       const retryableItems = this.syncQueue.getRetryableItems();
+      const batchSize = this.syncQueue.getBatchSize();
 
       if (retryableItems.length === 0) {
         // No items ready for retry, check database for new pending records
@@ -506,7 +568,8 @@ export class SyncService {
         const updatedRetryableItems = this.syncQueue.getRetryableItems();
 
         // Process items with priority order (customers first)
-        for (const item of updatedRetryableItems) {
+        const batchItems = updatedRetryableItems.slice(0, batchSize);
+        for (const item of batchItems) {
           const success = await this.syncQueueItem(item);
           if (success) {
             syncedCount++;
@@ -517,7 +580,8 @@ export class SyncService {
         }
       } else {
         // Process retryable items
-        for (const item of retryableItems) {
+        const batchItems = retryableItems.slice(0, batchSize);
+        for (const item of batchItems) {
           const success = await this.syncQueueItem(item);
           if (success) {
             syncedCount++;
@@ -528,12 +592,42 @@ export class SyncService {
         }
       }
 
-      return {
+      const result: SyncResult = {
         success: failedCount === 0,
         syncedCount,
         failedCount,
       };
+
+      this.recordQueueDepth('after_batch', trigger, {
+        success: result.success,
+        syncedCount,
+        failedCount,
+      });
+
+      monitoring.recordMetric('sync_cycle_complete', performance.now() - this.lastSyncStartedAt, {
+        trigger,
+        synced: syncedCount,
+        failed: failedCount,
+      });
+
+      if (!result.success) {
+        monitoring.recordMetric('sync_cycle_partial', 1, {
+          trigger,
+          synced: syncedCount,
+          failed: failedCount,
+        });
+        this.setStatus('error');
+      } else {
+        this.setStatus('idle');
+      }
+
+      return result;
     } catch (error) {
+      monitoring.recordMetric('sync_cycle_failed', performance.now() - this.lastSyncStartedAt, {
+        trigger,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      this.setStatus('error');
       console.error('Error during sync:', error);
       return {
         success: false,
@@ -541,6 +635,8 @@ export class SyncService {
         syncedCount,
         failedCount: failedCount + 1,
       };
+    } finally {
+      this.isSyncCycleRunning = false;
     }
   }
 
@@ -580,6 +676,12 @@ export class SyncService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Failed to sync queue item ${item.table}[${item.localId}]:`, errorMessage);
+      monitoring.recordMetric('sync_queue_item_error', 1, {
+        table: item.table,
+        localId: item.localId,
+        phase: 'syncQueueItem',
+        error: errorMessage,
+      });
 
       // Mark as failed in queue (handles retry logic with exponential backoff)
       this.syncQueue.markFailed(item.table, item.localId, errorMessage);
@@ -591,11 +693,11 @@ export class SyncService {
   private async syncSingleRecord(table: string, record: any, conflictRetryCount = 0): Promise<boolean> {
     if (!this.convexClient) return false;
 
-    const MAX_RETRIES = 3;
-    const MAX_CONFLICT_RETRIES = 2;
     let retryCount = 0;
+    const maxRetries = this.MAX_RETRIES;
+    const maxConflictRetries = this.MAX_CONFLICT_RETRIES;
 
-    while (retryCount < MAX_RETRIES) {
+    while (retryCount < maxRetries) {
       try {
         const localUpdatedAt = this.normalizeLocalUpdatedAt(record.local_updated_at);
         let result: any;
@@ -845,6 +947,13 @@ export class SyncService {
         } else if (result.operation === 'conflict') {
           // Handle conflict using ConflictResolver
           // console.warn(`Conflict detected for ${table}[${record.id}]:`, result.conflict);
+          monitoring.recordMetric('sync_conflict_detected', 1, {
+            table,
+            localId: record.id,
+            conflictRetryCount,
+            operation: result.operation,
+            phase: 'sync_cycle',
+          });
 
           // Build remote record from conflict data
           const remoteRecord = result.conflict?.remote_data ? {
@@ -874,13 +983,19 @@ export class SyncService {
             if (localWins) {
               // Local wins - update local record and retry sync to push local changes
               // But first check if we've exceeded conflict retry limit
-              if (conflictRetryCount >= MAX_CONFLICT_RETRIES) {
-                console.error(`Max conflict retries (${MAX_CONFLICT_RETRIES}) exceeded for ${table}[${record.id}]. Marking as error.`);
+              if (conflictRetryCount >= maxConflictRetries) {
+                console.error(`Max conflict retries (${maxConflictRetries}) exceeded for ${table}[${record.id}]. Marking as error.`);
+                monitoring.recordMetric('sync_conflict_exhausted', 1, {
+                  table,
+                  localId: record.id,
+                  conflictRetryCount,
+                  maxConflictRetries,
+                });
 
                 const errorData = {
                   ...resolution.resolved,
                   sync_status: 'error' as const,
-                  sync_error: `Conflict resolution failed after ${MAX_CONFLICT_RETRIES} attempts. Local changes preserved but not synced.`,
+                sync_error: `Conflict resolution failed after ${maxConflictRetries} attempts. Local changes preserved but not synced.`,
                 };
 
                 switch (table) {
@@ -907,7 +1022,7 @@ export class SyncService {
               const resolvedData = {
                 ...resolution.resolved,
                 sync_status: 'pending' as const,
-                sync_error: `Conflict resolved: local version wins. ${resolution.backupCreated ? 'Remote data backed up.' : ''} Retrying sync (attempt ${conflictRetryCount + 1}/${MAX_CONFLICT_RETRIES})...`,
+                sync_error: `Conflict resolved: local version wins. ${resolution.backupCreated ? 'Remote data backed up.' : ''} Retrying sync (attempt ${conflictRetryCount + 1}/${maxConflictRetries})...`,
               };
 
               switch (table) {
@@ -930,6 +1045,13 @@ export class SyncService {
 
               // Add exponential backoff delay before retry to give remote time to settle
               const backoffMs = Math.pow(2, conflictRetryCount) * 500; // 500ms, 1s, 2s
+              monitoring.recordMetric('sync_conflict_retry', 1, {
+                table,
+                localId: record.id,
+                retryAttempt: conflictRetryCount + 1,
+                maxConflictRetries,
+                backoffMs,
+              });
               if (backoffMs > 0) {
                 console.log(`Waiting ${backoffMs}ms before conflict retry for ${table}[${record.id}]`);
                 await new Promise(resolve => setTimeout(resolve, backoffMs));
@@ -965,6 +1087,11 @@ export class SyncService {
               }
 
               console.log(`Conflict resolved for ${table}[${record.id}]: remote version accepted${resolution.backupCreated ? ', local changes backed up' : ''}`);
+              monitoring.recordMetric('sync_conflict_remote_wins', 1, {
+                table,
+                localId: record.id,
+                remoteTimestamp: remoteTime,
+              });
               return true; // No retry needed - we accepted remote version
             }
           } catch (updateError) {
@@ -976,6 +1103,11 @@ export class SyncService {
         }
       } catch (error) {
         retryCount++;
+        if (this.isAuthOrPermissionError(error)) {
+          this.setStatus('error');
+          await this.markRecordAuthError(table, record, error);
+          return false;
+        }
 
         // Check if it's a network error that should be retried
         const isNetworkError = error instanceof Error && (
@@ -985,10 +1117,10 @@ export class SyncService {
           error.message.includes('connection')
         );
 
-        if (isNetworkError && retryCount < MAX_RETRIES) {
+        if (isNetworkError && retryCount < maxRetries) {
           // Exponential backoff: 1s, 2s, 4s
           const backoffMs = Math.pow(2, retryCount - 1) * 1000;
-          console.log(`Retry ${retryCount}/${MAX_RETRIES} for ${table}[${record.id}] after ${backoffMs}ms`);
+          console.log(`Retry ${retryCount}/${maxRetries} for ${table}[${record.id}] after ${backoffMs}ms`);
 
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue; // Retry
@@ -1032,6 +1164,38 @@ export class SyncService {
     return false;
   }
 
+  private async markRecordAuthError(table: string, record: any, error: unknown): Promise<void> {
+    const message = error instanceof Error ? error.message : 'Authentication failed';
+    const errorData = {
+      sync_status: 'error' as const,
+      sync_error: message,
+    };
+
+    try {
+      switch (table) {
+        case 'customers':
+          await db.customers.update(record.id, errorData);
+          break;
+        case 'serviceLogs':
+          await db.serviceLogs.update(record.id, errorData);
+          break;
+        case 'chemicalUsage':
+          await db.chemicalUsage.update(record.id, errorData);
+          break;
+        case 'notes':
+          await db.notes.update(record.id, errorData);
+          break;
+        case 'saltCellLogs':
+          await db.saltCellLogs.update(record.id, errorData);
+          break;
+        default:
+          break;
+      }
+    } catch (updateError) {
+      console.error('Failed to persist auth-related sync error:', updateError);
+    }
+  }
+
   private setStatus(status: SyncStatus): void {
     if (this.currentStatus !== status) {
       this.currentStatus = status;
@@ -1040,18 +1204,21 @@ export class SyncService {
   }
 
   private handleOnline(): void {
+    if (this.isOnline) {
+      return;
+    }
+
     this.isOnline = true;
-    this.setStatus('idle'); // Clear offline status
+    monitoring.recordMetric('network_online', performance.now());
+    this.setStatus(this.currentStatus === 'error' ? this.currentStatus : 'idle');
     console.log('Device came online - resuming sync');
 
-    // Restart auto-sync if it was running before going offline
     if (this.isInitialized && !this.autoSyncInterval) {
       this.startAutoSync();
     }
 
-    // Trigger immediate sync when coming online if initialized
     if (this.convexClient && this.isInitialized) {
-      this.syncPendingRecords().catch(error => {
+      this.syncPendingRecords('auto').catch((error) => {
         console.error('Error syncing after coming online:', error);
         this.setStatus('error');
       });
@@ -1059,16 +1226,63 @@ export class SyncService {
   }
 
   private handleOffline(): void {
+    if (!this.isOnline) {
+      return;
+    }
+
     this.isOnline = false;
+    monitoring.recordMetric('network_offline', performance.now());
     this.setStatus('offline');
     console.log('Device went offline - pausing sync');
 
-    // Stop auto-sync when offline to prevent failed attempts
     if (this.autoSyncInterval) {
       clearInterval(this.autoSyncInterval);
       this.autoSyncInterval = null;
       console.log('Auto-sync paused due to offline status');
     }
+
+    if (this.currentStatus !== 'error') {
+      this.setStatus('offline');
+    }
+  }
+
+  private isAuthOrPermissionError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('permission') ||
+      message.includes('forbidden') ||
+      message.includes('unauthorized') ||
+      message.includes('unauthenticated') ||
+      message.includes('auth') ||
+      message.includes('token') ||
+      message.includes('session')
+    );
+  }
+
+  private registerConnectivityListeners(): void {
+    if (this.isConnectivityListening || typeof window === 'undefined') return;
+
+    this.onlineHandler = this.handleOnline.bind(this);
+    this.offlineHandler = this.handleOffline.bind(this);
+
+    window.addEventListener('online', this.onlineHandler);
+    window.addEventListener('offline', this.offlineHandler);
+    this.isConnectivityListening = true;
+  }
+
+  private unregisterConnectivityListeners(): void {
+    if (!this.isConnectivityListening || typeof window === 'undefined') return;
+
+    if (this.onlineHandler && this.offlineHandler) {
+      window.removeEventListener('online', this.onlineHandler);
+      window.removeEventListener('offline', this.offlineHandler);
+      this.onlineHandler = null;
+      this.offlineHandler = null;
+    }
+
+    this.isConnectivityListening = false;
   }
 }
 

@@ -6,6 +6,7 @@ import { importWithRetry } from '@/lib/chunkErrorRecovery';
 import { getDefaultWorkOrdersSectionFromStorage } from '@/lib/workOrdersNavigation';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
 import { useSyncInitialization } from '@/hooks/useSyncInitialization';
+import { APP_ROUTES, ROUTE_ALIAS_REDIRECTS, SYSTEM_ROUTES, getCanonicalPageName } from '@/lib/routeConfig';
 
 const Home = lazy(() => importWithRetry(() => import('./Home'), 'Home'));
 const Clients = lazy(() => importWithRetry(() => import('./Clients'), 'Clients'));
@@ -27,6 +28,12 @@ const BillingDashboard = lazy(() =>
     'BillingDashboard'
   )
 );
+const NotFoundPage = lazy(() =>
+  importWithRetry(() => import('./NotFoundPage').then((m) => ({ default: m.NotFoundPage })), 'NotFoundPage')
+);
+const AccessDeniedPage = lazy(() =>
+  importWithRetry(() => import('./AccessDeniedPage').then((m) => ({ default: m.AccessDeniedPage })), 'AccessDeniedPage')
+);
 
 function PageLoader() {
   return (
@@ -39,48 +46,41 @@ function PageLoader() {
 function LegacyInvoicePayRedirect() {
   const { invoiceId } = useParams();
   const encodedId = invoiceId ? encodeURIComponent(invoiceId) : "";
-  return <Navigate to={`/workorders/invoices${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
+  return <Navigate to={`${APP_ROUTES.WorkOrders}/invoices${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
 }
 
 function WorkOrdersRootRedirect() {
   const defaultSection = getDefaultWorkOrdersSectionFromStorage();
-  return <Navigate to={`/workorders/${defaultSection}`} replace />;
+  return <Navigate to={`${APP_ROUTES.WorkOrders}/${defaultSection}`} replace />;
 }
 
-const PAGES = {
-  Home,
-  Clients,
-  NewClient,
-  NewServiceLog,
-  CustomerDetail,
-  WeeklyReport,
-  RouteOptimizer,
-  EditClient,
-  ChemicalUsage,
-  NewChemicalUsage,
-  Notes,
-  Settings,
-  PoolSchool,
-  WorkOrders,
-};
+const ROUTES = [
+  { path: APP_ROUTES.Home, element: <Home /> },
+  { path: APP_ROUTES.Clients, element: <Clients /> },
+  { path: APP_ROUTES.NewClient, element: <NewClient /> },
+  { path: APP_ROUTES.NewServiceLog, element: <NewServiceLog /> },
+  { path: APP_ROUTES.CustomerDetail, element: <CustomerDetail /> },
+  { path: APP_ROUTES.WeeklyReport, element: <WeeklyReport /> },
+  { path: APP_ROUTES.RouteOptimizer, element: <RouteOptimizer /> },
+  { path: APP_ROUTES.EditClient, element: <EditClient /> },
+  { path: APP_ROUTES.ChemicalUsage, element: <ChemicalUsage /> },
+  { path: APP_ROUTES.NewChemicalUsage, element: <NewChemicalUsage /> },
+  { path: APP_ROUTES.Notes, element: <Notes /> },
+  { path: APP_ROUTES.Settings, element: <Settings /> },
+  { path: APP_ROUTES.PoolSchool, element: <PoolSchool /> },
+  { path: APP_ROUTES.Billing, element: <BillingDashboard /> },
+  { path: APP_ROUTES.WorkOrders, element: <WorkOrdersRootRedirect /> },
+];
+
+const DYNAMIC_WORKORDERS_ROUTE = `${APP_ROUTES.WorkOrders}/:section`;
 
 function getCurrentPage(url) {
-  const normalized = url.toLowerCase();
-  if (normalized.startsWith('/workorders')) return 'WorkOrders';
-  if (normalized.startsWith('/routeoptimizer')) return 'RouteOptimizer';
-
-  let normalizedUrl = url;
-  if (normalizedUrl.endsWith('/')) {
-    normalizedUrl = normalizedUrl.slice(0, -1);
+  const canonicalPage = getCanonicalPageName(url);
+  if (canonicalPage === 'WorkOrders') {
+    return 'WorkOrders';
   }
 
-  let urlLastPart = normalizedUrl.split('/').pop() || '';
-  if (urlLastPart.includes('?')) {
-    urlLastPart = urlLastPart.split('?')[0];
-  }
-
-  const pageName = Object.keys(PAGES).find((page) => page.toLowerCase() === urlLastPart.toLowerCase());
-  return pageName || Object.keys(PAGES)[0];
+  return canonicalPage || 'Home';
 }
 
 export default function ProtectedAppRoutes() {
@@ -92,30 +92,23 @@ export default function ProtectedAppRoutes() {
   return (
     <Layout currentPageName={currentPage}>
       <Suspense fallback={<PageLoader />}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/Home" element={<Home />} />
-          <Route path="/Clients" element={<Clients />} />
-          <Route path="/NewClient" element={<NewClient />} />
-          <Route path="/NewServiceLog" element={<NewServiceLog />} />
-          <Route path="/CustomerDetail" element={<CustomerDetail />} />
-          <Route path="/History" element={<Navigate to="/clients" replace />} />
-          <Route path="/history" element={<Navigate to="/clients" replace />} />
-          <Route path="/WeeklyReport" element={<WeeklyReport />} />
-          <Route path="/RouteOptimizer" element={<RouteOptimizer />} />
-          <Route path="/EditClient" element={<EditClient />} />
-          <Route path="/ChemicalUsage" element={<ChemicalUsage />} />
-          <Route path="/NewChemicalUsage" element={<NewChemicalUsage />} />
-          <Route path="/Notes" element={<Notes />} />
-          <Route path="/Settings" element={<Settings />} />
-          <Route path="/PoolSchool" element={<PoolSchool />} />
-          <Route path="/WorkOrders" element={<WorkOrdersRootRedirect />} />
-          <Route path="/workorders" element={<WorkOrdersRootRedirect />} />
-          <Route path="/workorders/:section" element={<WorkOrders />} />
-          <Route path="/invoice-pay/:invoiceId" element={<LegacyInvoicePayRedirect />} />
-          <Route path="/Billing" element={<BillingDashboard />} />
-        </Routes>
-      </Suspense>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path={APP_ROUTES.Home} element={<Home />} />
+        {ROUTE_ALIAS_REDIRECTS.map(({ from, to }) => (
+          <Route key={from} path={from} element={<Navigate to={to} replace />} />
+        ))}
+        {ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        <Route path={DYNAMIC_WORKORDERS_ROUTE} element={<WorkOrders />} />
+        <Route path="/invoice-pay/:invoiceId" element={<LegacyInvoicePayRedirect />} />
+        <Route path="/Invoice-pay/:invoiceId" element={<LegacyInvoicePayRedirect />} />
+        <Route path={SYSTEM_ROUTES.AccessDenied} element={<AccessDeniedPage />} />
+        <Route path={SYSTEM_ROUTES.NotFound} element={<NotFoundPage />} />
+        <Route path="*" element={<Navigate to={SYSTEM_ROUTES.NotFound} replace />} />
+      </Routes>
+    </Suspense>
     </Layout>
   );
 }

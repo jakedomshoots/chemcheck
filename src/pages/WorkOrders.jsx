@@ -605,8 +605,6 @@ export default function WorkOrders() {
     return () => {
       cancelled = true;
     };
-  // syncCheckoutSessionStatus is declared later in this component; run this return-handler once on mount.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const localCustomers = useCustomers();

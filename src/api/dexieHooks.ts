@@ -328,10 +328,21 @@ export function useCustomerCreate() {
             throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
         }
 
+        // Ensure deterministic sort order per service day when not explicitly set.
+        const existingCustomers = await db.customers.toArray();
+        const sameDayCount = existingCustomers.filter(
+            (customer) =>
+                customer.created_by === DEFAULT_USER &&
+                customer.service_day === validation.data.service_day
+        ).length;
+
+        const sortOrder = validation.data.sort_order ?? sameDayCount;
+
         const now = getTimestamp();
         const nowMs = Date.now();
         const id = await db.customers.add({
             ...validation.data,
+            sort_order: sortOrder,
             created_by: DEFAULT_USER,
             createdAt: now,
             updatedAt: now,

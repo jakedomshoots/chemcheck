@@ -32,3 +32,4 @@ dist-ssr
 
 # Capacitor native projects (regenerated via `npx cap add ios`)
 ios/
+.worktrees/

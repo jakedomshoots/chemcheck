@@ -2,6 +2,11 @@
 // Handles PWA functionality, offline support, and app updates
 
 import { monitoring } from './monitoring';
+import { shouldRegisterServiceWorker } from './platformPolicy';
+
+const SW_SCRIPT_PATH = '/sw.js';
+const SW_SCOPE = '/';
+const SW_DEFAULT_METRIC_PREFIX = 'service_worker';
 
 export interface ServiceWorkerState {
   isSupported: boolean;
@@ -26,7 +31,17 @@ export type ServiceWorkerEvent = UpdateAvailableEvent | UpdateInstalledEvent;
 class ServiceWorkerManager {
   private registration: ServiceWorkerRegistration | null = null;
   private listeners: ((event: ServiceWorkerEvent) => void)[] = [];
+  private isRegistering = false;
+  private readonly UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
   private updateCheckInterval: number | null = null;
+  private updateListenersInitialized = false;
+  private networkListenersInitialized = false;
+  private visibilityChangeListener: (() => void) | null = null;
+  private onlineListener: (() => void) | null = null;
+  private offlineListener: (() => void) | null = null;
+  private controllerChangeListener: (() => void) | null = null;
+  private updateFoundListener: (() => void) | null = null;
+  private messageListener: ((event: MessageEvent) => void) | null = null;
 
   constructor() {
     this.setupMessageListener();
@@ -37,9 +52,58 @@ class ServiceWorkerManager {
   // ============================================
 
   async register(): Promise<ServiceWorkerState> {
-    // Temporarily disable service worker to force fresh code
-    console.log('[SW] Service worker disabled for debugging');
-    return this.getState();
+    if (!this.shouldAttemptRegistration()) {
+      if (this.isSupported()) {
+        monitoring.recordMetric(`${SW_DEFAULT_METRIC_PREFIX}_not_attempted`, performance.now(), {
+          reason: 'policy_disabled'
+        });
+        await this.unregisterForPolicy();
+      }
+      return this.getState();
+    }
+
+    if (this.isRegistering) {
+      return this.getState();
+    }
+
+    if (this.registration) {
+      this.setupUpdateListeners();
+      this.startUpdateChecks();
+      this.setupNetworkListeners();
+      return this.getState();
+    }
+
+    if (!this.isSupported()) {
+      return this.getState();
+    }
+
+    this.isRegistering = true;
+    try {
+      const existingRegistration = await navigator.serviceWorker.getRegistration(SW_SCOPE);
+      const registration = existingRegistration ??
+        await navigator.serviceWorker.register(SW_SCRIPT_PATH, { scope: SW_SCOPE });
+
+      this.registration = registration;
+      this.setupUpdateListeners();
+      this.startUpdateChecks();
+      this.setupNetworkListeners();
+
+      monitoring.recordMetric('service_worker_registered', performance.now(), {
+        scope: SW_SCOPE,
+        script: SW_SCRIPT_PATH,
+        hasUpdate: !!registration.waiting
+      });
+
+      return this.getState();
+    } catch (error) {
+      console.error('[SW] Service worker registration failed:', error);
+      monitoring.recordMetric('service_worker_register_failed', performance.now(), {
+        reason: error instanceof Error ? error.message : 'unknown'
+      });
+      return this.getState();
+    } finally {
+      this.isRegistering = false;
+    }
   }
 
   // ============================================
@@ -47,68 +111,89 @@ class ServiceWorkerManager {
   // ============================================
 
   private setupUpdateListeners(): void {
-    if (!this.registration) return;
+    if (!this.registration || this.updateListenersInitialized) return;
+    if (!this.isSupported()) return;
 
-    // Listen for new service worker installing
-    this.registration.addEventListener('updatefound', () => {
-      console.log('[SW] Update found, installing new version...');
+    this.updateFoundListener = () => {
+      if (!this.registration) return;
 
-      const newWorker = this.registration!.installing;
+      const newWorker = this.registration.installing;
       if (!newWorker) return;
 
-      newWorker.addEventListener('statechange', () => {
+      const stateChangeHandler = () => {
         if (newWorker.state === 'installed') {
-          if (navigator.serviceWorker.controller) {
-            // New update available
-            console.log('[SW] New update available');
-            this.notifyListeners({
-              type: 'update-available',
-              registration: this.registration!
-            });
+          const controllerExists = !!navigator.serviceWorker.controller;
+
+          if (controllerExists) {
+            this.notifyListeners({ type: 'update-available', registration: this.registration! });
           } else {
-            // First install
-            console.log('[SW] Service worker installed for first time');
-            this.notifyListeners({
-              type: 'update-installed',
-              registration: this.registration!
-            });
+            this.notifyListeners({ type: 'update-installed', registration: this.registration! });
           }
         }
-      });
-    });
 
-    // Listen for service worker taking control
-    if (navigator.serviceWorker) {
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('[SW] New service worker took control');
-        window.location.reload();
-      });
-    }
+        if (newWorker.state === 'installed' || newWorker.state === 'activated' || newWorker.state === 'redundant') {
+          newWorker.removeEventListener('statechange', stateChangeHandler);
+        }
+      };
+
+      newWorker.addEventListener('statechange', stateChangeHandler);
+    };
+
+    this.controllerChangeListener = () => {
+      console.log('[SW] Service worker took control');
+      monitoring.recordMetric('sw_controller_change', performance.now());
+      window.location.reload();
+    };
+
+    this.registration.addEventListener('updatefound', this.updateFoundListener);
+    navigator.serviceWorker.addEventListener('controllerchange', this.controllerChangeListener);
+    this.updateListenersInitialized = true;
   }
 
   private startUpdateChecks(): void {
-    // Check for updates every 30 minutes
+    if (!this.isSupported()) return;
+    if (this.updateCheckInterval !== null) return;
+
     this.updateCheckInterval = window.setInterval(() => {
       this.checkForUpdates();
-    }, 30 * 60 * 1000);
-
-    // Also check when page becomes visible
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        this.checkForUpdates();
-      }
-    });
+    }, this.UPDATE_CHECK_INTERVAL_MS);
   }
 
   async checkForUpdates(): Promise<void> {
-    if (!this.registration) return;
+    if (!this.isSupported()) return;
+
+    let activeRegistration = this.registration;
+    if (!activeRegistration) {
+      activeRegistration = await navigator.serviceWorker.getRegistration(SW_SCOPE);
+      this.registration = activeRegistration;
+    }
+
+    if (!activeRegistration) return;
 
     try {
-      console.log('[SW] Checking for updates...');
-      await this.registration.update();
+      await activeRegistration.update();
     } catch (error) {
       console.error('[SW] Update check failed:', error);
+      monitoring.recordMetric('sw_update_check_failed', performance.now(), {
+        reason: error instanceof Error ? error.message : 'unknown'
+      });
     }
+
+    if (document.hidden) return;
+
+    this.startVisibilityMonitoring();
+  }
+
+  private startVisibilityMonitoring(): void {
+    if (this.visibilityChangeListener || !this.isSupported()) return;
+
+    this.visibilityChangeListener = () => {
+      if (!document.hidden) {
+        this.checkForUpdates();
+      }
+    };
+
+    document.addEventListener('visibilitychange', this.visibilityChangeListener);
   }
 
   async applyUpdate(): Promise<void> {
@@ -116,9 +201,6 @@ class ServiceWorkerManager {
       throw new Error('No update available');
     }
 
-    console.log('[SW] Applying update...');
-
-    // Tell the waiting service worker to skip waiting
     this.registration.waiting.postMessage({ type: 'SKIP_WAITING' });
   }
 
@@ -127,7 +209,7 @@ class ServiceWorkerManager {
   // ============================================
 
   getState(): ServiceWorkerState {
-    const sw = navigator.serviceWorker;
+    const sw = this.isSupported() ? navigator.serviceWorker : null;
     return {
       isSupported: this.isSupported(),
       isRegistered: !!this.registration,
@@ -138,11 +220,11 @@ class ServiceWorkerManager {
   }
 
   isSupported(): boolean {
-    return 'serviceWorker' in navigator && !!navigator.serviceWorker;
+    return typeof navigator !== 'undefined' && 'serviceWorker' in navigator && !!navigator.serviceWorker;
   }
 
   isOnline(): boolean {
-    return navigator.onLine;
+    return typeof navigator === 'undefined' ? false : navigator.onLine;
   }
 
   // ============================================
@@ -150,7 +232,9 @@ class ServiceWorkerManager {
   // ============================================
 
   addEventListener(listener: (event: ServiceWorkerEvent) => void): void {
-    this.listeners.push(listener);
+    if (!this.listeners.includes(listener)) {
+      this.listeners.push(listener);
+    }
   }
 
   removeEventListener(listener: (event: ServiceWorkerEvent) => void): void {
@@ -172,17 +256,17 @@ class ServiceWorkerManager {
 
   private setupMessageListener(): void {
     if (!this.isSupported()) return;
+    if (this.messageListener) return;
 
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      console.log('[SW] Message from service worker:', event.data);
-
+    this.messageListener = (event) => {
       if (event.data?.type === 'BACKGROUND_BACKUP_REQUEST') {
-        // Trigger backup when service worker requests it
         window.dispatchEvent(new CustomEvent('sw-backup-request', {
           detail: event.data
         }));
       }
-    });
+    };
+
+    navigator.serviceWorker.addEventListener('message', this.messageListener);
   }
 
   // ============================================
@@ -236,22 +320,25 @@ class ServiceWorkerManager {
   // ============================================
 
   setupNetworkListeners(): void {
-    window.addEventListener('online', () => {
-      console.log('[SW] Network connection restored');
+    if (!this.isSupported() || this.networkListenersInitialized) return;
+
+    this.onlineListener = () => {
       monitoring.recordMetric('network_online', performance.now());
 
-      // Trigger background sync if supported
       if (this.registration && 'sync' in window.ServiceWorkerRegistration.prototype) {
         this.registration.sync.register('backup-sync').catch(error => {
           console.error('[SW] Background sync registration failed:', error);
         });
       }
-    });
+    };
 
-    window.addEventListener('offline', () => {
-      console.log('[SW] Network connection lost');
+    this.offlineListener = () => {
       monitoring.recordMetric('network_offline', performance.now());
-    });
+    };
+
+    window.addEventListener('online', this.onlineListener);
+    window.addEventListener('offline', this.offlineListener);
+    this.networkListenersInitialized = true;
   }
 
   // ============================================
@@ -259,12 +346,102 @@ class ServiceWorkerManager {
   // ============================================
 
   cleanup(): void {
-    if (this.updateCheckInterval) {
+    if (!this.isSupported()) {
+      this.resetRuntimeFlags();
+      this.registration = null;
+      this.isRegistering = false;
+      return;
+    }
+
+    if (this.updateCheckInterval !== null) {
       clearInterval(this.updateCheckInterval);
       this.updateCheckInterval = null;
     }
 
+    if (this.visibilityChangeListener) {
+      document.removeEventListener('visibilitychange', this.visibilityChangeListener);
+      this.visibilityChangeListener = null;
+    }
+
+    if (this.onlineListener) {
+      window.removeEventListener('online', this.onlineListener);
+      this.onlineListener = null;
+    }
+
+    if (this.offlineListener) {
+      window.removeEventListener('offline', this.offlineListener);
+      this.offlineListener = null;
+    }
+
+    if (this.registration && this.updateFoundListener) {
+      this.registration.removeEventListener('updatefound', this.updateFoundListener);
+      this.updateFoundListener = null;
+    }
+
+    if (this.controllerChangeListener && navigator && navigator.serviceWorker) {
+      navigator.serviceWorker.removeEventListener('controllerchange', this.controllerChangeListener);
+      this.controllerChangeListener = null;
+    }
+
+    if (this.messageListener && navigator && navigator.serviceWorker) {
+      navigator.serviceWorker.removeEventListener('message', this.messageListener);
+      this.messageListener = null;
+    }
+
     this.listeners = [];
+    this.updateListenersInitialized = false;
+    this.networkListenersInitialized = false;
+    this.registration = null;
+    this.isRegistering = false;
+  }
+
+  async unregister(): Promise<void> {
+    if (!this.isSupported()) return;
+
+    try {
+      const registration = this.registration || await navigator.serviceWorker.getRegistration(SW_SCOPE);
+      if (registration) {
+        const unregistered = await registration.unregister();
+        monitoring.recordMetric('service_worker_unregistered', performance.now(), {
+          scope: SW_SCRIPT_PATH,
+          status: unregistered ? 'success' : 'noop',
+        });
+      }
+    } catch (error) {
+      monitoring.recordMetric('service_worker_unregister_failed', performance.now(), {
+        reason: error instanceof Error ? error.message : 'unknown'
+      });
+      console.error('[SW] Service worker unregister failed:', error);
+    } finally {
+      this.cleanup();
+      this.registration = null;
+    }
+  }
+
+  private async unregisterForPolicy(): Promise<void> {
+    if (!this.isSupported()) return;
+
+    const registered = this.registration || await navigator.serviceWorker.getRegistration(SW_SCOPE);
+    if (!registered) return;
+
+    await this.unregister();
+  }
+
+  private resetRuntimeFlags(): void {
+    this.updateCheckInterval = null;
+    this.listeners = [];
+    this.updateListenersInitialized = false;
+    this.networkListenersInitialized = false;
+    this.visibilityChangeListener = null;
+    this.onlineListener = null;
+    this.offlineListener = null;
+    this.controllerChangeListener = null;
+    this.updateFoundListener = null;
+    this.messageListener = null;
+  }
+
+  private shouldAttemptRegistration(): boolean {
+    return shouldRegisterServiceWorker();
   }
 }
 
@@ -276,14 +453,5 @@ export const registerServiceWorker = () => serviceWorkerManager.register();
 export const checkForUpdates = () => serviceWorkerManager.checkForUpdates();
 export const applyUpdate = () => serviceWorkerManager.applyUpdate();
 export const getServiceWorkerState = () => serviceWorkerManager.getState();
-
-// Auto-register service worker in production
-if (import.meta.env.PROD && serviceWorkerManager.isSupported()) {
-  window.addEventListener('load', () => {
-    registerServiceWorker().then(state => {
-      console.log('[SW] Initial registration state:', state);
-    });
-
-    serviceWorkerManager.setupNetworkListeners();
-  });
-}
+export const cleanupServiceWorker = () => serviceWorkerManager.cleanup();
+export const unregisterServiceWorker = () => serviceWorkerManager.unregister();

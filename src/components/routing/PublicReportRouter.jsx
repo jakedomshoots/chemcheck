@@ -3,8 +3,12 @@ import { Route, Routes } from 'react-router-dom';
 import { PublicConvexProvider } from '@/components/auth/PublicConvexProvider';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
+import { HEALTH_ROUTE, PUBLIC_REPORT_PATH, READY_ROUTE } from '@/lib/routeConfig';
+import NotFoundPage from '@/pages/NotFoundPage';
 
 const ReportPage = lazy(() => importWithRetry(() => import('@/pages/ReportPage'), 'ReportPage'));
+const HealthPage = lazy(() => importWithRetry(() => import('@/pages/HealthPage'), 'HealthPage'));
+const ReadyPage = lazy(() => importWithRetry(() => import('@/pages/ReadyPage'), 'ReadyPage'));
 
 function PublicPageLoader() {
   return (
@@ -19,7 +23,10 @@ export default function PublicReportRouter() {
     <PublicConvexProvider>
       <Suspense fallback={<PublicPageLoader />}>
         <Routes>
-          <Route path="/report/:reportId/*" element={<ReportPage />} />
+          <Route path={PUBLIC_REPORT_PATH} element={<ReportPage />} />
+          <Route path={HEALTH_ROUTE} element={<HealthPage />} />
+          <Route path={READY_ROUTE} element={<ReadyPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
     </PublicConvexProvider>

@@ -75,6 +75,13 @@ vi.mock('./SyncQueue', () => {
   MockSyncQueue.prototype.markFailed = vi.fn();
   MockSyncQueue.prototype.getRetryableItems = vi.fn(() => []);
   MockSyncQueue.prototype.findItem = vi.fn(() => undefined);
+  MockSyncQueue.prototype.getBatchSize = vi.fn(() => 10);
+  MockSyncQueue.prototype.getCapacityStatus = vi.fn(() => ({
+    current: 0,
+    max: 1000,
+    warningThreshold: 800,
+    usagePercent: 0,
+  }));
   
   return { SyncQueue: MockSyncQueue };
 });
@@ -198,7 +205,7 @@ describe('SyncService', () => {
       testSyncService2.destroy();
     });
 
-    it('should handle online/offline events and update sync behavior', () => {
+    it('should handle online/offline events and update sync behavior', async () => {
       const testSyncService = new SyncService();
       testSyncService.initialize(mockConvexClient);
       
@@ -223,7 +230,10 @@ describe('SyncService', () => {
       const onlineEvent = new Event('online');
       window.dispatchEvent(onlineEvent);
       
-      // Should update status back to idle
+      // Coming online triggers a sync cycle first, then returns to idle.
+      await vi.waitFor(() => {
+        expect(testSyncService.getSyncStatus()).toBe('idle');
+      });
       expect(testSyncService.getSyncStatus()).toBe('idle');
       expect(testSyncService.isOnlineStatus()).toBe(true);
       expect(statusCallback).toHaveBeenCalledWith('idle');

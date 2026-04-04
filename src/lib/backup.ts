@@ -1,5 +1,84 @@
 import { db } from '@/db/chemcheck-db';
 import type { Customer, ServiceLog, ChemicalUsage, Note } from '@/db/chemcheck-db';
+import { appRuntime } from './platformPolicy';
+
+const CURRENT_SCHEMA_VERSION = 1;
+const MIN_SUPPORTED_SCHEMA_VERSION = 1;
+const MAX_ALLOWED_APP_MINOR_SKIP = 3;
+
+function normalizeVersion(version = ''): [number, number, number] {
+  const [major = 0, minor = 0, patch = 0] = version
+    .split('.')
+    .map((value) => Number.parseInt(value, 10))
+    .map((value) => (Number.isNaN(value) ? 0 : value));
+
+  return [major, minor, patch];
+}
+
+function isVersionMajorlyAheadOfCurrent(candidate = '0.0.0', target = appRuntime.appVersion): boolean {
+  const [cMajor, cMinor] = normalizeVersion(candidate);
+  const [tMajor, tMinor] = normalizeVersion(target);
+
+  if (cMajor > tMajor) return true;
+  if (cMajor < tMajor) return false;
+  return cMinor - tMinor > MAX_ALLOWED_APP_MINOR_SKIP;
+}
+
+function validateBackupDataShape(backupData: unknown): backupData is BackupData {
+  if (typeof backupData !== 'object' || backupData === null) {
+    return false;
+  }
+
+  const data = backupData as Record<string, unknown>;
+
+  return typeof data.version === 'string' &&
+    !!data.data &&
+    typeof data.data === 'object' &&
+    Array.isArray((data.data as Record<string, unknown>).customers) &&
+    Array.isArray((data.data as Record<string, unknown>).serviceLogs) &&
+    Array.isArray((data.data as Record<string, unknown>).chemicalUsage) &&
+    Array.isArray((data.data as Record<string, unknown>).notes);
+}
+
+function getBackupSchemaVersion(backupData: Partial<BackupData>): number {
+  if (typeof backupData?.schemaVersion === 'number' && Number.isFinite(backupData.schemaVersion)) {
+    return Math.trunc(backupData.schemaVersion);
+  }
+
+  return 1;
+}
+
+function buildCompatibilityStatus(raw: Partial<BackupData>): { canRestore: boolean; errors: string[]; warnings: string[]; schemaVersion: number } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const schemaVersion = getBackupSchemaVersion(raw);
+
+  if (schemaVersion < MIN_SUPPORTED_SCHEMA_VERSION) {
+    errors.push(
+      `Unsupported backup schema version: ${schemaVersion}. Minimum supported schema is ${MIN_SUPPORTED_SCHEMA_VERSION}.`
+    );
+  }
+
+  if (schemaVersion > CURRENT_SCHEMA_VERSION) {
+    errors.push(
+      `Backup schema version ${schemaVersion} is newer than this app supports (${CURRENT_SCHEMA_VERSION}).`
+    );
+  }
+
+  const backupAppVersion = raw.appVersion;
+  if (typeof backupAppVersion === 'string' && isVersionMajorlyAheadOfCurrent(backupAppVersion)) {
+    warnings.push(
+      `This backup was created with app version ${backupAppVersion}, which is significantly ahead of the current app version (${appRuntime.appVersion}). Restore is allowed with compatibility mode.`
+    );
+  }
+
+  return {
+    canRestore: errors.length === 0,
+    errors,
+    warnings,
+    schemaVersion
+  };
+}
 
 // ============================================
 // Backup & Export System
@@ -7,6 +86,7 @@ import type { Customer, ServiceLog, ChemicalUsage, Note } from '@/db/chemcheck-d
 
 export interface BackupData {
   version: string;
+  schemaVersion?: number;
   timestamp: string;
   appVersion: string;
   data: {
@@ -19,6 +99,14 @@ export interface BackupData {
     totalRecords: number;
     exportedBy: string;
     deviceInfo: string;
+    schemaVersion?: number;
+    minimumSupportedSchemaVersion?: number;
+    warnings?: string[];
+    compatibility?: {
+      appVersion?: string;
+      migratedFrom?: number;
+      restoredWithWarnings?: string[];
+    };
   };
 }
 
@@ -48,8 +136,9 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
   try {
     const backup: BackupData = {
       version: '1.0',
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       timestamp: new Date().toISOString(),
-      appVersion: '1.0.0', // TODO: Get from package.json
+      appVersion: appRuntime.appVersion || '1.0.0',
       data: {
         customers: [],
         serviceLogs: [],
@@ -59,7 +148,13 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
       metadata: {
         totalRecords: 0,
         exportedBy: 'local',
-        deviceInfo: navigator.userAgent
+        deviceInfo: navigator.userAgent,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        minimumSupportedSchemaVersion: MIN_SUPPORTED_SCHEMA_VERSION,
+        compatibility: {
+          appVersion: appRuntime.appVersion || '1.0.0',
+          migratedFrom: CURRENT_SCHEMA_VERSION
+        }
       }
     };
 
@@ -153,19 +248,46 @@ export async function restoreFromBackup(backupData: BackupData, options: {
     notes: number;
   };
   errors: string[];
+  warnings: string[];
 }> {
   const { clearExisting = false, mergeStrategy = 'replace' } = options;
   const result = {
     success: false,
     imported: { customers: 0, serviceLogs: 0, chemicalUsage: 0, notes: 0 },
-    errors: [] as string[]
+    errors: [] as string[],
+    warnings: [] as string[],
   };
 
   try {
     // Validate backup format
-    if (!backupData.version || !backupData.data) {
+    if (!validateBackupDataShape(backupData)) {
       throw new Error('Invalid backup format');
     }
+
+    const compatibility = buildCompatibilityStatus(backupData);
+    compatibility.errors.forEach((error) => result.errors.push(error));
+    compatibility.warnings.forEach((warning) => result.warnings.push(warning));
+
+    if (!compatibility.canRestore) {
+      result.success = false;
+      return result;
+    }
+
+    backupData = {
+      ...backupData,
+      schemaVersion: compatibility.schemaVersion,
+      metadata: {
+        ...(backupData.metadata || {}),
+        schemaVersion: compatibility.schemaVersion,
+        minimumSupportedSchemaVersion: MIN_SUPPORTED_SCHEMA_VERSION,
+        compatibility: {
+          ...((backupData.metadata && backupData.metadata.compatibility) || {}),
+          appVersion: backupData.appVersion,
+          migratedFrom: CURRENT_SCHEMA_VERSION,
+          restoredWithWarnings: [...compatibility.warnings]
+        }
+      }
+    };
 
     await db.transaction('rw', [db.customers, db.serviceLogs, db.chemicalUsage, db.notes], async () => {
       // Clear existing data if requested

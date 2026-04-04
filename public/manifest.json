@@ -29,7 +29,7 @@
             "name": "Today's Route",
             "short_name": "Route",
             "description": "View today's scheduled customers",
-            "url": "/",
+            "url": "/route-optimizer",
             "icons": [
                 {
                     "src": "/icon-192.png",
@@ -41,7 +41,7 @@
             "name": "Add Customer",
             "short_name": "New Customer", 
             "description": "Add a new customer",
-            "url": "/NewClient",
+            "url": "/new-client",
             "icons": [
                 {
                     "src": "/icon-192.png",
@@ -53,7 +53,7 @@
             "name": "Service Log",
             "short_name": "Log Service",
             "description": "Log a service visit", 
-            "url": "/NewServiceLog",
+            "url": "/new-service-log",
             "icons": [
                 {
                     "src": "/icon-192.png",

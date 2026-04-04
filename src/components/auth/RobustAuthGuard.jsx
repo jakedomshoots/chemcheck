@@ -1,50 +1,66 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthContext } from './ClerkAuthProvider';
-import { Droplets, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
+import { Droplets, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
-// Routes that don't require authentication
-const PUBLIC_ROUTES = [
-  '/login',
-  '/signup',
-  '/sso-callback',
-  '/pricing',
-  '/privacy-policy.html',
-  '/terms-of-service.html'
-];
-
-// Report routes are public (UUID and legacy URL-safe tokens), with optional trailing slash.
-const REPORT_ROUTE_PATTERN = /^\/report\/[A-Za-z0-9_-]{8,128}\/?$/;
-
-// Check if a path is a public route (including OAuth callback sub-paths)
-function isPublicPath(pathname) {
-  // Exact matches
-  if (PUBLIC_ROUTES.includes(pathname)) return true;
-
-  // Report routes with UUID
-  if (REPORT_ROUTE_PATTERN.test(pathname)) return true;
-
-  // OAuth callback paths under /login or /signup (e.g., /login/sso-callback, /login/factor)
-  if (pathname.startsWith('/login/') || pathname.startsWith('/signup/')) return true;
-
-  // SSO callback paths
-  if (pathname.startsWith('/sso-callback')) return true;
-
-  return false;
-}
+import { APP_ROUTES, getCanonicalRoute, isPublicRoute } from '@/lib/routeConfig';
 
 // Auth loading timeout in milliseconds
 const AUTH_LOADING_TIMEOUT = 15000;
+const AUTH_RETURN_TO_SESSION_KEY = 'chemcheck_auth_return_to';
+
+function getStoredReturnTo() {
+  try {
+    return typeof sessionStorage === 'undefined' ? '' : (sessionStorage.getItem(AUTH_RETURN_TO_SESSION_KEY) || '');
+  } catch {
+    return '';
+  }
+}
+
+function setStoredReturnTo(path) {
+  try {
+    if (path && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(AUTH_RETURN_TO_SESSION_KEY, path);
+    }
+  } catch {
+    // Best effort only for navigation intent recovery.
+  }
+}
+
+function clearStoredReturnTo() {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(AUTH_RETURN_TO_SESSION_KEY);
+    }
+  } catch {
+    // Best effort only for navigation intent recovery.
+  }
+}
+
+function normalizeReturnTo(rawReturnTo) {
+  if (typeof rawReturnTo !== 'string' || !rawReturnTo.startsWith('/') || rawReturnTo.startsWith('//')) {
+    return '';
+  }
+
+  const [pathOnly, search = ''] = rawReturnTo.split('?');
+  const canonicalReturnTo = getCanonicalRoute(pathOnly);
+  return `${canonicalReturnTo}${search ? `?${search}` : ''}`;
+}
 
 export function RobustAuthGuard({ children }) {
   const auth = useAuthContext();
   const navigate = useNavigate();
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const location = useLocation();
+  const canonicalPath = getCanonicalRoute(location.pathname);
+  const storedReturnTo = getStoredReturnTo();
+  const returnTo = normalizeReturnTo(
+    typeof location.state?.returnTo === 'string' ? location.state.returnTo : storedReturnTo
+  );
+  const requestedPath = `${location.pathname}${location.search}`;
 
   // Check if current path is public
-  const isPublicRoute = isPublicPath(location.pathname);
+  const isPublicRoutePath = isPublicRoute(canonicalPath);
 
   // Timeout to prevent infinite loading spinner
   useEffect(() => {
@@ -70,15 +86,16 @@ export function RobustAuthGuard({ children }) {
     // Don't redirect while Clerk is still loading
     if (!auth.isLoaded || !auth.isInitialized) return;
 
-    const currentPath = location.pathname;
-    const returnTo = location.state?.returnTo;
+    const currentPath = canonicalPath;
+    const nextRoute = returnTo || APP_ROUTES.Home;
 
     // Handle unauthenticated users
     if (!auth.isSignedIn) {
-      if (!isPublicRoute) {
+      if (!isPublicRoutePath) {
+        setStoredReturnTo(requestedPath);
         navigate('/login', {
           replace: true,
-          state: { returnTo: currentPath }
+          state: { returnTo: requestedPath }
         });
       }
       return;
@@ -96,8 +113,9 @@ export function RobustAuthGuard({ children }) {
 
       // If user is on login page and already signed in, redirect appropriately
       if (currentPath === '/login') {
+        clearStoredReturnTo();
         if (auth.hasCompletedSetup) {
-          navigate(returnTo || '/', { replace: true });
+          navigate(nextRoute, { replace: true });
         } else {
           navigate('/setup', { replace: true });
         }
@@ -106,8 +124,9 @@ export function RobustAuthGuard({ children }) {
 
       // If user is on signup page and already signed in, redirect appropriately
       if (currentPath === '/signup') {
+        clearStoredReturnTo();
         if (auth.hasCompletedSetup) {
-          navigate('/', { replace: true });
+          navigate(APP_ROUTES.Home, { replace: true });
         } else {
           navigate('/setup', { replace: true });
         }
@@ -116,14 +135,16 @@ export function RobustAuthGuard({ children }) {
 
       // If user hasn't completed setup and not on setup page, redirect to setup
       // But don't redirect from public routes
-      if (!auth.hasCompletedSetup && currentPath !== '/setup' && !isPublicRoute) {
+      if (!auth.hasCompletedSetup && currentPath !== '/setup' && !isPublicRoutePath) {
+        clearStoredReturnTo();
         navigate('/setup', { replace: true });
         return;
       }
 
       // If user has completed setup but is on setup page, redirect to home
       if (auth.hasCompletedSetup && currentPath === '/setup') {
-        navigate('/', { replace: true });
+        clearStoredReturnTo();
+        navigate(APP_ROUTES.Home, { replace: true });
         return;
       }
     }
@@ -133,14 +154,17 @@ export function RobustAuthGuard({ children }) {
     auth.isSignedIn,
     auth.hasCompletedSetup,
     location.pathname,
+    location.search,
+    location.hash,
+    canonicalPath,
     location.state?.returnTo,
     navigate,
-    isPublicRoute
+    isPublicRoutePath
   ]);
 
   // Allow public routes immediately, without waiting for auth
   // This ensures report pages load instantly for customers
-  if (isPublicRoute) {
+  if (isPublicRoutePath) {
     return children;
   }
 

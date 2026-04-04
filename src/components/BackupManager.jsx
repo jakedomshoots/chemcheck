@@ -46,7 +46,8 @@ export function BackupManager({ onClose }) {
         setImportResult({
           success: false,
           imported: { customers: 0, serviceLogs: 0, chemicalUsage: 0, notes: 0 },
-          errors: [error.message]
+          errors: [error instanceof Error ? error.message : 'Unknown error'],
+          warnings: [],
         });
       } finally {
         setIsImporting(false);
@@ -238,6 +239,23 @@ export function BackupManager({ onClose }) {
                         <li>• {importResult.imported.serviceLogs} service logs</li>
                         <li>• {importResult.imported.chemicalUsage} chemical usage records</li>
                         <li>• {importResult.imported.notes} notes</li>
+                        {importResult.warnings?.length > 0 && (
+                          <li>• Includes {importResult.warnings.length} compatibility warning{importResult.warnings.length > 1 ? 's' : ''}</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {importResult.warnings?.length > 0 && (
+                    <div className="text-sm text-amber-700 mt-2">
+                      <p>Warnings:</p>
+                      <ul className="text-xs space-y-0.5 ml-4">
+                        {importResult.warnings.slice(0, 3).map((warning, index) => (
+                          <li key={index}>• {warning}</li>
+                        ))}
+                        {importResult.warnings.length > 3 && (
+                          <li>• ... and {importResult.warnings.length - 3} more</li>
+                        )}
                       </ul>
                     </div>
                   )}

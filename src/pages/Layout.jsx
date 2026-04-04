@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { APP_ROUTES, getCanonicalRoute } from '@/lib/routeConfig';
 import { Home, Users, FileText, TestTube, StickyNote, Menu, X, Settings, BookOpen, ClipboardList, Navigation } from "lucide-react";
 import { importWithRetry } from "@/lib/chunkErrorRecovery";
 import chemcheckLogo from "@/assets/chemcheck-logo.svg";
@@ -29,22 +29,25 @@ export default function Layout({ children, currentPageName }) {
   }, []);
 
   const navItems = [
-    { name: "Home", path: createPageUrl("Home"), icon: Home },
-    { name: "Clients", path: createPageUrl("Clients"), icon: Users },
-    { name: "Work Orders", path: createPageUrl("WorkOrders"), icon: ClipboardList },
-    { name: "Report", path: createPageUrl("WeeklyReport"), icon: FileText },
-    { name: "Notes", path: createPageUrl("Notes"), icon: StickyNote },
-    { name: "Chemicals", path: createPageUrl("ChemicalUsage"), icon: TestTube },
-    { name: "Route Plan", path: createPageUrl("RouteOptimizer"), icon: Navigation },
-    { name: "Pool School", path: createPageUrl("PoolSchool"), icon: BookOpen },
-    { name: "Settings", path: createPageUrl("Settings"), icon: Settings },
+    { name: "Home", path: APP_ROUTES.Home, icon: Home },
+    { name: "Clients", path: APP_ROUTES.Clients, icon: Users },
+    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: ClipboardList },
+    { name: "Report", path: APP_ROUTES.WeeklyReport, icon: FileText },
+    { name: "Notes", path: APP_ROUTES.Notes, icon: StickyNote },
+    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: TestTube },
+    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: Navigation },
+    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: BookOpen },
+    { name: "Settings", path: APP_ROUTES.Settings, icon: Settings },
   ];
 
   const isActive = (path) => {
-    if (path === createPageUrl("WorkOrders")) {
-      return location.pathname.toLowerCase().startsWith("/workorders");
+    const canonicalPath = getCanonicalRoute(location.pathname) === "/" ? APP_ROUTES.Home : getCanonicalRoute(location.pathname);
+
+    if (path === APP_ROUTES.WorkOrders) {
+      return canonicalPath.startsWith(APP_ROUTES.WorkOrders);
     }
-    return location.pathname.toLowerCase() === path.toLowerCase();
+
+    return canonicalPath === path;
   };
 
   return (

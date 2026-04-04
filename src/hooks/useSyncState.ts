@@ -65,13 +65,55 @@ export function useSyncState(): UseSyncStateReturn {
     refreshPendingCount();
   }, [refreshPendingCount]);
 
-  // Refresh pending count periodically
+  // Refresh pending count periodically (only when visible to reduce background work)
   useEffect(() => {
-    const interval = setInterval(() => {
-      refreshPendingCount();
-    }, 10000); // Every 10 seconds
+    const intervalMs = 15000;
 
-    return () => clearInterval(interval);
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (interval !== null) {
+        return;
+      }
+
+      refreshPendingCount();
+
+      interval = window.setInterval(() => {
+        if (!document.hidden) {
+          refreshPendingCount();
+        }
+      }, intervalMs);
+    };
+
+    const stopPolling = () => {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    if (!document.hidden) {
+      startPolling();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [refreshPendingCount]);
 
   const syncNow = useCallback(async () => {

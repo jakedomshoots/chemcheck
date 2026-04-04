@@ -199,7 +199,6 @@ export default function RouteOptimizer() {
           customer_name: stop.customer.name || "Unnamed customer",
           customer_address: stop.customer.address || "No address on file",
           estimated_travel_time_from_previous: idx === 0 ? "Start location" : `~${Math.round(stop.travelTime)} min`,
-          estimated_distance_from_previous: idx === 0 ? null : `${stop.distance.toFixed(1)} mi`,
           notes: gateCodeText,
           customer: originalCustomer || stop.customer,
         };
@@ -210,14 +209,12 @@ export default function RouteOptimizer() {
         fallback: 15,
       });
       const totalMinutes = serviceSummary.totalServiceMinutes;
-      const estimatedDistanceMiles = Number(route.totalDistance.toFixed(1));
 
       setOptimizedRoute({
         optimized_order: optimizedStops,
         total_estimated_minutes: totalMinutes,
         total_estimated_time: formatMinutes(totalMinutes),
         total_service_minutes: totalMinutes,
-        total_estimated_distance: `${estimatedDistanceMiles} mi`,
         optimization_summary: `Route optimized with ${route.optimizationMethod} for ${selectedDay}.`
       });
     } catch (error) {
@@ -327,14 +324,10 @@ export default function RouteOptimizer() {
         <div className="space-y-6">
           <Card className="p-6 border-2 shadow-lg bg-gradient-to-br from-emerald-50 to-teal-50">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Route Summary</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="text-center">
                 <div className="text-3xl font-bold text-emerald-600">{optimizedRoute.optimized_order.length}</div>
                 <div className="text-sm text-slate-600 mt-1">Total Stops</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600">{optimizedRoute.total_estimated_distance || 'N/A'}</div>
-                <div className="text-sm text-slate-600 mt-1">Est. Distance</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-cyan-600">{optimizedRoute.total_estimated_time || 'N/A'}</div>
@@ -390,9 +383,7 @@ export default function RouteOptimizer() {
                       <div className="flex items-center gap-2 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
                         <Clock className="w-4 h-4 text-blue-600" />
                         <span className="text-sm text-blue-700 font-medium">
-                          {stop.estimated_travel_time_from_previous}
-                          {stop.estimated_distance_from_previous ? ` (${stop.estimated_distance_from_previous})` : ""}
-                          {" "}from previous stop
+                          {stop.estimated_travel_time_from_previous} from previous stop
                         </span>
                       </div>
                     )}

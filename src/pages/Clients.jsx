@@ -21,7 +21,34 @@ import {
 } from "@/components/ui/alert-dialog";
 import ClientListItem from "../components/clients/ClientListItem";
 import { toast } from "sonner";
-import { getEffectiveWorkingDays } from "@/lib/workingDays";
+import { DAY_ORDER, getEffectiveWorkingDays } from "@/lib/workingDays";
+
+const FALLBACK_SORT_ORDER = Number.MAX_SAFE_INTEGER;
+
+function getSortFallback(createdAt) {
+  if (!createdAt) return FALLBACK_SORT_ORDER;
+  const parsed = Date.parse(createdAt);
+  return Number.isFinite(parsed) ? parsed : FALLBACK_SORT_ORDER;
+}
+
+function compareByPotentialOrder(a, b) {
+  const aSort = typeof a.sort_order === "number" ? a.sort_order : FALLBACK_SORT_ORDER;
+  const bSort = typeof b.sort_order === "number" ? b.sort_order : FALLBACK_SORT_ORDER;
+
+  if (aSort !== bSort) return aSort - bSort;
+
+  const aCreatedAt = getSortFallback(a.createdAt);
+  const bCreatedAt = getSortFallback(b.createdAt);
+  if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt;
+
+  const aId = String(a._id ?? a.id ?? "");
+  const bId = String(b._id ?? b.id ?? "");
+  return aId.localeCompare(bId);
+}
+
+function getDisplaySortOrder(customer) {
+  return typeof customer.sort_order === "number" ? customer.sort_order : FALLBACK_SORT_ORDER;
+}
 
 export default function Clients() {
   const navigate = useNavigate();
@@ -30,7 +57,7 @@ export default function Clients() {
   // Get business settings for working days
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
-  const allCustomers = useCustomersFilter({ created_by: user.email });
+  const allCustomers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
   const updateCustomer = useCustomerUpdate();
   const deleteCustomerMutation = useCustomerDelete();
 
@@ -41,6 +68,10 @@ export default function Clients() {
   const [searchQuery, setSearchQuery] = useState("");
   const [reorderMode, setReorderMode] = useState(false);
   const [movingCustomerId, setMovingCustomerId] = useState(null);
+  const customersRef = useRef([]);
+  const pendingSortInitializationIdsRef = useRef(new Set());
+  const pendingReorderSortsRef = useRef(new Map());
+  const pendingReorderDaysByCustomerIdRef = useRef(new Map());
   const dayTabRefs = useRef({});
   const hasAutoScrolledDayRef = useRef(false);
 
@@ -50,6 +81,50 @@ export default function Clients() {
   }, [convexBusiness]);
 
   const validWorkingDays = daysOfWeek;
+  const dayRankByName = useMemo(() => {
+    const map = new Map();
+    DAY_ORDER.forEach((day, index) => {
+      map.set(day, index);
+    });
+    return map;
+  }, []);
+
+  const activeDayRankByName = useMemo(() => {
+    const map = new Map();
+    validWorkingDays.forEach((day, index) => {
+      map.set(day, index);
+    });
+    return map;
+  }, [validWorkingDays]);
+
+  const compareCustomersForDisplay = useCallback((a, b) => {
+    if (a.service_day !== b.service_day) {
+      const aRank = activeDayRankByName.get(a.service_day);
+      const bRank = activeDayRankByName.get(b.service_day);
+      if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+      if (aRank !== undefined) return -1;
+      if (bRank !== undefined) return 1;
+
+      const aDayRank = dayRankByName.get(a.service_day);
+      const bDayRank = dayRankByName.get(b.service_day);
+      if (aDayRank !== undefined && bDayRank !== undefined) return aDayRank - bDayRank;
+
+      return String(a.service_day).localeCompare(String(b.service_day));
+    }
+
+    const aSortOrder = getDisplaySortOrder(a);
+    const bSortOrder = getDisplaySortOrder(b);
+
+    if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+
+    const aCreatedAt = getSortFallback(a.createdAt);
+    const bCreatedAt = getSortFallback(b.createdAt);
+    if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt;
+
+    const aId = String(a._id ?? a.id ?? "");
+    const bId = String(b._id ?? b.id ?? "");
+    return aId.localeCompare(bId);
+  }, [activeDayRankByName, dayRankByName]);
 
   // Update activeDay if it's not in the working days list
   useEffect(() => {
@@ -57,6 +132,10 @@ export default function Clients() {
       setActiveDay(validWorkingDays[0]);
     }
   }, [validWorkingDays, activeDay]);
+
+  useEffect(() => {
+    customersRef.current = customers;
+  }, [customers]);
 
   useEffect(() => {
     const activeTab = dayTabRefs.current[activeDay];
@@ -75,48 +154,96 @@ export default function Clients() {
   }, [activeDay, validWorkingDays]);
 
   useEffect(() => {
-    if (allCustomers && convexBusiness !== undefined) {
-      setLoading(true);
+    if (!allCustomers) return;
 
-      // Initialize sort_order if needed
-      const dayGroups = {};
-      allCustomers.forEach(customer => {
-        if (!dayGroups[customer.service_day]) {
-          dayGroups[customer.service_day] = [];
-        }
-        dayGroups[customer.service_day].push(customer);
-      });
+    const lockedReorderDays = new Set(pendingReorderDaysByCustomerIdRef.current.values());
+    const lockedCustomersById = new Map(
+      customersRef.current
+        .filter((customer) => lockedReorderDays.has(customer.service_day))
+        .map((customer) => [customer._id, customer])
+    );
 
-      const updatePromises = [];
-      for (const day in dayGroups) {
-        const dayCustomers = dayGroups[day];
-        dayCustomers.forEach((customer, index) => {
-          if (customer.sort_order === undefined || customer.sort_order === null) {
-            updatePromises.push(
-              updateCustomer({ id: customer._id, sort_order: index })
-            );
-            customer.sort_order = index;
-          }
-        });
+    const customersForDisplay = allCustomers.map((customer) => {
+      const lockedCustomer = lockedCustomersById.get(customer._id);
+      if (lockedCustomer) return lockedCustomer;
+
+      const pendingSortOrder = pendingReorderSortsRef.current.get(String(customer._id));
+      if (pendingSortOrder === undefined) return customer;
+
+      return {
+        ...customer,
+        sort_order: pendingSortOrder,
+      };
+    });
+
+    const dayGroups = {};
+    customersForDisplay.forEach((customer) => {
+      if (!dayGroups[customer.service_day]) {
+        dayGroups[customer.service_day] = [];
       }
+      dayGroups[customer.service_day].push(customer);
+    });
 
-      if (updatePromises.length > 0) {
-        Promise.all(updatePromises).then(() => {
-          // Data will auto-refresh via Convex reactivity
-        });
-      }
+    const sortOrderById = new Map();
+    const updates = [];
 
-      const sorted = [...allCustomers].sort((a, b) => {
-        if (a.service_day !== b.service_day) {
-          return a.service_day.localeCompare(b.service_day);
+    for (const day in dayGroups) {
+      const dayCustomers = dayGroups[day]
+        .map((customer) => {
+          const pendingSortOrder = pendingReorderSortsRef.current.get(String(customer._id));
+          if (pendingSortOrder === undefined) return customer;
+
+          return {
+            ...customer,
+            sort_order: pendingSortOrder,
+          };
+        })
+        .sort(compareByPotentialOrder);
+
+      dayCustomers.forEach((customer, index) => {
+        sortOrderById.set(customer._id, index);
+        const customerKey = String(customer._id);
+        const shouldPersist = typeof customer.sort_order !== "number" || customer.sort_order !== index;
+        if (!shouldPersist) return;
+
+        if (pendingReorderSortsRef.current.has(customerKey)) {
+          return;
         }
-        return (a.sort_order || 0) - (b.sort_order || 0);
-      });
 
-      setCustomers(sorted);
-      setLoading(false);
+        if (pendingSortInitializationIdsRef.current.has(customerKey)) {
+          return;
+        }
+
+        pendingSortInitializationIdsRef.current.add(customerKey);
+        updates.push(
+          updateCustomer({ id: customer._id, sort_order: index })
+            .catch((error) => {
+              console.error("Failed to initialize client sort order:", error);
+            })
+            .finally(() => {
+              pendingSortInitializationIdsRef.current.delete(customerKey);
+            })
+        );
+      });
     }
-  }, [allCustomers, convexBusiness, updateCustomer]);
+
+    const sorted = [...customersForDisplay].sort((a, b) => {
+      return compareCustomersForDisplay({
+        ...a,
+        sort_order: sortOrderById.get(a._id) ?? a.sort_order,
+      }, {
+        ...b,
+        sort_order: sortOrderById.get(b._id) ?? b.sort_order,
+      });
+    });
+
+    setCustomers(sorted);
+    setLoading(false);
+
+    if (updates.length > 0) {
+      Promise.allSettled(updates);
+    }
+  }, [allCustomers, compareCustomersForDisplay, updateCustomer]);
 
   const handleDelete = async () => {
     if (deleteCustomer) {
@@ -129,12 +256,53 @@ export default function Clients() {
     navigate(createPageUrl("EditClient") + `?id=${customer._id}`);
   }, [navigate]);
 
+  const applyReorder = useCallback(async (day, reorderedDayCustomers) => {
+    const nextOrderById = new Map();
+    reorderedDayCustomers.forEach((customer, index) => {
+      nextOrderById.set(customer._id, index);
+    });
+
+    const updates = [];
+    const nextCustomers = customers.map((customer) => {
+      if (customer.service_day !== day) {
+        return customer;
+      }
+
+      const nextSortOrder = nextOrderById.get(customer._id);
+      if (nextSortOrder === undefined) return customer;
+
+      if (customer.sort_order !== nextSortOrder) {
+        const customerKey = String(customer._id);
+        pendingReorderSortsRef.current.set(customerKey, nextSortOrder);
+        pendingReorderDaysByCustomerIdRef.current.set(customerKey, day);
+        updates.push(
+          updateCustomer({ id: customer._id, sort_order: nextSortOrder })
+            .finally(() => {
+              pendingReorderSortsRef.current.delete(customerKey);
+              pendingReorderDaysByCustomerIdRef.current.delete(customerKey);
+            })
+        );
+      }
+
+      return {
+        ...customer,
+        sort_order: nextSortOrder,
+      };
+    }).sort(compareCustomersForDisplay);
+
+    setCustomers(nextCustomers);
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
+  }, [compareCustomersForDisplay, customers, updateCustomer]);
+
   const handleMoveUp = async (customer) => {
     if (movingCustomerId) return;
     setMovingCustomerId(customer._id);
 
     try {
-      const dayCustomers = customers.filter(c => c.service_day === customer.service_day);
+      const dayCustomers = customers.filter((c) => c.service_day === customer.service_day);
       const currentIndex = dayCustomers.findIndex(c => c._id === customer._id);
 
       if (currentIndex <= 0) {
@@ -142,13 +310,11 @@ export default function Clients() {
         return;
       }
 
-      const customerAbove = dayCustomers[currentIndex - 1];
-      const tempOrder = customer.sort_order;
+      const next = [...dayCustomers];
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(currentIndex - 1, 0, moved);
 
-      await Promise.all([
-        updateCustomer({ id: customer._id, sort_order: customerAbove.sort_order }),
-        updateCustomer({ id: customerAbove._id, sort_order: tempOrder })
-      ]);
+      await applyReorder(customer.service_day, next);
 
       toast.success("Customer moved up");
     } catch (error) {
@@ -164,7 +330,7 @@ export default function Clients() {
     setMovingCustomerId(customer._id);
 
     try {
-      const dayCustomers = customers.filter(c => c.service_day === customer.service_day);
+      const dayCustomers = customers.filter((c) => c.service_day === customer.service_day);
       const currentIndex = dayCustomers.findIndex(c => c._id === customer._id);
 
       if (currentIndex >= dayCustomers.length - 1) {
@@ -172,13 +338,11 @@ export default function Clients() {
         return;
       }
 
-      const customerBelow = dayCustomers[currentIndex + 1];
-      const tempOrder = customer.sort_order;
+      const next = [...dayCustomers];
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(currentIndex + 1, 0, moved);
 
-      await Promise.all([
-        updateCustomer({ id: customer._id, sort_order: customerBelow.sort_order }),
-        updateCustomer({ id: customerBelow._id, sort_order: tempOrder })
-      ]);
+      await applyReorder(customer.service_day, next);
 
       toast.success("Customer moved down");
     } catch (error) {
@@ -193,6 +357,7 @@ export default function Clients() {
   const getCustomersByDay = useCallback((day) => {
     return customers
       .filter((c) => c.service_day === day)
+      .sort(compareByPotentialOrder)
       .filter((c) => {
         if (!searchQuery) return true;
         const query = searchQuery.toLowerCase();
@@ -220,7 +385,7 @@ export default function Clients() {
     return customers.filter(c => daysOfWeek.includes(c.service_day)).length;
   }, [customers, daysOfWeek]);
 
-  if (loading || convexBusiness === undefined) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>

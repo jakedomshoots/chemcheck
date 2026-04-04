@@ -53,6 +53,11 @@ export default function NewServiceLog() {
 
   // Use navigation state for instant render if available
   const navigationCustomer = location.state?.customer;
+  const serviceFlow = location.state?.serviceFlow;
+  const startedFromOffDayPicker = serviceFlow?.source === "home_off_day_picker";
+  const backToRouteLabel = startedFromOffDayPicker
+    ? `Back to ${serviceFlow?.todayDay || "Today"} Route`
+    : "Back to Route";
 
   const customers = useCustomers();
   const createServiceLog = useServiceLogCreate();
@@ -311,6 +316,12 @@ export default function NewServiceLog() {
         setDraftSavedAt(null);
       }
 
+      if (startedFromOffDayPicker && serviceFlow?.selectedDay) {
+        toast.success(
+          `Saved ${customer?.full_name || "client"} from ${serviceFlow.selectedDay}. Returning to ${serviceFlow?.todayDay || "today"}.`
+        );
+      }
+
       // Navigate immediately - don't wait
       navigate(createPageUrl("Home"));
     } catch (error) {
@@ -341,7 +352,7 @@ export default function NewServiceLog() {
           className="mb-4 group"
         >
           <ArrowLeft className="w-4 h-4 mr-2 stroke-[1.75] group-hover:-translate-x-1 transition-transform" />
-          Back to Route
+          {backToRouteLabel}
         </Button>
 
         <div className="flex items-center justify-between">

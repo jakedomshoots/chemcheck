@@ -2,28 +2,21 @@ import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { logLogin, logLogout } from '@/lib/auditLog';
 import { setUserContext, clearUserContext } from '@/lib/sentry';
+import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
+import { normalizeConvexUrl } from '@/lib/convexUrl';
+import {
+  getAuthBypassReason,
+  shouldUseIosSimulatorAuthBypass,
+  shouldUseLocalhostAuthBypass,
+} from '@/lib/platformPolicy';
 
 // Get Clerk publishable key from environment
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const clerkDomain = import.meta.env.VITE_CLERK_DOMAIN;
-const bypassFlagEnabled = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true';
-const bypassFlagEnabledInNonDev = bypassFlagEnabled && !import.meta.env.DEV;
-
-if (bypassFlagEnabledInNonDev) {
-  console.error('SECURITY WARNING: VITE_IOS_SIM_AUTH_BYPASS is enabled outside development. Bypass disabled.');
-}
-
-const isIosSimulatorBypass = bypassFlagEnabled
-  && import.meta.env.DEV
-  && typeof window !== 'undefined'
-  && window.Capacitor
-  && window.Capacitor.getPlatform?.() === 'ios';
-
-// Dev mode bypass for localhost development
-const isDevBypass = import.meta.env.DEV
-  && typeof window !== 'undefined'
-  && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const isIosSimulatorBypass = shouldUseIosSimulatorAuthBypass();
+const isDevBypass = shouldUseLocalhostAuthBypass();
+const authBypassReason = getAuthBypassReason();
 
 // Auth context for app-wide auth state
 const AuthContext = createContext(null);
@@ -58,7 +51,7 @@ let convexClientPromise = null;
 async function getConvexClient() {
   if (!convexClientPromise) {
     convexClientPromise = import('convex/react').then(({ ConvexReactClient }) => {
-      const convexUrl = import.meta.env.VITE_CONVEX_URL;
+      const convexUrl = normalizeConvexUrl(import.meta.env.VITE_CONVEX_URL);
       if (!convexUrl) {
         throw new Error('VITE_CONVEX_URL is not configured');
       }
@@ -217,6 +210,8 @@ function AuthContextProvider({ children }) {
 // Main ClerkAuthProvider component
 export function ClerkAuthProvider({ children }) {
   if (isIosSimulatorBypass || isDevBypass) {
+    warnAuthBypassOnce('Clerk', authBypassReason);
+
     const bypassValue = {
       isLoaded: true,
       isSignedIn: true,

@@ -109,7 +109,7 @@ export function SetupWizardPage() {
     }
 
     if (formData.businessPhone.trim()) {
-      const phoneRegex = /^[\d\s\-\(\)\+]+$/;
+      const phoneRegex = /^[\d\s()+-]+$/;
       if (!phoneRegex.test(formData.businessPhone.trim()) || formData.businessPhone.trim().length < 10) {
         setError('Please enter a valid phone number');
         return;
