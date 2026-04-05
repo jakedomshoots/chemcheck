@@ -29,7 +29,7 @@ function clampDurationMinutes(value: number): number {
 
 function getCustomerNumericId(record: CustomerLike): number | null {
   const id = toFiniteNumber(record._id ?? record.id ?? record.customer_id ?? record.customerId);
-  return id !== null ? id : null;
+  return id;
 }
 
 function getMedian(values: number[]): number | null {
@@ -43,6 +43,7 @@ function getMedian(values: number[]): number | null {
 }
 
 function getExplicitDurationMinutes(customer: CustomerLike): number | null {
+  const durationMs = toFiniteNumber(customer.duration_ms);
   const candidates = [
     customer.estimatedDuration,
     customer.estimated_duration,
@@ -50,7 +51,7 @@ function getExplicitDurationMinutes(customer: CustomerLike): number | null {
     customer.avg_duration_minutes,
     customer.typical_duration_minutes,
     customer.duration,
-    toFiniteNumber(customer.duration_ms) !== null ? Number(customer.duration_ms) / 60000 : null,
+    durationMs !== null ? durationMs / 60000 : null,
   ];
 
   for (const candidate of candidates) {

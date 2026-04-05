@@ -35,35 +35,18 @@ import {
   BOUNDS,
 } from './validation';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 const DEFAULT_BRANDING: ExportBranding = {
   companyName: 'Pool Service Company',
   logo: null,
   primaryColor: '#7c3aed',
 };
 
-/** Maximum pools to include in fleet export */
 const MAX_FLEET_EXPORT_POOLS = 1000;
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * Gets the current timestamp in ISO format
- * Property 12: Export Timestamp Accuracy - timestamp within 1 minute of generation
- */
 export function getCurrentTimestamp(): string {
   return new Date().toISOString();
 }
 
-/**
- * Validates that a timestamp is within acceptable range of current time
- * Used for Property 12 validation
- */
 export function isTimestampAccurate(timestamp: string, toleranceMs: number = 60000): boolean {
   const exportTime = new Date(timestamp).getTime();
   if (isNaN(exportTime)) {
@@ -73,10 +56,6 @@ export function isTimestampAccurate(timestamp: string, toleranceMs: number = 600
   return Math.abs(now - exportTime) <= toleranceMs;
 }
 
-/**
- * Formats a date string for display
- * SECURITY: Returns escaped string on parse failure to prevent XSS
- */
 function formatDate(dateString: string): string {
   try {
     return format(parseISO(dateString), 'MMM d, yyyy');
@@ -86,10 +65,6 @@ function formatDate(dateString: string): string {
   }
 }
 
-/**
- * Formats a date string with time for display
- * SECURITY: Returns escaped string on parse failure to prevent XSS
- */
 function formatDateTime(dateString: string): string {
   try {
     return format(parseISO(dateString), 'MMM d, yyyy h:mm a');
@@ -99,12 +74,7 @@ function formatDateTime(dateString: string): string {
   }
 }
 
-/**
- * Converts an array of objects to CSV format
- * SECURITY: All values are escaped to prevent CSV injection
- */
 function arrayToCsv<T extends Record<string, unknown>>(data: T[], headers: string[]): string {
-  // Validate array size
   const validatedData = validateArray<T>(data, MAX_FLEET_EXPORT_POOLS);
   
   const headerRow = headers.map(h => escapeCsvValue(h)).join(',');
@@ -114,16 +84,6 @@ function arrayToCsv<T extends Record<string, unknown>>(data: T[], headers: strin
   return [headerRow, ...dataRows].join('\n');
 }
 
-
-// ============================================================================
-// PDF Generation - Pool Analysis Report
-// ============================================================================
-
-/**
- * Generates HTML content for a pool analysis PDF report
- * Requirement 10.1: Generate a PDF report with all analysis sections
- * Requirement 10.5: Include generation timestamp and data range covered
- */
 function generatePoolAnalysisHTML(
   analysis: PoolAnalysisResult,
   branding: ExportBranding
@@ -154,9 +114,6 @@ function generatePoolAnalysisHTML(
   `;
 }
 
-/**
- * Gets CSS styles for the report
- */
 function getReportStyles(branding: ExportBranding): string {
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -283,11 +240,6 @@ function getReportStyles(branding: ExportBranding): string {
     }
   `;
 }
-
-
-/**
- * Generates the report header section
- */
 function generateReportHeader(branding: ExportBranding, analysis: PoolAnalysisResult): string {
   return `
     <div class="header">
@@ -302,10 +254,6 @@ function generateReportHeader(branding: ExportBranding, analysis: PoolAnalysisRe
   `;
 }
 
-/**
- * Generates the health score section with visual display
- * Requirement 10.2: Include visual charts for trends and health scores
- */
 function generateHealthScoreSection(healthScore: PoolHealthScore): string {
   const trendIcon = healthScore.trend === 'improving' ? '↑' : 
                     healthScore.trend === 'declining' ? '↓' : '→';
@@ -335,9 +283,6 @@ function generateHealthScoreSection(healthScore: PoolHealthScore): string {
   `;
 }
 
-/**
- * Generates the summary section
- */
 function generateSummarySection(summary: GeneratedSummary): string {
   const toneColors: Record<string, string> = {
     positive: '#059669',
@@ -367,9 +312,6 @@ function generateSummarySection(summary: GeneratedSummary): string {
   `;
 }
 
-/**
- * Generates the trends section with visual chart representation
- */
 function generateTrendsSection(analysis: PoolAnalysisResult): string {
   if (!analysis.chemicalTrends || analysis.chemicalTrends.length === 0) {
     return '';
@@ -398,11 +340,6 @@ function generateTrendsSection(analysis: PoolAnalysisResult): string {
     </div>
   `;
 }
-
-
-/**
- * Generates the recommendations section
- */
 function generateRecommendationsSection(recommendations: PoolAnalysisResult['recommendations']): string {
   const allRecs = [
     ...recommendations.immediate.map(r => ({ ...r, category: 'immediate' })),
@@ -439,9 +376,6 @@ function generateRecommendationsSection(recommendations: PoolAnalysisResult['rec
   `;
 }
 
-/**
- * Generates the cost analysis section
- */
 function generateCostSection(costAnalysis: CostAnalysis): string {
   return `
     <div class="section page-break">
@@ -476,10 +410,6 @@ function generateCostSection(costAnalysis: CostAnalysis): string {
   `;
 }
 
-/**
- * Generates the customer report section
- * Requirement 10.3: Use professional branding and formatting for customer reports
- */
 function generateCustomerReportSection(customerReport: CustomerReport): string {
   return `
     <div class="section">
@@ -504,9 +434,6 @@ function generateCustomerReportSection(customerReport: CustomerReport): string {
   `;
 }
 
-/**
- * Generates the report footer
- */
 function generateReportFooter(analysis: PoolAnalysisResult): string {
   return `
     <div class="footer">
@@ -517,15 +444,6 @@ function generateReportFooter(analysis: PoolAnalysisResult): string {
   `;
 }
 
-
-// ============================================================================
-// CSV Generation - Fleet Data Export
-// ============================================================================
-
-/**
- * Generates CSV content for fleet pool data
- * Requirement 10.4: Provide CSV format for spreadsheet analysis
- */
 export function generateFleetCsv(insights: FleetInsights): string {
   const headers = [
     'customerId',
@@ -541,9 +459,6 @@ export function generateFleetCsv(insights: FleetInsights): string {
   return arrayToCsv(insights.priorityPools as unknown as Record<string, unknown>[], headers);
 }
 
-/**
- * Generates detailed fleet CSV with all pools
- */
 export function generateDetailedFleetCsv(pools: FleetPool[]): string {
   const headers = [
     'customerId',
@@ -559,17 +474,11 @@ export function generateDetailedFleetCsv(pools: FleetPool[]): string {
   return arrayToCsv(pools as unknown as Record<string, unknown>[], headers);
 }
 
-/**
- * Generates service day statistics CSV
- */
 export function generateServiceDayStatsCsv(insights: FleetInsights): string {
   const headers = ['day', 'poolCount', 'averageHealth', 'estimatedTime'];
   return arrayToCsv(insights.byServiceDay as unknown as Record<string, unknown>[], headers);
 }
 
-/**
- * Generates problem clusters CSV
- */
 export function generateProblemClustersCsv(insights: FleetInsights): string {
   const data = insights.problemClusters.map(cluster => ({
     issue: cluster.issue,
@@ -582,36 +491,14 @@ export function generateProblemClustersCsv(insights: FleetInsights): string {
   return arrayToCsv(data, headers);
 }
 
-// ============================================================================
-// JSON Export
-// ============================================================================
-
-/**
- * Generates JSON export of pool analysis
- */
 export function generatePoolAnalysisJson(analysis: PoolAnalysisResult): string {
   return JSON.stringify(analysis, null, 2);
 }
 
-/**
- * Generates JSON export of fleet insights
- */
 export function generateFleetInsightsJson(insights: FleetInsights): string {
   return JSON.stringify(insights, null, 2);
 }
 
-
-// ============================================================================
-// Main Export Functions
-// ============================================================================
-
-/**
- * Exports a pool analysis report in the specified format
- * 
- * Requirements:
- * - 10.1: Generate a PDF report with all analysis sections
- * - 10.5: Include generation timestamp and data range covered
- */
 export function exportPoolAnalysis(
   analysis: PoolAnalysisResult,
   options: Partial<ExportOptions> = {}
@@ -632,7 +519,6 @@ export function exportPoolAnalysis(
       break;
       
     case 'csv':
-      // For single pool, export a summary CSV
       const csvData = [
         {
           customerId: analysis.customerId,
@@ -699,7 +585,6 @@ export function exportFleetInsights(
       break;
       
     case 'pdf':
-      // For fleet, generate a summary HTML/PDF
       const html = generateFleetReportHTML(insights, options.branding || DEFAULT_BRANDING, generatedAt);
       data = new Blob([html], { type: 'text/html' });
       filename = `fleet-report-${generatedAt.split('T')[0]}.html`;
@@ -717,11 +602,6 @@ export function exportFleetInsights(
     dataRange: dateRange,
   };
 }
-
-
-/**
- * Generates HTML content for a fleet report
- */
 function generateFleetReportHTML(
   insights: FleetInsights,
   branding: ExportBranding,
@@ -887,13 +767,6 @@ function generateFleetReportHTML(
 }
 
 
-// ============================================================================
-// Browser Download Utilities
-// ============================================================================
-
-/**
- * Downloads an export result to the user's device
- */
 export function downloadExport(result: ExportResult): void {
   const blob = result.data instanceof Blob 
     ? result.data 
@@ -909,12 +782,8 @@ export function downloadExport(result: ExportResult): void {
   URL.revokeObjectURL(url);
 }
 
-/** Timeout in ms to wait for print window content to load before triggering print */
 const PRINT_WINDOW_LOAD_TIMEOUT_MS = 500;
 
-/**
- * Opens an HTML export in a new window for printing as PDF
- */
 export function openForPrint(result: ExportResult): Promise<void> {
   return new Promise((resolve, reject) => {
     if (result.format !== 'pdf' || !(result.data instanceof Blob)) {
@@ -939,7 +808,6 @@ export function openForPrint(result: ExportResult): Promise<void> {
         printWindow.document.write(reader.result as string);
         printWindow.document.close();
         
-        // Wait for content to load before triggering print
         setTimeout(() => {
           try {
             printWindow.print();
@@ -957,9 +825,6 @@ export function openForPrint(result: ExportResult): Promise<void> {
   });
 }
 
-/**
- * Gets the content type for a given format
- */
 function getContentType(format: string): string {
   switch (format) {
     case 'pdf':
@@ -973,13 +838,6 @@ function getContentType(format: string): string {
   }
 }
 
-// ============================================================================
-// Validation Functions for Testing
-// ============================================================================
-
-/**
- * Validates an export result has all required fields
- */
 export function validateExportResult(result: ExportResult): boolean {
   return (
     typeof result.format === 'string' &&
@@ -992,10 +850,6 @@ export function validateExportResult(result: ExportResult): boolean {
   );
 }
 
-/**
- * Validates that the export timestamp is accurate (within tolerance)
- * Property 12: Export Timestamp Accuracy
- */
 export function validateExportTimestamp(result: ExportResult, toleranceMs: number = 60000): boolean {
   return isTimestampAccurate(result.generatedAt, toleranceMs);
 }

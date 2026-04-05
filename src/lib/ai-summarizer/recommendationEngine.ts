@@ -27,17 +27,10 @@ import {
 import {
   isValidChemical,
   isValidReading,
-  isValidCategory,
   validatePoolGallons,
   generateSecureId,
-  validateArray,
-  VALID_CHEMICALS,
   type ValidChemical,
 } from './validation';
-
-// ============================================================================
-// Constants
-// ============================================================================
 
 /**
  * Priority levels for different issue severities
@@ -76,8 +69,6 @@ const DOSAGE_RATES: Record<ValidChemical, Record<string, { amount: string; unit:
     high: { amount: 'partial drain', unit: '(reduce by 25%)' },
   },
 };
-
-
 /**
  * Recommended actions for each chemical and reading combination
  * SECURITY: Only accessed via validated chemical names
@@ -211,10 +202,6 @@ const CHEMICAL_ACTIONS: Record<ValidChemical, Record<ChemicalReading, {
   },
 };
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
 /**
  * Generates a unique recommendation ID
  * SECURITY: Uses sanitized inputs to prevent injection attacks
@@ -253,10 +240,8 @@ export function calculateDosage(
     return null;
   }
 
-  // Determine dosage key based on reading
   let dosageKey = reading as string;
   if (reading === 'critical') {
-    // Check for critical-specific dosage (try critical_low first, then critical_high)
     const criticalLowKey = 'critical_low';
     const criticalHighKey = 'critical_high';
     if (chemicalDosages[criticalLowKey]) {
@@ -271,16 +256,13 @@ export function calculateDosage(
     return null;
   }
 
-  // Calculate scaled dosage
   const scaleFactor = validatedGallons / 10000;
   const scaledAmount = parseFloat(dosage.amount) * scaleFactor;
-  
-  // Format the dosage string
+
   if (dosage.amount === 'partial drain') {
     return `Partial drain and refill ${dosage.unit}`;
   }
-  
-  // SECURITY: Use validated gallons value
+
   return `${scaledAmount.toFixed(1)} ${dosage.unit} for ${validatedGallons} gallons`;
 }
 
@@ -292,7 +274,6 @@ export function getPriorityForReading(
   reading: ChemicalReading,
   category: RecommendationCategory
 ): number {
-  // Base priority from reading severity
   const severityPriority: Record<ChemicalReading, number> = {
     critical: PRIORITY_LEVELS.critical,
     low: PRIORITY_LEVELS.medium,
@@ -300,7 +281,6 @@ export function getPriorityForReading(
     good: PRIORITY_LEVELS.preventive,
   };
 
-  // Category modifier
   const categoryModifier: Record<RecommendationCategory, number> = {
     immediate: 0,
     thisVisit: 1,
@@ -310,7 +290,6 @@ export function getPriorityForReading(
 
   return severityPriority[reading] + categoryModifier[category];
 }
-
 
 /**
  * Gets the most recent reading for a chemical from service logs
@@ -322,18 +301,12 @@ function getMostRecentReading(
   if (logs.length === 0) {
     return 'good';
   }
-  
-  // Sort by date descending to get most recent
   const sortedLogs = [...logs].sort(
     (a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime()
   );
-  
+
   return sortedLogs[0][chemical] || 'good';
 }
-
-// ============================================================================
-// Recommendation Generation Functions
-// ============================================================================
 
 /**
  * Recommendation with its intended category (for proper categorization)
@@ -346,7 +319,7 @@ interface RecommendationWithCategory extends Recommendation {
  * Creates a recommendation from chemical reading
  */
 function createChemicalRecommendation(
-  chemical: string,
+  chemical: ValidChemical,
   reading: ChemicalReading,
   poolGallons: number | null,
   index: number
@@ -358,7 +331,7 @@ function createChemicalRecommendation(
 
   const actionInfo = chemicalActions[reading];
   if (!actionInfo || reading === 'good') {
-    return null; // Don't create recommendations for good readings
+    return null;
   }
 
   const category = actionInfo.category;
@@ -393,9 +366,7 @@ function createRootCauseRecommendations(
   const recommendations: RecommendationWithCategory[] = [];
   let index = 0;
 
-  // Add recommendations for root causes
   for (const rootCause of rootCauseAnalysis.rootCauses) {
-    // Immediate action
     if (rootCause.solution.immediate && !existingIssues.has(rootCause.symptom)) {
       recommendations.push({
         id: generateRecommendationId('rootcause', 'immediate', index++),
@@ -411,7 +382,6 @@ function createRootCauseRecommendations(
       });
     }
 
-    // Long-term action
     if (rootCause.solution.longTerm) {
       recommendations.push({
         id: generateRecommendationId('rootcause', 'longTerm', index++),
@@ -428,7 +398,6 @@ function createRootCauseRecommendations(
     }
   }
 
-  // Add recommendations for chronic issues
   for (const chronicIssue of rootCauseAnalysis.chronicIssues) {
     recommendations.push({
       id: generateRecommendationId('chronic', 'nextVisit', index++),
@@ -462,16 +431,14 @@ function createPredictiveRecommendations(
   let index = 0;
 
   for (const prediction of predictiveInsights.predictions) {
-    // Skip if already addressed or no action needed
     if (!prediction.recommendedAction || existingIssues.has(prediction.chemical)) {
       continue;
     }
 
-    // Only add if prediction shows declining trend or imminent critical
     if (prediction.daysUntilCritical !== null && prediction.daysUntilCritical <= 14) {
-      const category: RecommendationCategory = 
+      const category: RecommendationCategory =
         prediction.daysUntilCritical <= 3 ? 'thisVisit' : 'nextVisit';
-      
+
       recommendations.push({
         id: generateRecommendationId('predictive', category, index++),
         priority: prediction.daysUntilCritical <= 3 ? PRIORITY_LEVELS.high : PRIORITY_LEVELS.medium,
@@ -489,8 +456,6 @@ function createPredictiveRecommendations(
 
   return recommendations;
 }
-
-
 /**
  * Categorizes recommendations by urgency using their intended category
  */
@@ -504,23 +469,16 @@ function categorizeRecommendations(
     longTerm: [],
   };
 
-  // Sort by priority first within each category
   const sorted = [...recommendations].sort((a, b) => a.priority - b.priority);
 
   for (const rec of sorted) {
-    // Strip the intendedCategory before adding to result
     const { intendedCategory, ...recommendation } = rec;
-    
-    // Use the intended category from the recommendation
+
     categorized[intendedCategory].push(recommendation);
   }
 
   return categorized;
 }
-
-// ============================================================================
-// Main Export Function
-// ============================================================================
 
 export interface RecommendationEngineInput {
   serviceLogs: ServiceLog[];
@@ -553,12 +511,10 @@ export function generateRecommendations(
   const addressedIssues = new Set<string>();
   let index = 0;
 
-  // Sort logs by date (most recent first)
   const sortedLogs = [...serviceLogs].sort(
     (a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime()
   );
 
-  // 1. Generate recommendations from current chemical readings
   const chemicals: Array<'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'> = [
     'ph', 'chlorine', 'alkalinity', 'stabilizer'
   ];
@@ -573,21 +529,14 @@ export function generateRecommendations(
     }
   }
 
-  // 2. Add recommendations from root cause analysis
   const rootCauseRecs = createRootCauseRecommendations(rootCauseAnalysis, addressedIssues);
   recommendations.push(...rootCauseRecs);
 
-  // 3. Add recommendations from predictive insights
   const predictiveRecs = createPredictiveRecommendations(predictiveInsights, addressedIssues);
   recommendations.push(...predictiveRecs);
 
-  // 4. Categorize and return
   return categorizeRecommendations(recommendations);
 }
-
-// ============================================================================
-// Utility Functions for Testing
-// ============================================================================
 
 /**
  * Gets priority levels constant
@@ -602,22 +551,18 @@ export function getPriorityLevels(): typeof PRIORITY_LEVELS {
  * Used for Property 8: Recommendation Priority Ordering
  */
 export function validatePriorityOrdering(recommendations: CategorizedRecommendations): boolean {
-  // Get max priority from immediate (should be lowest numbers = highest urgency)
   const immediateMaxPriority = recommendations.immediate.length > 0
     ? Math.max(...recommendations.immediate.map(r => r.priority))
     : 0;
 
-  // Get min priority from long-term (should be highest numbers = lowest urgency)
   const longTermMinPriority = recommendations.longTerm.length > 0
     ? Math.min(...recommendations.longTerm.map(r => r.priority))
     : Infinity;
 
-  // If both categories have items, immediate should have lower priority numbers
   if (recommendations.immediate.length > 0 && recommendations.longTerm.length > 0) {
     return immediateMaxPriority < longTermMinPriority;
   }
 
-  // If only one category has items, ordering is trivially satisfied
   return true;
 }
 
@@ -627,12 +572,10 @@ export function validatePriorityOrdering(recommendations: CategorizedRecommendat
 export function validateCategoryPriorities(
   recommendations: CategorizedRecommendations
 ): boolean {
-  // Immediate should have priority <= 2 (critical or high)
   const immediateValid = recommendations.immediate.every(
     r => r.priority <= PRIORITY_LEVELS.high
   );
 
-  // Long-term should have priority >= 4 (low or preventive)
   const longTermValid = recommendations.longTerm.every(
     r => r.priority >= PRIORITY_LEVELS.low
   );
@@ -655,4 +598,3 @@ export function flattenRecommendations(
 
   return all.sort((a, b) => a.priority - b.priority);
 }
-

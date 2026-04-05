@@ -58,21 +58,16 @@ function App() {
           syncAutoBackupState();
         };
 
-        // Run database migrations first
         await initializeMigrations();
         if (unmounted) return;
-        
-        // Register service worker for PWA functionality
+
         await registerServiceWorker();
         if (unmounted) return;
-        
-        // Start auto-backup system based on saved user preference
+
         syncAutoBackupState();
-        
-        // Set up backup trigger from service worker
+
         window.addEventListener('sw-backup-request', handleBackupRequest);
-        
-        // Log app initialization
+
         monitoring.recordMetric('app_initialized', performance.now());
         
         console.log('ChemCheck initialized successfully');
@@ -99,7 +94,6 @@ function App() {
 
     initializeApp();
     
-    // Cleanup on unmount
     return () => {
       unmounted = true;
       teardown();

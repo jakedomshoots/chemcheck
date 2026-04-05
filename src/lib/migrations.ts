@@ -1,10 +1,6 @@
 import { db } from '@/db/chemcheck-db';
 import { monitoring } from '@/lib/monitoring';
 
-// ============================================
-// Database Migration System
-// ============================================
-
 export interface Migration {
   version: number;
   name: string;
@@ -34,7 +30,6 @@ class MigrationManager {
       name: 'initial_schema',
       description: 'Initial database schema with customers, service logs, chemical usage, and notes',
       up: async () => {
-        // This migration is considered already applied for existing databases
         console.log('Initial schema migration - already applied');
       }
     });
@@ -47,7 +42,6 @@ class MigrationManager {
       up: async () => {
         const now = new Date().toISOString();
         
-        // Update customers without timestamps
         const customers = await db.customers.toArray();
         for (const customer of customers) {
           if (!customer.createdAt) {
@@ -58,7 +52,6 @@ class MigrationManager {
           }
         }
 
-        // Update service logs without timestamps
         const serviceLogs = await db.serviceLogs.toArray();
         for (const log of serviceLogs) {
           if (!log.createdAt) {
@@ -69,7 +62,6 @@ class MigrationManager {
           }
         }
 
-        // Update chemical usage without timestamps
         const chemicalUsage = await db.chemicalUsage.toArray();
         for (const usage of chemicalUsage) {
           if (!usage.createdAt) {
@@ -80,7 +72,6 @@ class MigrationManager {
           }
         }
 
-        // Update notes without timestamps
         const notes = await db.notes.toArray();
         for (const note of notes) {
           if (!note.createdAt) {
@@ -101,13 +92,10 @@ class MigrationManager {
       name: 'add_validation_flags',
       description: 'Add validation status flags to identify records that need validation',
       up: async () => {
-        // This would add validation flags to existing records
-        // For now, we'll just mark all existing records as needing validation
         console.log('Added validation flags to existing records');
       }
     });
 
-    // Future migrations can be added here
   }
 
   addMigration(migration: Migration): void {
@@ -126,10 +114,9 @@ class MigrationManager {
       console.warn('Failed to load migration state:', error);
     }
 
-    // Default state for new installations
     return {
       currentVersion: 1,
-      appliedMigrations: [1], // Assume initial schema is applied
+      appliedMigrations: [1],
       lastMigration: new Date().toISOString()
     };
   }
@@ -174,14 +161,12 @@ class MigrationManager {
           await migration.up();
           const duration = performance.now() - startTime;
 
-          // Record successful migration
           state.appliedMigrations.push(migration.version);
           state.currentVersion = Math.max(state.currentVersion, migration.version);
           state.lastMigration = new Date().toISOString();
           
           result.appliedMigrations.push(migration.version);
           
-          // Log performance
           monitoring.recordMetric('migration_duration', duration, {
             version: migration.version,
             name: migration.name
@@ -194,7 +179,6 @@ class MigrationManager {
           result.errors.push(errorMsg);
           result.success = false;
           
-          // Report error but continue with other migrations
           monitoring.reportError({
             message: errorMsg,
             severity: 'high',
@@ -206,7 +190,6 @@ class MigrationManager {
         }
       }
 
-      // Save updated state
       await this.saveState(state);
 
       if (result.success) {
@@ -262,11 +245,9 @@ class MigrationManager {
     };
 
     try {
-      // Check for orphaned records
       const customers = await db.customers.toArray();
       const customerIds = new Set(customers.map(c => c.id));
 
-      // Check service logs
       const serviceLogs = await db.serviceLogs.toArray();
       const orphanedLogs = serviceLogs.filter(log => !customerIds.has(log.customer_id));
       if (orphanedLogs.length > 0) {
@@ -275,7 +256,6 @@ class MigrationManager {
         result.recommendations.push('Run data cleanup to remove orphaned service logs');
       }
 
-      // Check chemical usage
       const chemicalUsage = await db.chemicalUsage.toArray();
       const orphanedUsage = chemicalUsage.filter(usage => !customerIds.has(usage.customer_id));
       if (orphanedUsage.length > 0) {
@@ -284,7 +264,6 @@ class MigrationManager {
         result.recommendations.push('Run data cleanup to remove orphaned chemical usage records');
       }
 
-      // Check notes with customer references
       const notes = await db.notes.where('customer_id').above(0).toArray();
       const orphanedNotes = notes.filter(note => note.customer_id && !customerIds.has(note.customer_id));
       if (orphanedNotes.length > 0) {
@@ -293,7 +272,6 @@ class MigrationManager {
         result.recommendations.push('Run data cleanup to fix orphaned note references');
       }
 
-      // Check for missing timestamps
       try {
         const allCustomers = await db.customers.toArray();
         const allServiceLogs = await db.serviceLogs.toArray();
@@ -311,10 +289,9 @@ class MigrationManager {
           result.issues.push('Some records are missing timestamps');
           result.recommendations.push('Run migration to add timestamps to existing records');
         }
-      } catch (e) {
-        // Ignore timestamp check errors
-        console.warn('Could not check for missing timestamps:', e);
-      }
+        } catch (e) {
+          console.warn('Could not check for missing timestamps:', e);
+        }
 
     } catch (error) {
       result.valid = false;
@@ -343,21 +320,18 @@ class MigrationManager {
       const customers = await db.customers.toArray();
       const customerIds = customers.map(c => c.id).filter((id): id is number => id !== undefined);
 
-      // Clean orphaned service logs
       const orphanedLogs = await db.serviceLogs.where('customer_id').noneOf(customerIds).toArray();
       for (const log of orphanedLogs) {
         await db.serviceLogs.delete(log.id!);
         result.cleaned.serviceLogs++;
       }
 
-      // Clean orphaned chemical usage
       const orphanedUsage = await db.chemicalUsage.where('customer_id').noneOf(customerIds).toArray();
       for (const usage of orphanedUsage) {
         await db.chemicalUsage.delete(usage.id!);
         result.cleaned.chemicalUsage++;
       }
 
-      // Clean orphaned notes (only those with customer_id set)
       const orphanedNotes = await db.notes.where('customer_id').noneOf(customerIds).toArray();
       for (const note of orphanedNotes.filter(n => n.customer_id)) {
         await db.notes.update(note.id!, { customer_id: undefined });
@@ -374,10 +348,8 @@ class MigrationManager {
   }
 }
 
-// Global migration manager
 export const migrationManager = new MigrationManager();
 
-// Auto-run migrations on app start
 export async function initializeMigrations(): Promise<void> {
   try {
     console.log('Checking for database migrations...');

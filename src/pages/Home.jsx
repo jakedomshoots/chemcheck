@@ -23,13 +23,11 @@ function normalizeSkippedCustomerIds(customerIds) {
   return [...new Set(customerIds.filter((id) => id !== null && id !== undefined))];
 }
 
-// Get the current week key for localStorage
 function getWeekKey() {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   return `skipped_services_${format(weekStart, 'yyyy-MM-dd')}`;
 }
 
-// Get skipped customers for this week from localStorage
 function getSkippedCustomers() {
   try {
     const key = getWeekKey();
@@ -40,14 +38,12 @@ function getSkippedCustomers() {
   }
 }
 
-// Save skipped customers for this week to localStorage
 function saveSkippedCustomers(customerIds) {
   try {
     const key = getWeekKey();
     const normalizedIds = normalizeSkippedCustomerIds(customerIds);
     localStorage.setItem(key, JSON.stringify(normalizedIds));
 
-    // Clean up old week keys (only once per week)
     const lastCleanup = localStorage.getItem('skipped_services_last_cleanup');
     if (!lastCleanup || lastCleanup !== key) {
       Object.keys(localStorage).forEach(k => {
@@ -120,24 +116,19 @@ export default function Home() {
     }
   }, [availableOffDays, selectedOffDay]);
 
-  // Check user's default view preference and redirect if needed
   useEffect(() => {
-    // Wait for user data to load
     if (!user) return;
     if (hasCheckedDefaultView) return;
 
-    // Only check once per session to avoid redirect loops
     const sessionKey = 'chemcheck_default_view_checked';
     const alreadyChecked = sessionStorage.getItem(sessionKey);
 
     if (!alreadyChecked) {
       const defaultView = user?.preferences?.defaultView;
 
-      // Mark as checked for this session
       sessionStorage.setItem(sessionKey, 'true');
       setHasCheckedDefaultView(true);
 
-      // Redirect to Clients page if user prefers "customers" view
       if (defaultView === 'customers') {
         navigate(createPageUrl("Clients"), { replace: true });
         return;
@@ -149,12 +140,9 @@ export default function Home() {
 
   useEffect(() => {
     if (allCustomersData && allLogsData) {
-      // Don't set loading to true - show skeleton instead
       try {
-        // Store all customers
         setAllCustomers(allCustomersData);
 
-        // Filter and sort today's customers
         let todaysCustomers = [];
         if (dayOfWeek !== "Sunday" && dayOfWeek !== "Saturday") {
           todaysCustomers = allCustomersData
@@ -163,11 +151,9 @@ export default function Home() {
         }
         setCustomers(todaysCustomers);
 
-        // Filter today's logs
         const logs = allLogsData.filter(log => log.service_date === today);
         setTodayLogs(logs);
 
-        // Get this week's logs for missed service detection
         const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
         const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
@@ -181,7 +167,6 @@ export default function Home() {
         });
         setAllThisWeekLogs(thisWeekLogs);
 
-        // Filter last week's logs
         const lastWeekStart = startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
         const lastWeekEnd = endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
 
@@ -203,7 +188,6 @@ export default function Home() {
     }
   }, [allCustomersData, allLogsData, today, dayOfWeek]);
 
-  // Calculate missed services from previous days this week
   const missedServices = useMemo(() => {
     const currentDayIndex = daysOrder.indexOf(dayOfWeek);
 
@@ -211,21 +195,17 @@ export default function Home() {
       return [];
     }
 
-    // Get all customers scheduled before today this week
     const previousDays = daysOrder.slice(0, currentDayIndex);
     const missedCustomers = [];
 
     previousDays.forEach(day => {
-      // Check ALL customers, not just today's
       const dayCustomers = allCustomers.filter(c => c.service_day === day);
 
       dayCustomers.forEach(customer => {
-        // Check if they have a log this week
         const hasLogThisWeek = allThisWeekLogs.some(log =>
           log.customer_id === customer._id
         );
 
-        // Check if they've been skipped this week
         const isSkipped = skippedCustomers.includes(customer._id);
 
         if (!hasLogThisWeek && !isSkipped) {
@@ -262,7 +242,6 @@ export default function Home() {
     [allThisWeekLogs]
   );
 
-  // Drop stale skipped entries after service is completed this week.
   useEffect(() => {
     if (!skippedCustomers.length) return;
     const cleanedSkipped = skippedCustomers.filter(
@@ -340,12 +319,10 @@ export default function Home() {
 
   const handleCustomerClick = (customer) => {
     if (isCompleted(customer._id)) {
-      // Pass customer data via navigation state to avoid redundant lookup
       navigate(createPageUrl("CustomerDetail") + `?id=${customer._id}`, {
         state: { customer, lastWeekLog: getLastWeekLog(customer._id) }
       });
     } else {
-      // Pass customer data for instant form render
       navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`, {
         state: { customer }
       });
@@ -468,7 +445,6 @@ export default function Home() {
         };
 
   if (loading) {
-    // Show skeleton immediately instead of blocking spinner
     return (
       <main className="max-w-7xl mx-auto px-3 py-4 font-sans" aria-label="Home">
         <div className="mb-4">
@@ -505,7 +481,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Missed Services Alert */}
       {missedServices.length > 0 && (
         <div className="mb-4 bg-white rounded-xl shadow-sm border border-slate-200/60 border-l-4 border-l-amber-400 overflow-hidden">
           <div className="px-4 py-3 flex items-center justify-between">

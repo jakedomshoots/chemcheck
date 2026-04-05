@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-// ============================================
-// Input Sanitization Helpers
-// ============================================
-
 /**
  * Sanitize HTML to prevent XSS attacks
  */
@@ -22,10 +18,6 @@ export function sanitizeHtml(input: string): string {
 export function sanitizeString(input: string): string {
   return sanitizeHtml(input.trim());
 }
-
-// ============================================
-// Validation Schemas
-// ============================================
 
 export const customerSchema = z.object({
   full_name: z.string()
@@ -156,10 +148,6 @@ export const noteSchema = z.object({
     .optional(),
 });
 
-// ============================================
-// Validation Helper Functions
-// ============================================
-
 export type ValidationResult<T> = {
   success: true;
   data: T;
@@ -212,10 +200,6 @@ export function validateNote(data: unknown): ValidationResult<z.infer<typeof not
   };
 }
 
-// ============================================
-// Rate Limiting for Local Storage
-// ============================================
-
 const RATE_LIMITS = {
   customers: { maxPerHour: 50, maxTotal: 1000 },
   serviceLogs: { maxPerHour: 200, maxTotal: 10000 },
@@ -228,7 +212,6 @@ export function checkRateLimit(table: keyof typeof RATE_LIMITS): { allowed: bool
   const now = Date.now();
   const hourAgo = now - (60 * 60 * 1000);
 
-  // Get recent actions from localStorage
   const recentKey = `rateLimit_${table}_recent`;
   const totalKey = `rateLimit_${table}_total`;
 
@@ -236,10 +219,8 @@ export function checkRateLimit(table: keyof typeof RATE_LIMITS): { allowed: bool
     const recent = JSON.parse(localStorage.getItem(recentKey) || '[]') as number[];
     const total = parseInt(localStorage.getItem(totalKey) || '0');
 
-    // Clean old entries
     const recentFiltered = recent.filter(timestamp => timestamp > hourAgo);
 
-    // Check limits
     if (recentFiltered.length >= limits.maxPerHour) {
       return { allowed: false, reason: `Rate limit exceeded: max ${limits.maxPerHour} ${table} per hour` };
     }
@@ -248,7 +229,6 @@ export function checkRateLimit(table: keyof typeof RATE_LIMITS): { allowed: bool
       return { allowed: false, reason: `Storage limit exceeded: max ${limits.maxTotal} ${table} total` };
     }
 
-    // Update counters
     recentFiltered.push(now);
     localStorage.setItem(recentKey, JSON.stringify(recentFiltered));
     localStorage.setItem(totalKey, (total + 1).toString());
@@ -256,6 +236,6 @@ export function checkRateLimit(table: keyof typeof RATE_LIMITS): { allowed: bool
     return { allowed: true };
   } catch (error) {
     console.error('Rate limit check failed:', error);
-    return { allowed: true }; // Fail open
+    return { allowed: true };
   }
 }

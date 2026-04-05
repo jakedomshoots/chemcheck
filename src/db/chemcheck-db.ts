@@ -1,34 +1,29 @@
 import Dexie, { Table } from 'dexie';
 
-// ============================================
-// TypeScript Interfaces
-// ============================================
-
 export interface SyncableRecord {
-    convex_id?: string;             // Convex ID after sync
+    convex_id?: string;
     sync_status: 'synced' | 'pending' | 'error';
-    sync_error?: string;            // Error message if sync failed
-    local_updated_at: number;       // Local modification timestamp
-    remote_updated_at?: number;     // Remote modification timestamp
-    conflict_backup?: string;       // JSON backup of pre-conflict version
+    sync_error?: string;
+    local_updated_at: number;
+    remote_updated_at?: number;
+    conflict_backup?: string;
 }
 
 export interface Customer extends SyncableRecord {
-    id?: number;                 // Auto-increment primary key
+    id?: number;
     full_name: string;
     address: string;
     phone?: string;
     email?: string;
     gate_code?: string;
-    service_day: string;         // Monday, Tuesday, etc.
+    service_day: string;
     pool_gallons?: number;
-    pool_type: string;           // "Salt" | "Chlorine"
-    surface_type: string;        // "Plaster" | "Vinyl" | "Fiberglass" | "Tile"
+    pool_type: string;
+    surface_type: string;
     sort_order?: number;
-    created_by: string;          // For future multi-device sync
-    createdAt?: string;          // ISO timestamp
-    updatedAt?: string;          // ISO timestamp
-    // Report customization settings
+    created_by: string;
+    createdAt?: string;
+    updatedAt?: string;
     report_settings?: {
         show_chemical_readings: boolean;
         show_photos: boolean;
@@ -40,67 +35,62 @@ export interface Customer extends SyncableRecord {
 }
 
 export interface ServiceLog extends SyncableRecord {
-    id?: number;                 // Auto-increment primary key
-    customer_id: number;         // Foreign key to Customer.id
-    convex_customer_id?: string; // Reference to synced customer
-    service_date: string;        // YYYY-MM-DD format
-    status: string;              // "completed" | "pending" | etc.
+    id?: number;
+    customer_id: number;
+    convex_customer_id?: string;
+    service_date: string;
+    status: string;
     notes?: string;
-    ph: string;                  // "good" | "low" | "high"
-    chlorine: string;            // "good" | "low" | "high"
-    alkalinity: string;          // "good" | "low" | "high"
-    stabilizer: string;          // "good" | "low" | "high"
-    salt?: number;               // Salt level (salt pools only)
-    // Proof-of-service time tracking fields
-    start_time?: string;         // ISO 8601 UTC
-    end_time?: string;           // ISO 8601 UTC
-    duration_ms?: number;        // Calculated duration in milliseconds
-    service_type?: string;       // "Regular Cleaning" | "Chemical Balance" | etc.
-    createdAt?: string;          // ISO timestamp
-    updatedAt?: string;          // ISO timestamp
+    ph: string;
+    chlorine: string;
+    alkalinity: string;
+    stabilizer: string;
+    salt?: number;
+    start_time?: string;
+    end_time?: string;
+    duration_ms?: number;
+    service_type?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface ChemicalUsage extends SyncableRecord {
-    id?: number;                 // Auto-increment primary key
-    customer_id: number;         // Foreign key to Customer.id
-    convex_customer_id?: string; // Reference to synced customer
+    id?: number;
+    customer_id: number;
+    convex_customer_id?: string;
     chemical_type: string;
     quantity: string;
     notes?: string;
-    created_date?: string;       // YYYY-MM-DD format
-    createdAt?: string;          // ISO timestamp
-    updatedAt?: string;          // ISO timestamp
+    created_date?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface Note extends SyncableRecord {
-    id?: number;                 // Auto-increment primary key
+    id?: number;
     title: string;
     content: string;
-    category: string;            // "General" | "Customer" | "Equipment" | "Reminder" | "Chemical" | "Billing"
-    customer_id?: number;        // Optional foreign key to Customer.id
-    convex_customer_id?: string; // Reference to synced customer
-    priority: string;            // "low" | "medium" | "high"
+    category: string;
+    customer_id?: number;
+    convex_customer_id?: string;
+    priority: string;
     completed?: boolean;
-    created_date?: string;       // YYYY-MM-DD format
-    createdAt?: string;          // ISO timestamp
-    updatedAt?: string;          // ISO timestamp
+    created_date?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface SaltCellLog extends SyncableRecord {
-    id?: number;                 // Auto-increment primary key
-    customer_id: number;         // Foreign key to Customer.id
-    convex_customer_id?: string; // Reference to synced customer
-    cleaning_date: string;       // YYYY-MM-DD format
-    condition: string;           // "good" | "moderate" | "heavy" - scale buildup condition
-    notes?: string;              // Optional notes about the cleaning
-    next_cleaning_due?: string;  // YYYY-MM-DD format - estimated next cleaning
-    createdAt?: string;          // ISO timestamp
-    updatedAt?: string;          // ISO timestamp
+    id?: number;
+    customer_id: number;
+    convex_customer_id?: string;
+    cleaning_date: string;
+    condition: string;
+    notes?: string;
+    next_cleaning_due?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
-
-// ============================================
-// Dexie Database Class
-// ============================================
 
 export class ChemCheckDB extends Dexie {
     customers!: Table<Customer>;
@@ -109,13 +99,11 @@ export class ChemCheckDB extends Dexie {
     notes!: Table<Note>;
     saltCellLogs!: Table<SaltCellLog>;
 
-    // Sync service reference for automatic sync triggers
     private syncService: any = null;
 
     constructor() {
         super('chemcheck');
 
-        // Version 1: Original schema
         this.version(1).stores({
             customers: '++id, created_by, service_day, sort_order',
             serviceLogs: '++id, customer_id, service_date, [customer_id+service_date]',
@@ -123,7 +111,6 @@ export class ChemCheckDB extends Dexie {
             notes: '++id, customer_id, completed, created_date, category',
         });
 
-        // Version 2: Add sync fields for Convex integration
         this.version(2).stores({
             customers: '++id, created_by, service_day, sort_order, sync_status, convex_id',
             serviceLogs: '++id, customer_id, service_date, [customer_id+service_date], sync_status, convex_id, convex_customer_id',
@@ -133,25 +120,21 @@ export class ChemCheckDB extends Dexie {
             console.log('Migrating database to version 2 - adding sync fields...');
             const now = Date.now();
 
-            // Migrate customers
             await trans.table('customers').toCollection().modify((customer: any) => {
                 customer.sync_status = 'pending';
                 customer.local_updated_at = now;
             });
 
-            // Migrate service logs
             await trans.table('serviceLogs').toCollection().modify((serviceLog: any) => {
                 serviceLog.sync_status = 'pending';
                 serviceLog.local_updated_at = now;
             });
 
-            // Migrate chemical usage
             await trans.table('chemicalUsage').toCollection().modify((chemicalUsage: any) => {
                 chemicalUsage.sync_status = 'pending';
                 chemicalUsage.local_updated_at = now;
             });
 
-            // Migrate notes
             await trans.table('notes').toCollection().modify((note: any) => {
                 note.sync_status = 'pending';
                 note.local_updated_at = now;
@@ -160,7 +143,6 @@ export class ChemCheckDB extends Dexie {
             console.log('Database migration to version 2 completed');
         });
 
-        // Version 3: Add salt cell logs table and composite index for common query pattern
         this.version(3).stores({
             customers: '++id, created_by, service_day, sort_order, sync_status, convex_id, [created_by+service_day]',
             serviceLogs: '++id, customer_id, service_date, [customer_id+service_date], sync_status, convex_id, convex_customer_id',
@@ -169,28 +151,18 @@ export class ChemCheckDB extends Dexie {
             saltCellLogs: '++id, customer_id, cleaning_date, sync_status, convex_id, convex_customer_id',
         });
 
-        // Set up table hooks for automatic sync triggers
         this.setupSyncHooks();
     }
 
-    /**
-     * Set sync service reference for automatic sync triggers
-     */
     setSyncService(syncService: any): void {
         this.syncService = syncService;
     }
 
-    /**
-     * Set up Dexie table hooks to automatically trigger sync on data changes
-     */
     private setupSyncHooks(): void {
-        // Hook into customers table
-        this.customers.hook('creating', (primKey, obj, trans) => {
-            // Set sync fields immediately
+        this.customers.hook('creating', (_primKey, obj, trans) => {
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
-            // Use transaction completion to get the auto-generated ID
             trans.on('complete', () => {
                 if (this.syncService && obj.id) {
                     this.syncService.enqueueRecord('customers', obj.id, 'create', obj);
@@ -205,7 +177,6 @@ export class ChemCheckDB extends Dexie {
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
 
-                // Apply modifications to the record
                 Object.assign(modifications, {
                     local_updated_at: updatedRecord.local_updated_at,
                     sync_status: updatedRecord.sync_status
@@ -227,13 +198,10 @@ export class ChemCheckDB extends Dexie {
             });
         });
 
-        // Hook into serviceLogs table
-        this.serviceLogs.hook('creating', (primKey, obj, trans) => {
-            // Set sync fields immediately
+        this.serviceLogs.hook('creating', (_primKey, obj, trans) => {
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
-            // Use transaction completion to get the auto-generated ID
             trans.on('complete', () => {
                 if (this.syncService && obj.id) {
                     this.syncService.enqueueRecord('serviceLogs', obj.id, 'create', obj);
@@ -268,13 +236,10 @@ export class ChemCheckDB extends Dexie {
             });
         });
 
-        // Hook into chemicalUsage table
-        this.chemicalUsage.hook('creating', (primKey, obj, trans) => {
-            // Set sync fields immediately
+        this.chemicalUsage.hook('creating', (_primKey, obj, trans) => {
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
-            // Use transaction completion to get the auto-generated ID
             trans.on('complete', () => {
                 if (this.syncService && obj.id) {
                     this.syncService.enqueueRecord('chemicalUsage', obj.id, 'create', obj);
@@ -309,13 +274,10 @@ export class ChemCheckDB extends Dexie {
             });
         });
 
-        // Hook into notes table
-        this.notes.hook('creating', (primKey, obj, trans) => {
-            // Set sync fields immediately
+        this.notes.hook('creating', (_primKey, obj, trans) => {
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
-            // Use transaction completion to get the auto-generated ID
             trans.on('complete', () => {
                 if (this.syncService && obj.id) {
                     this.syncService.enqueueRecord('notes', obj.id, 'create', obj);
@@ -350,13 +312,10 @@ export class ChemCheckDB extends Dexie {
             });
         });
 
-        // Hook into saltCellLogs table
-        this.saltCellLogs.hook('creating', (primKey, obj, trans) => {
-            // Set sync fields immediately
+        this.saltCellLogs.hook('creating', (_primKey, obj, trans) => {
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
-            // Use transaction completion to get the auto-generated ID
             trans.on('complete', () => {
                 if (this.syncService && obj.id) {
                     this.syncService.enqueueRecord('saltCellLogs', obj.id, 'create', obj);
@@ -410,24 +369,12 @@ export class ChemCheckDB extends Dexie {
     }
 }
 
-// ============================================
-// Singleton Database Instance
-// ============================================
-
 export const db = new ChemCheckDB();
-
-// ============================================
-// Helper: Get current date in YYYY-MM-DD format
-// ============================================
 
 export function getTodayDate(): string {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
-
-// ============================================
-// Helper: Get ISO timestamp
-// ============================================
 
 export function getTimestamp(): string {
     return new Date().toISOString();
@@ -479,5 +426,5 @@ export function getUserContext(authEmail?: string | null): string {
         );
     }
 
-    return DEFAULT_USER;
+    return 'local';
 }

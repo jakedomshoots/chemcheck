@@ -1,10 +1,3 @@
-/**
- * PDF Report Generation Utilities
- * 
- * Generates professional PDF reports for pool service documentation.
- * Uses browser's print functionality for PDF generation (no external dependencies).
- */
-
 import { db } from '@/db/chemcheck-db';
 import type { Customer, ServiceLog } from '@/db/chemcheck-db';
 import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
@@ -24,9 +17,6 @@ interface ReportData {
   notes: Array<{ title: string; content: string; created_date: string }>;
 }
 
-/**
- * Generate HTML content for a service report
- */
 function generateReportHTML(data: ReportData, options: ReportOptions): string {
   const { customer, serviceLogs, chemicalUsage, notes } = data;
   const businessName = localStorage.getItem('chemcheck_business_name') || 'Pool Service Company';
@@ -282,19 +272,16 @@ export async function generateServiceReport(options: ReportOptions): Promise<voi
     notes: [],
   };
 
-  // Get customer if specified
   if (options.customerId) {
     data.customer = await db.customers.get(options.customerId) || undefined;
   }
 
-  // Get service logs
   let logsQuery = db.serviceLogs.toCollection();
   if (options.customerId) {
     logsQuery = db.serviceLogs.where('customer_id').equals(options.customerId);
   }
   data.serviceLogs = await logsQuery.toArray();
 
-  // Filter by date range if specified
   if (options.dateRange) {
     data.serviceLogs = data.serviceLogs.filter(log => 
       log.service_date >= options.dateRange!.start && 
@@ -302,59 +289,56 @@ export async function generateServiceReport(options: ReportOptions): Promise<voi
     );
   }
 
-  // Sort by date descending
   data.serviceLogs.sort((a, b) => b.service_date.localeCompare(a.service_date));
 
-  // Get chemical usage if requested
   if (options.includeChemicals) {
     let usageQuery = db.chemicalUsage.toCollection();
     if (options.customerId) {
       usageQuery = db.chemicalUsage.where('customer_id').equals(options.customerId);
     }
     const usage = await usageQuery.toArray();
-    data.chemicalUsage = usage
-      .filter(u => {
-        if (!options.dateRange) return true;
-        return u.created_date >= options.dateRange.start && u.created_date <= options.dateRange.end;
-      })
-      .map(u => ({
+    data.chemicalUsage = usage.flatMap(u => {
+      if (!u.created_date) return [];
+      if (options.dateRange && (u.created_date < options.dateRange.start || u.created_date > options.dateRange.end)) {
+        return [];
+      }
+
+      return [{
         chemical_type: u.chemical_type,
         quantity: u.quantity,
         created_date: u.created_date,
-      }));
+      }];
+    });
   }
 
-  // Get notes if requested
   if (options.includeNotes && options.customerId) {
     const notes = await db.notes.where('customer_id').equals(options.customerId).toArray();
-    data.notes = notes
-      .filter(n => {
-        if (!options.dateRange) return true;
-        return n.created_date >= options.dateRange.start && n.created_date <= options.dateRange.end;
-      })
-      .map(n => ({
+    data.notes = notes.flatMap(n => {
+      if (!n.created_date) return [];
+      if (options.dateRange && (n.created_date < options.dateRange.start || n.created_date > options.dateRange.end)) {
+        return [];
+      }
+
+      return [{
         title: n.title,
         content: n.content,
         created_date: n.created_date,
-      }));
+      }];
+    });
   }
 
-  // Generate HTML and open in new window
   const html = generateReportHTML(data, options);
   const printWindow = window.open('', '_blank');
   if (printWindow) {
-    printWindow.document.write(html);
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    printWindow.document.documentElement.innerHTML = document.documentElement.innerHTML;
     printWindow.document.close();
-    // Auto-trigger print dialog after a short delay
     setTimeout(() => {
       printWindow.print();
     }, 500);
   }
 }
 
-/**
- * Generate a weekly report for all customers
- */
 export async function generateWeeklyReport(weekStart?: Date): Promise<void> {
   const start = weekStart || startOfWeek(new Date(), { weekStartsOn: 1 });
   const end = endOfWeek(start, { weekStartsOn: 1 });
@@ -369,9 +353,6 @@ export async function generateWeeklyReport(weekStart?: Date): Promise<void> {
   });
 }
 
-/**
- * Generate a monthly report for all customers
- */
 export async function generateMonthlyReport(month?: Date): Promise<void> {
   const targetMonth = month || new Date();
   const start = startOfMonth(targetMonth);
@@ -387,9 +368,6 @@ export async function generateMonthlyReport(month?: Date): Promise<void> {
   });
 }
 
-/**
- * Generate a customer-specific report
- */
 export async function generateCustomerReport(
   customerId: number,
   options?: { dateRange?: { start: string; end: string } }

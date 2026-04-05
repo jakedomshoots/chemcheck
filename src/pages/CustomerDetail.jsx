@@ -20,7 +20,6 @@ import { CustomerDetailSkeleton } from "@/components/ui/skeleton";
 import { userManager } from "@/lib/userManager";
 import { getEmailDeliveryValidationError } from "@/lib/emailValidation";
 
-// Check if Convex is available (online mode)
 const isConvexAvailable = !!(import.meta.env.VITE_CONVEX_URL && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
 function toFriendlySendError(error) {
@@ -43,7 +42,6 @@ export default function CustomerDetail() {
   const customerIdParam = urlParams.get("id");
   const customerId = customerIdParam ? parseInt(customerIdParam, 10) : null;
 
-  // Use navigation state for instant render if available
   const navigationCustomer = location.state?.customer;
   const navigationLastWeekLog = location.state?.lastWeekLog;
 
@@ -52,23 +50,18 @@ export default function CustomerDetail() {
   const deleteServiceLog = useServiceLogDelete();
   const updateCustomer = useCustomerUpdate();
 
-  // Convex action for sending reports - always call hook unconditionally
-  // Runtime check at line 181 validates isConvexAvailable before use
   const convex = useConvex();
   const sendReportAction = useAction(api.serviceReports.sendReport);
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
-  // Initialize with navigation state for instant render
   const [lastWeekLog, setLastWeekLog] = useState(navigationLastWeekLog || null);
   const [loading, setLoading] = useState(!navigationCustomer);
   const [showAnalysis, setShowAnalysis] = useState(false);
 
-  // Report Settings Dialog state
   const [reportSettingsOpen, setReportSettingsOpen] = useState(false);
   const [reportSettingsLoading, setReportSettingsLoading] = useState(false);
   const [reportSettingsError, setReportSettingsError] = useState(null);
 
-  // Send Report Dialog state
   const [sendReportDialogOpen, setSendReportDialogOpen] = useState(false);
   const [selectedLogForReport, setSelectedLogForReport] = useState(null);
   const [sendReportLoading, setSendReportLoading] = useState(false);
@@ -77,7 +70,6 @@ export default function CustomerDetail() {
   const [customNote, setCustomNote] = useState('');
   const [attachedPhotosPreview, setAttachedPhotosPreview] = useState([]);
 
-  // Determine the current customer from the live query hook
   const customer = useMemo(() => {
     if (!customers || !customerId) return navigationCustomer || null;
     return customers.find((c) => c._id === customerId) || navigationCustomer || null;
@@ -99,7 +91,6 @@ export default function CustomerDetail() {
   }, [customers, customerId]);
 
   useEffect(() => {
-    // Only calculate if we don't have lastWeekLog from navigation state
     if (logs && logs.length > 0 && !navigationLastWeekLog) {
       const lastWeekStart = startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
       const lastWeekEnd = endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
@@ -171,19 +162,16 @@ export default function CustomerDetail() {
     await deleteServiceLog(logId);
   };
 
-  // Handle opening the report settings dialog
   const handleOpenReportSettings = useCallback(() => {
     setReportSettingsError(null);
     setReportSettingsOpen(true);
   }, []);
 
-  // Handle closing the report settings dialog
   const handleCloseReportSettings = useCallback(() => {
     setReportSettingsOpen(false);
     setReportSettingsError(null);
   }, []);
 
-  // Handle saving report settings
   const handleSaveReportSettings = useCallback(async (settings) => {
     if (!customer) return;
 
@@ -205,24 +193,17 @@ export default function CustomerDetail() {
     }
   }, [customer, updateCustomer, handleCloseReportSettings]);
 
-  // Handle opening the send report dialog
   const handleOpenSendReport = useCallback((log) => {
     setSelectedLogForReport(log);
     setSendReportError(null);
-    setCustomNote(''); // Reset custom note when opening dialog
+    setCustomNote('');
     setSendReportDialogOpen(true);
   }, []);
 
-  // Handle custom note change - Requirements: 2.1, 2.5
   const handleCustomNoteChange = useCallback((note) => {
     setCustomNote(note);
   }, []);
 
-  /**
-   * Determine pool status from service log readings
-   * Returns 'good' if all readings are normal, 'needs_attention' if any issues
-   * Requirements: 2.1, 4.1, 4.2
-   */
   const getPoolStatus = useCallback((log) => {
     if (!log) return 'good';
 
@@ -233,7 +214,6 @@ export default function CustomerDetail() {
       log.stabilizer
     ];
 
-    // Check if any reading indicates an issue
     const hasIssue = readings.some(r =>
       r === "low" || r === "high" || r === "critical"
     );
@@ -241,23 +221,20 @@ export default function CustomerDetail() {
     return hasIssue ? 'needs_attention' : 'good';
   }, []);
 
-  // Handle closing the send report dialog
   const handleCloseSendReport = useCallback(() => {
     setSendReportDialogOpen(false);
     setSelectedLogForReport(null);
     setSendReportError(null);
-    setCustomNote(''); // Clear custom note state on cancel - Requirements: 4.5
+    setCustomNote('');
     setAttachedPhotosPreview([]);
   }, []);
 
-  // Handle confirming the send report
   const handleConfirmSendReport = useCallback(async (deliveryMethod, customNoteParam) => {
     if (!selectedLogForReport || !customer) return;
 
     setSendReportLoading(true);
     setSendReportError(null);
 
-    // Validate and sanitize custom note
     const customNote = typeof customNoteParam === 'string' ? customNoteParam.trim() : '';
     if (customNote.length > 500) {
       setSendReportError("Custom note is too long. Please keep it under 500 characters.");
@@ -266,7 +243,6 @@ export default function CustomerDetail() {
     }
 
     try {
-      // Check if customer has required contact method
       if (deliveryMethod === 'sms' && !customer.phone) {
         setSendReportError("No phone number on file. Please add a phone number to send SMS reports.");
         setSendReportLoading(false);
@@ -282,8 +258,6 @@ export default function CustomerDetail() {
         }
       }
 
-      // Try syncing customer record first so contact details and settings stay current in cloud.
-      // If email send can still proceed, we pass recipient_email override to backend.
       if (deliveryMethod === 'email' || deliveryMethod === 'sms') {
         let customerSyncProblem = null;
         try {
@@ -309,7 +283,6 @@ export default function CustomerDetail() {
         }
       }
 
-      // Check if Convex is available (online mode required)
       console.log("Environment check:", {
         VITE_CONVEX_URL: import.meta.env.VITE_CONVEX_URL,
         VITE_CLERK_PUBLISHABLE_KEY: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
@@ -322,11 +295,9 @@ export default function CustomerDetail() {
         return;
       }
 
-      // Check if the service log has a Convex ID (required for sending reports)
       let serviceLogId = selectedLogForReport.convex_id;
 
       if (!serviceLogId) {
-        // Try to sync the service log first (Requirements: 4.3 - Auto-sync before sending report)
         try {
           console.log("Service log missing convex_id, attempting sync for log ID:", selectedLogForReport._id || selectedLogForReport.id);
           toast.info("Syncing service log to cloud...");
@@ -336,8 +307,6 @@ export default function CustomerDetail() {
           console.log("Sync result:", syncResult);
 
           if (syncResult.success) {
-            // Fetch the updated record directly from the database to get the convex_id
-            // The logs array from the hook might not have updated yet in this render cycle
             const { db } = await import('@/db/chemcheck-db');
             const updatedLog = await db.serviceLogs.get(logId);
             serviceLogId = updatedLog?.convex_id;
@@ -369,7 +338,6 @@ export default function CustomerDetail() {
       const localCustomerId = customer._id || customer.id;
       let customerConvexId = customer.convex_id;
 
-      // Ensure attached photos are synced before sending report so the customer can see them.
       try {
         if (!customerConvexId && localCustomerId) {
           const { db } = await import('@/db/chemcheck-db');
@@ -430,10 +398,8 @@ export default function CustomerDetail() {
         }
       }
 
-      // Determine pool status for the email
       const poolStatus = getPoolStatus(selectedLogForReport);
 
-      // Call the Convex action to send the report
       console.log("Calling sendReportAction with:", {
         service_log_id: serviceLogId,
         delivery_method: deliveryMethod,
@@ -468,7 +434,6 @@ export default function CustomerDetail() {
         });
         const selectedLogId = selectedLogForReport._id || selectedLogForReport.id;
 
-        // Update report status
         setReportStatuses(prev => ({
           ...prev,
           [selectedLogId]: {
@@ -478,7 +443,6 @@ export default function CustomerDetail() {
           }
         }));
 
-        // Clear custom note after successful send
         setCustomNote('');
         handleCloseSendReport();
       } else {
@@ -494,13 +458,11 @@ export default function CustomerDetail() {
     }
   }, [selectedLogForReport, customer, convex, sendReportAction, handleCloseSendReport, getPoolStatus]);
 
-  // Generate SMS message preview
   const getMessagePreview = useCallback(() => {
     if (!selectedLogForReport || !customer) return "";
 
     const serviceDate = formatServiceDate(selectedLogForReport.service_date);
 
-    // Use the getPoolStatus function for consistency
     const overallStatus = getPoolStatus(selectedLogForReport);
     const selectedLogId = selectedLogForReport._id || selectedLogForReport.id;
     const reportToken = selectedLogId ? reportStatuses[selectedLogId]?.reportToken : undefined;
@@ -533,9 +495,7 @@ export default function CustomerDetail() {
         Back
       </Button>
 
-      {/* Customer Info Card */}
       <Card className="p-4 mb-3 border-2 shadow-lg">
-        {/* Customer Name and Address */}
         <div className="mb-3">
           <h2 className="text-lg font-bold text-slate-900 mb-1">
             {customer.full_name}
@@ -546,7 +506,6 @@ export default function CustomerDetail() {
           </div>
         </div>
 
-        {/* Action Buttons - separate row to prevent overlap on mobile */}
         <div className="flex flex-wrap gap-2 mb-3">
           {logs && logs.length >= 3 && (
             <Button
@@ -620,7 +579,6 @@ export default function CustomerDetail() {
         </div>
       </Card>
 
-      {/* Last Week's Notes */}
       {lastWeekLog && (lastWeekLog.notes || lastWeekLog.ph || lastWeekLog.chlorine) && (
         <Card className="p-4 mb-3 border-2 shadow-lg bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200">
           <div className="flex items-center gap-1.5 mb-2">
@@ -661,7 +619,6 @@ export default function CustomerDetail() {
         </Card>
       )}
 
-      {/* Service History */}
       <div className="mb-3">
         <h3 className="text-base font-bold text-slate-900">Service History</h3>
       </div>
@@ -705,7 +662,6 @@ export default function CustomerDetail() {
         />
       )}
 
-      {/* Report Settings Dialog */}
       <ReportSettingsPanel
         isOpen={reportSettingsOpen}
         onClose={handleCloseReportSettings}
@@ -716,7 +672,6 @@ export default function CustomerDetail() {
         error={reportSettingsError}
       />
 
-      {/* Send Report Dialog - Requirements: 2.1, 2.2, 2.5, 4.1, 4.2, 4.5 */}
       <SendReportDialog
         isOpen={sendReportDialogOpen}
         onClose={handleCloseSendReport}

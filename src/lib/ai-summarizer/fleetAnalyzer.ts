@@ -1,13 +1,3 @@
-/**
- * Fleet Analyzer
- * 
- * Aggregates analysis across multiple pools for business-level insights.
- * Ranks pools by health score, groups by problem type, calculates averages
- * by service day, and generates alerts for score drops.
- * 
- * Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
- */
-
 import {
   type FleetPool,
   type FleetInsights,
@@ -19,10 +9,6 @@ import {
   type PoolHealthScore,
 } from './types';
 
-// ============================================================================
-// Types for Fleet Analysis Input
-// ============================================================================
-
 export interface PoolData {
   customerId: string;
   customerName: string;
@@ -30,19 +16,15 @@ export interface PoolData {
   primaryIssue: string | null;
   serviceDay: string;
   lastService: string;
-  previousHealthScore?: number; // For detecting score drops
+  previousHealthScore?: number;
 }
 
 export interface FleetAnalyzerConfig {
-  priorityPoolCount: number;      // Number of priority pools to return (default: 5)
-  scoreDropThreshold: number;     // Minimum score drop to trigger alert (default: 15)
-  overdueThresholdDays: number;   // Days since service to consider overdue (default: 14)
-  estimatedTimePerPool: number;   // Minutes per pool for time estimation (default: 30)
+  priorityPoolCount: number;
+  scoreDropThreshold: number;
+  overdueThresholdDays: number;
+  estimatedTimePerPool: number;
 }
-
-// ============================================================================
-// Default Configuration
-// ============================================================================
 
 export const DEFAULT_FLEET_CONFIG: FleetAnalyzerConfig = {
   priorityPoolCount: 5,
@@ -51,13 +33,6 @@ export const DEFAULT_FLEET_CONFIG: FleetAnalyzerConfig = {
   estimatedTimePerPool: 30,
 };
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * Determines urgency level based on health score
- */
 export function determineUrgency(healthScore: number): UrgencyLevel {
   if (healthScore < 20) return 'critical';
   if (healthScore < 40) return 'high';
@@ -66,9 +41,6 @@ export function determineUrgency(healthScore: number): UrgencyLevel {
   return 'none';
 }
 
-/**
- * Calculates days since a given date
- */
 export function calculateDaysSince(dateString: string): number {
   const date = new Date(dateString);
   const now = new Date();
@@ -77,10 +49,6 @@ export function calculateDaysSince(dateString: string): number {
   return Math.max(0, diffDays);
 }
 
-
-/**
- * Categorizes health score into distribution bucket
- */
 export function categorizeHealthScore(score: number): keyof HealthDistribution {
   if (score >= 80) return 'excellent';
   if (score >= 60) return 'good';
@@ -88,12 +56,9 @@ export function categorizeHealthScore(score: number): keyof HealthDistribution {
   return 'poor';
 }
 
-/**
- * Converts pool data to fleet pool format
- */
 export function toFleetPool(pool: PoolData): FleetPool {
   const daysSinceService = calculateDaysSince(pool.lastService);
-  
+
   return {
     customerId: pool.customerId,
     customerName: pool.customerName,
@@ -106,21 +71,10 @@ export function toFleetPool(pool: PoolData): FleetPool {
   };
 }
 
-// ============================================================================
-// Core Analysis Functions
-// ============================================================================
-
-/**
- * Ranks pools by health score from lowest to highest
- * Requirement 7.1: Rank all pools by Pool_Health_Score from lowest to highest
- */
 export function rankPoolsByHealthScore(pools: FleetPool[]): FleetPool[] {
   return [...pools].sort((a, b) => a.healthScore - b.healthScore);
 }
 
-/**
- * Calculates health distribution across the fleet
- */
 export function calculateHealthDistribution(pools: FleetPool[]): HealthDistribution {
   const distribution: HealthDistribution = {
     excellent: 0,
@@ -137,34 +91,17 @@ export function calculateHealthDistribution(pools: FleetPool[]): HealthDistribut
   return distribution;
 }
 
-/**
- * Calculates average health score for the fleet
- * Property 9: Fleet Health Score Consistency - average equals sum/count
- */
 export function calculateAverageHealthScore(pools: FleetPool[]): number {
   if (pools.length === 0) return 0;
-  
+
   const sum = pools.reduce((acc, pool) => acc + pool.healthScore, 0);
   return sum / pools.length;
 }
 
-/**
- * Gets the top N pools requiring immediate attention
- * Requirement 7.3: Identify the top 5 pools requiring immediate attention
- */
-export function getPriorityPools(
-  pools: FleetPool[],
-  count: number = 5
-): FleetPool[] {
+export function getPriorityPools(pools: FleetPool[], count: number = 5): FleetPool[] {
   const ranked = rankPoolsByHealthScore(pools);
   return ranked.slice(0, count);
 }
-
-
-/**
- * Groups pools by problem type for efficient batch addressing
- * Requirement 7.2: Group pools by problem type for efficient batch addressing
- */
 export function groupPoolsByProblem(pools: FleetPool[]): ProblemCluster[] {
   const problemMap = new Map<string, string[]>();
 
@@ -186,13 +123,9 @@ export function groupPoolsByProblem(pools: FleetPool[]): ProblemCluster[] {
     });
   }
 
-  // Sort by number of affected pools (descending)
   return clusters.sort((a, b) => b.pools.length - a.pools.length);
 }
 
-/**
- * Generates a suggested batch action for a given issue
- */
 function generateBatchAction(issue: string): string {
   const issueActions: Record<string, string> = {
     'low chlorine': 'Add chlorine shock treatment to all affected pools',
@@ -208,7 +141,7 @@ function generateBatchAction(issue: string): string {
   };
 
   const lowerIssue = issue.toLowerCase();
-  
+
   for (const [key, action] of Object.entries(issueActions)) {
     if (lowerIssue.includes(key)) {
       return action;
@@ -218,10 +151,6 @@ function generateBatchAction(issue: string): string {
   return `Address ${issue} across all affected pools`;
 }
 
-/**
- * Calculates statistics by service day
- * Requirement 7.4: Calculate average health scores by service day for route optimization
- */
 export function calculateServiceDayStats(
   pools: FleetPool[],
   estimatedTimePerPool: number = 30
@@ -248,7 +177,6 @@ export function calculateServiceDayStats(
     });
   }
 
-  // Sort by day of week
   const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   return stats.sort((a, b) => {
     const aIndex = dayOrder.indexOf(a.day);
@@ -259,12 +187,6 @@ export function calculateServiceDayStats(
     return aIndex - bIndex;
   });
 }
-
-
-/**
- * Generates alerts for pools requiring attention
- * Requirement 7.5: Flag pools for priority attention when health score drops significantly
- */
 export function generateAlerts(
   pools: PoolData[],
   config: FleetAnalyzerConfig = DEFAULT_FLEET_CONFIG
@@ -272,7 +194,6 @@ export function generateAlerts(
   const alerts: FleetAlert[] = [];
 
   for (const pool of pools) {
-    // Check for significant score drop
     if (
       pool.previousHealthScore !== undefined &&
       pool.previousHealthScore - pool.healthScore.score >= config.scoreDropThreshold
@@ -284,7 +205,6 @@ export function generateAlerts(
       });
     }
 
-    // Check for overdue service
     const daysSinceService = calculateDaysSince(pool.lastService);
     if (daysSinceService >= config.overdueThresholdDays) {
       alerts.push({
@@ -294,7 +214,6 @@ export function generateAlerts(
       });
     }
 
-    // Check for chronic issues (indicated by low health score with issue)
     if (pool.healthScore.score < 40 && pool.primaryIssue) {
       alerts.push({
         type: 'chronic-issue',
@@ -307,27 +226,12 @@ export function generateAlerts(
   return alerts;
 }
 
-// ============================================================================
-// Main Fleet Analysis Function
-// ============================================================================
-
-/**
- * Analyzes the entire fleet and generates comprehensive insights
- * 
- * Requirements:
- * - 7.1: Rank all pools by Pool_Health_Score from lowest to highest
- * - 7.2: Group pools by problem type for efficient batch addressing
- * - 7.3: Identify the top 5 pools requiring immediate attention
- * - 7.4: Calculate average health scores by service day for route optimization
- * - 7.5: Flag pools for priority attention when health score drops significantly
- */
 export function analyzeFleet(
   pools: PoolData[],
   config: Partial<FleetAnalyzerConfig> = {}
 ): FleetInsights {
   const fullConfig = { ...DEFAULT_FLEET_CONFIG, ...config };
 
-  // Handle empty fleet
   if (pools.length === 0) {
     return {
       totalPools: 0,
@@ -345,10 +249,8 @@ export function analyzeFleet(
     };
   }
 
-  // Convert to fleet pools
   const fleetPools = pools.map(toFleetPool);
 
-  // Calculate all metrics
   const averageHealthScore = calculateAverageHealthScore(fleetPools);
   const healthDistribution = calculateHealthDistribution(fleetPools);
   const priorityPools = getPriorityPools(fleetPools, fullConfig.priorityPoolCount);

@@ -1,13 +1,3 @@
-/**
- * Public Report Page Component
- * 
- * Displays a service report to customers via a public link (no auth required).
- * Security relies on unguessable tokens (122-bit entropy).
- * Respects customer-specific report customization settings.
- * 
- * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
- */
-
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAction } from 'convex/react';
@@ -27,15 +17,6 @@ import {
   Minus
 } from 'lucide-react';
 
-// ============================================
-// Helper Functions
-// ============================================
-
-/**
- * Format service date for display
- * @param {string} dateString - Date in YYYY-MM-DD format
- * @returns {string} Formatted date string
- */
 function formatDisplayDate(dateString) {
   try {
     const [year, month, day] = dateString.split('-');
@@ -51,11 +32,6 @@ function formatDisplayDate(dateString) {
   }
 }
 
-/**
- * Get status color and label for chemical readings
- * @param {string|null} value - Chemical reading value
- * @returns {Object} Status object with color, bgColor, label, and icon
- */
 function getReadingStatus(value) {
   if (!value) {
     return { color: 'text-slate-500', bgColor: 'bg-slate-100', label: 'Not tested', icon: 'unknown' };
@@ -76,11 +52,6 @@ function getReadingStatus(value) {
   }
 }
 
-/**
- * Format duration in milliseconds to human readable string
- * @param {number|undefined} ms - Duration in milliseconds
- * @returns {string} Formatted duration string
- */
 function formatDuration(ms) {
   if (!ms) return '';
   const minutes = Math.floor(ms / 60000);
@@ -91,10 +62,6 @@ function formatDuration(ms) {
   const remainingMinutes = minutes % 60;
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
-
-// ============================================
-// Sub-components
-// ============================================
 
 function LoadingSkeleton() {
   return (
@@ -174,7 +141,6 @@ function PhotoGallerySection({ title, photos, badgeColor }) {
           {photos.length} {photos.length === 1 ? 'photo' : 'photos'}
         </span>
       </div>
-      {/* Responsive grid: 2 cols on mobile, 3 on tablet+ - Requirements: 3.6 */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {photos.map((photo) => (
           <div
@@ -188,7 +154,6 @@ function PhotoGallerySection({ title, photos, badgeColor }) {
                 className="w-full h-full object-cover"
                 loading="lazy"
                 decoding="async"
-                // Optimize for LCP by providing size hints
                 width="300"
                 height="300"
               />
@@ -204,16 +169,11 @@ function PhotoGallerySection({ title, photos, badgeColor }) {
   );
 }
 
-// ============================================
-// Main Component
-// ============================================
-
 export default function ReportPage() {
   const { reportId } = useParams();
   const getReportByToken = useAction(api.serviceReports.getReportByToken);
   const [reportResult, setReportResult] = useState(undefined);
 
-  // Fetch report data using action (public endpoint is implemented as Convex action)
   useEffect(() => {
     let cancelled = false;
 
@@ -253,12 +213,10 @@ export default function ReportPage() {
     };
   }, [reportId, getReportByToken]);
 
-  // Loading state
   if (reportResult === undefined) {
     return <LoadingSkeleton />;
   }
 
-  // Error state - invalid or expired token
   if (!reportResult.found) {
     return <ErrorState message={reportResult.error || 'Report not found. The link may be invalid.'} />;
   }
@@ -287,7 +245,6 @@ export default function ReportPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100">
-      {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-3">
           <div className="flex items-center gap-2">
@@ -326,7 +283,6 @@ export default function ReportPage() {
           </CardContent>
         </Card>
 
-        {/* Service Summary Card - Requirements: 3.2 */}
         {report.settings?.show_overall_status !== false && (
           <Card>
             <CardHeader className="pb-3">
@@ -359,7 +315,6 @@ export default function ReportPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Service Date and Technician - Requirements: 3.2 */}
               <div className="flex flex-wrap gap-4 text-sm">
                 <div className="flex items-center gap-2 text-slate-600">
                   <Calendar className="w-4 h-4 text-slate-400" />
@@ -382,7 +337,6 @@ export default function ReportPage() {
           </Card>
         )}
 
-        {/* Chemical Readings Card - Requirements: 3.3 */}
         {report.settings?.show_chemical_readings !== false && report.chemicalReadings && (
           <Card>
             <CardHeader className="pb-3">
@@ -409,7 +363,6 @@ export default function ReportPage() {
           </Card>
         )}
 
-        {/* Service Notes - Requirements: 3.4 */}
         {report.settings?.show_service_notes !== false && report.notes && (
           <Card>
             <CardHeader className="pb-3">
@@ -426,7 +379,6 @@ export default function ReportPage() {
           </Card>
         )}
 
-        {/* Photo Gallery - Requirements: 3.5 */}
         {(report.photos.before.length > 0 || report.photos.after.length > 0) && (
           <Card>
             <CardHeader className="pb-3">
@@ -450,7 +402,6 @@ export default function ReportPage() {
           </Card>
         )}
 
-        {/* Footer */}
         <footer className="text-center py-6">
           <p className="text-xs text-slate-500">
             Powered by ChemCheck Pool Software built by Dominick Pool Solutions

@@ -126,7 +126,6 @@ export default function EditClient() {
       </div>
 
       <form onSubmit={handleSubmit}>
-        {/* Basic Information Section */}
         <Card className="p-6 mb-6 bg-white border border-slate-200 rounded-xl shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2">
             <User className="w-5 h-5 text-cyan-600" />
@@ -239,7 +238,6 @@ export default function EditClient() {
           </div>
         </Card>
 
-        {/* Pool Details Section */}
         <Card className="p-6 mb-6 bg-white border border-slate-200 rounded-xl shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2">
             <Droplets className="w-5 h-5 text-cyan-600" />
@@ -301,7 +299,6 @@ export default function EditClient() {
           </div>
         </Card>
 
-        {/* Action Buttons */}
         <div className="flex gap-3">
           <Button
             type="button"

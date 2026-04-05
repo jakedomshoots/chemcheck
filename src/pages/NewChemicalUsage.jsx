@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { toast } from "sonner";
 
-// Default chemical types as fallback
 const defaultChemicalTypes = [
   "Liquid Chlorine",
   "Chlorine Tablets",
@@ -37,14 +36,11 @@ export default function NewChemicalUsage() {
   const preselectedCustomerId = preselectedCustomerIdParam ? parseInt(preselectedCustomerIdParam, 10) : null;
 
   const user = useCurrentUser();
-  // Only query customers after user is loaded - pass undefined to skip query if no user
   const allCustomers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
   const createChemicalUsage = useChemicalUsageCreate();
 
-  // Get business settings for chemical types
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
-  // Use chemical types from settings or fallback to defaults
   const chemicalTypes = useMemo(() => {
     const settingsTypes = convexBusiness?.settings?.chemical_types;
     if (settingsTypes?.length > 0) {
@@ -53,7 +49,6 @@ export default function NewChemicalUsage() {
     return defaultChemicalTypes;
   }, [convexBusiness?.settings?.chemical_types]);
 
-  // Memoize sorted customers to avoid unnecessary re-renders
   const customers = useMemo(() => {
     if (!allCustomers || allCustomers.length === 0) return [];
     return [...allCustomers].sort((a, b) => a.full_name.localeCompare(b.full_name));
@@ -67,11 +62,9 @@ export default function NewChemicalUsage() {
     notes: ""
   });
 
-  // Set default chemical type when chemicalTypes are loaded
   useEffect(() => {
     if (chemicalTypes.length > 0) {
       setFormData(prev => {
-        // Set default if empty OR if current selection is not in the list
         if (!prev.chemical_type || !chemicalTypes.includes(prev.chemical_type)) {
           return { ...prev, chemical_type: chemicalTypes[0] };
         }
@@ -80,7 +73,6 @@ export default function NewChemicalUsage() {
     }
   }, [chemicalTypes]);
 
-  // Set default customer when customers are loaded
   useEffect(() => {
     if (!preselectedCustomerId && customers.length > 0 && !formData.customer_id) {
       setFormData(prev => ({ ...prev, customer_id: customers[0]._id }));

@@ -1,12 +1,3 @@
-/**
- * Weather Analyzer
- * 
- * Analyzes weather data to predict impacts on pool chemistry and generate
- * preemptive action recommendations.
- * 
- * Requirements: 9.1, 9.2, 9.3, 9.5
- */
-
 import {
   WeatherForecast,
   WeatherImpact,
@@ -17,10 +8,6 @@ import {
   ServiceLog,
 } from './types';
 
-// ============================================================================
-// Weather Impact Rules
-// ============================================================================
-
 interface WeatherRule {
   condition: (forecast: WeatherForecast) => boolean;
   chemical: string;
@@ -28,16 +15,7 @@ interface WeatherRule {
   severity: ImpactSeverity;
   action: string;
 }
-
-/**
- * Weather impact rules based on pool chemistry science:
- * - Rain dilutes chemicals and affects pH/alkalinity
- * - Heat increases chlorine demand and algae risk
- * - High humidity can affect evaporation rates
- * - Storms bring debris and contaminants
- */
 const WEATHER_RULES: WeatherRule[] = [
-  // Rain impacts (Requirement 9.1)
   {
     condition: (f) => f.condition === 'rain' || f.condition === 'storm',
     chemical: 'pH',
@@ -66,8 +44,6 @@ const WEATHER_RULES: WeatherRule[] = [
     severity: 'medium',
     action: 'Check stabilizer levels after significant rainfall',
   },
-  
-  // Heat impacts (Requirement 9.2)
   {
     condition: (f) => f.highTemp >= 90,
     chemical: 'chlorine',
@@ -89,8 +65,6 @@ const WEATHER_RULES: WeatherRule[] = [
     severity: 'medium',
     action: 'Monitor pH more frequently during extreme heat',
   },
-  
-  // Humidity impacts
   {
     condition: (f) => f.humidity >= 80 && f.highTemp >= 85,
     chemical: 'chlorine',
@@ -98,8 +72,6 @@ const WEATHER_RULES: WeatherRule[] = [
     severity: 'medium',
     action: 'Ensure chlorine levels are at upper end of acceptable range',
   },
-  
-  // Sunny conditions
   {
     condition: (f) => f.condition === 'sunny' && f.highTemp >= 80,
     chemical: 'chlorine',
@@ -108,10 +80,6 @@ const WEATHER_RULES: WeatherRule[] = [
     action: 'Verify stabilizer levels are adequate to protect chlorine from UV',
   },
 ];
-
-// ============================================================================
-// Configuration
-// ============================================================================
 
 export interface WeatherAnalyzerConfig {
   /** Number of forecast days to analyze */
@@ -122,21 +90,9 @@ export interface WeatherAnalyzerConfig {
   rainThreshold: number;
 }
 
-const DEFAULT_CONFIG: WeatherAnalyzerConfig = {
-  forecastDays: 7,
-  heatThreshold: 90,
-  rainThreshold: 0.25,
-};
-
-// ============================================================================
-// Main Weather Analyzer Class
-// ============================================================================
-
 export class WeatherAnalyzer {
-  private config: WeatherAnalyzerConfig;
-
-  constructor(config: Partial<WeatherAnalyzerConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+  constructor(_config: Partial<WeatherAnalyzerConfig> = {}) {
+    void _config;
   }
 
   /**
@@ -147,7 +103,6 @@ export class WeatherAnalyzer {
     forecast: WeatherForecast[] | null | undefined,
     _poolHistory?: ServiceLog[]
   ): WeatherImpact | null {
-    // Graceful degradation when weather unavailable (Requirement 9.5)
     if (!forecast || forecast.length === 0) {
       return null;
     }
@@ -164,9 +119,6 @@ export class WeatherAnalyzer {
     };
   }
 
-  /**
-   * Detects chemical impacts based on weather rules
-   */
   private detectImpacts(forecast: WeatherForecast[]): WeatherChemicalImpact[] {
     const impactMap = new Map<string, WeatherChemicalImpact>();
 
@@ -189,15 +141,11 @@ export class WeatherAnalyzer {
       }
     }
 
-    // Sort by severity (high first)
     return Array.from(impactMap.values()).sort(
       (a, b) => this.severityRank(b.severity) - this.severityRank(a.severity)
     );
   }
 
-  /**
-   * Calculates overall risk level based on detected impacts
-   */
   private calculateOverallRisk(
     impacts: WeatherChemicalImpact[],
     forecast: WeatherForecast[]
@@ -209,7 +157,6 @@ export class WeatherAnalyzer {
     const highSeverityCount = impacts.filter((i) => i.severity === 'high').length;
     const mediumSeverityCount = impacts.filter((i) => i.severity === 'medium').length;
 
-    // Check for severe weather conditions
     const hasStorm = forecast.some((f) => f.condition === 'storm');
     const hasExtremeHeat = forecast.some((f) => f.highTemp >= 100);
     const hasHeavyRain = forecast.some((f) => f.precipitation > 1.0);
@@ -225,9 +172,6 @@ export class WeatherAnalyzer {
     return 'low';
   }
 
-  /**
-   * Generates a human-readable summary of weather impacts
-   */
   private generateSummary(
     impacts: WeatherChemicalImpact[],
     forecast: WeatherForecast[],
@@ -239,7 +183,6 @@ export class WeatherAnalyzer {
 
     const parts: string[] = [];
 
-    // Overall risk statement
     switch (overallRisk) {
       case 'high':
         parts.push('⚠️ High weather risk detected.');
@@ -252,20 +195,17 @@ export class WeatherAnalyzer {
         break;
     }
 
-    // Specific conditions
     const conditions = this.summarizeConditions(forecast);
     if (conditions) {
       parts.push(conditions);
     }
 
-    // Key impacts
     const highImpacts = impacts.filter((i) => i.severity === 'high');
     if (highImpacts.length > 0) {
       const chemicals = [...new Set(highImpacts.map((i) => i.chemical))];
       parts.push(`Pay special attention to ${chemicals.join(', ')} levels.`);
     }
 
-    // Action count
     const actionCount = impacts.length;
     if (actionCount > 0) {
       parts.push(`${actionCount} preemptive action${actionCount > 1 ? 's' : ''} recommended.`);
@@ -274,9 +214,6 @@ export class WeatherAnalyzer {
     return parts.join(' ');
   }
 
-  /**
-   * Summarizes weather conditions from forecast
-   */
   private summarizeConditions(forecast: WeatherForecast[]): string {
     const conditions: string[] = [];
 
@@ -308,9 +245,6 @@ export class WeatherAnalyzer {
     return `Expecting ${conditions.join(', ')}.`;
   }
 
-  /**
-   * Converts severity to numeric rank for comparison
-   */
   private severityRank(severity: ImpactSeverity): number {
     switch (severity) {
       case 'high':
@@ -325,14 +259,6 @@ export class WeatherAnalyzer {
   }
 }
 
-// ============================================================================
-// Convenience Functions
-// ============================================================================
-
-/**
- * Analyzes weather impact on pool chemistry.
- * Returns null if weather data is unavailable (graceful degradation).
- */
 export function analyzeWeatherImpact(
   forecast: WeatherForecast[] | null | undefined,
   poolHistory?: ServiceLog[],
@@ -342,9 +268,6 @@ export function analyzeWeatherImpact(
   return analyzer.analyze(forecast, poolHistory);
 }
 
-/**
- * Creates a sample weather forecast for testing
- */
 export function createSampleForecast(days: number = 7): WeatherForecast[] {
   const conditions: WeatherCondition[] = ['sunny', 'cloudy', 'rain', 'storm'];
   const forecast: WeatherForecast[] = [];

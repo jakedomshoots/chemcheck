@@ -33,9 +33,7 @@ export default function NewServiceLog() {
   const customerIdParam = urlParams.get("customerId");
   const customerId = customerIdParam ? parseInt(customerIdParam, 10) : null;
 
-  // Clear any stored time tracking data on component mount
   useEffect(() => {
-    // Clear any time tracking data from localStorage
     if (typeof window !== 'undefined' && window.localStorage) {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -45,13 +43,11 @@ export default function NewServiceLog() {
         }
       }
       if (keysToRemove.length > 0) {
-        console.log('Clearing time tracking data:', keysToRemove);
         keysToRemove.forEach(key => localStorage.removeItem(key));
       }
     }
   }, []);
 
-  // Use navigation state for instant render if available
   const navigationCustomer = location.state?.customer;
   const serviceFlow = location.state?.serviceFlow;
   const startedFromOffDayPicker = serviceFlow?.source === "home_off_day_picker";
@@ -63,14 +59,12 @@ export default function NewServiceLog() {
   const createServiceLog = useServiceLogCreate();
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
-  // Get service types from business settings
   const serviceTypes = useMemo(() => {
     const settingsTypes = convexBusiness?.settings?.service_types;
     if (settingsTypes?.length > 0) return settingsTypes;
     return ['Regular Cleaning', 'Chemical Balance', 'Equipment Check', 'Repair'];
   }, [convexBusiness?.settings?.service_types]);
 
-  // Initialize with navigation state for instant form render
   const [customer, setCustomer] = useState(navigationCustomer || null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -88,7 +82,6 @@ export default function NewServiceLog() {
   ), [customerIdParam]);
   const draftReadyRef = useRef(false);
 
-  // Set default service type once serviceTypes are loaded
   useEffect(() => {
     if (serviceTypes.length > 0 && !formData.service_type) {
       setFormData(prev => ({ ...prev, service_type: serviceTypes[0] }));
@@ -136,17 +129,13 @@ export default function NewServiceLog() {
     }
   }, [formData, draftStorageKey]);
 
-  // Photo capture state - Requirements 1.1, 1.6, 1.7
   const [beforePhotos, setBeforePhotos] = useState([]);
   const [afterPhotos, setAfterPhotos] = useState([]);
 
-  // Validation error state - Requirements 5.2, 5.4
   const [validationError, setValidationError] = useState(null);
 
-  // Business settings for proof-of-service requirements - Requirements 5.1, 5.3
   const { proofOfServiceSettings, isLoading: settingsLoading } = useBusinessSettings();
 
-  // Callbacks for photo changes
   const handleBeforePhotosChange = useCallback((photos) => {
     setBeforePhotos(photos);
   }, []);
@@ -155,43 +144,30 @@ export default function NewServiceLog() {
     setAfterPhotos(photos);
   }, []);
 
-  // Track if cleanup has been performed to avoid deleting newly captured photos
   const cleanupPerformed = useRef(false);
 
   useEffect(() => {
-    console.log("NewServiceLog params:", { customerId, customersLoaded: customers?.length });
-    // Only lookup if we don't have customer from navigation state
     if (customers && customerId && !customer) {
       const found = customers.find((c) => c._id === customerId);
-      console.log("Found customer:", found);
       setCustomer(found);
 
-      // Clean up old unlinked photos ONLY ONCE when customer is first loaded
-      // This ensures a fresh start for each new service log session
-      // but doesn't delete photos captured during the current session
       if (found && customerIdParam && !cleanupPerformed.current) {
-        console.log('[NewServiceLog] Cleaning up old unlinked photos for customer:', customerIdParam);
         cleanupPerformed.current = true;
 
-        // Use IIFE to handle async operation in useEffect
         (async () => {
           try {
             await deleteUnlinkedPhotos(customerIdParam);
-            console.log('[NewServiceLog] Cleanup completed successfully');
           } catch (error) {
             console.error('[NewServiceLog] Failed to clean up old photos:', error);
           }
         })();
       }
     } else if (customer && customerIdParam && !cleanupPerformed.current) {
-      // We have customer from navigation, still need to clean up photos
-      console.log('[NewServiceLog] Cleaning up old unlinked photos for customer (from nav state):', customerIdParam);
       cleanupPerformed.current = true;
 
       (async () => {
         try {
           await deleteUnlinkedPhotos(customerIdParam);
-          console.log('[NewServiceLog] Cleanup completed successfully');
         } catch (error) {
           console.error('[NewServiceLog] Failed to clean up old photos:', error);
         }
@@ -209,21 +185,14 @@ export default function NewServiceLog() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Clear any previous validation errors
     setValidationError(null);
 
-    // Defensive check for customerIdParam
     if (!customerIdParam) {
       console.error('[NewServiceLog] Missing customerIdParam');
       setValidationError('Missing customer information. Please try again.');
       return;
     }
 
-    console.log('[NewServiceLog handleSubmit] Before photos:', beforePhotos.length, 'After photos:', afterPhotos.length);
-    console.log('[NewServiceLog handleSubmit] Before photos array:', beforePhotos);
-    console.log('[NewServiceLog handleSubmit] After photos array:', afterPhotos);
-
-    // Validate proof-of-service requirements before submission - Requirements 5.2, 5.4
     const validationResult = validateServiceCompletion(proofOfServiceSettings, {
       beforePhotoCount: beforePhotos.length,
       afterPhotoCount: afterPhotos.length,
@@ -237,8 +206,6 @@ export default function NewServiceLog() {
 
     setSaving(true);
 
-    // Get actual photo count from IndexedDB to ensure accuracy
-    // This handles cases where state might not be fully updated
     let actualBeforeCount = beforePhotos.length;
     let actualAfterCount = afterPhotos.length;
 
@@ -247,12 +214,10 @@ export default function NewServiceLog() {
       const unlinkedPhotos = allPhotos.filter(p => p.serviceLogId === null);
       actualBeforeCount = unlinkedPhotos.filter(p => p.category === 'before').length;
       actualAfterCount = unlinkedPhotos.filter(p => p.category === 'after').length;
-      console.log('[NewServiceLog] Actual photo counts from IndexedDB - before:', actualBeforeCount, 'after:', actualAfterCount);
     } catch (error) {
       console.error('[NewServiceLog] Failed to get actual photo count, using state values:', error);
     }
 
-    // Get today's date in local timezone as YYYY-MM-DD
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -269,14 +234,10 @@ export default function NewServiceLog() {
       chlorine: formData.chlorine,
       alkalinity: formData.alkalinity,
       stabilizer: formData.stabilizer,
-      // Include photo tracking data - Requirement 4.1
       photo_count: actualBeforeCount + actualAfterCount,
       has_before_photos: actualBeforeCount > 0,
       has_after_photos: actualAfterCount > 0,
     };
-
-    console.log('[NewServiceLog] Creating service log with photo_count:', logData.photo_count);
-    console.log('[NewServiceLog] has_before_photos:', logData.has_before_photos, 'has_after_photos:', logData.has_after_photos);
 
     if (customer?.pool_type === "Salt" && formData.salt) {
       logData.salt = parseFloat(formData.salt);
@@ -284,31 +245,21 @@ export default function NewServiceLog() {
 
     try {
       const serviceLogId = await createServiceLog(logData);
-      console.log('[NewServiceLog] Service log created with ID:', serviceLogId);
-      console.log('[NewServiceLog] Customer ID param:', customerIdParam);
-      console.log('[NewServiceLog] Before photos:', beforePhotos.length, 'After photos:', afterPhotos.length);
 
-      // Link photos to the newly created service log - Requirement 4.1
       if (customerIdParam && serviceLogId) {
         try {
-          console.log('[NewServiceLog] Linking photos to service log...');
           await linkPhotosToServiceLog(customerIdParam, String(serviceLogId));
-          console.log('[NewServiceLog] Photos linked successfully');
         } catch (error) {
           console.error('[NewServiceLog] Failed to link photos to service log:', error);
-          // Don't fail the whole operation if photo linking fails, but notify the user
           toast.error('Service log saved, but photos may not be attached. Please check the service log.');
         }
-      } else {
-        console.warn('[NewServiceLog] Skipping photo linking - missing customerIdParam or serviceLogId');
       }
 
-      // Fire confetti after successful save
       confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ['#06b6d4', '#3b82f6', '#a855f7'] // Cyan, Blue, Purple
+        colors: ['#06b6d4', '#3b82f6', '#a855f7']
       });
 
       if (draftStorageKey && typeof window !== "undefined" && window.localStorage) {
@@ -322,15 +273,12 @@ export default function NewServiceLog() {
         );
       }
 
-      // Navigate immediately - don't wait
       navigate(createPageUrl("Home"));
     } catch (error) {
       console.error('[NewServiceLog] Failed to create service log:', error);
 
-      // Reset saving state to allow retry
       setSaving(false);
 
-      // Show error to user
       setValidationError('Failed to save service log. Please try again.');
     }
   };
@@ -365,12 +313,10 @@ export default function NewServiceLog() {
               )}
             </div>
           </div>
-          {/* Timer removed - no time tracking display */}
         </div>
       </div>
 
       <form onSubmit={handleSubmit}>
-        {/* Before Photos Section - Requirement 1.1 */}
         <div className="mb-6">
           <PhotoCaptureSection
             serviceLogId={null}
@@ -383,7 +329,6 @@ export default function NewServiceLog() {
           />
         </div>
 
-        {/* Service Type Selector */}
         <Card className="p-6 mb-6 border-2 shadow-lg">
           <div className="flex items-center gap-2 mb-4">
             <ClipboardList className="w-5 h-5 text-cyan-600 stroke-[1.75]" />
@@ -476,7 +421,6 @@ export default function NewServiceLog() {
           />
         </Card>
 
-        {/* After Photos Section - Requirement 1.1 */}
         <div className="mb-6">
           <PhotoCaptureSection
             serviceLogId={null}
@@ -489,7 +433,6 @@ export default function NewServiceLog() {
           />
         </div>
 
-        {/* Validation Error Display - Requirement 5.4 */}
         {validationError && (
           <Alert variant="destructive" className="mb-6">
             <AlertCircle className="h-4 w-4" />
@@ -497,7 +440,6 @@ export default function NewServiceLog() {
           </Alert>
         )}
 
-        {/* Requirements Summary - Requirements 5.1, 5.3 */}
         {!settingsLoading && hasAnyRequirements(proofOfServiceSettings) && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
             <p className="text-sm font-medium text-amber-800">

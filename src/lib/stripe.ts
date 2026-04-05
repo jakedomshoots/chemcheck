@@ -1,12 +1,10 @@
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 
-// Stripe publishable key from environment
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripeCheckoutUrl = import.meta.env.VITE_STRIPE_CHECKOUT_URL;
 const stripePortalUrl = import.meta.env.VITE_STRIPE_PORTAL_URL;
 const stripeCancelUrl = import.meta.env.VITE_STRIPE_CANCEL_URL;
 
-// Singleton stripe instance
 let stripePromise: Promise<Stripe | null> | null = null;
 
 export function getStripe(): Promise<Stripe | null> {
@@ -16,7 +14,6 @@ export function getStripe(): Promise<Stripe | null> {
   return stripePromise || Promise.resolve(null);
 }
 
-// Subscription plan definitions
 export const SUBSCRIPTION_PLANS = {
   starter: {
     id: 'starter',
@@ -77,7 +74,6 @@ export const SUBSCRIPTION_PLANS = {
 
 export type PlanId = keyof typeof SUBSCRIPTION_PLANS;
 
-// Subscription status types
 export type SubscriptionStatus = 
   | 'active'
   | 'canceled'
@@ -97,7 +93,6 @@ export interface Subscription {
   trialEnd?: Date;
 }
 
-// Check if Stripe is configured
 export function isStripeConfigured(): boolean {
   return !!stripePublishableKey && stripePublishableKey !== 'pk_test_placeholder';
 }
@@ -123,7 +118,6 @@ export function isBillingBackendConfigured(): boolean {
   return getBillingApiConfig() !== null;
 }
 
-// Format price for display
 export function formatPrice(amount: number, currency = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -132,7 +126,6 @@ export function formatPrice(amount: number, currency = 'USD'): string {
   }).format(amount);
 }
 
-// Calculate annual price with discount
 export function getAnnualPrice(monthlyPrice: number, discountPercent = 20): number {
   const annualTotal = monthlyPrice * 12;
   return Math.round(annualTotal * (1 - discountPercent / 100));

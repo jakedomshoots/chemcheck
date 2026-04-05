@@ -1,13 +1,3 @@
-/**
- * Cost Projector
- * 
- * Forecasts chemical costs based on usage history and pool characteristics.
- * Calculates monthly projections with low/expected/high ranges, detects
- * high-maintenance pools, and identifies savings opportunities.
- * 
- * Requirements: 5.1, 5.2, 5.4, 5.5
- */
-
 import {
   type CostProjection,
   type CostAnalysis,
@@ -18,89 +8,56 @@ import {
   isValidCostRange,
 } from './types';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/**
- * Average chemical costs per treatment (in dollars)
- * Based on typical pool service industry pricing
- */
 const CHEMICAL_COSTS: Record<string, Record<string, number>> = {
   ph: {
-    low: 8.50,      // pH increaser treatment
-    high: 6.00,     // pH decreaser treatment
-    critical: 15.00, // Emergency pH correction
+    low: 8.50,
+    high: 6.00,
+    critical: 15.00,
   },
   chlorine: {
-    low: 12.00,     // Standard chlorine addition
-    critical: 25.00, // Shock treatment
+    low: 12.00,
+    critical: 25.00,
   },
   alkalinity: {
-    low: 10.00,     // Alkalinity increaser
-    high: 6.00,     // Alkalinity decreaser (acid)
-    critical: 18.00, // Major alkalinity correction
+    low: 10.00,
+    high: 6.00,
+    critical: 18.00,
   },
   stabilizer: {
-    low: 15.00,     // Cyanuric acid addition
-    high: 50.00,    // Partial drain (water + labor)
-    critical: 75.00, // Significant water replacement
+    low: 15.00,
+    high: 50.00,
+    critical: 75.00,
   },
 };
 
-/**
- * Seasonal cost multipliers
- * Summer months typically require more chemicals
- */
 const SEASONAL_MULTIPLIERS: Record<number, number> = {
-  0: 0.7,   // January - low usage
-  1: 0.7,   // February
-  2: 0.85,  // March - spring startup
-  3: 0.95,  // April
-  4: 1.1,   // May
-  5: 1.3,   // June - peak season
-  6: 1.4,   // July - peak season
-  7: 1.35,  // August - peak season
-  8: 1.1,   // September
-  9: 0.9,   // October
-  10: 0.75, // November
-  11: 0.7,  // December - low usage
+  0: 0.7,
+  1: 0.7,
+  2: 0.85,
+  3: 0.95,
+  4: 1.1,
+  5: 1.3,
+  6: 1.4,
+  7: 1.35,
+  8: 1.1,
+  9: 0.9,
+  10: 0.75,
+  11: 0.7,
 };
 
-/**
- * Threshold for high-maintenance pool classification
- * Pools exceeding this monthly cost are flagged
- */
 const HIGH_MAINTENANCE_THRESHOLD = 150; // dollars per month
 
-/**
- * Variance factors for low/high estimates
- */
 const VARIANCE_FACTORS = {
-  low: 0.7,   // 30% below expected
-  high: 1.4,  // 40% above expected
+  low: 0.7,
+  high: 1.4,
 };
 
-/**
- * Minimum service logs required for reliable projections
- */
 const MIN_LOGS_FOR_PROJECTION = 3;
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * Gets the month name from a month index (0-11)
- */
 function getMonthName(monthIndex: number, year: number): string {
   const date = new Date(year, monthIndex, 1);
   return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-/**
- * Calculates the cost for a single chemical reading
- */
 export function calculateChemicalCost(
   chemical: string,
   reading: ChemicalReading
@@ -117,9 +74,6 @@ export function calculateChemicalCost(
   return chemicalCosts[reading] || 0;
 }
 
-/**
- * Calculates total cost from a service log
- */
 export function calculateServiceLogCost(log: ServiceLog): number {
   let total = 0;
   
@@ -131,9 +85,6 @@ export function calculateServiceLogCost(log: ServiceLog): number {
   return total;
 }
 
-/**
- * Groups service logs by month
- */
 export function groupLogsByMonth(
   logs: ServiceLog[]
 ): Map<string, ServiceLog[]> {
@@ -152,9 +103,6 @@ export function groupLogsByMonth(
   return grouped;
 }
 
-/**
- * Calculates average monthly cost from historical data
- */
 export function calculateAverageMonthlyCost(logs: ServiceLog[]): number {
   if (logs.length === 0) {
     return 0;
@@ -176,9 +124,6 @@ export function calculateAverageMonthlyCost(logs: ServiceLog[]): number {
   return totalCost / monthlyGroups.size;
 }
 
-/**
- * Analyzes chemical usage frequency from logs
- */
 export function analyzeChemicalUsage(
   logs: ServiceLog[]
 ): Map<string, { count: number; readings: ChemicalReading[] }> {
@@ -204,9 +149,6 @@ export function analyzeChemicalUsage(
   return usage;
 }
 
-/**
- * Determines cost trend from historical data
- */
 export function determineCostTrend(
   logs: ServiceLog[]
 ): 'decreasing' | 'stable' | 'increasing' {
@@ -214,21 +156,17 @@ export function determineCostTrend(
     return 'stable';
   }
 
-  // Sort logs by date
   const sortedLogs = [...logs].sort(
     (a, b) => new Date(a.service_date).getTime() - new Date(b.service_date).getTime()
   );
 
-  // Split into first half and second half
   const midpoint = Math.floor(sortedLogs.length / 2);
   const firstHalf = sortedLogs.slice(0, midpoint);
   const secondHalf = sortedLogs.slice(midpoint);
 
-  // Calculate average cost for each half
   const firstHalfCost = firstHalf.reduce((sum, log) => sum + calculateServiceLogCost(log), 0) / firstHalf.length;
   const secondHalfCost = secondHalf.reduce((sum, log) => sum + calculateServiceLogCost(log), 0) / secondHalf.length;
 
-  // Determine trend based on 15% threshold
   const changePercent = (secondHalfCost - firstHalfCost) / (firstHalfCost || 1);
 
   if (changePercent > 0.15) {
@@ -239,10 +177,6 @@ export function determineCostTrend(
   return 'stable';
 }
 
-/**
- * Detects significant usage pattern changes
- * Requirement 5.5
- */
 export function detectUsagePatternChanges(
   logs: ServiceLog[]
 ): string[] {
@@ -252,26 +186,22 @@ export function detectUsagePatternChanges(
     return alerts;
   }
 
-  // Sort logs by date
   const sortedLogs = [...logs].sort(
     (a, b) => new Date(a.service_date).getTime() - new Date(b.service_date).getTime()
   );
 
-  // Compare recent 3 logs vs previous logs
   const recentLogs = sortedLogs.slice(-3);
   const previousLogs = sortedLogs.slice(0, -3);
 
   const chemicals = ['ph', 'chlorine', 'alkalinity', 'stabilizer'] as const;
 
   for (const chemical of chemicals) {
-    // Count non-good readings in each period
     const recentIssues = recentLogs.filter(log => log[chemical] !== 'good').length;
     const previousIssues = previousLogs.filter(log => log[chemical] !== 'good').length;
     
     const recentRate = recentIssues / recentLogs.length;
     const previousRate = previousIssues / previousLogs.length;
 
-    // Alert if issue rate increased significantly (doubled or more)
     if (recentRate > 0.5 && previousRate < 0.3) {
       alerts.push(
         `${chemical.charAt(0).toUpperCase() + chemical.slice(1)} issues have increased significantly in recent services`
@@ -279,7 +209,6 @@ export function detectUsagePatternChanges(
     }
   }
 
-  // Check for overall cost increase
   const recentCost = recentLogs.reduce((sum, log) => sum + calculateServiceLogCost(log), 0) / recentLogs.length;
   const previousCost = previousLogs.reduce((sum, log) => sum + calculateServiceLogCost(log), 0) / previousLogs.length;
 
@@ -290,9 +219,6 @@ export function detectUsagePatternChanges(
   return alerts;
 }
 
-/**
- * Identifies potential savings opportunities
- */
 export function identifySavingsOpportunities(
   logs: ServiceLog[],
   averageMonthlyCost: number
@@ -300,7 +226,6 @@ export function identifySavingsOpportunities(
   const opportunities: string[] = [];
   const usage = analyzeChemicalUsage(logs);
 
-  // Check for frequent pH issues (often indicates alkalinity problems)
   const phData = usage.get('ph')!;
   const alkalinityData = usage.get('alkalinity')!;
   
@@ -310,7 +235,6 @@ export function identifySavingsOpportunities(
     );
   }
 
-  // Check for high stabilizer issues (expensive to fix)
   const stabilizerData = usage.get('stabilizer')!;
   if (stabilizerData.readings.filter(r => r === 'high' || r === 'critical').length > 2) {
     opportunities.push(
@@ -318,7 +242,6 @@ export function identifySavingsOpportunities(
     );
   }
 
-  // Check for frequent chlorine issues
   const chlorineData = usage.get('chlorine')!;
   if (chlorineData.count > logs.length * 0.5) {
     opportunities.push(
@@ -326,7 +249,6 @@ export function identifySavingsOpportunities(
     );
   }
 
-  // High maintenance pool suggestion
   if (averageMonthlyCost > HIGH_MAINTENANCE_THRESHOLD) {
     opportunities.push(
       'This pool exceeds average maintenance costs - consider a comprehensive water chemistry audit'
@@ -336,13 +258,6 @@ export function identifySavingsOpportunities(
   return opportunities;
 }
 
-// ============================================================================
-// Cost Breakdown Generation
-// ============================================================================
-
-/**
- * Generates chemical cost breakdown for a projection period
- */
 function generateCostBreakdown(
   logs: ServiceLog[],
   seasonalMultiplier: number
@@ -362,13 +277,11 @@ function generateCostBreakdown(
     const data = usage.get(chemical)!;
     if (data.count === 0) continue;
 
-    // Calculate average cost per occurrence
     let totalCost = 0;
     for (const reading of data.readings) {
       totalCost += calculateChemicalCost(chemical, reading);
     }
     
-    // Project monthly cost based on frequency
     const avgOccurrencesPerMonth = data.count / Math.max(1, groupLogsByMonth(logs).size);
     const projectedCost = (totalCost / data.count) * avgOccurrencesPerMonth * seasonalMultiplier;
 
@@ -384,9 +297,6 @@ function generateCostBreakdown(
   return breakdown;
 }
 
-/**
- * Compares cost to average and returns classification
- */
 function compareToAverage(
   cost: number,
   averageCost: number
@@ -399,19 +309,12 @@ function compareToAverage(
   return 'average';
 }
 
-// ============================================================================
-// Main Cost Projection Functions
-// ============================================================================
-
 export interface CostProjectorInput {
   serviceLogs: ServiceLog[];
   poolGallons?: number | null;
   projectionMonths?: number;
 }
 
-/**
- * Generates a single month's cost projection
- */
 export function generateMonthProjection(
   logs: ServiceLog[],
   monthIndex: number,
@@ -445,31 +348,18 @@ export function generateMonthProjection(
   };
 }
 
-/**
- * Generates complete cost analysis for a pool
- * 
- * Requirements:
- * - 5.1: Project monthly chemical costs for the next 3 months
- * - 5.2: Flag high-maintenance pools with cost implications
- * - 5.4: Provide a range (low/expected/high) rather than a single estimate
- * - 5.5: Alert when chemical usage patterns change significantly
- */
 export function generateCostAnalysis(
   input: CostProjectorInput
 ): CostAnalysis | null {
   const { serviceLogs, projectionMonths = 3 } = input;
 
-  // Need minimum data for projections
   if (serviceLogs.length < MIN_LOGS_FOR_PROJECTION) {
     return null;
   }
 
-  // Calculate base monthly cost from historical data
   const baseMonthlyCost = calculateAverageMonthlyCost(serviceLogs);
   
-  // If no costs detected, return null
   if (baseMonthlyCost === 0) {
-    // Check if all readings are good (no costs)
     const hasAnyIssues = serviceLogs.some(log => 
       log.ph !== 'good' || 
       log.chlorine !== 'good' || 
@@ -478,13 +368,11 @@ export function generateCostAnalysis(
     );
     
     if (!hasAnyIssues) {
-      // Pool is in excellent condition - return minimal projection
       return createMinimalCostAnalysis(projectionMonths);
     }
     return null;
   }
 
-  // Generate monthly projections
   const now = new Date();
   const monthlyProjections: CostProjection[] = [];
   
@@ -499,7 +387,6 @@ export function generateCostAnalysis(
     monthlyProjections.push(projection);
   }
 
-  // Calculate annual estimate
   let annualLow = 0;
   let annualExpected = 0;
   let annualHigh = 0;
@@ -519,16 +406,12 @@ export function generateCostAnalysis(
     high: Math.round(annualHigh * 100) / 100,
   };
 
-  // Determine cost trend
   const costTrend = determineCostTrend(serviceLogs);
 
-  // Check for high-maintenance flag (Requirement 5.2)
   const highMaintenanceFlag = baseMonthlyCost > HIGH_MAINTENANCE_THRESHOLD;
 
-  // Identify savings opportunities
   const savingsOpportunities = identifySavingsOpportunities(serviceLogs, baseMonthlyCost);
 
-  // Add pattern change alerts to savings opportunities (Requirement 5.5)
   const patternAlerts = detectUsagePatternChanges(serviceLogs);
   savingsOpportunities.push(...patternAlerts);
 
@@ -541,9 +424,6 @@ export function generateCostAnalysis(
   };
 }
 
-/**
- * Creates a minimal cost analysis for pools with all good readings
- */
 function createMinimalCostAnalysis(projectionMonths: number): CostAnalysis {
   const now = new Date();
   const monthlyProjections: CostProjection[] = [];
@@ -568,23 +448,13 @@ function createMinimalCostAnalysis(projectionMonths: number): CostAnalysis {
   };
 }
 
-// ============================================================================
-// Validation Functions for Testing
-// ============================================================================
-
-/**
- * Validates that all cost projections have properly ordered ranges
- * Used for Property 7: Cost Projection Range Ordering
- */
 export function validateCostProjectionRanges(analysis: CostAnalysis): boolean {
-  // Check monthly projections
   for (const projection of analysis.monthlyProjections) {
     if (!isValidCostRange(projection.estimate)) {
       return false;
     }
   }
 
-  // Check annual estimate
   if (!isValidCostRange(analysis.annualEstimate)) {
     return false;
   }
@@ -592,16 +462,10 @@ export function validateCostProjectionRanges(analysis: CostAnalysis): boolean {
   return true;
 }
 
-/**
- * Gets the high maintenance threshold constant
- */
 export function getHighMaintenanceThreshold(): number {
   return HIGH_MAINTENANCE_THRESHOLD;
 }
 
-/**
- * Gets seasonal multipliers for testing
- */
 export function getSeasonalMultipliers(): Record<number, number> {
   return { ...SEASONAL_MULTIPLIERS };
 }

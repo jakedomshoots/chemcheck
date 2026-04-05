@@ -13,18 +13,10 @@
  * same origin can still access the keys.
  */
 
-// ============================================
-// Configuration
-// ============================================
-
 const ENCRYPTION_KEY_NAME = 'chemcheck_encryption_key';
 const ENCRYPTION_ALGORITHM = 'AES-GCM';
 const KEY_LENGTH = 256;
 const IV_LENGTH = 12; // 96 bits for AES-GCM
-
-// ============================================
-// Encryption Utilities
-// ============================================
 
 /**
  * Generate a new encryption key and store it securely
@@ -32,7 +24,6 @@ const IV_LENGTH = 12; // 96 bits for AES-GCM
  * to limit exposure window
  */
 async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
-    // Try to get existing key from sessionStorage
     const existingKeyData = sessionStorage.getItem(ENCRYPTION_KEY_NAME);
 
     if (existingKeyData) {
@@ -46,19 +37,16 @@ async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
                 ['encrypt', 'decrypt']
             );
         } catch {
-            // Key corrupted, regenerate
             sessionStorage.removeItem(ENCRYPTION_KEY_NAME);
         }
     }
 
-    // Generate new key
     const key = await crypto.subtle.generateKey(
         { name: ENCRYPTION_ALGORITHM, length: KEY_LENGTH },
         true,
         ['encrypt', 'decrypt']
     );
 
-    // Export and store in sessionStorage
     const exportedKey = await crypto.subtle.exportKey('raw', key);
     sessionStorage.setItem(
         ENCRYPTION_KEY_NAME,
@@ -76,17 +64,14 @@ async function encryptData(plaintext: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(plaintext);
 
-    // Generate random IV
     const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
-    // Encrypt
     const ciphertext = await crypto.subtle.encrypt(
         { name: ENCRYPTION_ALGORITHM, iv },
         key,
         data
     );
 
-    // Combine IV + ciphertext and encode as base64
     const combined = new Uint8Array(iv.length + ciphertext.byteLength);
     combined.set(iv, 0);
     combined.set(new Uint8Array(ciphertext), iv.length);
@@ -109,12 +94,10 @@ async function decryptData(encrypted: string): Promise<string | null> {
     try {
         const key = await getOrCreateEncryptionKey();
 
-        // Decode base64
         const combined = new Uint8Array(
             atob(encrypted).split('').map(c => c.charCodeAt(0))
         );
 
-        // Extract IV and ciphertext
         const iv = combined.slice(0, IV_LENGTH);
         const ciphertext = combined.slice(IV_LENGTH);
 
@@ -135,10 +118,6 @@ async function decryptData(encrypted: string): Promise<string | null> {
         return null;
     }
 }
-
-// ============================================
-// Secure Storage Interface
-// ============================================
 
 export interface SecureStorageOptions {
     /** Use sessionStorage instead of localStorage (more secure, shorter lifetime) */
@@ -166,7 +145,6 @@ export async function secureSet<T>(
 
     if (encrypt) {
         serialized = await encryptData(serialized);
-        // Mark as encrypted
         serialized = `ENC:${serialized}`;
     }
 
@@ -190,7 +168,6 @@ export async function secureGet<T>(
     let data = storage.getItem(key);
     if (!data) return null;
 
-    // Check if encrypted
     if (data.startsWith('ENC:')) {
         const encrypted = data.slice(4);
         const decrypted = await decryptData(encrypted);
@@ -216,10 +193,6 @@ export function secureRemove(
     const storage = useSessionStorage ? sessionStorage : localStorage;
     storage.removeItem(key);
 }
-
-// ============================================
-// High-Level Secure Storage for User Data
-// ============================================
 
 /**
  * User data that should be stored securely
@@ -259,16 +232,11 @@ export function clearSecureUserData(): void {
     secureRemove(USER_DATA_KEY, { useSessionStorage: true });
 }
 
-// ============================================
-// Legacy Storage Migration
-// ============================================
-
 /**
  * Migrate legacy localStorage data to secure storage
  * Call this during app initialization
  */
 export async function migrateLegacyStorage(): Promise<void> {
-    // Migrate user data if exists in old format
     const legacyUserData = localStorage.getItem('chemcheck_current_user');
     if (legacyUserData) {
         try {
@@ -278,7 +246,6 @@ export async function migrateLegacyStorage(): Promise<void> {
                 name: userData.name,
                 lastLoginAt: Date.now(),
             });
-            // Remove legacy data after successful migration
             localStorage.removeItem('chemcheck_current_user');
             console.log('[SecureStorage] Migrated legacy user data to secure storage');
         } catch {
@@ -287,10 +254,6 @@ export async function migrateLegacyStorage(): Promise<void> {
         }
     }
 }
-
-// ============================================
-// Non-Sensitive Storage (Regular localStorage)
-// ============================================
 
 /**
  * For non-sensitive data that doesn't need encryption
@@ -314,10 +277,6 @@ export function getItem<T>(key: string, defaultValue?: T): T | null {
 export function removeItem(key: string): void {
     localStorage.removeItem(key);
 }
-
-// ============================================
-// Security Recommendations (CSP)
-// ============================================
 
 /**
  * Recommended Content Security Policy for defense against XSS

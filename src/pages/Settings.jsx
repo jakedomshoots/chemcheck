@@ -61,7 +61,6 @@ import {
   formatStorageBytes,
 } from '@/lib/proof-of-service';
 
-// Account Section Component with Logout and Delete Account
 function AccountSection({ userData, setUserData }) {
   const auth = useAuthContext();
   const deleteAccountData = useMutation(api.account.deleteMyAccount);
@@ -94,26 +93,20 @@ function AccountSection({ userData, setUserData }) {
     setDeleteError('');
 
     try {
-      // Delete all cloud data when authenticated through Clerk/Convex.
-      // In simulator/dev bypass modes, this is skipped and local data is cleared.
       if (auth?.isSignedIn && auth?.clerkUser) {
         await deleteAccountData({});
       }
 
-      // Delete local user data (IndexedDB/localStorage)
       await deleteAllUserData();
 
-      // Delete identity from Clerk for true account deletion
       if (auth?.clerkUser && typeof auth.clerkUser.delete === 'function') {
         await auth.clerkUser.delete();
       }
 
-      // Sign out and clear app session state
       if (auth?.logout) {
         await auth.logout();
       }
 
-      // In simulator/dev bypass modes logout may not redirect immediately.
       setShowDeleteConfirm(false);
       setIsDeleting(false);
     } catch (error) {
@@ -159,7 +152,6 @@ function AccountSection({ userData, setUserData }) {
         </div>
       </div>
 
-      {/* Logout Section */}
       <div className="pt-6 border-t border-slate-200">
         {logoutError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -194,7 +186,6 @@ function AccountSection({ userData, setUserData }) {
         </div>
       </div>
 
-      {/* Delete Account Section (required for App Store compliance) */}
       <div className="pt-6 border-t border-red-200">
         {deleteError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -285,7 +276,6 @@ export default function Settings() {
   const [deleteAllDataConfirmText, setDeleteAllDataConfirmText] = useState('');
   const [isDeletingAllData, setIsDeletingAllData] = useState(false);
 
-  // Convex hooks for business data
   const convexBusiness = useQuery(api.businesses.getCurrent);
   const updateBusiness = useMutation(api.businesses.update);
   const updateBusinessSettings = useMutation(api.businesses.updateSettings);
@@ -343,7 +333,6 @@ export default function Settings() {
     }
   }, [activeSection]);
 
-  // Load business data from Convex when available
   useEffect(() => {
     if (convexBusiness) {
       setBusinessData({
@@ -441,7 +430,6 @@ export default function Settings() {
       }
     }
 
-    // Fallback for offline/dev flows when Convex business is unavailable
     if (currentBusiness) {
       const settings = currentBusiness.settings || {};
       setBusinessData({
@@ -546,9 +534,7 @@ export default function Settings() {
     };
 
     try {
-      // Only update Convex if business exists
       if (convexBusiness) {
-        // Update business info in Convex
         await updateBusiness({
           name: businessData.name,
           address: businessData.address,
@@ -556,7 +542,6 @@ export default function Settings() {
           email: businessData.email,
         });
 
-        // Update business settings in Convex
         await updateBusinessSettings({
           working_days: businessSettings.workingDays,
           working_hours_start: businessSettings.workingHours.start,
@@ -571,7 +556,6 @@ export default function Settings() {
           show_ops_brief: businessSettings.showOpsBrief,
         });
       } else {
-        // Fallback to localStorage if no Convex business
         const businesses = JSON.parse(localStorage.getItem('chemcheck_businesses') || '[]');
         const currentBusiness = userManager.getCurrentBusiness();
 
@@ -590,15 +574,12 @@ export default function Settings() {
             localStorage.setItem('chemcheck_current_business', JSON.stringify(businesses[businessIndex]));
           }
 
-          // Keep in-memory business settings synced for immediate cross-page updates.
           await userManager.updateBusinessSettings(businessSettings);
         }
       }
 
       const currentUser = userManager.getCurrentUser();
 
-      // Update user preferences in active user profile when available.
-      // Otherwise store a local fallback so simulator/dev bypass can still persist settings.
       if (currentUser) {
         await userManager.updateUserPreferences(normalizedPreferences);
       } else {
@@ -620,7 +601,6 @@ export default function Settings() {
         autoBackup.stop();
       }
 
-      // Update active user name in localStorage (when a user profile exists)
       if (currentUser) {
         const users = JSON.parse(localStorage.getItem('chemcheck_users') || '[]');
         const userIndex = users.findIndex(u => u.id === currentUser.id);
@@ -662,7 +642,6 @@ export default function Settings() {
   return (
     <>
       <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24">
-      {/* Header */}
       <div className="mb-4 sm:mb-6">
         <div className="mb-2">
           <div>
@@ -672,7 +651,6 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Mobile Tab Navigation */}
       <div className="lg:hidden mb-4 -mx-3 px-3 overflow-x-auto">
         <div className="flex gap-2 pb-2 min-w-max">
           {sections.map((section) => (
@@ -692,7 +670,6 @@ export default function Settings() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
-        {/* Sidebar Navigation - Desktop Only */}
         <div className="hidden lg:block lg:col-span-1">
           <Card className="p-2">
             <nav className="space-y-1">
@@ -714,10 +691,8 @@ export default function Settings() {
           </Card>
         </div>
 
-        {/* Content Area */}
         <div className="lg:col-span-3">
           <Card className="p-4 sm:p-6">
-            {/* Business Info Section */}
             {activeSection === 'business' && (
               <div className="space-y-6">
                 <div>
@@ -786,7 +761,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Account Section */}
             {activeSection === 'account' && (
               <AccountSection
                 userData={userData}
@@ -794,7 +768,6 @@ export default function Settings() {
               />
             )}
 
-            {/* Preferences Section */}
             {activeSection === 'preferences' && (
               <div className="space-y-6">
                 <div>
@@ -900,7 +873,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Notifications Section */}
             {activeSection === 'notifications' && (
               <div className="space-y-6">
                 <div>
@@ -937,7 +909,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Schedule Section */}
             {activeSection === 'schedule' && (
               <div className="space-y-6">
                 <div>
@@ -1020,7 +991,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Service Types Section */}
             {activeSection === 'services' && (
               <div className="space-y-6">
                 <div>
@@ -1156,7 +1126,6 @@ export default function Settings() {
                           checked={businessSettings.requirePhotos}
                           onChange={(e) => {
                             setBusinessSettings(prev => ({ ...prev, requirePhotos: e.target.checked }));
-                            // Also update proof-of-service settings in localStorage
                             try {
                               const stored = localStorage.getItem('chemcheck_business_proof_settings');
                               const proofSettings = stored ? JSON.parse(stored) : { proof_of_service: {} };
@@ -1204,7 +1173,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Data Backup Section */}
             {activeSection === 'backup' && (
               <div className="space-y-6">
                 <div>
@@ -1257,7 +1225,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Privacy & Data Section */}
             {activeSection === 'privacy' && (
               <div className="space-y-6">
                 <div>
@@ -1266,7 +1233,6 @@ export default function Settings() {
                 </div>
 
                 <div className="space-y-4">
-                  {/* Data Export */}
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-blue-600 rounded-lg">
@@ -1298,7 +1264,6 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  {/* Analytics Opt-out */}
                   <div className="p-4 bg-slate-50 rounded-lg">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -1320,7 +1285,6 @@ export default function Settings() {
                             } else {
                               optOutAnalytics();
                             }
-                            // Force re-render
                             setPreferences(prev => ({ ...prev }));
                           }}
                           className="sr-only peer"
@@ -1330,7 +1294,6 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  {/* Data Retention Info */}
                   <div className="p-4 bg-slate-50 rounded-lg">
                     <div className="flex items-center gap-2 mb-3">
                       <Database className="w-4 h-4 text-slate-600" />
@@ -1385,7 +1348,6 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  {/* Delete All Data */}
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-red-600 rounded-lg">
@@ -1409,7 +1371,6 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  {/* Privacy Policy Link */}
                   <div className="p-4 bg-slate-50 rounded-lg">
                     <p className="text-sm text-slate-600">
                       For more information about how we handle your data, please read our{' '}
@@ -1426,7 +1387,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Save Button */}
             <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:justify-between">
               {saveMessage && (
                 <p className={`text-sm text-center sm:text-left ${saveMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>

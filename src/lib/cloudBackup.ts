@@ -1,6 +1,3 @@
-// Cloud Backup Integration
-// Provides optional cloud storage for backups while maintaining offline-first approach
-
 import { createBackup, restoreFromBackup, BackupData } from './backup';
 import { monitoring } from './monitoring';
 import { userManager } from './userManager';
@@ -28,10 +25,6 @@ class CloudBackupManager {
   constructor() {
     this.loadConfig();
   }
-
-  // ============================================
-  // Configuration
-  // ============================================
 
   getAvailableProviders(): CloudProvider[] {
     return [
@@ -64,12 +57,10 @@ class CloudBackupManager {
 
   async configureProvider(providerId: string, credentials: any): Promise<boolean> {
     try {
-      // Store encrypted credentials
       const encryptedCredentials = await this.encryptCredentials(credentials);
       localStorage.setItem(`cloudBackup_${providerId}`, encryptedCredentials);
-      
-      // Test connection
-      const testResult = await this.testConnection(providerId);
+
+      const testResult = await this.testConnection();
       if (!testResult.success) {
         throw new Error(testResult.error);
       }
@@ -99,10 +90,9 @@ class CloudBackupManager {
     
     localStorage.setItem('cloudBackup_config', JSON.stringify(this.config));
     
-    // Restart sync if needed
-    if (this.config.autoSync) {
-      this.startAutoSync();
-    } else {
+      if (this.config.autoSync) {
+        this.startAutoSync();
+      } else {
       this.stopAutoSync();
     }
   }
@@ -110,10 +100,6 @@ class CloudBackupManager {
   getConfig(): CloudBackupConfig {
     return this.config || this.getDefaultConfig();
   }
-
-  // ============================================
-  // Backup Operations
-  // ============================================
 
   async uploadBackup(providerId?: string): Promise<{
     success: boolean;
@@ -128,10 +114,8 @@ class CloudBackupManager {
         throw new Error('Cloud provider not configured');
       }
 
-      // Create backup
       const backup = await createBackup();
-      
-      // Add metadata
+
       const cloudBackup = {
         ...backup,
         cloudMetadata: {
@@ -142,16 +126,13 @@ class CloudBackupManager {
         }
       };
 
-      // Encrypt if enabled
       let backupData = JSON.stringify(cloudBackup);
       if (config.encryptBackups) {
         backupData = await this.encryptBackup(backupData);
       }
 
-      // Upload to provider
       const backupId = await this.uploadToProvider(provider, backupData);
-      
-      // Update last sync time
+
       this.updateLastSync(provider);
       
       monitoring.recordMetric('cloud_backup_upload', performance.now(), {
@@ -185,10 +166,8 @@ class CloudBackupManager {
         throw new Error('Cloud provider not configured');
       }
 
-      // Download from provider
       let backupData = await this.downloadFromProvider(provider, backupId);
-      
-      // Decrypt if needed
+
       if (config.encryptBackups) {
         backupData = await this.decryptBackup(backupData);
       }
@@ -280,19 +259,15 @@ class CloudBackupManager {
     }
   }
 
-  // ============================================
-  // Auto Sync
-  // ============================================
-
   startAutoSync(): void {
     this.stopAutoSync();
-    
+
     const config = this.getConfig();
     if (!config.autoSync || !config.provider) return;
 
     this.syncInterval = window.setInterval(() => {
       this.performAutoSync();
-    }, config.syncInterval * 60 * 60 * 1000); // Convert hours to milliseconds
+    }, config.syncInterval * 60 * 60 * 1000);
 
     console.log(`Auto-sync started for ${config.provider} every ${config.syncInterval} hours`);
   }
@@ -311,11 +286,9 @@ class CloudBackupManager {
 
       console.log('Performing auto-sync to cloud...');
       const result = await this.uploadBackup();
-      
       if (result.success) {
         console.log('Auto-sync completed successfully');
-        
-        // Clean up old backups if needed
+
         await this.cleanupOldBackups();
       } else {
         console.error('Auto-sync failed:', result.error);
@@ -329,7 +302,6 @@ class CloudBackupManager {
     try {
       const config = this.getConfig();
       const listResult = await this.listBackups();
-      
       if (!listResult.success || !listResult.backups) return;
 
       const backups = listResult.backups
@@ -337,11 +309,10 @@ class CloudBackupManager {
 
       if (backups.length > config.maxBackups) {
         const toDelete = backups.slice(config.maxBackups);
-        
         for (const backup of toDelete) {
           await this.deleteFromProvider(config.provider, backup.id);
         }
-        
+
         console.log(`Cleaned up ${toDelete.length} old backups`);
       }
     } catch (error) {
@@ -349,26 +320,17 @@ class CloudBackupManager {
     }
   }
 
-  // ============================================
-  // Provider Implementations
-  // ============================================
-
-  private async testConnection(providerId: string): Promise<{ success: boolean; error?: string }> {
-    // This would implement actual provider testing
-    // For now, return success for demo purposes
+  private async testConnection(): Promise<{ success: boolean; error?: string }> {
     return { success: true };
   }
 
   private async uploadToProvider(providerId: string, data: string): Promise<string> {
-    // This would implement actual provider upload
-    // For now, simulate with localStorage
-    const backupId = `backup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const backupId = `backup_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     localStorage.setItem(`cloudBackup_${providerId}_${backupId}`, data);
     return backupId;
   }
 
   private async downloadFromProvider(providerId: string, backupId: string): Promise<string> {
-    // This would implement actual provider download
     const data = localStorage.getItem(`cloudBackup_${providerId}_${backupId}`);
     if (!data) throw new Error('Backup not found');
     return data;
@@ -380,7 +342,6 @@ class CloudBackupManager {
     size: number;
     uploadedAt: string;
   }>> {
-    // This would implement actual provider listing
     const backups = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -404,28 +365,17 @@ class CloudBackupManager {
     localStorage.removeItem(`cloudBackup_${providerId}_${backupId}`);
   }
 
-  // ============================================
-  // Encryption
-  // ============================================
-
   private async encryptCredentials(credentials: any): Promise<string> {
-    // Simple base64 encoding for demo - use proper encryption in production
     return btoa(JSON.stringify(credentials));
   }
 
   private async encryptBackup(data: string): Promise<string> {
-    // Simple base64 encoding for demo - use proper encryption in production
     return btoa(data);
   }
 
   private async decryptBackup(data: string): Promise<string> {
-    // Simple base64 decoding for demo - use proper decryption in production
     return atob(data);
   }
-
-  // ============================================
-  // Helper Methods
-  // ============================================
 
   private loadConfig(): void {
     try {
@@ -440,7 +390,7 @@ class CloudBackupManager {
     return {
       provider: '',
       autoSync: false,
-      syncInterval: 24, // 24 hours
+      syncInterval: 24,
       encryptBackups: true,
       maxBackups: 10
     };

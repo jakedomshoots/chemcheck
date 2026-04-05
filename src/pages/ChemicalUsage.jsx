@@ -144,9 +144,6 @@ export default function ChemicalUsagePage() {
       setSavingNoteId(null);
     }
   };
-
-
-  // Group records by customer
   const recordsByCustomer = useMemo(() => {
     const grouped = {};
     monthlyRecords.forEach(record => {
@@ -354,7 +351,6 @@ export default function ChemicalUsagePage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 font-sans">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <div>
@@ -440,7 +436,6 @@ export default function ChemicalUsagePage() {
         </Button>
       </div>
 
-      {/* Total Count */}
       <Card className="p-6 mb-6 border-2 shadow-lg bg-gradient-to-br from-purple-50 to-pink-50">
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-2">
@@ -456,7 +451,6 @@ export default function ChemicalUsagePage() {
         </div>
       </Card>
 
-      {/* Customer List */}
       {customersWithUsage.length === 0 ? (
         <Card className="p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200">
           <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
@@ -517,7 +511,6 @@ export default function ChemicalUsagePage() {
                                 {formatUsageDate(record.created_date)}
                               </div>
 
-                              {/* Notes Section */}
                               <div className="mt-2">
                                 {editingNoteId === record._id ? (
                                   <div className="space-y-2">

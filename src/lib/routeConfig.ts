@@ -45,7 +45,7 @@ export const REPORT_ROUTE_PATTERN = /^\/report\/[A-Za-z0-9_-]{8,128}(?:\/.*)?$/;
 
 function normalizeRoutePath(pathname = '/') {
   const pathOnly = pathname.split(/[?#]/)[0] || '/';
-  if (typeof pathOnly !== 'string' || !pathOnly.length) {
+  if (!pathOnly.length) {
     return '/';
   }
 
@@ -61,12 +61,10 @@ function normalizeAlias(alias: string) {
 export const APP_ROUTE_ALIAS_MAP: Record<string, string> = (() => {
   const aliasMap: Record<string, string> = {};
 
-  // Canonical routes should always resolve to themselves.
   for (const [, path] of canonicalRoutes) {
     aliasMap[normalizeAlias(path)] = path;
   }
 
-  // Compatibility aliases that should resolve to canonical routes.
   const compatibilityAliases = {
     '/home': APP_ROUTES.Home,
     '/clients': APP_ROUTES.Clients,

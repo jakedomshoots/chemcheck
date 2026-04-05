@@ -25,10 +25,6 @@ import type {
   HealthGrade,
 } from './types';
 
-// ============================================================================
-// Input Types for Language Generator
-// ============================================================================
-
 export interface LanguageGeneratorInput {
   customerName: string;
   healthScore: PoolHealthScore;
@@ -41,10 +37,6 @@ export interface LanguageGeneratorInput {
   weatherImpact?: WeatherImpact;
   recentActions?: string[];
 }
-
-// ============================================================================
-// Tone Determination
-// ============================================================================
 
 /**
  * Determines the appropriate tone based on health score
@@ -85,11 +77,6 @@ function getCustomerGradeDescription(grade: HealthGrade): string {
   return descriptions[grade];
 }
 
-// ============================================================================
-// Headline Generation
-// ============================================================================
-
-
 /**
  * Generates a one-line headline summarizing pool status
  * Requirement 1.1: Generate natural language summary within 2 seconds
@@ -99,20 +86,17 @@ export function generateHeadline(input: LanguageGeneratorInput): string {
   const score = healthScore.score;
   const grade = healthScore.grade;
   
-  // Critical issues take priority
   const criticalProblems = problems.filter(p => p.severity === 'critical');
   if (criticalProblems.length > 0) {
     const chemical = criticalProblems[0].chemical;
     return `Critical: ${formatChemicalName(chemical)} requires immediate attention (Score: ${score}/100)`;
   }
   
-  // High severity issues
   const highProblems = problems.filter(p => p.severity === 'high');
   if (highProblems.length > 0) {
     return `Attention Needed: Pool health score ${score}/100 (Grade ${grade}) - ${highProblems.length} issue(s) detected`;
   }
   
-  // Based on grade
   if (grade === 'A') {
     return `Excellent: Pool in optimal condition with health score ${score}/100`;
   }
@@ -143,25 +127,19 @@ function formatChemicalName(chemical: string): string {
   return names[chemical.toLowerCase()] || chemical;
 }
 
-// ============================================================================
-// Paragraph Generation
-// ============================================================================
-
 /**
  * Generates a full narrative paragraph describing pool status
  * Requirement 1.1, 1.4: Use pool-industry terminology appropriate for professionals
  */
 export function generateParagraph(input: LanguageGeneratorInput): string {
-  const { healthScore, chemicalTrends, problems, rootCauseAnalysis } = input;
+  const { healthScore, problems, rootCauseAnalysis } = input;
   const parts: string[] = [];
   
-  // Opening with overall status
   parts.push(
     `This pool is currently in ${getGradeDescription(healthScore.grade)} ` +
     `with a health score of ${healthScore.score}/100.`
   );
   
-  // Trend information
   if (healthScore.trend === 'improving') {
     parts.push('Chemical levels show an improving trend over recent services.');
   } else if (healthScore.trend === 'declining') {
@@ -170,7 +148,6 @@ export function generateParagraph(input: LanguageGeneratorInput): string {
     parts.push('Chemical levels have remained stable.');
   }
   
-  // Problem summary
   const criticalCount = problems.filter(p => p.severity === 'critical').length;
   const highCount = problems.filter(p => p.severity === 'high').length;
   
@@ -184,7 +161,6 @@ export function generateParagraph(input: LanguageGeneratorInput): string {
     }
     parts.push(`Analysis identified ${issueDescriptions.join(' and ')} issue(s) requiring attention.`);
     
-    // Detail specific problems
     const topProblems = problems
       .filter(p => p.severity === 'critical' || p.severity === 'high')
       .slice(0, 3);
@@ -198,7 +174,6 @@ export function generateParagraph(input: LanguageGeneratorInput): string {
     parts.push('No significant issues detected.');
   }
   
-  // Root cause insights
   if (rootCauseAnalysis && rootCauseAnalysis.chronicIssues.length > 0) {
     const chronic = rootCauseAnalysis.chronicIssues[0];
     parts.push(
@@ -207,17 +182,12 @@ export function generateParagraph(input: LanguageGeneratorInput): string {
     );
   }
   
-  // Confidence note
   if (healthScore.confidence < 50) {
     parts.push('Note: Limited service history available; confidence in analysis is reduced.');
   }
   
   return parts.join(' ');
 }
-
-// ============================================================================
-// Bullet Points Generation
-// ============================================================================
 
 /**
  * Generates key takeaway bullet points
@@ -227,10 +197,8 @@ export function generateBulletPoints(input: LanguageGeneratorInput): string[] {
   const { healthScore, problems, recommendations, chemicalTrends } = input;
   const bullets: string[] = [];
   
-  // Health score bullet
   bullets.push(`Health Score: ${healthScore.score}/100 (Grade ${healthScore.grade})`);
   
-  // Trend bullet
   const trendDescriptions: Record<string, string> = {
     'improving': 'Trend: Improving - chemical levels getting better',
     'stable': 'Trend: Stable - consistent chemical levels',
@@ -239,7 +207,6 @@ export function generateBulletPoints(input: LanguageGeneratorInput): string[] {
   const trendDescription = trendDescriptions[healthScore.trend] ?? 'Trend: Unknown';
   bullets.push(trendDescription);
   
-  // Problem bullets (top 3)
   const significantProblems = problems
     .filter(p => p.severity === 'critical' || p.severity === 'high')
     .slice(0, 3);
@@ -248,7 +215,6 @@ export function generateBulletPoints(input: LanguageGeneratorInput): string[] {
     bullets.push(`${formatChemicalName(problem.chemical)}: ${problem.description}`);
   }
   
-  // Recommendation count
   const totalRecs = 
     recommendations.immediate.length +
     recommendations.thisVisit.length +
@@ -264,7 +230,6 @@ export function generateBulletPoints(input: LanguageGeneratorInput): string[] {
     }
   }
   
-  // Chemical-specific bullets for concerning trends
   const decliningChemicals = chemicalTrends.filter(t => t.trend === 'declining');
   for (const trend of decliningChemicals.slice(0, 2)) {
     bullets.push(`${formatChemicalName(trend.chemical)} showing declining trend`);
@@ -273,46 +238,32 @@ export function generateBulletPoints(input: LanguageGeneratorInput): string[] {
   return bullets;
 }
 
-// ============================================================================
-// Call to Action Generation
-// ============================================================================
-
 /**
  * Generates appropriate call to action based on pool status
  */
 export function generateCallToAction(input: LanguageGeneratorInput): string | null {
   const { healthScore, problems, recommendations } = input;
-  
-  // Critical issues
+
   const criticalProblems = problems.filter(p => p.severity === 'critical');
   if (criticalProblems.length > 0) {
     return 'Immediate intervention required. Address critical chemical imbalances before leaving site.';
   }
   
-  // Immediate recommendations
   if (recommendations.immediate.length > 0) {
     const action = recommendations.immediate[0];
     return `Priority: ${action.action}`;
   }
   
-  // Poor health score
   if (healthScore.score < 40) {
     return 'Schedule follow-up service within 48 hours to verify chemical corrections.';
   }
   
-  // Fair health score
   if (healthScore.score < 60) {
     return 'Monitor chemical levels closely at next scheduled service.';
   }
   
-  // Good condition - no urgent action needed
   return null;
 }
-
-
-// ============================================================================
-// Professional Summary Generation
-// ============================================================================
 
 /**
  * Generates a complete professional summary for technicians
@@ -321,7 +272,7 @@ export function generateCallToAction(input: LanguageGeneratorInput): string | nu
  */
 export function generateProfessionalSummary(
   input: LanguageGeneratorInput,
-  options?: Partial<SummaryOptions>
+  _options?: Partial<SummaryOptions>
 ): GeneratedSummary {
   const tone = determineTone(input.healthScore.score);
   
@@ -339,17 +290,13 @@ export function generateProfessionalSummary(
   };
 }
 
-// ============================================================================
-// Customer Report Generation
-// ============================================================================
-
 /**
  * Generates a greeting based on customer name and pool status
  * Requirement 4.2: Use friendly, reassuring tone
  */
 function generateGreeting(customerName: string, healthScore: number): string {
   const firstName = customerName.split(' ')[0];
-  
+
   if (healthScore >= 80) {
     return `Hi ${firstName}! Great news about your pool.`;
   }
@@ -373,10 +320,8 @@ function generateCustomerHealthSummary(
 ): string {
   const parts: string[] = [];
   
-  // Overall status in friendly terms
   parts.push(getCustomerGradeDescription(healthScore.grade) + '!');
-  
-  // Score explanation
+
   if (healthScore.score >= 80) {
     parts.push(
       `We scored your pool at ${healthScore.score} out of 100, ` +
@@ -399,7 +344,6 @@ function generateCustomerHealthSummary(
     );
   }
   
-  // Problem explanation in layman's terms
   const significantProblems = problems.filter(
     p => p.severity === 'critical' || p.severity === 'high'
   );
@@ -468,9 +412,8 @@ function generateWhatWeDid(
     return recentActions.map(action => `✓ ${action}`);
   }
   
-  // Generate from recommendations that would typically be done
   const actions: string[] = [];
-  
+
   for (const rec of recommendations.immediate.slice(0, 2)) {
     actions.push(`✓ ${rec.action}`);
   }
@@ -527,17 +470,14 @@ function generateCustomerRecommendations(
 ): string[] {
   const customerRecs: string[] = [];
   
-  // Immediate actions in friendly terms
   for (const rec of recommendations.immediate.slice(0, 2)) {
     customerRecs.push(simplifyRecommendation(rec));
   }
   
-  // Next visit items
   for (const rec of recommendations.nextVisit.slice(0, 2)) {
     customerRecs.push(`At next visit: ${simplifyRecommendation(rec)}`);
   }
   
-  // General advice based on score
   if (healthScore >= 80) {
     customerRecs.push('Keep up the great work with regular maintenance!');
   } else if (healthScore < 60) {
@@ -551,10 +491,8 @@ function generateCustomerRecommendations(
  * Simplifies technical recommendation for customers
  */
 function simplifyRecommendation(rec: Recommendation): string {
-  // Remove technical dosage information
   let simplified = rec.action;
-  
-  // Make it more conversational
+
   simplified = simplified
     .replace(/^Add /i, 'We\'ll add ')
     .replace(/^Adjust /i, 'We\'ll adjust ')
@@ -569,7 +507,7 @@ function simplifyRecommendation(rec: Recommendation): string {
  */
 function generateClosingNote(healthScore: number, customerName: string): string {
   const firstName = customerName.split(' ')[0];
-  
+
   if (healthScore >= 80) {
     return `Thanks for trusting us with your pool care, ${firstName}! Enjoy your swim!`;
   }
@@ -595,7 +533,6 @@ function generateShareableText(
   const firstName = customerName.split(' ')[0];
   const lines: string[] = [];
   
-  // Keep it short for SMS
   lines.push(`Pool Update for ${firstName}`);
   lines.push(`Score: ${healthScore.score}/100 (${healthScore.grade})`);
   
@@ -609,7 +546,6 @@ function generateShareableText(
     lines.push('Status: Urgent - follow-up scheduled');
   }
   
-  // Add top issue if any
   const topProblem = problems.find(p => p.severity === 'critical' || p.severity === 'high');
   if (topProblem) {
     lines.push(`Note: ${formatChemicalName(topProblem.chemical)} adjusted`);
@@ -641,10 +577,6 @@ export function generateCustomerReport(input: LanguageGeneratorInput): CustomerR
   };
 }
 
-// ============================================================================
-// Main Export Functions
-// ============================================================================
-
 export interface GenerateSummaryResult {
   professionalSummary: GeneratedSummary;
   customerReport: CustomerReport;
@@ -660,10 +592,6 @@ export function generateSummaries(input: LanguageGeneratorInput): GenerateSummar
     customerReport: generateCustomerReport(input),
   };
 }
-
-// ============================================================================
-// Validation Helpers for Property Testing
-// ============================================================================
 
 /**
  * Validates that a generated summary is complete

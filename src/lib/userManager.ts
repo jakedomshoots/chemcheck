@@ -1,7 +1,3 @@
-// User Management System
-// Handles multiple users while maintaining offline-first architecture
-
-import { db } from '@/db/chemcheck-db';
 import { monitoring } from './monitoring';
 
 export interface User {
@@ -68,10 +64,6 @@ class UserManager {
     this.loadCurrentUser();
   }
 
-  // ============================================
-  // User Authentication & Management
-  // ============================================
-
   async createUser(userData: Omit<User, 'id' | 'createdAt' | 'isActive'>): Promise<User> {
     const user: User = {
       ...userData,
@@ -81,7 +73,6 @@ class UserManager {
       preferences: this.getDefaultPreferences()
     };
 
-    // Store user data locally
     const users = this.getStoredUsers();
     users.push(user);
     localStorage.setItem('chemcheck_users', JSON.stringify(users));
@@ -166,10 +157,6 @@ class UserManager {
     return this.currentUser !== null;
   }
 
-  // ============================================
-  // Business Management
-  // ============================================
-
   async createBusiness(businessData: Omit<Business, 'id' | 'createdAt'>): Promise<Business> {
     const business: Business = {
       ...businessData,
@@ -178,7 +165,6 @@ class UserManager {
       settings: this.getDefaultBusinessSettings()
     };
 
-    // Store business data locally
     const businesses = this.getStoredBusinesses();
     businesses.push(business);
     localStorage.setItem('chemcheck_businesses', JSON.stringify(businesses));
@@ -241,17 +227,14 @@ class UserManager {
       throw new Error(`User with id ${ownerId} not found or inactive`);
     }
 
-    // Update business in storage
     businesses[businessIndex].ownerId = ownerId;
     localStorage.setItem('chemcheck_businesses', JSON.stringify(businesses));
 
-    // Update current business if it's the one being modified
     if (this.currentBusiness?.id === businessId) {
       this.currentBusiness.ownerId = ownerId;
       localStorage.setItem('chemcheck_current_business', JSON.stringify(this.currentBusiness));
     }
 
-    // Record monitoring metric
     monitoring.recordMetric('business_owner_updated', performance.now(), {
       businessId,
       newOwnerId: ownerId,
@@ -261,30 +244,18 @@ class UserManager {
     return businesses[businessIndex];
   }
 
-  // ============================================
-  // Data Isolation & Multi-tenancy
-  // ============================================
-
   getDataPrefix(): string {
     if (!this.currentUser || !this.currentBusiness) {
-      return 'local'; // Fallback for single-user mode
+      return 'local';
     }
     return `${this.currentBusiness.id}_${this.currentUser.id}`;
   }
 
   async isolateUserData(): Promise<void> {
-    // This would be called when switching users to ensure data isolation
-    // For now, we'll use the existing DEFAULT_USER approach but make it dynamic
     const prefix = this.getDataPrefix();
 
-    // Update the database queries to use the prefix
-    // This is a placeholder for future implementation
     console.log(`Data isolated for: ${prefix}`);
   }
-
-  // ============================================
-  // User Preferences
-  // ============================================
 
   async updateUserPreferences(preferences: Partial<UserPreferences>): Promise<void> {
     if (!this.currentUser) throw new Error('No active user');
@@ -306,10 +277,6 @@ class UserManager {
     return this.currentUser?.preferences[key] || this.getDefaultPreferences()[key];
   }
 
-  // ============================================
-  // Role-Based Access Control
-  // ============================================
-
   hasPermission(action: string): boolean {
     if (!this.currentUser) return false;
 
@@ -319,7 +286,7 @@ class UserManager {
 
   private getRolePermissions(role: User['role']): string[] {
     const permissionMap = {
-      owner: ['*'], // Full access
+      owner: ['*'],
       admin: [
         'customers.create', 'customers.read', 'customers.update', 'customers.delete',
         'serviceLogs.create', 'serviceLogs.read', 'serviceLogs.update', 'serviceLogs.delete',
@@ -340,10 +307,6 @@ class UserManager {
 
     return permissionMap[role] || [];
   }
-
-  // ============================================
-  // Helper Methods
-  // ============================================
 
   private loadCurrentUser(): void {
     try {
@@ -366,7 +329,6 @@ class UserManager {
     this.currentUser = user;
     localStorage.setItem('chemcheck_current_user', JSON.stringify(user));
 
-    // Load associated business
     const businesses = this.getStoredBusinesses();
     const business = businesses.find(b => b.id === user.businessId);
     if (business) {
@@ -442,20 +404,13 @@ class UserManager {
     };
   }
 
-  // ============================================
-  // Migration & Setup
-  // ============================================
-
   async setupSingleUserBusiness(): Promise<{ user: User; business: Business }> {
-    // For existing single-user installations, create a default business and user
-    const businessId = this.generateBusinessId();
-
     const business = await this.createBusiness({
       name: 'My Pool Service',
       address: '',
       phone: '',
       email: '',
-      ownerId: '', // Will be set after user creation
+      ownerId: '',
       settings: this.getDefaultBusinessSettings()
     });
 
@@ -467,7 +422,6 @@ class UserManager {
       preferences: this.getDefaultPreferences()
     });
 
-    // Update business owner
     business.ownerId = user.id;
     const businesses = this.getStoredBusinesses();
     const index = businesses.findIndex(b => b.id === business.id);
@@ -483,14 +437,13 @@ class UserManager {
 
   async bootstrapFromConvex(convexBusiness: any, userEmail: string): Promise<{ user: User; business: Business }> {
     try {
-      // 1. Create a local representation of the business with null-safe settings access
       let business: Business = {
         id: convexBusiness._id,
         name: convexBusiness.name,
         address: convexBusiness.address || '',
         phone: convexBusiness.phone || '',
         email: convexBusiness.email || userEmail,
-        ownerId: 'placeholder', // Will be updated below
+        ownerId: 'placeholder',
         settings: {
           workingDays: convexBusiness.settings?.working_days || this.getDefaultBusinessSettings().workingDays,
           workingHours: {
@@ -511,9 +464,6 @@ class UserManager {
         createdAt: new Date(convexBusiness.created_at || Date.now()).toISOString()
       };
 
-      // 2. Create a local representation of the user
-      // Generate a stable ID based on business and email to prevent collisions
-      // simple hash of email to keep it relatively short but unique per email
       const emailHash = btoa(userEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
       let user: User = {
         id: `user_${convexBusiness._id}_${emailHash}`,
@@ -526,20 +476,16 @@ class UserManager {
         preferences: this.getDefaultPreferences()
       };
 
-      // 3. Store in localStorage, using existing data if present for consistency
       const users = this.getStoredUsers();
-      // Check by email OR ID to avoid duplicates if ID gen strategy changed
       const existingUser = users.find(u => u.email === userEmail || u.id === user.id);
 
       if (!existingUser) {
         users.push(user);
         localStorage.setItem('chemcheck_users', JSON.stringify(users));
       } else {
-        // Use the existing user from storage for consistency
         user = existingUser;
       }
 
-      // Set owner after user resolution to ensure consistency
       business.ownerId = user.id;
 
       const businesses = this.getStoredBusinesses();
@@ -548,15 +494,12 @@ class UserManager {
         businesses.push(business);
         localStorage.setItem('chemcheck_businesses', JSON.stringify(businesses));
       } else {
-        // Use the existing business from storage for consistency
         business = existingBusiness;
       }
 
-      // 4. Set as current
       this.setCurrentUser(user);
       this.setCurrentBusiness(business);
 
-      // Record monitoring metric
       monitoring.recordMetric('bootstrap_from_convex', performance.now(), {
         userId: user.id,
         businessId: business.id
@@ -579,10 +522,8 @@ class UserManager {
   }
 }
 
-// Global user manager instance
 export const userManager = new UserManager();
 
-// Convenience functions
 export const getCurrentUser = () => userManager.getCurrentUser();
 export const getCurrentBusiness = () => userManager.getCurrentBusiness();
 export const hasPermission = (action: string) => userManager.hasPermission(action);

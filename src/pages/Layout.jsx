@@ -52,7 +52,6 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-cyan-100/50 font-sans selection:bg-cyan-100">
-      {/* Header - Mobile Only */}
       <header className="lg:hidden sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm safe-area-top">
         <div className="flex items-center justify-between px-3 h-12 sm:h-14">
           <div className="flex items-center">
@@ -77,9 +76,7 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </header>
 
-      {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white/80 backdrop-blur-xl border-r border-slate-200/60 shadow-2xl flex-col z-40">
-        {/* Logo */}
         <div className="p-6 border-b border-slate-200">
           <div className="space-y-2">
             <img
@@ -91,7 +88,6 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
             const active = isActive(item.path);
@@ -112,7 +108,6 @@ export default function Layout({ children, currentPageName }) {
           })}
         </nav>
 
-        {/* Sync Status - Desktop */}
         <div className="p-4 border-t border-slate-200">
           <Suspense fallback={<div className="h-8 w-full" aria-hidden="true" />}>
             {renderSyncIndicator ? (
@@ -124,7 +119,6 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </aside>
 
-      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-[60]">
           <div
@@ -173,7 +167,6 @@ export default function Layout({ children, currentPageName }) {
         </div>
       )}
 
-      {/* Main Content */}
       <main className="lg:ml-64 min-h-screen safe-area-bottom">
         {children}
       </main>

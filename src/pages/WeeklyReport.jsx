@@ -34,7 +34,6 @@ export default function WeeklyReport() {
   const allCustomers = useCustomersFilter({ created_by: user.email });
   const allLogs = useServiceLogs("-service_date");
 
-  // Derive state directly from hooks (no useEffect needed)
   const customers = allCustomers || [];
 
   const logs = (allLogs || []).filter(log => {
@@ -47,7 +46,6 @@ export default function WeeklyReport() {
     }
   });
 
-  // Loading state is derived from hooks
   useEffect(() => {
     if (allCustomers !== undefined && allLogs !== undefined) {
       setLoading(false);

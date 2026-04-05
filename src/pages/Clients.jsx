@@ -54,7 +54,6 @@ export default function Clients() {
   const navigate = useNavigate();
   const user = useCurrentUser();
 
-  // Get business settings for working days
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
   const allCustomers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
@@ -75,7 +74,6 @@ export default function Clients() {
   const dayTabRefs = useRef({});
   const hasAutoScrolledDayRef = useRef(false);
 
-  // Get working days from cloud settings with local fallback for offline/dev mode.
   const daysOfWeek = useMemo(() => {
     return getEffectiveWorkingDays(convexBusiness);
   }, [convexBusiness]);
@@ -126,7 +124,6 @@ export default function Clients() {
     return aId.localeCompare(bId);
   }, [activeDayRankByName, dayRankByName]);
 
-  // Update activeDay if it's not in the working days list
   useEffect(() => {
     if (validWorkingDays.length > 0 && !validWorkingDays.includes(activeDay)) {
       setActiveDay(validWorkingDays[0]);
@@ -353,7 +350,6 @@ export default function Clients() {
     }
   };
 
-  // Memoized filtered customers by day
   const getCustomersByDay = useCallback((day) => {
     return customers
       .filter((c) => c.service_day === day)
@@ -366,7 +362,6 @@ export default function Clients() {
       });
   }, [customers, searchQuery]);
 
-  // Memoized customer counts
   const customerCounts = useMemo(() => {
     const counts = {};
     customers.forEach(c => {
@@ -375,12 +370,10 @@ export default function Clients() {
     return counts;
   }, [customers]);
 
-  // Check for orphaned customers (customers with service days not in working days)
   const orphanedCustomers = useMemo(() => {
     return customers.filter(c => !daysOfWeek.includes(c.service_day));
   }, [customers, daysOfWeek]);
 
-  // Calculate total visible customers (excluding orphaned ones)
   const visibleCustomerCount = useMemo(() => {
     return customers.filter(c => daysOfWeek.includes(c.service_day)).length;
   }, [customers, daysOfWeek]);

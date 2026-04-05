@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNotes, useCustomersFilter, useCurrentUser, useNoteCreate, useNoteUpdate, useNoteDelete } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { Plus, StickyNote, CheckCircle2, Circle, Trash2, ChevronDown, AlertCircle, Clock } from "lucide-react";
+import { Plus, StickyNote, CheckCircle2, Circle, Trash2, ChevronDown, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -118,7 +117,6 @@ export default function Notes() {
   };
 
   const getCustomerName = (customerId) => {
-    // Handle potential string/number mismatch
     return customers.find(c => c._id == customerId)?.full_name;
   };
 
@@ -143,7 +141,6 @@ export default function Notes() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <div>
@@ -160,7 +157,6 @@ export default function Notes() {
         </Button>
       </div>
 
-      {/* Quick Add Form */}
       {showForm && (
         <Card className="p-6 mb-6 border-2 shadow-lg bg-gradient-to-br from-amber-50 to-orange-50">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -256,7 +252,6 @@ export default function Notes() {
         </Card>
       )}
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full bg-slate-100 p-1 rounded-2xl mb-6">
           <TabsTrigger value="active" className="flex-1 rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-amber-500 data-[state=active]:to-orange-600 data-[state=active]:text-white">
@@ -397,7 +392,6 @@ export default function Notes() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Salt Cell Cleaning Log Section */}
       <SaltCellLogSection customers={customers} />
     </div>
   );

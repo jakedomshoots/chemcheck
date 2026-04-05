@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Search,
   AlertTriangle,
@@ -6,25 +6,16 @@ import {
   Wrench,
   CloudRain,
   ChevronDown,
-  ChevronUp,
-  Zap,
   ThermometerSun,
   Bug,
   Leaf,
-  Shield,
   AlertCircle,
   CheckCircle,
-  Info,
   Sparkles,
   CircuitBoard,
   Gauge,
   X
 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-
-// ============================================
-// POOL SCHOOL DATA - Florida-Specific Content
-// ============================================
 
 const POOL_SCHOOL_DATA = {
   categories: [
@@ -879,12 +870,6 @@ const POOL_SCHOOL_DATA = {
     }
   ]
 };
-
-
-// ============================================
-// ICON MAPPING
-// ============================================
-
 const iconMap = {
   AlertTriangle,
   Wrench,
@@ -896,10 +881,6 @@ const iconMap = {
   CircuitBoard,
   Gauge
 };
-
-// ============================================
-// COMPONENTS - MODERN REDESIGN
-// ============================================
 
 function WarningBox({ children }) {
   return (
@@ -1052,7 +1033,6 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, i
 
   return (
     <div className={`transition-all duration-500 ${isActiveCategory ? 'opacity-100' : 'opacity-0 absolute pointer-events-none'}`}>
-      {/* Category Header - More Prominent */}
       <div className="flex items-center gap-4 mb-6">
         <div className={`p-3 bg-gradient-to-br ${category.gradient} rounded-2xl shadow-lg`}>
           <IconComponent className="w-6 h-6 text-white" />
@@ -1066,7 +1046,6 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, i
         </span>
       </div>
 
-      {/* Topics Grid */}
       <div className="space-y-4">
         {filteredTopics.map(topic => (
           <TopicCard
@@ -1080,10 +1059,6 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, i
     </div>
   );
 }
-
-// ============================================
-// MAIN COMPONENT - MODERN REDESIGN
-// ============================================
 
 export default function PoolSchool() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -1138,14 +1113,12 @@ export default function PoolSchool() {
     }, 0);
   }, [searchQuery, totalTopics]);
 
-  // When searching, show all categories
   const showAllCategories = searchQuery.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50/30 to-blue-50/30">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-28">
 
-        {/* Hero Header */}
         <div className="relative mb-8">
           <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-teal-500/20 rounded-3xl blur-3xl" />
           <div className="relative bg-white/70 backdrop-blur-xl rounded-3xl border border-white/50 shadow-xl p-6 sm:p-8">
@@ -1168,7 +1141,6 @@ export default function PoolSchool() {
           </div>
         </div>
 
-        {/* Search Bar - Floating */}
         <div className="sticky top-2 z-20 mb-6">
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/50 shadow-lg p-2">
             <div className="relative">
@@ -1190,7 +1162,6 @@ export default function PoolSchool() {
               )}
             </div>
 
-            {/* Quick Actions */}
             {!searchQuery && (
               <div className="flex items-center justify-between mt-2 px-2">
                 <span className="text-xs text-slate-500">
@@ -1223,7 +1194,6 @@ export default function PoolSchool() {
           </div>
         </div>
 
-        {/* Category Tabs - Horizontal Scroll */}
         {!searchQuery && (
           <div className="mb-8 -mx-4 px-4">
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -1258,10 +1228,8 @@ export default function PoolSchool() {
           </div>
         )}
 
-        {/* Content Area */}
         <div className="relative min-h-[400px]">
           {showAllCategories ? (
-            // Search results mode - show all matching categories
             <div className="space-y-10">
               {POOL_SCHOOL_DATA.categories.map(category => (
                 <div key={category.id}>
@@ -1276,7 +1244,6 @@ export default function PoolSchool() {
               ))}
             </div>
           ) : (
-            // Tab mode - show active category only
             POOL_SCHOOL_DATA.categories.map(category => (
               <CategorySection
                 key={category.id}
@@ -1290,7 +1257,6 @@ export default function PoolSchool() {
           )}
         </div>
 
-        {/* No Results */}
         {filteredCount === 0 && (
           <div className="text-center py-16">
             <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-slate-100 to-slate-200 rounded-3xl flex items-center justify-center">

@@ -26,22 +26,14 @@ export function getEmailDeliveryValidationError(rawEmail?: string | null): strin
     return "The email on file is invalid. Please update the customer's email and try again.";
   }
 
-  const parts = normalized.toLowerCase().split("@");
-  if (parts.length !== 2) {
-    return "The email on file is invalid. Please update the customer's email and try again.";
-  }
-
-  const domain = parts[1];
-  if (!domain) {
-    return "The email on file is invalid. Please update the customer's email and try again.";
-  }
+  const domain = normalized.toLowerCase().split("@")[1]!;
 
   if (RESERVED_EMAIL_DOMAINS.has(domain)) {
     return "This email looks like a placeholder (example.com). Please use the customer's real email.";
   }
 
-  const tld = domain.split(".").pop();
-  if (!tld || RESERVED_EMAIL_TLDS.has(tld)) {
+  const tld = domain.split(".").pop()!;
+  if (RESERVED_EMAIL_TLDS.has(tld)) {
     return "This email looks like a test address. Please use the customer's real email.";
   }
 

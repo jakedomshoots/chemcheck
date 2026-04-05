@@ -1,6 +1,3 @@
-// Push Notification System
-// Handles service reminders and alerts for pool service management
-
 import { monitoring } from './monitoring';
 import { userManager } from './userManager';
 import { APP_ROUTES } from '@/lib/routeConfig';
@@ -10,8 +7,8 @@ export interface NotificationConfig {
   serviceReminders: boolean;
   lowChemicals: boolean;
   customerUpdates: boolean;
-  reminderTime: string; // HH:MM format
-  advanceNotice: number; // hours before service
+  reminderTime: string;
+  advanceNotice: number;
 }
 
 export interface ScheduledNotification {
@@ -19,7 +16,7 @@ export interface ScheduledNotification {
   type: 'service-reminder' | 'low-chemical' | 'customer-update' | 'route-ready';
   title: string;
   body: string;
-  scheduledFor: string; // ISO timestamp
+  scheduledFor: string;
   data?: any;
   sent: boolean;
 }
@@ -41,10 +38,6 @@ class NotificationManager {
     this.startNotificationChecker();
   }
 
-  // ============================================
-  // Permission Management
-  // ============================================
-
   async requestPermission(): Promise<boolean> {
     if (!('Notification' in window)) {
       console.warn('This browser does not support notifications');
@@ -57,7 +50,6 @@ class NotificationManager {
 
     try {
       this.permission = await Notification.requestPermission();
-      
       monitoring.recordMetric('notification_permission_requested', performance.now(), {
         result: this.permission
       });
@@ -73,15 +65,10 @@ class NotificationManager {
     return this.permission === 'granted';
   }
 
-  // ============================================
-  // Configuration
-  // ============================================
-
   updateConfig(newConfig: Partial<NotificationConfig>): void {
     this.config = { ...this.config, ...newConfig };
     localStorage.setItem('notification_config', JSON.stringify(this.config));
-    
-    // Update user preferences
+
     const user = userManager.getCurrentUser();
     if (user) {
       userManager.updateUserPreferences({
@@ -97,10 +84,6 @@ class NotificationManager {
   getConfig(): NotificationConfig {
     return this.config;
   }
-
-  // ============================================
-  // Immediate Notifications
-  // ============================================
 
   async showNotification(
     title: string,
@@ -129,21 +112,17 @@ class NotificationManager {
         ...options
       });
 
-      // Handle notification click
       notification.onclick = (event) => {
         event.preventDefault();
         window.focus();
 
         const customerId = options.data?.customerId;
-        // Handle specific notification types
         if (options.data?.type === 'service-reminder' && customerId) {
-          // Navigate to customer detail or service log
           window.location.href = `${window.location.origin}${APP_ROUTES.CustomerDetail}?id=${encodeURIComponent(customerId)}`;
         } else if (options.data?.type === 'route-ready') {
-          // Navigate to route optimizer
           window.location.href = `${window.location.origin}${APP_ROUTES.RouteOptimizer}`;
         }
-        
+
         notification.close();
       };
 
@@ -164,13 +143,9 @@ class NotificationManager {
     }
   }
 
-  // ============================================
-  // Scheduled Notifications
-  // ============================================
-
   scheduleNotification(notification: Omit<ScheduledNotification, 'id' | 'sent'>): string {
     const id = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const scheduledNotification: ScheduledNotification = {
       ...notification,
       id,
@@ -202,10 +177,6 @@ class NotificationManager {
     return this.scheduledNotifications.filter(n => !n.sent);
   }
 
-  // ============================================
-  // Service Reminder Notifications
-  // ============================================
-
   scheduleServiceReminders(customers: any[], date: string): void {
     if (!this.config.serviceReminders) return;
 
@@ -217,7 +188,6 @@ class NotificationManager {
       const [hours, minutes] = this.config.reminderTime.split(':').map(Number);
       reminderTime.setHours(hours - this.config.advanceNotice, minutes, 0, 0);
 
-      // Only schedule if the reminder time is in the future
       if (reminderTime.getTime() > Date.now()) {
         this.scheduleNotification({
           type: 'service-reminder',
@@ -236,7 +206,7 @@ class NotificationManager {
 
   scheduleRouteReadyNotification(date: string, routeData: any): void {
     const notificationTime = new Date(date);
-    notificationTime.setHours(7, 0, 0, 0); // 7 AM on service day
+    notificationTime.setHours(7, 0, 0, 0);
 
     if (notificationTime.getTime() > Date.now()) {
       this.scheduleNotification({
@@ -257,7 +227,6 @@ class NotificationManager {
   scheduleLowChemicalAlert(chemicalType: string, currentLevel: number, threshold: number): void {
     if (!this.config.lowChemicals) return;
 
-    // Don't spam - only alert once per day per chemical
     const today = new Date().toDateString();
     const existingAlert = this.scheduledNotifications.find(n => 
       n.type === 'low-chemical' && 
@@ -271,7 +240,7 @@ class NotificationManager {
       type: 'low-chemical',
       title: 'Low Chemical Alert',
       body: `${chemicalType} is running low (${currentLevel}/${threshold} remaining)`,
-      scheduledFor: new Date().toISOString(), // Immediate
+      scheduledFor: new Date().toISOString(),
       data: {
         chemicalType,
         currentLevel,
@@ -280,12 +249,7 @@ class NotificationManager {
     });
   }
 
-  // ============================================
-  // Notification Checker
-  // ============================================
-
   private startNotificationChecker(): void {
-    // Check every minute for due notifications
     this.checkInterval = window.setInterval(() => {
       this.checkDueNotifications();
     }, 60000);
@@ -301,7 +265,6 @@ class NotificationManager {
       await this.sendScheduledNotification(notification);
     }
 
-    // Clean up old sent notifications (older than 7 days)
     const weekAgo = now - (7 * 24 * 60 * 60 * 1000);
     this.scheduledNotifications = this.scheduledNotifications.filter(
       n => !n.sent || new Date(n.scheduledFor).getTime() > weekAgo
@@ -331,10 +294,6 @@ class NotificationManager {
     }
   }
 
-  // ============================================
-  // Data Persistence
-  // ============================================
-
   private loadConfig(): NotificationConfig {
     try {
       const stored = localStorage.getItem('notification_config');
@@ -354,7 +313,7 @@ class NotificationManager {
       lowChemicals: true,
       customerUpdates: true,
       reminderTime: '08:00',
-      advanceNotice: 1 // 1 hour before
+      advanceNotice: 1
     };
   }
 
@@ -378,10 +337,6 @@ class NotificationManager {
     }
   }
 
-  // ============================================
-  // Cleanup
-  // ============================================
-
   cleanup(): void {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
@@ -390,10 +345,8 @@ class NotificationManager {
   }
 }
 
-// Global notification manager
 export const notificationManager = new NotificationManager();
 
-// Convenience functions
 export const requestNotificationPermission = () => notificationManager.requestPermission();
 export const showNotification = (title: string, body: string, options?: any) => 
   notificationManager.showNotification(title, body, options);

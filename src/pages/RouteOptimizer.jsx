@@ -100,7 +100,6 @@ export default function RouteOptimizer() {
   const recentServiceLogs = useServiceLogs("-service_date", 1500);
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
-  // Read route optimization and working hours from business settings
   const routeOptimizationEnabled = convexBusiness?.settings?.route_optimization ?? true;
   const workingHoursStart = convexBusiness?.settings?.working_hours_start || "08:00";
   const workingHoursEnd = convexBusiness?.settings?.working_hours_end || "17:00";

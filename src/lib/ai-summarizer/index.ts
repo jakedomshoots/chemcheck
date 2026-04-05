@@ -1,13 +1,3 @@
-/**
- * AI Pool Summarizer - Main Orchestrator
- * 
- * Wires all analysis components together to provide comprehensive pool analysis.
- * Implements single pool analysis and fleet analysis functions with graceful
- * error handling at each stage.
- * 
- * Requirements: 1.1, 1.5, 2.1
- */
-
 import {
   type PoolAnalysisResult,
   type FleetInsights,
@@ -40,10 +30,6 @@ import { analyzeFleet, type PoolData } from './fleetAnalyzer';
 import { analyzeLearning } from './learningEngine';
 import { analyzeWeatherImpact } from './weatherAnalyzer';
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface PoolAnalysisInput {
   customerId: string;
   customerName: string;
@@ -72,13 +58,6 @@ export interface FleetAnalysisInput {
   };
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * Calculates the date range from service logs
- */
 function calculateDateRange(logs: ServiceLog[]): { start: string; end: string } {
   if (logs.length === 0) {
     const today = new Date().toISOString().split('T')[0];
@@ -95,9 +74,6 @@ function calculateDateRange(logs: ServiceLog[]): { start: string; end: string } 
   };
 }
 
-/**
- * Extracts chemical trends from service logs
- */
 function extractChemicalTrends(logs: ServiceLog[]): ChemicalTrend[] {
   const chemicals: Array<'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'> = [
     'ph', 'chlorine', 'alkalinity', 'stabilizer'
@@ -126,9 +102,6 @@ function extractChemicalTrends(logs: ServiceLog[]): ChemicalTrend[] {
   });
 }
 
-/**
- * Calculates trend direction from a series of readings
- */
 function calculateTrendDirection(readings: ChemicalReading[]): TrendDirection {
   if (readings.length < 2) {
     return 'stable';
@@ -160,9 +133,6 @@ function calculateTrendDirection(readings: ChemicalReading[]): TrendDirection {
   return 'stable';
 }
 
-/**
- * Extracts problems from service logs and root cause analysis
- */
 function extractProblems(
   logs: ServiceLog[],
   rootCauseAnalysis: RootCauseAnalysis
@@ -202,11 +172,9 @@ function extractProblems(
     }
   }
 
-  // Add problems from chronic issues
   for (const chronic of rootCauseAnalysis.chronicIssues) {
     const existingProblem = problems.find(p => p.chemical === chronic.chemical);
     if (existingProblem) {
-      // Upgrade severity if chronic
       if (existingProblem.severity === 'low') {
         existingProblem.severity = 'medium';
       } else if (existingProblem.severity === 'medium') {
@@ -215,7 +183,6 @@ function extractProblems(
     }
   }
 
-  // Sort by severity
   const severityOrder: Record<ProblemSeverity, number> = {
     critical: 0,
     high: 1,
@@ -226,9 +193,6 @@ function extractProblems(
   return problems.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 }
 
-/**
- * Determines problem severity based on reading and occurrence count
- */
 function determineSeverity(reading: ChemicalReading, occurrences: number): ProblemSeverity {
   if (reading === 'critical') return 'critical';
   if (occurrences > 5) return 'high';
@@ -236,9 +200,6 @@ function determineSeverity(reading: ChemicalReading, occurrences: number): Probl
   return 'low';
 }
 
-/**
- * Generates a human-readable problem description
- */
 function generateProblemDescription(chemical: string, reading: ChemicalReading): string {
   const chemicalNames: Record<string, string> = {
     ph: 'pH',
@@ -257,9 +218,6 @@ function generateProblemDescription(chemical: string, reading: ChemicalReading):
   return `${chemicalNames[chemical] || chemical} is ${readingDescriptions[reading]}`;
 }
 
-/**
- * Calculates overall trend from chemical trends
- */
 function calculateOverallTrend(chemicalTrends: ChemicalTrend[]): TrendDirection {
   let improving = 0;
   let declining = 0;
@@ -274,18 +232,13 @@ function calculateOverallTrend(chemicalTrends: ChemicalTrend[]): TrendDirection 
   return 'stable';
 }
 
-/**
- * Calculates overall confidence from various analysis components
- */
 function calculateOverallConfidence(
   healthScore: PoolHealthScore,
   dataQuality: DataQuality,
   logCount: number
 ): number {
-  // Base confidence from health score
   let confidence = healthScore.confidence;
 
-  // Adjust based on data quality
   const qualityModifiers: Record<DataQuality, number> = {
     excellent: 10,
     good: 5,
@@ -295,7 +248,6 @@ function calculateOverallConfidence(
 
   confidence += qualityModifiers[dataQuality];
 
-  // Adjust based on log count
   if (logCount < 3) {
     confidence -= 20;
   } else if (logCount >= 10) {
@@ -305,13 +257,9 @@ function calculateOverallConfidence(
   return Math.max(0, Math.min(100, confidence));
 }
 
-/**
- * Identifies the primary issue for a pool (for fleet analysis)
- */
 function identifyPrimaryIssue(problems: PoolProblem[]): string | null {
   if (problems.length === 0) return null;
 
-  // Return the most severe problem
   const severityOrder: Record<ProblemSeverity, number> = {
     critical: 0,
     high: 1,
@@ -323,22 +271,9 @@ function identifyPrimaryIssue(problems: PoolProblem[]): string | null {
     (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
   );
 
-  return `${sorted[0].description}`;
+  return sorted[0].description;
 }
 
-// ============================================================================
-// Main Analysis Functions
-// ============================================================================
-
-
-/**
- * Analyzes a single pool and generates comprehensive insights
- * 
- * Requirements:
- * - 1.1: Generate natural language summary within 2 seconds
- * - 1.5: Indicate limited confidence when insufficient data exists
- * - 2.1: Generate predictions for pools with 5+ service logs
- */
 export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
   const {
     customerId,
@@ -356,12 +291,10 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
   const dataRange = calculateDateRange(serviceLogs);
   const totalServices = serviceLogs.length;
 
-  // Stage 1: Calculate health score
   let healthScoreResult: HealthScoreResult;
   try {
     healthScoreResult = calculateHealthScore({ serviceLogs });
   } catch (error) {
-    // Graceful degradation - return neutral health score
     healthScoreResult = {
       healthScore: {
         score: 50,
@@ -376,7 +309,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
 
   const { healthScore, dataQuality } = healthScoreResult;
 
-  // Stage 2: Extract chemical trends
   let chemicalTrends: ChemicalTrend[];
   try {
     chemicalTrends = extractChemicalTrends(serviceLogs);
@@ -386,7 +318,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
 
   const overallTrend = calculateOverallTrend(chemicalTrends);
 
-  // Stage 3: Analyze root causes
   let rootCauseAnalysis: RootCauseAnalysis;
   try {
     rootCauseAnalysis = analyzeRootCauses({ serviceLogs });
@@ -398,7 +329,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     };
   }
 
-  // Stage 4: Extract problems
   let problems: PoolProblem[];
   try {
     problems = extractProblems(serviceLogs, rootCauseAnalysis);
@@ -406,7 +336,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     problems = [];
   }
 
-  // Stage 5: Generate predictive insights
   let predictiveInsights: PredictiveInsights;
   try {
     predictiveInsights = generatePredictiveInsights({
@@ -428,18 +357,15 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     };
   }
 
-  // Stage 6: Analyze weather impact (optional)
   let weatherImpact: WeatherImpact | null = null;
   if (includeWeather && weatherForecast) {
     try {
       weatherImpact = analyzeWeatherImpact(weatherForecast, serviceLogs);
     } catch (error) {
-      // Graceful degradation - weather impact remains null (Requirement 9.5)
       weatherImpact = null;
     }
   }
 
-  // Stage 7: Generate cost analysis (optional)
   let costAnalysis: CostAnalysis | null = null;
   if (includeCosts) {
     try {
@@ -449,7 +375,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     }
   }
 
-  // Stage 8: Generate recommendations
   let recommendations: CategorizedRecommendations;
   try {
     recommendations = generateRecommendations({
@@ -468,7 +393,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     };
   }
 
-  // Stage 9: Generate summaries
   let professionalSummary: GeneratedSummary;
   let customerReport: CustomerReport;
   try {
@@ -488,7 +412,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     professionalSummary = summaries.professionalSummary;
     customerReport = summaries.customerReport;
   } catch (error) {
-    // Graceful degradation - generate minimal summaries
     professionalSummary = {
       headline: `Pool Analysis for ${customerName}`,
       paragraph: 'Unable to generate detailed summary. Please review the data manually.',
@@ -507,7 +430,6 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     };
   }
 
-  // Stage 10: Analyze learning (optional)
   let learningInsights: LearningInsights | null = null;
   if (includeLearning && serviceLogs.length >= 3) {
     try {
@@ -517,11 +439,9 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     }
   }
 
-  // Calculate overall confidence
   const confidence = calculateOverallConfidence(healthScore, dataQuality, totalServices);
 
   return {
-    // Identification
     customerId,
     customerName,
     poolType,
@@ -530,55 +450,35 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     dataRange,
     totalServices,
 
-    // Core Scores
     healthScore,
 
-    // Trends & Patterns
     chemicalTrends,
     overallTrend,
 
-    // Problems & Root Causes
     problems,
     rootCauseAnalysis,
 
-    // Predictions
     predictiveInsights,
     weatherImpact,
 
-    // Costs
     costAnalysis,
 
-    // Generated Content
     professionalSummary,
     customerReport,
 
-    // Recommendations
     recommendations,
 
-    // Learning
     learningInsights,
 
-    // Metadata
     confidence,
     dataQuality,
     generatedAt,
   };
 }
-
-/**
- * Analyzes multiple pools and generates fleet-level insights
- * 
- * Requirements:
- * - 7.1: Rank all pools by Pool_Health_Score from lowest to highest
- * - 7.2: Group pools by problem type for efficient batch addressing
- * - 7.3: Identify the top 5 pools requiring immediate attention
- */
 export function analyzeFleetPools(input: FleetAnalysisInput): FleetInsights {
   const { pools, config } = input;
 
-  // Analyze each pool individually to get health scores and primary issues
   const poolDataArray: PoolData[] = pools.map(pool => {
-    // Calculate health score for each pool
     let healthScore: PoolHealthScore;
     let primaryIssue: string | null = null;
 
@@ -586,12 +486,10 @@ export function analyzeFleetPools(input: FleetAnalysisInput): FleetInsights {
       const healthResult = calculateHealthScore({ serviceLogs: pool.serviceLogs });
       healthScore = healthResult.healthScore;
 
-      // Get primary issue from root cause analysis
       const rootCauseAnalysis = analyzeRootCauses({ serviceLogs: pool.serviceLogs });
       const problems = extractProblems(pool.serviceLogs, rootCauseAnalysis);
       primaryIssue = identifyPrimaryIssue(problems);
     } catch (error) {
-      // Graceful degradation
       healthScore = {
         score: 50,
         grade: 'C',
@@ -601,7 +499,6 @@ export function analyzeFleetPools(input: FleetAnalysisInput): FleetInsights {
       };
     }
 
-    // Get last service date
     const sortedLogs = [...pool.serviceLogs].sort(
       (a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime()
     );
@@ -620,16 +517,10 @@ export function analyzeFleetPools(input: FleetAnalysisInput): FleetInsights {
     };
   });
 
-  // Use fleet analyzer to generate insights
   return analyzeFleet(poolDataArray, config);
 }
 
-// ============================================================================
-// Re-exports for convenience
-// ============================================================================
-
 export {
-  // Types
   type PoolAnalysisResult,
   type FleetInsights,
   type ServiceLog,
@@ -650,7 +541,6 @@ export {
   type ExportResult,
 } from './types';
 
-// Export individual analyzers for direct use
 export { calculateHealthScore } from './healthScorer';
 export { generatePredictiveInsights } from './predictiveAnalyzer';
 export { analyzeRootCauses } from './rootCauseAnalyzer';
@@ -662,7 +552,6 @@ export { analyzeLearning } from './learningEngine';
 export { analyzeWeatherImpact } from './weatherAnalyzer';
 export { exportPoolAnalysis, exportFleetInsights, downloadExport } from './exportEngine';
 
-// Export validation utilities for security
 export {
   isValidChemical,
   isValidReading,

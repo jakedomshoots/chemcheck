@@ -19,13 +19,9 @@ function RootLoader() {
     );
 }
 
-console.log("Initializing ChemCheck...");
-
-// Initialize Sentry for error tracking and performance monitoring
 initSentry();
 initializeCacheLifecycle();
 
-// Initialize Google Analytics after first paint/idle time to keep startup lean.
 function scheduleAnalyticsInitialization() {
     const initialize = async () => {
         try {
@@ -64,7 +60,6 @@ async function initializeApp() {
     } catch (e) {
         const errorId = `INIT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        // Secure error logging
         const isDev = import.meta.env.DEV;
         if (isDev) {
             console.error(`[${errorId}] Render Error:`, e);
@@ -72,14 +67,12 @@ async function initializeApp() {
             console.error(`[${errorId}] Application initialization failed`);
         }
 
-        // Send to Sentry
         try {
             reportError(e, { errorId, context: 'app_initialization' });
         } catch (sentryError) {
             console.error('Failed to report error to Sentry:', sentryError);
         }
 
-        // Safe error display
         document.body.innerHTML = `
         <div style="
             min-height: 100vh; 
@@ -170,5 +163,4 @@ async function initializeApp() {
     }
 }
 
-// Initialize the app
 initializeApp();

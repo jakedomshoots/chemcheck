@@ -80,10 +80,6 @@ function buildCompatibilityStatus(raw: Partial<BackupData>): { canRestore: boole
   };
 }
 
-// ============================================
-// Backup & Export System
-// ============================================
-
 export interface BackupData {
   version: string;
   schemaVersion?: number;
@@ -116,14 +112,11 @@ export interface BackupOptions {
   includeChemicalUsage?: boolean;
   includeNotes?: boolean;
   dateRange?: {
-    start: string; // YYYY-MM-DD
-    end: string;   // YYYY-MM-DD
+    start: string;
+    end: string;
   };
 }
 
-/**
- * Create a complete backup of all data
- */
 export async function createBackup(options: BackupOptions = {}): Promise<BackupData> {
   const {
     includeCustomers = true,
@@ -158,12 +151,10 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
       }
     };
 
-    // Export customers
     if (includeCustomers) {
       backup.data.customers = await db.customers.toArray();
     }
 
-    // Export service logs with date filtering
     if (includeServiceLogs) {
       let serviceLogs = await db.serviceLogs.toArray();
       if (dateRange) {
@@ -174,7 +165,6 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
       backup.data.serviceLogs = serviceLogs;
     }
 
-    // Export chemical usage with date filtering
     if (includeChemicalUsage) {
       let chemicalUsage = await db.chemicalUsage.toArray();
       if (dateRange) {
@@ -185,7 +175,6 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
       backup.data.chemicalUsage = chemicalUsage;
     }
 
-    // Export notes with date filtering
     if (includeNotes) {
       let notes = await db.notes.toArray();
       if (dateRange) {
@@ -196,7 +185,6 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
       backup.data.notes = notes;
     }
 
-    // Calculate total records
     backup.metadata.totalRecords = 
       backup.data.customers.length +
       backup.data.serviceLogs.length +
@@ -210,9 +198,6 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
   }
 }
 
-/**
- * Download backup as JSON file
- */
 export async function downloadBackup(options?: BackupOptions): Promise<void> {
   try {
     const backup = await createBackup(options);
@@ -233,9 +218,6 @@ export async function downloadBackup(options?: BackupOptions): Promise<void> {
   }
 }
 
-/**
- * Restore data from backup
- */
 export async function restoreFromBackup(backupData: BackupData, options: {
   clearExisting?: boolean;
   mergeStrategy?: 'replace' | 'skip' | 'merge';
@@ -251,6 +233,7 @@ export async function restoreFromBackup(backupData: BackupData, options: {
   warnings: string[];
 }> {
   const { clearExisting = false, mergeStrategy = 'replace' } = options;
+  void mergeStrategy;
   const result = {
     success: false,
     imported: { customers: 0, serviceLogs: 0, chemicalUsage: 0, notes: 0 },
@@ -259,7 +242,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
   };
 
   try {
-    // Validate backup format
     if (!validateBackupDataShape(backupData)) {
       throw new Error('Invalid backup format');
     }
@@ -290,7 +272,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
     };
 
     await db.transaction('rw', [db.customers, db.serviceLogs, db.chemicalUsage, db.notes], async () => {
-      // Clear existing data if requested
       if (clearExisting) {
         await db.customers.clear();
         await db.serviceLogs.clear();
@@ -298,12 +279,10 @@ export async function restoreFromBackup(backupData: BackupData, options: {
         await db.notes.clear();
       }
 
-      // Create ID mapping for customers (old ID -> new ID)
       const customerIdMap = new Map<number, number>();
       const nowMs = Date.now();
       const nowIso = new Date(nowMs).toISOString();
 
-      // Import customers first (due to foreign key dependencies)
       if (backupData.data.customers?.length > 0) {
         for (const customer of backupData.data.customers) {
           try {
@@ -311,7 +290,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
             const newId = await db.customers.add({
               ...customerData,
               updatedAt: nowIso,
-              // Set sync fields for restored records
               sync_status: 'pending',
               local_updated_at: nowMs,
             });
@@ -330,7 +308,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
             const { id, customer_id, ...logData } = log;
             const newCustomerId = customerIdMap.get(customer_id) || customer_id;
             
-            // Verify customer exists
             const customerExists = await db.customers.get(newCustomerId);
             if (!customerExists) {
               result.errors.push(`Service log skipped: customer ${customer_id} not found`);
@@ -341,7 +318,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
               ...logData,
               customer_id: newCustomerId,
               updatedAt: nowIso,
-              // Set sync fields for restored records
               sync_status: 'pending',
               local_updated_at: nowMs,
             });
@@ -390,7 +366,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
             
             if (customer_id) {
               newCustomerId = customerIdMap.get(customer_id) || customer_id;
-              // Verify customer exists
               const customerExists = await db.customers.get(newCustomerId);
               if (!customerExists) {
                 result.errors.push(`Note skipped: customer ${customer_id} not found`);
@@ -402,7 +377,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
               ...noteData,
               customer_id: newCustomerId,
               updatedAt: nowIso,
-              // Set sync fields for restored records
               sync_status: 'pending',
               local_updated_at: nowMs,
             });
@@ -422,9 +396,6 @@ export async function restoreFromBackup(backupData: BackupData, options: {
   }
 }
 
-/**
- * Auto-backup system - runs periodically
- */
 export class AutoBackup {
   private intervalId: number | null = null;
   private lastBackup: string | null = null;
@@ -434,12 +405,10 @@ export class AutoBackup {
   }
 
   start(): void {
-    if (this.intervalId) return; // Already running
+    if (this.intervalId) return;
 
-    // Check if backup is needed immediately
     this.checkAndBackup();
 
-    // Set up periodic backups
     this.intervalId = window.setInterval(() => {
       this.checkAndBackup();
     }, this.intervalHours * 60 * 60 * 1000);
@@ -460,7 +429,6 @@ export class AutoBackup {
     if (shouldBackup) {
       try {
         const backup = await createBackup();
-        // Store in localStorage as emergency backup
         localStorage.setItem('emergencyBackup', JSON.stringify(backup));
         localStorage.setItem('lastAutoBackup', now);
         this.lastBackup = now;
@@ -476,5 +444,4 @@ export class AutoBackup {
   }
 }
 
-// Global auto-backup instance
-export const autoBackup = new AutoBackup(24); // 24-hour intervals
+export const autoBackup = new AutoBackup(24);
