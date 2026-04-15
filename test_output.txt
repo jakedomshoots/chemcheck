@@ -1,0 +1,864 @@
+
+> base44-app@0.0.0 test
+> vitest --run
+
+
+[1m[46m RUN [49m[22m [36mv4.0.10 [39m[90m/Users/jakedominick/Downloads/chemcheck-main[39m
+
+Error: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at EditClient (/Users/jakedominick/Downloads/chemcheck-main/src/pages/EditClient.jsx:17:21)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+Error: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at EditClient (/Users/jakedominick/Downloads/chemcheck-main/src/pages/EditClient.jsx:17:21)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+[90mstderr[2m | src/pages/EditClient.test.jsx[2m > [22m[2mEdit Client Page[2m > [22m[2mrenders the form with customer data
+[22m[39mThe above error occurred in the <EditClient> component:
+
+    at EditClient (/Users/jakedominick/Downloads/chemcheck-main/src/pages/EditClient.jsx:17:46)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ [31m❯[39m src/pages/EditClient.test.jsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 26[2mms[22m[39m
+[31m     [31m×[31m renders the form with customer data[39m[32m 25[2mms[22m[39m
+Error: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at CustomerDetail (/Users/jakedominick/Downloads/chemcheck-main/src/pages/CustomerDetail.jsx:16:21)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+Error: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at CustomerDetail (/Users/jakedominick/Downloads/chemcheck-main/src/pages/CustomerDetail.jsx:16:21)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+Error: [vitest] No "useCustomerCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at NewClient (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewClient.jsx:14:26)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+[90mstderr[2m | src/pages/CustomerDetail.test.jsx[2m > [22m[2mCustomer Detail Page[2m > [22m[2mrenders customer details
+[22m[39mThe above error occurred in the <CustomerDetail> component:
+
+    at CustomerDetail (/Users/jakedominick/Downloads/chemcheck-main/src/pages/CustomerDetail.jsx:16:46)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+Error: [vitest] No "useCustomersFilter" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at NewChemicalUsage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewChemicalUsage.jsx:34:24)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+Error: [vitest] No "useCustomerCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at NewClient (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewClient.jsx:14:26)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+[90mstderr[2m | src/pages/NewClient.test.jsx[2m > [22m[2mNew Client Page[2m > [22m[2mrenders the new client form
+[22m[39mThe above error occurred in the <NewClient> component:
+
+    at NewClient (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewClient.jsx:15:51)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+Error: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at CustomerDetail (/Users/jakedominick/Downloads/chemcheck-main/src/pages/CustomerDetail.jsx:16:21)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+ [31m❯[39m src/pages/NewClient.test.jsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 23[2mms[22m[39m
+[31m     [31m×[31m renders the new client form[39m[32m 22[2mms[22m[39m
+Error: [vitest] No "useCustomersFilter" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at NewChemicalUsage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewChemicalUsage.jsx:34:24)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+[90mstderr[2m | src/pages/NewChemicalUsage.test.jsx[2m > [22m[2mNew Chemical Usage Page[2m > [22m[2mrenders the form
+[22m[39mThe above error occurred in the <NewChemicalUsage> component:
+
+    at NewChemicalUsage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/NewChemicalUsage.jsx:33:49)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+Error: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at CustomerDetail (/Users/jakedominick/Downloads/chemcheck-main/src/pages/CustomerDetail.jsx:16:21)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+[90mstderr[2m | src/pages/CustomerDetail.test.jsx[2m > [22m[2mCustomer Detail Page[2m > [22m[2mrenders service history
+[22m[39mThe above error occurred in the <CustomerDetail> component:
+
+    at CustomerDetail (/Users/jakedominick/Downloads/chemcheck-main/src/pages/CustomerDetail.jsx:16:46)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ [31m❯[39m src/pages/CustomerDetail.test.jsx [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 82[2mms[22m[39m
+[31m     [31m×[31m renders customer details[39m[32m 61[2mms[22m[39m
+[31m     [31m×[31m renders service history[39m[32m 20[2mms[22m[39m
+ [31m❯[39m src/pages/NewChemicalUsage.test.jsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 101[2mms[22m[39m
+[31m     [31m×[31m renders the form[39m[32m 99[2mms[22m[39m
+ [32m✓[39m src/pages/WeeklyReport.test.jsx [2m([22m[2m3 tests[22m[2m)[22m[32m 174[2mms[22m[39m
+Error: [vitest] No "useChemicalUsageDelete" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at ChemicalUsagePage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/ChemicalUsage.jsx:27:31)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+Error: [vitest] No "useChemicalUsageDelete" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at ChemicalUsagePage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/ChemicalUsage.jsx:27:31)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+[90mstderr[2m | src/pages/ChemicalUsage.test.jsx[2m > [22m[2mChemical Usage Page[2m > [22m[2mrenders usage list
+[22m[39mThe above error occurred in the <ChemicalUsagePage> component:
+
+    at ChemicalUsagePage (/Users/jakedominick/Downloads/chemcheck-main/src/pages/ChemicalUsage.jsx:23:57)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ [31m❯[39m src/pages/ChemicalUsage.test.jsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 18[2mms[22m[39m
+[31m     [31m×[31m renders usage list[39m[32m 18[2mms[22m[39m
+[90mstderr[2m | src/pages/History.test.jsx[2m > [22m[2mHistory Page[2m > [22m[2mrenders service history list
+[22m[39mWarning: Each child in a list should have a unique "key" prop.
+
+Check the render method of `History`. See https://reactjs.org/link/warning-keys for more information.
+    at default (/Users/jakedominick/Downloads/chemcheck-main/src/pages/History.test.jsx:11:15)
+    at History (/Users/jakedominick/Downloads/chemcheck-main/src/pages/History.jsx:14:57)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+ [31m❯[39m src/pages/History.test.jsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 80[2mms[22m[39m
+[31m     [31m×[31m renders service history list[39m[32m 79[2mms[22m[39m
+Error: [vitest] No "useNoteCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at Notes (/Users/jakedominick/Downloads/chemcheck-main/src/pages/Notes.jsx:50:22)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+Error: [vitest] No "useNoteCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at Notes (/Users/jakedominick/Downloads/chemcheck-main/src/pages/Notes.jsx:50:22)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+ [32m✓[39m src/pages/Clients.test.jsx [2m([22m[2m2 tests[22m[2m)[22m[32m 122[2mms[22m[39m
+[90mstderr[2m | src/pages/Notes.test.jsx[2m > [22m[2mNotes Page[2m > [22m[2mrenders notes list
+[22m[39mThe above error occurred in the <Notes> component:
+
+    at Notes (/Users/jakedominick/Downloads/chemcheck-main/src/pages/Notes.jsx:42:57)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+Error: [vitest] No "useNoteCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at Notes (/Users/jakedominick/Downloads/chemcheck-main/src/pages/Notes.jsx:50:22)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+Error: [vitest] No "useNoteCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:307:17)
+    at Object.get (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/vitest/dist/chunks/startModuleRunner.DLjmA_wU.js:362:16)
+    at Notes (/Users/jakedominick/Downloads/chemcheck-main/src/pages/Notes.jsx:50:22)
+    at renderWithHooks (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/jakedominick/Downloads/chemcheck-main/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/jakedominick/Downloads/chemcheck-main/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+[90mstderr[2m | src/pages/Notes.test.jsx[2m > [22m[2mNotes Page[2m > [22m[2mdisplays customer name for note
+[22m[39mThe above error occurred in the <Notes> component:
+
+    at Notes (/Users/jakedominick/Downloads/chemcheck-main/src/pages/Notes.jsx:42:57)
+    at Router (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:6463:13)
+    at BrowserRouter (file:///Users/jakedominick/Downloads/chemcheck-main/node_modules/react-router/dist/development/chunk-4WY6JWTD.mjs:9623:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ [31m❯[39m src/pages/Notes.test.jsx [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 54[2mms[22m[39m
+[31m     [31m×[31m renders notes list[39m[32m 50[2mms[22m[39m
+[31m     [31m×[31m displays customer name for note[39m[32m 3[2mms[22m[39m
+ [32m✓[39m src/pages/NewServiceLog.test.jsx [2m([22m[2m2 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m src/pages/Home.test.jsx [2m([22m[2m3 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 9 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/pages/ChemicalUsage.test.jsx[2m > [22mChemical Usage Page[2m > [22mrenders usage list
+[31m[1mError[22m: [vitest] No "useChemicalUsageDelete" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+[39m
+vi.mock(import("@/api/convexHooks"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+[36m [2m❯[22m ChemicalUsagePage src/pages/ChemicalUsage.jsx:[2m27:31[22m[39m
+    [90m 25| [39m  [35mconst[39m allCustomers [33m=[39m [34museCustomersFilter[39m({ created_by[33m:[39m user[33m.[39memail })[33m;[39m
+    [90m 26| [39m  [35mconst[39m allRecords [33m=[39m [34museChemicalUsage[39m([32m"-created_date"[39m)[33m;[39m
+    [90m 27| [39m  [35mconst[39m deleteChemicalUsage [33m=[39m [34museChemicalUsageDelete[39m()[33m;[39m
+    [90m   | [39m                              [31m^[39m
+    [90m 28| [39m
+    [90m 29| [39m  [35mconst[39m [usageRecords[33m,[39m setUsageRecords] [33m=[39m [34museState[39m([])[33m;[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:[2m27465:14[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:[2m26599:12[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom.development.js:[2m26505:5[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom.development.js:[2m26473:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/pages/CustomerDetail.test.jsx[2m > [22mCustomer Detail Page[2m > [22mrenders customer details
+[41m[1m FAIL [22m[49m src/pages/CustomerDetail.test.jsx[2m > [22mCustomer Detail Page[2m > [22mrenders service history
+[31m[1mError[22m: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+[39m
+vi.mock(import("@/api/convexHooks"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+[36m [2m❯[22m CustomerDetail src/pages/CustomerDetail.jsx:[2m16:21[22m[39m
+    [90m 14| [39m  [35mconst[39m customerId [33m=[39m urlParams[33m.[39m[35mget[39m([32m"id"[39m)[33m;[39m
+    [90m 15| [39m
+    [90m 16| [39m  [35mconst[39m customers [33m=[39m [34museCustomers[39m()[33m;[39m
+    [90m   | [39m                    [31m^[39m
+    [90m 17| [39m  [35mconst[39m logs [33m=[39m [34museServiceLogsByCustomer[39m(customerId)[33m;[39m
+    [90m 18| [39m  [35mconst[39m deleteServiceLog [33m=[39m [34museServiceLogDelete[39m()[33m;[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:[2m27465:14[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:[2m26599:12[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom.development.js:[2m26505:5[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom.development.js:[2m26473:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/pages/EditClient.test.jsx[2m > [22mEdit Client Page[2m > [22mrenders the form with customer data
+[31m[1mError[22m: [vitest] No "useCustomers" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+[39m
+vi.mock(import("@/api/convexHooks"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+[36m [2m❯[22m EditClient src/pages/EditClient.jsx:[2m17:21[22m[39m
+    [90m 15| [39m  [35mconst[39m customerId [33m=[39m urlParams[33m.[39m[35mget[39m([32m"id"[39m)[33m;[39m
+    [90m 16| [39m
+    [90m 17| [39m  [35mconst[39m customers [33m=[39m [34museCustomers[39m()[33m;[39m
+    [90m   | [39m                    [31m^[39m
+    [90m 18| [39m  [35mconst[39m updateCustomer [33m=[39m [34museCustomerUpdate[39m()[33m;[39m
+    [90m 19| [39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:[2m27465:14[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:[2m26599:12[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom.development.js:[2m26505:5[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom.development.js:[2m26473:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/pages/History.test.jsx[2m > [22mHistory Page[2m > [22mrenders service history list
+[31m[1mTestingLibraryElementError[22m[39m: Found multiple elements with the text: /Service History/i
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<h2[39m
+  [33mclass[39m=[32m"text-2xl font-bold text-slate-900"[39m
+[36m>[39m
+  [0mService History[0m
+[36m</h2>[39m
+
+Ignored nodes: comments, script, style
+[36m<h3[39m
+  [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+[36m>[39m
+  [0mNo Service History for [0m
+  [0mTuesday[0m
+[36m</h3>[39m
+
+Ignored nodes: comments, script, style
+[36m<h3[39m
+  [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+[36m>[39m
+  [0mNo Service History for [0m
+  [0mWednesday[0m
+[36m</h3>[39m
+
+Ignored nodes: comments, script, style
+[36m<h3[39m
+  [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+[36m>[39m
+  [0mNo Service History for [0m
+  [0mThursday[0m
+[36m</h3>[39m
+
+Ignored nodes: comments, script, style
+[36m<h3[39m
+  [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+[36m>[39m
+  [0mNo Service History for [0m
+  [0mFriday[0m
+[36m</h3>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"mb-6"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex items-center gap-3"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33mclass[39m=[32m"lucide lucide-chart-column w-5 h-5 text-white"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"24"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"2"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"24"[39m
+              [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M3 3v16a2 2 0 0 0 2 2h16"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M18 17V9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M13 17V5"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M8 17v-3"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+          [36m</div>[39m
+          [36m<div>[39m
+            [36m<h2[39m
+              [33mclass[39m=[32m"text-2xl font-bold text-slate-900"[39m
+            [36m>[39m
+              [0mService History[0m
+            [36m</h2>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-sm text-slate-600"[39m
+            [36m>[39m
+              [0mPast month's service logs by day[0m
+            [36m</p>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"overflow-x-auto mb-6"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<button>[39m
+              [0mMon[0m
+            [36m</button>[39m
+            [36m<button>[39m
+              [0mTue[0m
+            [36m</button>[39m
+            [36m<button>[39m
+              [0mWed[0m
+            [36m</button>[39m
+            [36m<button>[39m
+              [0mThu[0m
+            [36m</button>[39m
+            [36m<button>[39m
+              [0mFri[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"space-y-3"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [0mAlice Smith[0m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"rounded-xl text-card-foreground shadow p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mclass[39m=[32m"lucide lucide-calendar w-8 h-8 text-slate-400"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M8 2v4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 2v4"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"18"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"18"[39m
+                  [33mx[39m=[32m"3"[39m
+                  [33my[39m=[32m"4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M3 10h18"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</div>[39m
+            [36m<h3[39m
+              [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+            [36m>[39m
+              [0mNo Service History for [0m
+              [0mTuesday[0m
+            [36m</h3>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-slate-600"[39m
+            [36m>[39m
+              [0mNo service logs in the past month for customers scheduled on [0m
+              [0mTuesday[0m
+            [36m</p>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"rounded-xl text-card-foreground shadow p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mclass[39m=[32m"lucide lucide-calendar w-8 h-8 text-slate-400"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M8 2v4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 2v4"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"18"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"18"[39m
+                  [33mx[39m=[32m"3"[39m
+                  [33my[39m=[32m"4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M3 10h18"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</div>[39m
+            [36m<h3[39m
+              [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+            [36m>[39m
+              [0mNo Service History for [0m
+              [0mWednesday[0m
+            [36m</h3>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-slate-600"[39m
+            [36m>[39m
+              [0mNo service logs in the past month for customers scheduled on [0m
+              [0mWednesday[0m
+            [36m</p>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"rounded-xl text-card-foreground shadow p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mclass[39m=[32m"lucide lucide-calendar w-8 h-8 text-slate-400"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M8 2v4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 2v4"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"18"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"18"[39m
+                  [33mx[39m=[32m"3"[39m
+                  [33my[39m=[32m"4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M3 10h18"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</div>[39m
+            [36m<h3[39m
+              [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+            [36m>[39m
+              [0mNo Service History for [0m
+              [0mThursday[0m
+            [36m</h3>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-slate-600"[39m
+            [36m>[39m
+              [0mNo service logs in the past month for customers scheduled on [0m
+              [0mThursday[0m
+            [36m</p>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"rounded-xl text-card-foreground shadow p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mclass[39m=[32m"lucide lucide-calendar w-8 h-8 text-slate-400"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M8 2v4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 2v4"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"18"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"18"[39m
+                  [33mx[39m=[32m"3"[39m
+                  [33my[39m=[32m"4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M3 10h18"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</div>[39m
+            [36m<h3[39m
+              [33mclass[39m=[32m"text-lg font-semibold text-slate-900 mb-2"[39m
+            [36m>[39m
+              [0mNo Service History for [0m
+              [0mFriday[0m
+            [36m</h3>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-slate-600"[39m
+            [36m>[39m
+              [0mNo service logs in the past month for customers scheduled on [0m
+              [0mFriday[0m
+            [36m</p>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+[90m [2m❯[22m Object.getElementError node_modules/@testing-library/dom/dist/config.js:[2m37:19[22m[39m
+[90m [2m❯[22m getElementError node_modules/@testing-library/dom/dist/query-helpers.js:[2m20:35[22m[39m
+[90m [2m❯[22m getMultipleElementsFoundError node_modules/@testing-library/dom/dist/query-helpers.js:[2m23:10[22m[39m
+[90m [2m❯[22m node_modules/@testing-library/dom/dist/query-helpers.js:[2m55:13[22m[39m
+[90m [2m❯[22m node_modules/@testing-library/dom/dist/query-helpers.js:[2m95:19[22m[39m
+[36m [2m❯[22m src/pages/History.test.jsx:[2m47:23[22m[39m
+    [90m 45| [39m    [34mit[39m([32m'renders service history list'[39m[33m,[39m () [33m=>[39m {
+    [90m 46| [39m        [34mrender[39m([33m<[39m[33mBrowserRouter[39m[33m>[39m[33m<[39m[33mHistory[39m [33m/[39m[33m>[39m[33m<[39m[33m/[39m[33mBrowserRouter[39m[33m>[39m)[33m;[39m
+    [90m 47| [39m        expect(screen.getByText(/Service History/i)).toBeInTheDocument…
+    [90m   | [39m                      [31m^[39m
+    [90m 48| [39m        // Since we mocked the date to today (Monday?), we might need …
+    [90m 49| [39m        [90m// The component defaults to "Monday".[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/pages/NewChemicalUsage.test.jsx[2m > [22mNew Chemical Usage Page[2m > [22mrenders the form
+[31m[1mError[22m: [vitest] No "useCustomersFilter" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+[39m
+vi.mock(import("@/api/convexHooks"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+[36m [2m❯[22m NewChemicalUsage src/pages/NewChemicalUsage.jsx:[2m34:24[22m[39m
+    [90m 32| [39m
+    [90m 33| [39m  [35mconst[39m user [33m=[39m [34museCurrentUser[39m()[33m;[39m
+    [90m 34| [39m  [35mconst[39m allCustomers [33m=[39m [34museCustomersFilter[39m({ created_by[33m:[39m user[33m.[39memail })[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 35| [39m  [35mconst[39m createChemicalUsage [33m=[39m [34museChemicalUsageCreate[39m()[33m;[39m
+    [90m 36| [39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:[2m27465:14[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:[2m26599:12[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom.development.js:[2m26505:5[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom.development.js:[2m26473:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/pages/NewClient.test.jsx[2m > [22mNew Client Page[2m > [22mrenders the new client form
+[31m[1mError[22m: [vitest] No "useCustomerCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+[39m
+vi.mock(import("@/api/convexHooks"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+[36m [2m❯[22m NewClient src/pages/NewClient.jsx:[2m14:26[22m[39m
+    [90m 12| [39m[35mexport[39m [35mdefault[39m [35mfunction[39m [33mNewClient[39m() {
+    [90m 13| [39m  [35mconst[39m navigate [33m=[39m [34museNavigate[39m()[33m;[39m
+    [90m 14| [39m  [35mconst[39m createCustomer [33m=[39m [34museCustomerCreate[39m()[33m;[39m
+    [90m   | [39m                         [31m^[39m
+    [90m 15| [39m  [35mconst[39m [saving[33m,[39m setSaving] [33m=[39m [34museState[39m([35mfalse[39m)[33m;[39m
+    [90m 16| [39m  [35mconst[39m [formData[33m,[39m setFormData] [33m=[39m [34museState[39m({
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:[2m27465:14[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:[2m26599:12[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom.development.js:[2m26505:5[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom.development.js:[2m26473:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/pages/Notes.test.jsx[2m > [22mNotes Page[2m > [22mrenders notes list
+[41m[1m FAIL [22m[49m src/pages/Notes.test.jsx[2m > [22mNotes Page[2m > [22mdisplays customer name for note
+[31m[1mError[22m: [vitest] No "useNoteCreate" export is defined on the "@/api/convexHooks" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+[39m
+vi.mock(import("@/api/convexHooks"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+[36m [2m❯[22m Notes src/pages/Notes.jsx:[2m50:22[22m[39m
+    [90m 48| [39m  [35mconst[39m allNotes [33m=[39m [34museNotes[39m([32m"-created_date"[39m)[33m;[39m
+    [90m 49| [39m  [35mconst[39m allCustomers [33m=[39m [34museCustomersFilter[39m({ created_by[33m:[39m user[33m.[39memail })[33m;[39m
+    [90m 50| [39m  [35mconst[39m createNote [33m=[39m [34museNoteCreate[39m()[33m;[39m
+    [90m   | [39m                     [31m^[39m
+    [90m 51| [39m  [35mconst[39m updateNote [33m=[39m [34museNoteUpdate[39m()[33m;[39m
+    [90m 52| [39m  [35mconst[39m deleteNoteMutation [33m=[39m [34museNoteDelete[39m()[33m;[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:[2m27465:14[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:[2m26599:12[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom.development.js:[2m26505:5[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom.development.js:[2m26473:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/9]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m7 failed[39m[22m[2m | [22m[1m[32m4 passed[39m[22m[90m (11)[39m
+[2m      Tests [22m [1m[31m9 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (19)[39m
+[2m   Start at [22m 19:40:57
+[2m   Duration [22m 4.86s[2m (transform 844ms, setup 1.25s, collect 20.06s, tests 760ms, environment 11.20s, prepare 135ms)[22m
+

@@ -1,0 +1,81 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - complementary [ref=e4]:
+        - generic [ref=e6]:
+          - img [ref=e8]
+          - generic [ref=e12]:
+            - heading "ChemCheck" [level=1] [ref=e13]
+            - paragraph [ref=e14]: Pool Service Manager
+        - navigation [ref=e15]:
+          - link "Home" [ref=e16] [cursor=pointer]:
+            - /url: /home
+            - img [ref=e17]
+            - generic [ref=e20]: Home
+          - link "Clients" [ref=e21] [cursor=pointer]:
+            - /url: /clients
+            - img [ref=e22]
+            - generic [ref=e27]: Clients
+          - link "History" [ref=e28] [cursor=pointer]:
+            - /url: /history
+            - img [ref=e29]
+            - generic [ref=e34]: History
+          - link "Report" [ref=e35] [cursor=pointer]:
+            - /url: /weeklyreport
+            - img [ref=e36]
+            - generic [ref=e42]: Report
+          - link "Notes" [ref=e43] [cursor=pointer]:
+            - /url: /notes
+            - img [ref=e44]
+            - generic [ref=e47]: Notes
+          - link "Chemicals" [ref=e48] [cursor=pointer]:
+            - /url: /chemicalusage
+            - img [ref=e49]
+            - generic [ref=e53]: Chemicals
+          - link "Pool School" [ref=e54] [cursor=pointer]:
+            - /url: /poolschool
+            - img [ref=e55]
+            - generic [ref=e58]: Pool School
+          - link "Settings" [ref=e59] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e60]
+            - generic [ref=e63]: Settings
+        - generic [ref=e65]:
+          - button "5 pending" [ref=e66] [cursor=pointer]:
+            - img
+            - generic [ref=e67]: 5 pending
+          - generic [ref=e68]: "5"
+      - main [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e72]:
+            - generic [ref=e73]:
+              - img [ref=e75]
+              - generic [ref=e80]:
+                - heading "Service History" [level=2] [ref=e81]
+                - paragraph [ref=e82]: All service logs by day
+            - generic [ref=e83]:
+              - img [ref=e84]
+              - combobox [ref=e86] [cursor=pointer]:
+                - generic:
+                  - generic:
+                    - generic: All Logs
+                    - generic: "0"
+                - img [ref=e87]
+          - generic [ref=e89]:
+            - tablist [ref=e91]:
+              - tab "Mon" [selected] [ref=e92] [cursor=pointer]
+              - tab "Tue" [ref=e93] [cursor=pointer]
+              - tab "Wed" [ref=e94] [cursor=pointer]
+              - tab "Thu" [ref=e95] [cursor=pointer]
+              - tab "Fri" [ref=e96] [cursor=pointer]
+            - tabpanel "Mon" [ref=e97]:
+              - generic [ref=e98]:
+                - img [ref=e100]
+                - heading "No Service History for Monday" [level=3] [ref=e105]
+                - paragraph [ref=e106]: No service logs in the past month for customers scheduled on Monday
+    - generic "Online" [ref=e110]
+  - button "Show Debug" [ref=e111] [cursor=pointer]
+```

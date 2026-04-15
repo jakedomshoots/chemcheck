@@ -1,0 +1,126 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - complementary [ref=e4]:
+        - generic [ref=e6]:
+          - img [ref=e8]
+          - generic [ref=e12]:
+            - heading "ChemCheck" [level=1] [ref=e13]
+            - paragraph [ref=e14]: Pool Service Manager
+        - navigation [ref=e15]:
+          - link "Home" [ref=e16] [cursor=pointer]:
+            - /url: /home
+            - img [ref=e17]
+            - generic [ref=e20]: Home
+          - link "Clients" [ref=e21] [cursor=pointer]:
+            - /url: /clients
+            - img [ref=e22]
+            - generic [ref=e27]: Clients
+          - link "History" [ref=e28] [cursor=pointer]:
+            - /url: /history
+            - img [ref=e29]
+            - generic [ref=e34]: History
+          - link "Report" [ref=e35] [cursor=pointer]:
+            - /url: /weeklyreport
+            - img [ref=e36]
+            - generic [ref=e42]: Report
+          - link "Notes" [ref=e43] [cursor=pointer]:
+            - /url: /notes
+            - img [ref=e44]
+            - generic [ref=e47]: Notes
+          - link "Chemicals" [ref=e48] [cursor=pointer]:
+            - /url: /chemicalusage
+            - img [ref=e49]
+            - generic [ref=e53]: Chemicals
+          - link "Pool School" [ref=e54] [cursor=pointer]:
+            - /url: /poolschool
+            - img [ref=e55]
+            - generic [ref=e58]: Pool School
+          - link "Settings" [ref=e59] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e60]
+            - generic [ref=e63]: Settings
+        - button "All synced" [ref=e66] [cursor=pointer]:
+          - img
+          - generic [ref=e67]: All synced
+      - main [ref=e68]:
+        - generic [ref=e69]:
+          - generic [ref=e71]:
+            - img [ref=e73]
+            - generic [ref=e76]:
+              - heading "Settings" [level=1] [ref=e77]
+              - paragraph [ref=e78]: Manage your business and account
+          - generic [ref=e79]:
+            - navigation [ref=e82]:
+              - button "Business Info" [ref=e83] [cursor=pointer]:
+                - img [ref=e84]
+                - generic [ref=e92]: Business Info
+                - img [ref=e93]
+              - button "Account" [ref=e95] [cursor=pointer]:
+                - img [ref=e96]
+                - generic [ref=e99]: Account
+                - img [ref=e100]
+              - button "Preferences" [ref=e102] [cursor=pointer]:
+                - img [ref=e103]
+                - generic [ref=e107]: Preferences
+                - img [ref=e108]
+              - button "Notifications" [ref=e110] [cursor=pointer]:
+                - img [ref=e111]
+                - generic [ref=e114]: Notifications
+                - img [ref=e115]
+              - button "Schedule" [ref=e117] [cursor=pointer]:
+                - img [ref=e118]
+                - generic [ref=e123]: Schedule
+                - img [ref=e124]
+              - button "Service Types" [ref=e126] [cursor=pointer]:
+                - img [ref=e127]
+                - generic [ref=e131]: Service Types
+                - img [ref=e132]
+              - button "Data Backup" [ref=e134] [cursor=pointer]:
+                - img [ref=e135]
+                - generic [ref=e140]: Data Backup
+                - img [ref=e141]
+              - button "Privacy & Data" [ref=e143] [cursor=pointer]:
+                - img [ref=e144]
+                - generic [ref=e147]: Privacy & Data
+                - img [ref=e148]
+              - button "Admin Tools" [ref=e150] [cursor=pointer]:
+                - img [ref=e151]
+                - generic [ref=e153]: Admin Tools
+                - img [ref=e154]
+            - generic [ref=e157]:
+              - generic [ref=e158]:
+                - generic [ref=e159]:
+                  - heading "Business Information" [level=2] [ref=e160]
+                  - paragraph [ref=e161]: Update your business details
+                - generic [ref=e162]:
+                  - generic [ref=e163]:
+                    - generic [ref=e164]:
+                      - img [ref=e165]
+                      - text: Business Name
+                    - textbox "Enter your business name" [ref=e173]
+                  - generic [ref=e174]:
+                    - generic [ref=e175]:
+                      - img [ref=e176]
+                      - text: Address
+                    - textbox "Enter your business address" [ref=e179]
+                  - generic [ref=e180]:
+                    - generic [ref=e181]:
+                      - generic [ref=e182]:
+                        - img [ref=e183]
+                        - text: Phone
+                      - textbox "(555) 123-4567" [ref=e185]
+                    - generic [ref=e186]:
+                      - generic [ref=e187]:
+                        - img [ref=e188]
+                        - text: Email
+                      - textbox "business@example.com" [ref=e191]
+              - button "Save Changes" [ref=e193] [cursor=pointer]:
+                - img
+                - text: Save Changes
+    - generic "Online" [ref=e197]
+  - button "Show Debug" [ref=e198] [cursor=pointer]
+```

@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Bradenton Pool Pro Theme - Clean Blues */
+    --background: 210 40% 98%; /* Soft blue-white */
+    --foreground: 222 47% 11%; /* Deep navy */
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    
+    --primary: 199 89% 48%; /* Cyan 500 */
+    --primary-foreground: 210 40% 98%;
+    
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47% 11%;
+    
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+    
+    --accent: 199 89% 96%; /* Cyan 50 */
+    --accent-foreground: 199 89% 48%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 199 89% 48%;
+    --role-primary: 199 89% 48%;
+    --role-success: 152 76% 40%;
+    --role-warning: 39 93% 47%;
+    --role-critical: 0 72% 51%;
+    
+    --radius: 0.75rem; /* Larger radius for modern feel */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image: 
+      radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.05) 0%, transparent 20%),
+      radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 20%),
+      radial-gradient(circle at 50% 50%, rgba(20, 184, 166, 0.03) 0%, transparent 30%);
+    background-attachment: fixed;
+  }
+  
+  /* Ensure all form inputs have proper text contrast */
+  input, textarea, select {
+    color: hsl(var(--foreground));
+  }
+  
+  input::placeholder, textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  .role-primary {
+    color: hsl(var(--role-primary));
+  }
+
+  .role-success {
+    color: hsl(var(--role-success));
+  }
+
+  .role-warning {
+    color: hsl(var(--role-warning));
+  }
+
+  .role-critical {
+    color: hsl(var(--role-critical));
+  }
+}
+
+/* Chemical Gradient Animations */
+@keyframes gradient-xy {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-xy 3s ease infinite;
+}
+
+/* Beaker Fill Animation */
+@keyframes fill-up {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0%); }
+}
+
+@keyframes bubble-rise {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(-20px) scale(1.5); opacity: 0; }
+}
+
+/* Glassmorphism Utilities */
+.glass {
+  @apply bg-white/70 backdrop-blur-md border-white/20 shadow-lg;
+}
+
+/* ============================================
+   iOS / Capacitor Native App Styles
+   ============================================ */
+
+/* Safe Area Padding Utilities */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-area-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-area-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Touch Optimizations — make interactive elements feel native */
+button, a, [role="button"], input[type="submit"] {
+  -webkit-touch-callout: none; /* Disable callout menu on long-press */
+  -webkit-user-select: none;   /* Disable text selection on buttons */
+  user-select: none;
+}
+
+/* Allow text selection in content areas */
+p, span, h1, h2, h3, h4, h5, h6, td, th, li, label {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Native-feel scrolling */
+.native-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Prevent body overscroll bounce (feels more native) */
+html, body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
