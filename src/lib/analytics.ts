@@ -9,8 +9,21 @@ declare global {
   interface Window {
     gtag: (...args: unknown[]) => void;
     dataLayer: unknown[];
+    // Convex migration utility exposed for browser console usage
+    migrateConvexData?: typeof import('@/utils/migrateFromConvex').migrateAll;
+  }
+
+  // Chrome-only Performance.memory API (not in standard TypeScript lib)
+  interface Performance {
+    memory?: {
+      usedJSHeapSize: number;
+      totalJSHeapSize: number;
+      jsHeapSizeLimit: number;
+    };
   }
 }
+
+export {};
 
 // GA4 Measurement ID - set via environment variable
 const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
@@ -21,19 +34,16 @@ const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
  */
 export function initAnalytics(): void {
   if (!GA_MEASUREMENT_ID) {
-    console.log('[Analytics] No measurement ID configured, skipping initialization');
     return;
   }
 
   // Don't track in development
   if (import.meta.env.DEV) {
-    console.log('[Analytics] Development mode, skipping initialization');
     return;
   }
 
   // Check for Do Not Track
   if (navigator.doNotTrack === '1') {
-    console.log('[Analytics] Do Not Track enabled, skipping initialization');
     return;
   }
 
@@ -56,8 +66,6 @@ export function initAnalytics(): void {
     allow_google_signals: false,
     allow_ad_personalization_signals: false,
   });
-
-  console.log('[Analytics] Initialized');
 }
 
 /**

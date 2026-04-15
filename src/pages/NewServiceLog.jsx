@@ -45,7 +45,6 @@ export default function NewServiceLog() {
         }
       }
       if (keysToRemove.length > 0) {
-        console.log('Clearing time tracking data:', keysToRemove);
         keysToRemove.forEach(key => localStorage.removeItem(key));
       }
     }
@@ -154,43 +153,37 @@ export default function NewServiceLog() {
   const cleanupPerformed = useRef(false);
 
   useEffect(() => {
-    console.log("NewServiceLog params:", { customerId, customersLoaded: customers?.length });
     // Only lookup if we don't have customer from navigation state
     if (customers && customerId && !customer) {
       const found = customers.find((c) => c._id === customerId);
-      console.log("Found customer:", found);
       setCustomer(found);
 
       // Clean up old unlinked photos ONLY ONCE when customer is first loaded
       // This ensures a fresh start for each new service log session
       // but doesn't delete photos captured during the current session
       if (found && customerIdParam && !cleanupPerformed.current) {
-        console.log('[NewServiceLog] Cleaning up old unlinked photos for customer:', customerIdParam);
         cleanupPerformed.current = true;
 
         // Use IIFE to handle async operation in useEffect
         (async () => {
           try {
             await deleteUnlinkedPhotos(customerIdParam);
-            console.log('[NewServiceLog] Cleanup completed successfully');
+          } catch (error) {
+            console.error('[NewServiceLog] Failed to clean up old photos:', error);
+          }
+        })();
+      } else if (customer && customerIdParam && !cleanupPerformed.current) {
+        // We have customer from navigation, still need to clean up photos
+        cleanupPerformed.current = true;
+
+        (async () => {
+          try {
+            await deleteUnlinkedPhotos(customerIdParam);
           } catch (error) {
             console.error('[NewServiceLog] Failed to clean up old photos:', error);
           }
         })();
       }
-    } else if (customer && customerIdParam && !cleanupPerformed.current) {
-      // We have customer from navigation, still need to clean up photos
-      console.log('[NewServiceLog] Cleaning up old unlinked photos for customer (from nav state):', customerIdParam);
-      cleanupPerformed.current = true;
-
-      (async () => {
-        try {
-          await deleteUnlinkedPhotos(customerIdParam);
-          console.log('[NewServiceLog] Cleanup completed successfully');
-        } catch (error) {
-          console.error('[NewServiceLog] Failed to clean up old photos:', error);
-        }
-      })();
     }
   }, [customers, customerId, customerIdParam, customer]);
 
@@ -213,10 +206,6 @@ export default function NewServiceLog() {
       setValidationError('Missing customer information. Please try again.');
       return;
     }
-
-    console.log('[NewServiceLog handleSubmit] Before photos:', beforePhotos.length, 'After photos:', afterPhotos.length);
-    console.log('[NewServiceLog handleSubmit] Before photos array:', beforePhotos);
-    console.log('[NewServiceLog handleSubmit] After photos array:', afterPhotos);
 
     // Validate proof-of-service requirements before submission - Requirements 5.2, 5.4
     const validationResult = validateServiceCompletion(proofOfServiceSettings, {
@@ -242,7 +231,6 @@ export default function NewServiceLog() {
       const unlinkedPhotos = allPhotos.filter(p => p.serviceLogId === null);
       actualBeforeCount = unlinkedPhotos.filter(p => p.category === 'before').length;
       actualAfterCount = unlinkedPhotos.filter(p => p.category === 'after').length;
-      console.log('[NewServiceLog] Actual photo counts from IndexedDB - before:', actualBeforeCount, 'after:', actualAfterCount);
     } catch (error) {
       console.error('[NewServiceLog] Failed to get actual photo count, using state values:', error);
     }
@@ -270,25 +258,17 @@ export default function NewServiceLog() {
       has_after_photos: actualAfterCount > 0,
     };
 
-    console.log('[NewServiceLog] Creating service log with photo_count:', logData.photo_count);
-    console.log('[NewServiceLog] has_before_photos:', logData.has_before_photos, 'has_after_photos:', logData.has_after_photos);
-
     if (customer?.pool_type === "Salt" && formData.salt) {
       logData.salt = parseFloat(formData.salt);
     }
 
     try {
       const serviceLogId = await createServiceLog(logData);
-      console.log('[NewServiceLog] Service log created with ID:', serviceLogId);
-      console.log('[NewServiceLog] Customer ID param:', customerIdParam);
-      console.log('[NewServiceLog] Before photos:', beforePhotos.length, 'After photos:', afterPhotos.length);
 
       // Link photos to the newly created service log - Requirement 4.1
       if (customerIdParam && serviceLogId) {
         try {
-          console.log('[NewServiceLog] Linking photos to service log...');
           await linkPhotosToServiceLog(customerIdParam, String(serviceLogId));
-          console.log('[NewServiceLog] Photos linked successfully');
         } catch (error) {
           console.error('[NewServiceLog] Failed to link photos to service log:', error);
           // Don't fail the whole operation if photo linking fails, but notify the user

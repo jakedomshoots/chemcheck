@@ -287,7 +287,6 @@ export default function CustomerDetail() {
       if (deliveryMethod === 'email' || deliveryMethod === 'sms') {
         let customerSyncProblem = null;
         try {
-          console.log(`Ensuring customer ${customer._id} is up-to-date in cloud before sending report...`);
           const customerSync = await syncService.syncRecord('customers', customer._id);
           if (!customerSync.success) {
             customerSyncProblem = customerSync.error || "Customer contact info failed to sync.";
@@ -310,12 +309,6 @@ export default function CustomerDetail() {
       }
 
       // Check if Convex is available (online mode required)
-      console.log("Environment check:", {
-        VITE_CONVEX_URL: import.meta.env.VITE_CONVEX_URL,
-        VITE_CLERK_PUBLISHABLE_KEY: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-        isConvexAvailable
-      });
-
       if (!isConvexAvailable) {
         setSendReportError(`${deliveryMethod === 'sms' ? 'SMS' : 'Email'} reports require online mode with Convex. Please configure VITE_CONVEX_URL and VITE_CLERK_PUBLISHABLE_KEY environment variables.`);
         setSendReportLoading(false);
@@ -328,12 +321,9 @@ export default function CustomerDetail() {
       if (!serviceLogId) {
         // Try to sync the service log first (Requirements: 4.3 - Auto-sync before sending report)
         try {
-          console.log("Service log missing convex_id, attempting sync for log ID:", selectedLogForReport._id || selectedLogForReport.id);
           toast.info("Syncing service log to cloud...");
           const logId = selectedLogForReport._id || selectedLogForReport.id;
           const syncResult = await syncService.syncRecord('serviceLogs', logId);
-
-          console.log("Sync result:", syncResult);
 
           if (syncResult.success) {
             // Fetch the updated record directly from the database to get the convex_id
@@ -341,8 +331,6 @@ export default function CustomerDetail() {
             const { db } = await import('@/db/chemcheck-db');
             const updatedLog = await db.serviceLogs.get(logId);
             serviceLogId = updatedLog?.convex_id;
-
-            console.log("Service log ID after sync:", serviceLogId);
 
             if (!serviceLogId) {
               setSendReportError("Service log synced but ID not yet available. Please try again in a moment.");
@@ -434,14 +422,6 @@ export default function CustomerDetail() {
       const poolStatus = getPoolStatus(selectedLogForReport);
 
       // Call the Convex action to send the report
-      console.log("Calling sendReportAction with:", {
-        service_log_id: serviceLogId,
-        delivery_method: deliveryMethod,
-        pool_status: poolStatus,
-        custom_note: customNote,
-        report_base_url: window.location.origin,
-      });
-
       const result = await sendReportAction({
         service_log_id: serviceLogId,
         delivery_method: deliveryMethod,
@@ -459,13 +439,6 @@ export default function CustomerDetail() {
           toast.success(`Report sent via ${deliveryMethod === 'sms' ? 'SMS' : 'email'} to ${destination}.`);
         }
 
-        console.log("Report send result:", {
-          deliveryMethod,
-          recipient: deliveryMethod === 'email' ? customer.email : customer.phone,
-          messageId: result.message_id,
-          wasDuplicate: result.was_duplicate,
-          reportToken: result.report_token,
-        });
         const selectedLogId = selectedLogForReport._id || selectedLogForReport.id;
 
         // Update report status

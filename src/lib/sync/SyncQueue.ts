@@ -77,7 +77,6 @@ export class SyncQueue {
 
     try {
       this.saveToStorage();
-      console.log(`Enqueued ${item.table}[${item.localId}] for ${item.operation}`);
     } catch (error) {
       console.error(`Failed to persist enqueue operation for ${item.table}[${item.localId}]:`, error);
       // Continue execution - the item is still in memory queue
@@ -131,7 +130,6 @@ export class SyncQueue {
 
     try {
       this.saveToStorage();
-      console.log(`Marked ${table}[${localId}] as synced`);
     } catch (error) {
       console.error(`Failed to persist sync completion for ${table}[${localId}]:`, error);
       // Continue execution - the item is still removed from memory queue
@@ -159,10 +157,8 @@ export class SyncQueue {
     if (item.retryCount >= MAX_RETRIES) {
       // Remove from queue after max retries
       this.queue.splice(itemIndex, 1);
-      console.log(`Removed ${table}[${localId}] from queue after ${MAX_RETRIES} failed attempts`);
     } else {
       // Keep in queue for retry with exponential backoff
-      console.log(`Marked ${table}[${localId}] as failed (attempt ${item.retryCount}/${MAX_RETRIES})`);
     }
 
     this.saveToStorage();
@@ -190,7 +186,6 @@ export class SyncQueue {
   clear(): void {
     this.queue = [];
     this.saveToStorage();
-    console.log('Sync queue cleared');
   }
 
   /**
@@ -245,7 +240,6 @@ export class SyncQueue {
           item.data && typeof item.data === 'object'
         )) {
           this.queue = parsed;
-          console.log(`Loaded ${this.queue.length} items from sync queue storage`);
         } else {
           console.warn('Invalid sync queue data in storage, resetting');
           this.queue = [];

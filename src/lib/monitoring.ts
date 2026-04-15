@@ -219,8 +219,8 @@ class MonitoringService {
   // ============================================
 
   checkMemoryUsage(): void {
-    if ('memory' in performance) {
-      const memory = (performance as any).memory;
+    if (performance.memory) {
+      const memory = performance.memory;
       this.recordMetric('memory_used', memory.usedJSHeapSize, {
         total: memory.totalJSHeapSize,
         limit: memory.jsHeapSizeLimit

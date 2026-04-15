@@ -93,11 +93,6 @@ class AuditLogger {
     this.trimEntries();
     this.saveEntries();
 
-    // Log to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[AUDIT] ${action} ${resource}`, entry);
-    }
-
     return entry.id;
   }
 
@@ -335,7 +330,6 @@ class AuditLogger {
 
     if (this.entries.length !== originalCount) {
       this.saveEntries();
-      console.log(`[AUDIT] Cleaned ${originalCount - this.entries.length} old entries`);
     }
   }
 }

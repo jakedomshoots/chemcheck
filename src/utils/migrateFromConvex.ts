@@ -99,7 +99,6 @@ export async function migrateCustomers(convexCustomers: ConvexCustomer[]): Promi
         count++;
     }
 
-    console.log(`Migrated ${count} customers`);
     return count;
 }
 
@@ -136,7 +135,6 @@ export async function migrateServiceLogs(convexLogs: ConvexServiceLog[]): Promis
         count++;
     }
 
-    console.log(`Migrated ${count} service logs`);
     return count;
 }
 
@@ -169,7 +167,6 @@ export async function migrateChemicalUsage(convexUsage: ConvexChemicalUsage[]): 
         count++;
     }
 
-    console.log(`Migrated ${count} chemical usage records`);
     return count;
 }
 
@@ -198,7 +195,6 @@ export async function migrateNotes(convexNotes: ConvexNote[]): Promise<number> {
         count++;
     }
 
-    console.log(`Migrated ${count} notes`);
     return count;
 }
 
@@ -237,5 +233,5 @@ export async function migrateAll(data: ConvexExportData): Promise<{
 
 // Make migrateAll available globally for console usage
 if (typeof window !== 'undefined') {
-    (window as any).migrateConvexData = migrateAll;
+    window.migrateConvexData = migrateAll;
 }

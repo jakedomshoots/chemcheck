@@ -29,6 +29,25 @@ dist-ssr
 # Environment files
 *.env
 *.env.*
+!.env.example
+!.env.example.*
 
 # Capacitor native projects (regenerated via `npx cap add ios`)
 ios/
+
+# Test and coverage artifacts
+coverage/
+test-results/
+playwright-report/
+*.test_output*
+test_final.txt
+
+# AI tool artifacts
+.kiro/
+.emergent/
+
+# Backup files
+*.backup
+
+# Temp files
+tmp_*.mjs

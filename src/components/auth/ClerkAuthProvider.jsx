@@ -123,19 +123,16 @@ function AuthContextProvider({ children }) {
 
           // If still no user, check Convex for existing business
           if (!existingUser) {
-            console.log('User not found in localStorage, checking Convex...');
             try {
               const convexClient = await getConvexClient();
               const api = await getApi();
               const convexBusiness = await convexClient.query(api.businesses.getCurrent);
 
               if (convexBusiness) {
-                console.log('Business found in Convex, bootstrapping local state...');
                 const { user: bootstrappedUser } = await userManager.bootstrapFromConvex(convexBusiness, email);
                 setLocalUser(bootstrappedUser);
                 existingUser = bootstrappedUser;
               } else {
-                console.log('New user detected, will need setup');
                 setLocalUser(null);
               }
             } catch (convexError) {

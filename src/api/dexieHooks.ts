@@ -19,6 +19,12 @@ import { measureDatabaseOperation, reportError } from '@/lib/monitoring';
  * backwards compatibility with code written for Convex.
  */
 
+// Type for update payloads that accepts either id or _id as identifier
+type UpdatePayloadWithId<T> = { id?: number; _id?: number } & Partial<T>;
+
+// Extract the actual update fields (excluding id fields) from a type
+type UpdateFields<T, IdFields extends { id?: number; _id?: number }> = Omit<T, keyof IdFields>;
+
 // ============================================
 // LRU Cache with TTL for ID Aliasing
 // Prevents memory leaks and accumulation of stale references
@@ -344,12 +350,15 @@ export function useCustomerCreate() {
 }
 
 export function useCustomerUpdate() {
-    return useCallback(async (data: { id?: number; _id?: number } & Partial<Customer>) => {
+    return useCallback(async (data: UpdatePayloadWithId<Customer>) => {
         // Support both id and _id for backwards compatibility
         const id = data.id ?? data._id;
         if (!id) throw new Error('Customer id required');
 
-        const { id: _idField, _id: _idAlias, ...updates } = data as any;
+        // Extract id fields and spread the rest as updates
+        const { id: _idField, _id: _idAlias, ...updates } = data;
+        void _idField;
+        void _idAlias;
 
         // For partial updates, only validate fields that are actually being changed
         // Skip validation if only sync/internal fields are being updated
@@ -481,11 +490,13 @@ export function useServiceLogCreate() {
 }
 
 export function useServiceLogUpdate() {
-    return useCallback(async (data: { id?: number; _id?: number } & Partial<ServiceLog>) => {
+    return useCallback(async (data: UpdatePayloadWithId<ServiceLog>) => {
         const id = data.id ?? data._id;
         if (!id) throw new Error('ServiceLog id required');
 
-        const { id: _idField, _id: _idAlias, ...updates } = data as any;
+        const { id: _idField, _id: _idAlias, ...updates } = data;
+        void _idField;
+        void _idAlias;
         await db.serviceLogs.update(id, {
             ...updates,
             updatedAt: getTimestamp(),
@@ -570,11 +581,13 @@ export function useChemicalUsageCreate() {
 }
 
 export function useChemicalUsageUpdate() {
-    return useCallback(async (data: { id?: number; _id?: number } & Partial<ChemicalUsage>) => {
+    return useCallback(async (data: UpdatePayloadWithId<ChemicalUsage>) => {
         const id = data.id ?? data._id;
         if (!id) throw new Error('ChemicalUsage id required');
 
-        const { id: _idField, _id: _idAlias, ...updates } = data as any;
+        const { id: _idField, _id: _idAlias, ...updates } = data;
+        void _idField;
+        void _idAlias;
         await db.chemicalUsage.update(id, {
             ...updates,
             updatedAt: getTimestamp(),
@@ -670,11 +683,13 @@ export function useNoteCreate() {
 }
 
 export function useNoteUpdate() {
-    return useCallback(async (data: { id?: number; _id?: number } & Partial<Note>) => {
+    return useCallback(async (data: UpdatePayloadWithId<Note>) => {
         const id = data.id ?? data._id;
         if (!id) throw new Error('Note id required');
 
-        const { id: _idField, _id: _idAlias, ...updates } = data as any;
+        const { id: _idField, _id: _idAlias, ...updates } = data;
+        void _idField;
+        void _idAlias;
         await db.notes.update(id, {
             ...updates,
             updatedAt: getTimestamp(),

@@ -22,7 +22,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'starter',
     name: 'Starter',
     price: 29,
-    priceId: import.meta.env.VITE_STRIPE_STARTER_PRICE_ID || 'price_starter',
+    priceId: import.meta.env.VITE_STRIPE_STARTER_PRICE_ID,
     features: [
       '1 team member',
       'Up to 50 customers',
@@ -39,7 +39,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'professional',
     name: 'Professional',
     price: 79,
-    priceId: import.meta.env.VITE_STRIPE_PRO_PRICE_ID || 'price_professional',
+    priceId: import.meta.env.VITE_STRIPE_PRO_PRICE_ID,
     features: [
       '3 team members',
       'Up to 200 customers',
@@ -58,7 +58,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'business',
     name: 'Business',
     price: 149,
-    priceId: import.meta.env.VITE_STRIPE_BUSINESS_PRICE_ID || 'price_business',
+    priceId: import.meta.env.VITE_STRIPE_BUSINESS_PRICE_ID,
     features: [
       'Unlimited team members',
       'Unlimited customers',

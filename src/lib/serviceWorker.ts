@@ -37,8 +37,6 @@ class ServiceWorkerManager {
   // ============================================
 
   async register(): Promise<ServiceWorkerState> {
-    // Temporarily disable service worker to force fresh code
-    console.log('[SW] Service worker disabled for debugging');
     return this.getState();
   }
 
@@ -51,8 +49,6 @@ class ServiceWorkerManager {
 
     // Listen for new service worker installing
     this.registration.addEventListener('updatefound', () => {
-      console.log('[SW] Update found, installing new version...');
-
       const newWorker = this.registration!.installing;
       if (!newWorker) return;
 
@@ -60,14 +56,12 @@ class ServiceWorkerManager {
         if (newWorker.state === 'installed') {
           if (navigator.serviceWorker.controller) {
             // New update available
-            console.log('[SW] New update available');
             this.notifyListeners({
               type: 'update-available',
               registration: this.registration!
             });
           } else {
             // First install
-            console.log('[SW] Service worker installed for first time');
             this.notifyListeners({
               type: 'update-installed',
               registration: this.registration!
@@ -80,7 +74,6 @@ class ServiceWorkerManager {
     // Listen for service worker taking control
     if (navigator.serviceWorker) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('[SW] New service worker took control');
         window.location.reload();
       });
     }
@@ -104,7 +97,6 @@ class ServiceWorkerManager {
     if (!this.registration) return;
 
     try {
-      console.log('[SW] Checking for updates...');
       await this.registration.update();
     } catch (error) {
       console.error('[SW] Update check failed:', error);
@@ -115,8 +107,6 @@ class ServiceWorkerManager {
     if (!this.registration || !this.registration.waiting) {
       throw new Error('No update available');
     }
-
-    console.log('[SW] Applying update...');
 
     // Tell the waiting service worker to skip waiting
     this.registration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -174,8 +164,6 @@ class ServiceWorkerManager {
     if (!this.isSupported()) return;
 
     navigator.serviceWorker.addEventListener('message', (event) => {
-      console.log('[SW] Message from service worker:', event.data);
-
       if (event.data?.type === 'BACKGROUND_BACKUP_REQUEST') {
         // Trigger backup when service worker requests it
         window.dispatchEvent(new CustomEvent('sw-backup-request', {
@@ -197,7 +185,6 @@ class ServiceWorkerManager {
       await Promise.all(
         cacheNames.map(cacheName => caches.delete(cacheName))
       );
-      console.log('[SW] All caches cleared');
     } catch (error) {
       console.error('[SW] Failed to clear caches:', error);
       throw error;
@@ -237,7 +224,6 @@ class ServiceWorkerManager {
 
   setupNetworkListeners(): void {
     window.addEventListener('online', () => {
-      console.log('[SW] Network connection restored');
       monitoring.recordMetric('network_online', performance.now());
 
       // Trigger background sync if supported
@@ -249,7 +235,6 @@ class ServiceWorkerManager {
     });
 
     window.addEventListener('offline', () => {
-      console.log('[SW] Network connection lost');
       monitoring.recordMetric('network_offline', performance.now());
     });
   }
@@ -280,9 +265,7 @@ export const getServiceWorkerState = () => serviceWorkerManager.getState();
 // Auto-register service worker in production
 if (import.meta.env.PROD && serviceWorkerManager.isSupported()) {
   window.addEventListener('load', () => {
-    registerServiceWorker().then(state => {
-      console.log('[SW] Initial registration state:', state);
-    });
+    registerServiceWorker();
 
     serviceWorkerManager.setupNetworkListeners();
   });

@@ -4,7 +4,15 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk';
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
-const isIosSimulatorBypass = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true'
+const bypassFlagEnabled = import.meta.env.VITE_IOS_SIM_AUTH_BYPASS === 'true';
+const bypassFlagEnabledInNonDev = bypassFlagEnabled && !import.meta.env.DEV;
+
+if (bypassFlagEnabledInNonDev) {
+  console.error('SECURITY WARNING: VITE_IOS_SIM_AUTH_BYPASS is enabled outside development. Bypass disabled.');
+}
+
+const isIosSimulatorBypass = bypassFlagEnabled
+  && import.meta.env.DEV
   && typeof window !== 'undefined'
   && window.Capacitor
   && window.Capacitor.getPlatform?.() === 'ios';

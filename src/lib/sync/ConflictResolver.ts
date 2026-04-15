@@ -5,6 +5,11 @@
 
 import { SyncableRecord } from '@/db/chemcheck-db';
 
+// Extended type for Dexie records that include numeric id
+interface DexieRecord extends SyncableRecord {
+  id: number;
+}
+
 export interface ConflictResolutionResult {
   resolved: SyncableRecord;
   hadConflict: boolean;
@@ -86,12 +91,12 @@ export class ConflictResolver {
       resolved = {
         ...remote,
         // Preserve local-only fields that aren't part of SyncableRecord
-        ...((local as any).id ? { id: (local as any).id } : {}),
-        sync_status: 'synced' as const, // Mark as synced since we're accepting remote
+        ...('id' in local && (local as DexieRecord).id ? { id: (local as DexieRecord).id } : {}),
+        sync_status: 'synced' as const,
         sync_error: undefined,
-        local_updated_at: remoteTime, // CRITICAL: Update local timestamp to match remote
+        local_updated_at: remoteTime,
         remote_updated_at: remoteTime,
-        conflict_backup: local.conflict_backup, // Preserve existing backup
+        conflict_backup: local.conflict_backup,
       };
     }
 
@@ -118,7 +123,7 @@ export class ConflictResolver {
       });
 
       // Update the record with backup (mutates the original)
-      (record as any).conflict_backup = backup;
+      record.conflict_backup = backup;
       
       return true;
     } catch (error) {
@@ -143,8 +148,8 @@ export class ConflictResolver {
     // Remove sync-specific fields from comparison
     const syncFields = ['id', 'convex_id', 'sync_status', 'sync_error', 'local_updated_at', 'remote_updated_at', 'conflict_backup'];
     syncFields.forEach(field => {
-      delete (localData as any)[field];
-      delete (remoteData as any)[field];
+      delete (localData as Record<string, unknown>)[field];
+      delete (remoteData as Record<string, unknown>)[field];
     });
 
     // Compare remaining fields

@@ -23,7 +23,6 @@ export function handleChunkError(error, chunkName) {
   // If we haven't exceeded retry limit, try reloading the page
   if (retryCount < MAX_RETRIES) {
     retryCount++;
-    console.log(`Retrying chunk load (attempt ${retryCount}/${MAX_RETRIES})`);
     
     // Clear cache and reload
     if ('caches' in window) {

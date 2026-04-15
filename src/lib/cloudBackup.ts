@@ -293,8 +293,6 @@ class CloudBackupManager {
     this.syncInterval = window.setInterval(() => {
       this.performAutoSync();
     }, config.syncInterval * 60 * 60 * 1000); // Convert hours to milliseconds
-
-    console.log(`Auto-sync started for ${config.provider} every ${config.syncInterval} hours`);
   }
 
   stopAutoSync(): void {
@@ -309,15 +307,9 @@ class CloudBackupManager {
       const config = this.getConfig();
       if (!config.provider || !navigator.onLine) return;
 
-      console.log('Performing auto-sync to cloud...');
       const result = await this.uploadBackup();
       
-      if (result.success) {
-        console.log('Auto-sync completed successfully');
-        
-        // Clean up old backups if needed
-        await this.cleanupOldBackups();
-      } else {
+      if (!result.success) {
         console.error('Auto-sync failed:', result.error);
       }
     } catch (error) {
@@ -341,8 +333,6 @@ class CloudBackupManager {
         for (const backup of toDelete) {
           await this.deleteFromProvider(config.provider, backup.id);
         }
-        
-        console.log(`Cleaned up ${toDelete.length} old backups`);
       }
     } catch (error) {
       console.error('Backup cleanup failed:', error);

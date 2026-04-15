@@ -637,7 +637,7 @@ export class SyncService {
             }
             if (!customer.convex_id || customer.sync_status === 'pending') {
               // Auto-sync the customer first if not synced or has pending updates
-              console.log(`Auto-syncing/updating customer ${record.customer_id} before service log`);
+
               const customerSyncSuccess = await this.syncSingleRecord('customers', customer);
               if (!customerSyncSuccess) {
                 throw new Error(`Failed to sync/update customer before service log`);
@@ -690,7 +690,7 @@ export class SyncService {
 
             if (!chemCustomer.convex_id || chemCustomer.sync_status === 'pending') {
               // Auto-sync the customer first
-              console.log(`Auto-syncing/updating customer ${record.customer_id} before chemical usage`);
+
               const customerSyncSuccess = await this.syncSingleRecord('customers', chemCustomer);
               if (!customerSyncSuccess) {
                 throw new Error(`Failed to sync/update customer before chemical usage`);
@@ -725,7 +725,7 @@ export class SyncService {
                 console.warn(`Note ${record.id} references deleted customer ${record.customer_id}`);
               } else if (!noteCustomer.convex_id || noteCustomer.sync_status === 'pending') {
                 // Auto-sync the customer first
-                console.log(`Auto-syncing/updating customer ${record.customer_id} before note`);
+
                 const customerSyncSuccess = await this.syncSingleRecord('customers', noteCustomer);
                 if (!customerSyncSuccess) {
                   throw new Error(`Failed to sync/update customer before note`);
@@ -764,7 +764,7 @@ export class SyncService {
 
             if (!saltCellCustomer.convex_id || saltCellCustomer.sync_status === 'pending') {
               // Auto-sync the customer first
-              console.log(`Auto-syncing/updating customer ${record.customer_id} before salt cell log`);
+
               const customerSyncSuccess = await this.syncSingleRecord('customers', saltCellCustomer);
               if (!customerSyncSuccess) {
                 throw new Error(`Failed to sync/update customer before salt cell log`);
@@ -862,7 +862,7 @@ export class SyncService {
           const resolution = this.conflictResolver.resolve(record, remoteRecord);
 
           if (resolution.backupCreated) {
-            console.log(`Created conflict backup for ${table}[${record.id}]`);
+
           }
 
           // Check if local or remote won
@@ -931,7 +931,7 @@ export class SyncService {
               // Add exponential backoff delay before retry to give remote time to settle
               const backoffMs = Math.pow(2, conflictRetryCount) * 500; // 500ms, 1s, 2s
               if (backoffMs > 0) {
-                console.log(`Waiting ${backoffMs}ms before conflict retry for ${table}[${record.id}]`);
+
                 await new Promise(resolve => setTimeout(resolve, backoffMs));
               }
 
@@ -964,7 +964,7 @@ export class SyncService {
                   break;
               }
 
-              console.log(`Conflict resolved for ${table}[${record.id}]: remote version accepted${resolution.backupCreated ? ', local changes backed up' : ''}`);
+
               return true; // No retry needed - we accepted remote version
             }
           } catch (updateError) {
@@ -988,7 +988,7 @@ export class SyncService {
         if (isNetworkError && retryCount < MAX_RETRIES) {
           // Exponential backoff: 1s, 2s, 4s
           const backoffMs = Math.pow(2, retryCount - 1) * 1000;
-          console.log(`Retry ${retryCount}/${MAX_RETRIES} for ${table}[${record.id}] after ${backoffMs}ms`);
+
 
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue; // Retry

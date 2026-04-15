@@ -54,9 +54,6 @@ function getLogStatus(log) {
 
 // Collapsible Log Entry Component
 function LogEntry({ log, onDelete }) {
-  // Debug log for service type visibility
-  // console.log("[LogEntry] Rendering log:", log._id, "Service Type:", log.service_type);
-
   const [isOpen, setIsOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [photos, setPhotos] = useState([]);
@@ -80,18 +77,14 @@ function LogEntry({ log, onDelete }) {
       if (!log._id && !log.id) return;
 
       const serviceLogId = String(log._id || log.id);
-      console.log('[CustomerHistoryCard LogEntry] Loading photos for service log:', serviceLogId);
 
       try {
         const fetchedPhotos = await getPhotosByServiceLog(serviceLogId);
 
         // Check if request was aborted before updating state
         if (abortController.signal.aborted) {
-          console.log('[CustomerHistoryCard LogEntry] Photo loading aborted');
           return;
         }
-
-        console.log('[CustomerHistoryCard LogEntry] Fetched photos:', fetchedPhotos.length);
 
         // Transform to ServicePhoto format expected by gallery
         const transformedPhotos = fetchedPhotos.map(photo => ({
@@ -101,7 +94,6 @@ function LogEntry({ log, onDelete }) {
           timestamp: photo.timestamp,
         }));
 
-        console.log('[CustomerHistoryCard LogEntry] Transformed photos:', transformedPhotos.length);
         setPhotos(transformedPhotos);
         setPhotosLoaded(true);
       } catch (error) {

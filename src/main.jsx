@@ -19,8 +19,6 @@ function RootLoader() {
     );
 }
 
-console.log("Initializing ChemCheck...");
-
 // Initialize Sentry for error tracking and performance monitoring
 initSentry();
 initializeCacheLifecycle();

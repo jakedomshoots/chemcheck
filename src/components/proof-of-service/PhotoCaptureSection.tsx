@@ -63,9 +63,7 @@ export function PhotoCaptureSection({
   const loadPhotos = useCallback(async () => {
     try {
       setIsLoading(true);
-      console.log('[PhotoCaptureSection] Loading photos - customerId:', customerId, 'serviceLogId:', serviceLogId, 'category:', category);
       const records = await getPhotos(customerId);
-      console.log('[PhotoCaptureSection] Total photos for customer:', records.length);
       
       // Filter by category AND serviceLogId to ensure isolation between service logs
       // For new service logs (serviceLogId === null), only show photos with null serviceLogId
@@ -76,7 +74,6 @@ export function PhotoCaptureSection({
         )
         .map((r: OfflinePhotoRecord) => recordToCapturedPhoto(r));
       
-      console.log('[PhotoCaptureSection] Filtered photos for category', category, ':', categoryPhotos.length);
       setPhotos(categoryPhotos);
       onPhotosChange?.(categoryPhotos);
     } catch (error) {

@@ -226,8 +226,8 @@ export function useMemoryMonitor(interval: number = 30000) {
 
   useEffect(() => {
     const checkMemory = () => {
-      if ('memory' in performance) {
-        const memory = (performance as any).memory;
+      if (performance.memory) {
+        const memory = performance.memory;
         const used = memory.usedJSHeapSize;
         const total = memory.totalJSHeapSize;
         const percentage = (used / total) * 100;
@@ -377,7 +377,6 @@ export function analyzeBundleSize() {
       totalStyles: styles.length
     };
 
-    console.log('Bundle Analysis:', analysis);
     return analysis;
   }
   return null;

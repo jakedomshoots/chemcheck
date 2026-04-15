@@ -342,7 +342,6 @@ export class AutoBackup {
         localStorage.setItem('emergencyBackup', JSON.stringify(backup));
         localStorage.setItem('lastAutoBackup', now);
         this.lastBackup = now;
-        console.log('Auto-backup completed successfully');
       } catch (error) {
         console.error('Auto-backup failed:', error);
       }

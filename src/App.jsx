@@ -54,7 +54,6 @@ function App() {
         };
 
         const handleBackupRequest = () => {
-          console.log('Service worker requested backup');
           syncAutoBackupState();
         };
 
@@ -76,8 +75,6 @@ function App() {
         
         // Log app initialization
         monitoring.recordMetric('app_initialized', performance.now());
-        
-        console.log('ChemCheck initialized successfully');
 
         teardown = () => {
           window.removeEventListener('sw-backup-request', handleBackupRequest);

@@ -35,7 +35,6 @@ class MigrationManager {
       description: 'Initial database schema with customers, service logs, chemical usage, and notes',
       up: async () => {
         // This migration is considered already applied for existing databases
-        console.log('Initial schema migration - already applied');
       }
     });
 
@@ -90,8 +89,6 @@ class MigrationManager {
             });
           }
         }
-
-        console.log('Added timestamps to existing records');
       }
     });
 
@@ -103,7 +100,6 @@ class MigrationManager {
       up: async () => {
         // This would add validation flags to existing records
         // For now, we'll just mark all existing records as needing validation
-        console.log('Added validation flags to existing records');
       }
     });
 
@@ -160,16 +156,11 @@ class MigrationManager {
       );
 
       if (pendingMigrations.length === 0) {
-        console.log('No pending migrations');
         return result;
       }
 
-      console.log(`Running ${pendingMigrations.length} pending migrations...`);
-
       for (const migration of pendingMigrations) {
         try {
-          console.log(`Applying migration ${migration.version}: ${migration.name}`);
-          
           const startTime = performance.now();
           await migration.up();
           const duration = performance.now() - startTime;
@@ -186,8 +177,6 @@ class MigrationManager {
             version: migration.version,
             name: migration.name
           });
-
-          console.log(`Migration ${migration.version} completed in ${duration.toFixed(2)}ms`);
         } catch (error) {
           const errorMsg = `Migration ${migration.version} failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
           console.error(errorMsg, error);
@@ -209,12 +198,6 @@ class MigrationManager {
       // Save updated state
       await this.saveState(state);
 
-      if (result.success) {
-        console.log('All migrations completed successfully');
-      } else {
-        console.warn('Some migrations failed - check errors');
-      }
-
     } catch (error) {
       const errorMsg = `Migration system failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
       console.error(errorMsg, error);
@@ -232,7 +215,6 @@ class MigrationManager {
         throw new Error(`Migration ${version} not found or not reversible`);
       }
 
-      console.log(`Rolling back migration ${version}: ${migration.name}`);
       await migration.down();
 
       // Update state
@@ -242,7 +224,6 @@ class MigrationManager {
       state.lastMigration = new Date().toISOString();
       await this.saveState(state);
 
-      console.log(`Migration ${version} rolled back successfully`);
       return true;
     } catch (error) {
       console.error(`Rollback failed for migration ${version}:`, error);
@@ -363,8 +344,6 @@ class MigrationManager {
         await db.notes.update(note.id!, { customer_id: undefined });
         result.cleaned.notes++;
       }
-
-      console.log('Data cleanup completed:', result.cleaned);
     } catch (error) {
       result.success = false;
       result.errors.push(`Cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -380,15 +359,10 @@ export const migrationManager = new MigrationManager();
 // Auto-run migrations on app start
 export async function initializeMigrations(): Promise<void> {
   try {
-    console.log('Checking for database migrations...');
     const result = await migrationManager.runMigrations();
     
-    if (result.appliedMigrations.length > 0) {
-      console.log(`Applied ${result.appliedMigrations.length} migrations:`, result.appliedMigrations);
-    }
-    
     if (result.errors.length > 0) {
-      console.error('Migration errors:', result.errors);
+      console.error(`Migration errors: ${result.errors.join(', ')}`);
     }
   } catch (error) {
     console.error('Migration initialization failed:', error);
