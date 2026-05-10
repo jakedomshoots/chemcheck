@@ -27,9 +27,24 @@ async function resolveBusinessContext(ctx: any, userEmail: string) {
     .first();
 }
 
+async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
+  if (!customer) return false;
+
+  if (customer.created_by === userEmail) {
+    return true;
+  }
+
+  const business = await resolveBusinessContext(ctx, userEmail);
+  if (!business) return false;
+
+  const businessId = String(business._id);
+  return customer.business_id === businessId || customer.created_by === business.owner_email;
+}
+
 async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: string): Promise<void> {
   const customer = await ctx.db.get(customerId);
-  if (!customer || customer.created_by !== userEmail) {
+  const allowed = await canAccessCustomer(ctx, customer, userEmail);
+  if (!allowed) {
     throw new Error("Access denied: cannot sync data for another user's customer");
   }
 }
@@ -98,7 +113,7 @@ export const syncCustomer = mutation({
       }
 
       // SECURITY: Verify ownership of existing record
-      if (existingCustomer.created_by !== identity.email) {
+      if (!(await canAccessCustomer(ctx, existingCustomer, identity.email!))) {
         throw new Error("Access denied: cannot update another user's customer");
       }
 
@@ -199,7 +214,7 @@ export const syncServiceLog = mutation({
     }
 
     // SECURITY: Verify customer ownership
-    if (customer.created_by !== identity.email) {
+    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
       throw new Error("Access denied: cannot sync data for another user's customer");
     }
 
@@ -305,7 +320,7 @@ export const syncChemicalUsage = mutation({
     }
 
     // SECURITY: Verify customer ownership
-    if (customer.created_by !== identity.email) {
+    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
       throw new Error("Access denied: cannot sync data for another user's customer");
     }
 
@@ -411,7 +426,7 @@ export const syncNote = mutation({
         throw new Error(`Customer with id ${convex_customer_id} not found`);
       }
       // SECURITY: Verify customer ownership
-      if (customer.created_by !== identity.email) {
+      if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
         throw new Error("Access denied: cannot sync notes for another user's customer");
       }
     }
@@ -522,7 +537,7 @@ export const syncSaltCellLog = mutation({
     }
 
     // SECURITY: Verify customer ownership
-    if (customer.created_by !== identity.email) {
+    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
       throw new Error("Access denied: cannot sync data for another user's customer");
     }
 
