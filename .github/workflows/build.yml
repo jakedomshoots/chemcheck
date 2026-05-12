@@ -36,3 +36,14 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Deploy Convex functions
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo "ERROR: CONVEX_DEPLOY_KEY secret is not configured"
+            exit 1
+          fi
+          npx convex deploy --yes --typecheck try
