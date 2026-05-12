@@ -9,28 +9,79 @@ import { enforceRateLimit } from "./rateLimit";
  * SECURITY: All sync mutations require authentication and enforce tenant isolation
  */
 
+function normalizeEmail(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
 async function resolveBusinessContext(ctx: any, userEmail: string) {
-  const teamMember = await ctx.db
+  const normalizedUserEmail = normalizeEmail(userEmail);
+
+  const exactTeamMember = await ctx.db
     .query("team_members")
     .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
     .filter((q: any) => q.eq(q.field("is_active"), true))
     .first();
 
-  if (teamMember) {
-    const teamBusiness = await ctx.db.get(teamMember.business_id);
+  if (exactTeamMember) {
+    const teamBusiness = await ctx.db.get(exactTeamMember.business_id);
     if (teamBusiness) return teamBusiness;
   }
 
-  return await ctx.db
+  const exactOwnedBusiness = await ctx.db
     .query("businesses")
     .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
     .first();
+
+  if (exactOwnedBusiness) return exactOwnedBusiness;
+
+  // Legacy records may differ only by email casing/whitespace. Index lookups are
+  // exact, so fall back to normalized scans before denying sync.
+  const teamMembers = await ctx.db
+    .query("team_members")
+    .filter((q: any) => q.eq(q.field("is_active"), true))
+    .collect();
+
+  const normalizedTeamMember = teamMembers.find(
+    (member: any) => normalizeEmail(member.user_email) === normalizedUserEmail
+  );
+
+  if (normalizedTeamMember) {
+    const teamBusiness = await ctx.db.get(normalizedTeamMember.business_id);
+    if (teamBusiness) return teamBusiness;
+  }
+
+  const businesses = await ctx.db.query("businesses").collect();
+  return businesses.find(
+    (business: any) => normalizeEmail(business.owner_email) === normalizedUserEmail
+  );
+}
+
+async function getActiveBusinessMemberEmails(
+  ctx: any,
+  businessId: any,
+  ownerEmail: string
+): Promise<Set<string>> {
+  const members = await ctx.db
+    .query("team_members")
+    .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
+    .filter((q: any) => q.eq(q.field("is_active"), true))
+    .collect();
+
+  const emails = new Set<string>([normalizeEmail(ownerEmail)]);
+  for (const member of members) {
+    const email = normalizeEmail(member.user_email);
+    if (email) emails.add(email);
+  }
+  return emails;
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
   if (!customer) return false;
 
-  if (customer.created_by === userEmail) {
+  const normalizedUserEmail = normalizeEmail(userEmail);
+  const customerCreatedBy = normalizeEmail(customer.created_by);
+
+  if (customerCreatedBy && customerCreatedBy === normalizedUserEmail) {
     return true;
   }
 
@@ -38,7 +89,13 @@ async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Pr
   if (!business) return false;
 
   const businessId = String(business._id);
-  return customer.business_id === businessId || customer.created_by === business.owner_email;
+  const customerBusinessId = customer.business_id ? String(customer.business_id) : "";
+  if (customerBusinessId && customerBusinessId === businessId) {
+    return true;
+  }
+
+  const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
+  return customerCreatedBy ? allowedEmails.has(customerCreatedBy) : false;
 }
 
 async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: string): Promise<void> {
