@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useCustomers, useCustomerUpdate } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -12,9 +12,12 @@ import { validatePhoneNumber } from "@/lib/phoneValidation";
 
 export default function EditClient() {
   const navigate = useNavigate();
-  const urlParams = new URLSearchParams(window.location.search);
-  const customerIdParam = urlParams.get("id");
-  const customerId = customerIdParam ? parseInt(customerIdParam, 10) : null;
+  // Parse URL params once per URL change, not on every render
+  const customerId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("id");
+    return raw ? parseInt(raw, 10) : null;
+  }, [window.location.search]);
 
   const customers = useCustomers();
   const updateCustomer = useCustomerUpdate();
@@ -33,25 +36,28 @@ export default function EditClient() {
     pool_type: "Chlorine",
     surface_type: "Plaster"
   });
+  const initialLoadDone = useRef(false);
 
   useEffect(() => {
-    if (customers && customerId) {
-      const customer = customers.find(c => c._id === customerId);
-      if (customer) {
-        setFormData({
-          full_name: customer.full_name || "",
-          address: customer.address || "",
-          phone: customer.phone || "",
-          email: customer.email || "",
-          gate_code: customer.gate_code || "",
-          service_day: customer.service_day || "Monday",
-          pool_gallons: customer.pool_gallons || "",
-          pool_type: customer.pool_type || "Chlorine",
-          surface_type: customer.surface_type || "Plaster"
-        });
-      }
-      setLoading(false);
-    }
+    if (initialLoadDone.current) return;
+    if (!customers || !customerId) return;
+
+    const customer = customers.find(c => c._id === customerId);
+    if (!customer) return;
+
+    setFormData({
+      full_name: customer.full_name || "",
+      address: customer.address || "",
+      phone: customer.phone || "",
+      email: customer.email || "",
+      gate_code: customer.gate_code || "",
+      service_day: customer.service_day || "Monday",
+      pool_gallons: customer.pool_gallons || "",
+      pool_type: customer.pool_type || "Chlorine",
+      surface_type: customer.surface_type || "Plaster"
+    });
+    setLoading(false);
+    initialLoadDone.current = true;
   }, [customers, customerId]);
 
   const handlePhoneChange = (e) => {

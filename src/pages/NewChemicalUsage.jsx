@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useCustomersFilter, useChemicalUsageCreate, useCurrentUser } from "@/api/convexHooks";
@@ -31,9 +31,12 @@ const defaultChemicalTypes = [
 
 export default function NewChemicalUsage() {
   const navigate = useNavigate();
-  const urlParams = new URLSearchParams(window.location.search);
-  const preselectedCustomerIdParam = urlParams.get("customerId");
-  const preselectedCustomerId = preselectedCustomerIdParam ? parseInt(preselectedCustomerIdParam, 10) : null;
+  // Parse URL params once per URL change, not on every render
+  const preselectedCustomerId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("customerId");
+    return raw ? parseInt(raw, 10) : null;
+  }, [window.location.search]);
 
   const user = useCurrentUser();
   const allCustomers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
@@ -62,22 +65,41 @@ export default function NewChemicalUsage() {
     notes: ""
   });
 
+  // Refs to guard against effect re-runs clobbering user input (causes flicker)
+  const prevChemicalTypesRef = useRef(null);
+  const didAutoSelectCustomerRef = useRef(false);
+
+  // Only set chemical_type when the available types actually change,
+  // not on every Convex re-render. Prevents dropdown flicker.
   useEffect(() => {
-    if (chemicalTypes.length > 0) {
-      setFormData(prev => {
-        if (!prev.chemical_type || !chemicalTypes.includes(prev.chemical_type)) {
-          return { ...prev, chemical_type: chemicalTypes[0] };
-        }
-        return prev;
-      });
-    }
+    if (chemicalTypes.length === 0) return;
+    const changed = !prevChemicalTypesRef.current ||
+      prevChemicalTypesRef.current.length !== chemicalTypes.length ||
+      prevChemicalTypesRef.current.some((t, i) => t !== chemicalTypes[i]);
+    if (!changed) return;
+    prevChemicalTypesRef.current = chemicalTypes;
+
+    setFormData(prev => {
+      if (prev.chemical_type && chemicalTypes.includes(prev.chemical_type)) {
+        return prev; // user's current selection is still valid
+      }
+      return { ...prev, chemical_type: chemicalTypes[0] };
+    });
   }, [chemicalTypes]);
 
+  // Auto-select first customer only once, only when no preselection and no user pick yet.
+  // Removes formData.customer_id from deps so picking a customer doesn't re-fire this.
   useEffect(() => {
-    if (!preselectedCustomerId && customers.length > 0 && !formData.customer_id) {
+    if (didAutoSelectCustomerRef.current) return;
+    if (preselectedCustomerId) {
+      didAutoSelectCustomerRef.current = true;
+      return;
+    }
+    if (customers.length > 0 && !formData.customer_id) {
+      didAutoSelectCustomerRef.current = true;
       setFormData(prev => ({ ...prev, customer_id: customers[0]._id }));
     }
-  }, [customers, preselectedCustomerId, formData.customer_id]);
+  }, [customers, preselectedCustomerId]); // intentionally omit formData.customer_id
 
 
   const handleSubmit = async (e) => {

@@ -47,14 +47,17 @@ export default function ChemicalUsagePage() {
   const navigate = useNavigate();
   const user = useCurrentUser();
 
-  const allCustomers = useCustomersFilter({ created_by: user?.email });
-  const allRecords = useChemicalUsage("-created_date");
+  // Only pass created_by once we actually have a user, so we don't briefly
+  // query under DEFAULT_USER and then refetch under the real user's data (flicker).
+  const customers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
+  const usageRecords = useChemicalUsage("-created_date");
   const deleteChemicalUsage = useChemicalUsageDelete();
   const updateChemicalUsage = useChemicalUsageUpdate();
 
-  const [usageRecords, setUsageRecords] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Dexie's useLiveQuery returns undefined until the first read completes;
+  // undefined is the real "still loading" signal — no mirror state needed.
+  const loading = !customers || !usageRecords;
+
   const [expandedCustomers, setExpandedCustomers] = useState(new Set());
   const [deleteRecord, setDeleteRecord] = useState(null);
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -63,14 +66,6 @@ export default function ChemicalUsagePage() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
-
-  useEffect(() => {
-    if (allCustomers && allRecords) {
-      setCustomers(allCustomers);
-      setUsageRecords(allRecords);
-      setLoading(false);
-    }
-  }, [allCustomers, allRecords]);
 
   const baseDate = addMonths(new Date(), monthOffset);
   const currentMonthStart = startOfMonth(baseDate);

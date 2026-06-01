@@ -38,9 +38,12 @@ function toFriendlySendError(error) {
 export default function CustomerDetail() {
   const navigate = useNavigate();
   const location = useLocation();
-  const urlParams = new URLSearchParams(window.location.search);
-  const customerIdParam = urlParams.get("id");
-  const customerId = customerIdParam ? parseInt(customerIdParam, 10) : null;
+  // Parse URL params once per URL change, not on every render
+  const customerId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("id");
+    return raw ? parseInt(raw, 10) : null;
+  }, [window.location.search]);
 
   const navigationCustomer = location.state?.customer;
   const navigationLastWeekLog = location.state?.lastWeekLog;
@@ -55,7 +58,6 @@ export default function CustomerDetail() {
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
   const [lastWeekLog, setLastWeekLog] = useState(navigationLastWeekLog || null);
-  const [loading, setLoading] = useState(!navigationCustomer);
   const [showAnalysis, setShowAnalysis] = useState(false);
 
   const [reportSettingsOpen, setReportSettingsOpen] = useState(false);
@@ -74,6 +76,9 @@ export default function CustomerDetail() {
     if (!customers || !customerId) return navigationCustomer || null;
     return customers.find((c) => c._id === customerId) || navigationCustomer || null;
   }, [customers, customerId, navigationCustomer]);
+  // Derive loading from whether we have a customer record yet.
+  // (Previously a useEffect flipped this, which created a render-pause flicker.)
+  const loading = !customer;
   const businessName = useMemo(() => {
     const convexName = convexBusiness?.name?.trim();
     if (convexName) return convexName;
@@ -83,12 +88,6 @@ export default function CustomerDetail() {
 
     return "ChemCheck Pool Service";
   }, [convexBusiness?.name]);
-
-  useEffect(() => {
-    if (customers && customerId) {
-      setLoading(false);
-    }
-  }, [customers, customerId]);
 
   useEffect(() => {
     if (logs && logs.length > 0 && !navigationLastWeekLog) {

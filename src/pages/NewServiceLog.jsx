@@ -29,9 +29,15 @@ import {
 export default function NewServiceLog() {
   const navigate = useNavigate();
   const location = useLocation();
-  const urlParams = new URLSearchParams(window.location.search);
-  const customerIdParam = urlParams.get("customerId");
-  const customerId = customerIdParam ? parseInt(customerIdParam, 10) : null;
+  // Parse URL params once per URL change, not on every render
+  const { customerIdParam, customerId } = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("customerId");
+    return {
+      customerIdParam: raw,
+      customerId: raw ? parseInt(raw, 10) : null,
+    };
+  }, [window.location.search]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -81,11 +87,24 @@ export default function NewServiceLog() {
     customerIdParam ? `serviceLogDraft_${customerIdParam}` : null
   ), [customerIdParam]);
   const draftReadyRef = useRef(false);
+  const prevServiceTypesRef = useRef(null);
 
+  // Only set service_type when the available types actually change,
+  // not on every Convex re-render. Prevents dropdown flicker.
   useEffect(() => {
-    if (serviceTypes.length > 0 && !formData.service_type) {
-      setFormData(prev => ({ ...prev, service_type: serviceTypes[0] }));
-    }
+    if (serviceTypes.length === 0) return;
+    const changed = !prevServiceTypesRef.current ||
+      prevServiceTypesRef.current.length !== serviceTypes.length ||
+      prevServiceTypesRef.current.some((t, i) => t !== serviceTypes[i]);
+    if (!changed) return;
+    prevServiceTypesRef.current = serviceTypes;
+
+    setFormData(prev => {
+      if (prev.service_type && serviceTypes.includes(prev.service_type)) {
+        return prev; // user's current selection is still valid
+      }
+      return { ...prev, service_type: serviceTypes[0] };
+    });
   }, [serviceTypes]);
 
   useEffect(() => {
@@ -120,13 +139,20 @@ export default function NewServiceLog() {
     if (!draftStorageKey || !draftReadyRef.current) return;
     if (typeof window === "undefined" || !window.localStorage) return;
 
-    try {
-      const savedAt = new Date().toISOString();
-      window.localStorage.setItem(draftStorageKey, JSON.stringify({ formData, savedAt }));
-      setDraftSavedAt(savedAt);
-    } catch (error) {
-      console.error("[NewServiceLog] Failed to save draft:", error);
-    }
+    // Debounce: wait 500ms after the last keystroke before writing.
+    // Each new keystroke cancels the previous timer, so we only persist
+    // once when the user actually pauses.
+    const timeoutId = setTimeout(() => {
+      try {
+        const savedAt = new Date().toISOString();
+        window.localStorage.setItem(draftStorageKey, JSON.stringify({ formData, savedAt }));
+        setDraftSavedAt(savedAt);
+      } catch (error) {
+        console.error("[NewServiceLog] Failed to save draft:", error);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
   }, [formData, draftStorageKey]);
 
   const [beforePhotos, setBeforePhotos] = useState([]);
@@ -146,34 +172,27 @@ export default function NewServiceLog() {
 
   const cleanupPerformed = useRef(false);
 
+  // Find the customer once customers + customerId are available.
   useEffect(() => {
-    if (customers && customerId && !customer) {
-      const found = customers.find((c) => c._id === customerId);
-      setCustomer(found);
+    if (customer || !customers || !customerId) return;
+    const found = customers.find((c) => c._id === customerId);
+    if (found) setCustomer(found);
+  }, [customers, customerId, customer]);
 
-      if (found && customerIdParam && !cleanupPerformed.current) {
-        cleanupPerformed.current = true;
+  // Run photo cleanup exactly once per page load, when we have a customerId param.
+  useEffect(() => {
+    if (cleanupPerformed.current) return;
+    if (!customerIdParam) return;
 
-        (async () => {
-          try {
-            await deleteUnlinkedPhotos(customerIdParam);
-          } catch (error) {
-            console.error('[NewServiceLog] Failed to clean up old photos:', error);
-          }
-        })();
+    cleanupPerformed.current = true;
+    (async () => {
+      try {
+        await deleteUnlinkedPhotos(customerIdParam);
+      } catch (error) {
+        console.error('[NewServiceLog] Failed to clean up old photos:', error);
       }
-    } else if (customer && customerIdParam && !cleanupPerformed.current) {
-      cleanupPerformed.current = true;
-
-      (async () => {
-        try {
-          await deleteUnlinkedPhotos(customerIdParam);
-        } catch (error) {
-          console.error('[NewServiceLog] Failed to clean up old photos:', error);
-        }
-      })();
-    }
-  }, [customers, customerId, customerIdParam, customer]);
+    })();
+  }, [customerIdParam]);
 
   const formattedDraftTime = useMemo(() => {
     if (!draftSavedAt) return null;
