@@ -103,6 +103,12 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
     }
   };
 
+  const keepFocusedFieldAboveKeyboard = (event) => {
+    window.setTimeout(() => {
+      event.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 250);
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
@@ -171,6 +177,7 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
             id="notes"
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            onFocus={keepFocusedFieldAboveKeyboard}
             placeholder="Why extra chemicals were needed..."
             rows={3}
             className="mt-1 border-2 focus:border-purple-500 rounded-xl"

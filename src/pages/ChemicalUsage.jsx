@@ -363,13 +363,13 @@ export default function ChemicalUsagePage() {
               Add Chemical Usage
             </Button>
           </DrawerTrigger>
-          <DrawerContent>
-            <div className="mx-auto w-full max-w-lg">
+          <DrawerContent className="max-h-[92dvh] overflow-hidden">
+            <div className="mx-auto flex max-h-[92dvh] w-full max-w-lg flex-col">
               <DrawerHeader>
                 <DrawerTitle>Add Chemical Usage</DrawerTitle>
                 <DrawerDescription>Record extra chemicals used for billing purposes.</DrawerDescription>
               </DrawerHeader>
-              <div className="p-4 pb-8">
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
                 <AddChemicalForm
                   onSuccess={() => setIsAddSheetOpen(false)}
                   onCancel={() => setIsAddSheetOpen(false)}
@@ -512,6 +512,11 @@ export default function ChemicalUsagePage() {
                                     <Textarea
                                       value={editingNoteValue}
                                       onChange={(e) => setEditingNoteValue(e.target.value)}
+                                      onFocus={(e) => {
+                                        window.setTimeout(() => {
+                                          e.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
+                                        }, 250);
+                                      }}
                                       placeholder="Add notes..."
                                       rows={2}
                                       className="text-xs border-2 focus:border-purple-500 rounded-lg"
