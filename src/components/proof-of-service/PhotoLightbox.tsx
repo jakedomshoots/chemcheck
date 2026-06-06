@@ -541,5 +541,3 @@ export function PhotoLightbox({
         </div>
     );
 }
-
-export default PhotoLightbox;

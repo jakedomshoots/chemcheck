@@ -292,5 +292,3 @@ function UsageBar({ label, current, limit }) {
     </div>
   );
 }
-
-export default BillingDashboard;

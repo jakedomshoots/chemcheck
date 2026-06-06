@@ -610,9 +610,9 @@ export const sendInvoice = mutation({
       throw new Error("Customer not found or access denied");
     }
 
-    const trimmedBase = (args.base_url || "").trim().replace(/\/+$/, "");
-    const paymentUrl = trimmedBase
-      ? `${trimmedBase}/workorders?invoice_id=${invoice._id}`
+    const configuredBaseUrl = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
+    const paymentUrl = configuredBaseUrl
+      ? `${configuredBaseUrl}/workorders?invoice_id=${invoice._id}`
       : `https://pay.chemcheck.app/invoice/${invoice._id}`;
 
     const now = Date.now();

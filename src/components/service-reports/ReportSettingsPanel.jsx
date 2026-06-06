@@ -269,5 +269,3 @@ export function ReportSettingsPanel({
     </Dialog>
   );
 }
-
-export default ReportSettingsPanel;

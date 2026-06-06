@@ -670,5 +670,3 @@ export function PhotoCapture({
     </Card>
   );
 }
-
-export default PhotoCapture;

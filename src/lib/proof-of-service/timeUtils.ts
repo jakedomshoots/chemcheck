@@ -257,8 +257,3 @@ export function isEndAtOrAfterStart(startTime: string, endTime: string): boolean
   
   return end.getTime() >= start.getTime();
 }
-
-/**
- * @deprecated Use isEndAtOrAfterStart instead. This alias exists for backward compatibility.
- */
-export const isEndAfterStart = isEndAtOrAfterStart;

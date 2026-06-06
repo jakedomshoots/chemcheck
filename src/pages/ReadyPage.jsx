@@ -57,5 +57,3 @@ export function ReadyPage() {
     </main>
   );
 }
-
-export default ReadyPage;

@@ -18,5 +18,3 @@ export function PublicConvexProvider({ children }) {
         </ConvexProvider>
     );
 }
-
-export default PublicConvexProvider;

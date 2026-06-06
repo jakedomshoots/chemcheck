@@ -33,7 +33,7 @@ const SSOCallback = lazy(() => importWithRetry(() => import('@/components/auth/S
 // Lazy load public report page (no auth required)
 const ReportPage = lazy(() => importWithRetry(() => import('./ReportPage'), 'ReportPage'));
 const HealthPage = lazy(() => importWithRetry(() => import('./HealthPage'), 'HealthPage'));
-const ReadyPage = lazy(() => importWithRetry(() => import('./ReadyPage'), 'ReadyPage'));
+const ReadyPage = lazy(() => importWithRetry(() => import('./ReadyPage').then((m) => ({ default: m.ReadyPage })), 'ReadyPage'));
 
 // Loading fallback component
 function PageLoader() {

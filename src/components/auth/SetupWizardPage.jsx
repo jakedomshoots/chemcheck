@@ -375,5 +375,3 @@ export function SetupWizardPage() {
     </div>
   );
 }
-
-export default SetupWizardPage;

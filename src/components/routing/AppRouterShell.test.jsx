@@ -22,22 +22,22 @@ describe('AppRouterShell', () => {
   it('canonicalizes legacy case alias routes before shell selection', async () => {
     window.history.replaceState({}, '', '/Clients');
 
-    const { getByTestId } = render(<AppRouterShell />);
+    const { findByTestId } = render(<AppRouterShell />);
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/clients');
     });
-    expect(getByTestId('authenticated-shell')).toBeInTheDocument();
+    expect(await findByTestId('authenticated-shell')).toBeInTheDocument();
   });
 
   it('canonicalizes public report deep links while preserving public entry behavior', async () => {
     window.history.replaceState({}, '', '/report/ABC123DEF/');
 
-    const { getByTestId } = render(<AppRouterShell />);
+    const { findByTestId } = render(<AppRouterShell />);
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/report/ABC123DEF');
-      expect(getByTestId('public-report-router')).toBeInTheDocument();
     });
+    expect(await findByTestId('public-report-router')).toBeInTheDocument();
   });
 });

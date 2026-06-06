@@ -36,5 +36,3 @@ export function AccessDeniedPage() {
     </div>
   );
 }
-
-export default AccessDeniedPage;

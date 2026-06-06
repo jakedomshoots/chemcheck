@@ -8,7 +8,7 @@ const runtimeEnv =
   process.env.VERCEL_ENV ||
   process.env.NODE_ENV;
 const allowUnauthenticatedPhotoUpload =
-  process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true" ||
+  process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true" &&
   runtimeEnv !== "production";
 
 /**

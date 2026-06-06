@@ -213,5 +213,3 @@ export function RobustSignUpPage() {
     </div>
   );
 }
-
-export default RobustSignUpPage;

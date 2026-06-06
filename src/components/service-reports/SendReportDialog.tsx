@@ -535,5 +535,3 @@ export function SendReportDialog({
     </Dialog>
   );
 }
-
-export default SendReportDialog;

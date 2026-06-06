@@ -14,6 +14,8 @@ import {
 } from '@/test/testUtils';
 import * as convexHooks from '@/api/convexHooks';
 
+const FIXED_WEEKDAY_DATE = new Date('2026-06-08T12:00:00.000-04:00');
+
 // Mock hooks - must be defined inline due to vi.mock hoisting
 vi.mock('@/api/convexHooks', () => ({
   useCustomersFilter: vi.fn(() => []),
@@ -108,6 +110,7 @@ describe('Home Page - Comprehensive Tests', () => {
   let completedServiceLog;
 
   beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: FIXED_WEEKDAY_DATE });
     await dbTest.clearTestData();
     await dbTest.seedTestData();
     
@@ -124,6 +127,7 @@ describe('Home Page - Comprehensive Tests', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   describe('Basic Rendering', () => {

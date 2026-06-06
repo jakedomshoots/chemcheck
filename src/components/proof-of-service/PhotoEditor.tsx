@@ -505,5 +505,3 @@ export function PhotoEditor({
         </Card>
     );
 }
-
-export default PhotoEditor;

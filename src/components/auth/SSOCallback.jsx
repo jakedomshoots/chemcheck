@@ -23,5 +23,3 @@ export function SSOCallback() {
     </div>
   );
 }
-
-export default SSOCallback;
