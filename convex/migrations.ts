@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 
 const DEFAULT_BATCH_SIZE = 100;
 const MAX_BATCH_SIZE = 500;
@@ -8,7 +8,7 @@ const MAX_BATCH_SIZE = 500;
  * Backfill serviceLogs.created_by from the owning customer in batches.
  * Run repeatedly until isDone is true.
  */
-export const backfillServiceLogCreatedByBatch = mutation({
+export const backfillServiceLogCreatedByBatch = internalMutation({
   args: {
     cursor: v.optional(v.string()),
     batchSize: v.optional(v.number()),
@@ -46,7 +46,7 @@ export const backfillServiceLogCreatedByBatch = mutation({
 /**
  * Migration visibility helper.
  */
-export const countServiceLogsWithCreatedBy = query({
+export const countServiceLogsWithCreatedBy = internalQuery({
   args: {},
   handler: async (ctx) => {
     const logs = await ctx.db.query("serviceLogs").collect();

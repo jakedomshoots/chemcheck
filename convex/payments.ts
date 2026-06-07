@@ -15,8 +15,7 @@ type StripeLinkResult = {
 };
 
 function normalizeBaseUrl(baseUrl?: string): string {
-  const trimmedArg = (baseUrl || "").trim().replace(/\/+$/, "");
-  if (trimmedArg) return trimmedArg;
+  void baseUrl;
   const trimmedEnv = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
   return trimmedEnv || FALLBACK_APP_BASE_URL;
 }

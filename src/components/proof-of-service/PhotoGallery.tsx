@@ -278,5 +278,3 @@ export function PhotoGallery({
     </>
   );
 }
-
-export default PhotoGallery;

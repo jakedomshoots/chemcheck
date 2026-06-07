@@ -4,11 +4,13 @@ import { PublicConvexProvider } from '@/components/auth/PublicConvexProvider';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
 import { HEALTH_ROUTE, PUBLIC_REPORT_PATH, READY_ROUTE } from '@/lib/routeConfig';
-import NotFoundPage from '@/pages/NotFoundPage';
+import { NotFoundPage } from '@/pages/NotFoundPage';
 
 const ReportPage = lazy(() => importWithRetry(() => import('@/pages/ReportPage'), 'ReportPage'));
 const HealthPage = lazy(() => importWithRetry(() => import('@/pages/HealthPage'), 'HealthPage'));
-const ReadyPage = lazy(() => importWithRetry(() => import('@/pages/ReadyPage'), 'ReadyPage'));
+const ReadyPage = lazy(() =>
+  importWithRetry(() => import('@/pages/ReadyPage').then((m) => ({ default: m.ReadyPage })), 'ReadyPage')
+);
 
 function PublicPageLoader() {
   return (

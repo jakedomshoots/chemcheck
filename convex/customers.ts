@@ -3,6 +3,8 @@ import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
 
+const CUSTOMER_WRITE_ROLES = new Set(["owner", "admin"]);
+
 async function resolveBusinessContext(ctx: any, userEmail: string) {
     const teamMember = await ctx.db
         .query("team_members")
@@ -83,6 +85,37 @@ async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Pr
     if (!customer) return false;
     const customers = await listAccessibleCustomers(ctx, userEmail);
     return customers.some((item: any) => String(item._id) === String(customer._id));
+}
+
+async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
+    const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
+    const ownerEmail = String(business?.owner_email || "").trim().toLowerCase();
+    if (ownerEmail && normalizedUserEmail === ownerEmail) {
+        return "owner";
+    }
+
+    const member = await ctx.db
+        .query("team_members")
+        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
+        .filter((q: any) =>
+            q.and(
+                q.eq(q.field("business_id"), business._id),
+                q.eq(q.field("is_active"), true)
+            )
+        )
+        .first();
+
+    return member?.role || null;
+}
+
+async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set<string>): Promise<void> {
+    const business = await resolveBusinessContext(ctx, userEmail);
+    if (!business) return;
+
+    const role = await getBusinessRole(ctx, business, userEmail);
+    if (!role || !allowedRoles.has(role)) {
+        throw new Error("Insufficient role permissions");
+    }
 }
 
 // Get all customers for the current user
@@ -242,6 +275,7 @@ export const update = mutation({
         if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
+        await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
 
         const { id, report_settings, ...otherArgs } = args;
 
@@ -308,6 +342,7 @@ export const remove = mutation({
         if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
+        await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
 
         await ctx.db.delete(args.id);
     },

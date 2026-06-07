@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { getReadinessReport } from '@/lib/readiness';
 import { getServiceWorkerState } from '@/lib/serviceWorker';
 import HealthPage from '@/pages/HealthPage';
-import ReadyPage from '@/pages/ReadyPage';
+import { ReadyPage } from '@/pages/ReadyPage';
 
 expect.extend(toHaveNoViolations);
 

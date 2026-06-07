@@ -15,6 +15,8 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
 
+const PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY = "public-report-access";
+
 /**
  * Helper: Verify service log ownership
  */
@@ -97,12 +99,16 @@ function resolveReportBaseUrl(clientBaseUrl?: string, envBaseUrl?: string): stri
   const normalizedClientBase = normalizeReportBaseUrl(clientBaseUrl);
   const normalizedEnvBase = normalizeReportBaseUrl(envBaseUrl);
 
-  // If client sent localhost but APP_URL is a real domain, prefer APP_URL.
-  if (normalizedClientBase && isLocalhostBaseUrl(normalizedClientBase) && normalizedEnvBase && !isLocalhostBaseUrl(normalizedEnvBase)) {
+  if (normalizedEnvBase) {
     return normalizedEnvBase;
   }
 
-  return normalizedClientBase || normalizedEnvBase || null;
+  // Allow localhost only for local development when APP_URL has not been set.
+  if (normalizedClientBase && isLocalhostBaseUrl(normalizedClientBase)) {
+    return normalizedClientBase;
+  }
+
+  return null;
 }
 
 /**
@@ -255,10 +261,15 @@ export const sendReport = action({
     message_id?: string;
     was_duplicate?: boolean;
   }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+
     const deliveryMethod = args.delivery_method || 'sms';
     const customNote = args.custom_note;
     const poolStatusOverride = args.pool_status as "good" | "needs_attention" | undefined;
     const recipientEmailOverride = args.recipient_email?.trim();
+
+    await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email);
 
     // Get the service log and customer data
     const serviceLog = await ctx.runQuery(internal.serviceReports.getServiceLogWithCustomer, {
@@ -1249,16 +1260,10 @@ export const logReportAccess = internalMutation({
  * Returns whether access should be allowed based on IP-based rate limiting
  */
 export const checkReportAccessRateLimit = internalQuery({
-  args: {
-    ip_address: v.optional(v.string()),
-  },
+  args: {},
   handler: async (ctx, args) => {
-    if (!args.ip_address) {
-      // Without IP, we can't rate limit effectively
-      return { allowed: true, remaining: 100, reset_time: 0 };
-    }
-
-    const key = `report_access:${args.ip_address}`;
+    void args;
+    const key = `report_access:${PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY}`;
     const now = Date.now();
     const windowMs = 60 * 1000; // 1 minute window
     const maxRequests = 30; // 30 requests per minute per IP
@@ -1295,11 +1300,10 @@ export const checkReportAccessRateLimit = internalQuery({
  * Internal mutation to update rate limit counter for report access
  */
 export const updateReportAccessRateLimit = internalMutation({
-  args: {
-    ip_address: v.string(),
-  },
+  args: {},
   handler: async (ctx, args) => {
-    const key = `report_access:${args.ip_address}`;
+    void args;
+    const key = `report_access:${PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY}`;
     const now = Date.now();
     const windowMs = 60 * 1000; // 1 minute window
 
@@ -1398,9 +1402,7 @@ export const getReportByToken = action({
   }> => {
     // SECURITY: Check rate limit for this IP
     const rateLimitCheck: { allowed: boolean; remaining: number; reset_time: number; error?: string } =
-      await ctx.runQuery(internal.serviceReports.checkReportAccessRateLimit, {
-        ip_address: args.ip_address,
-      });
+      await ctx.runQuery(internal.serviceReports.checkReportAccessRateLimit, {});
 
     if (!rateLimitCheck.allowed) {
       // Log rate-limited access attempt
@@ -1420,11 +1422,7 @@ export const getReportByToken = action({
     }
 
     // Update rate limit counter
-    if (args.ip_address) {
-      await ctx.runMutation(internal.serviceReports.updateReportAccessRateLimit, {
-        ip_address: args.ip_address,
-      });
-    }
+    await ctx.runMutation(internal.serviceReports.updateReportAccessRateLimit, {});
 
     // Get the report data
     const result: any = await ctx.runQuery(internal.serviceReports.getReportByTokenInternal, {

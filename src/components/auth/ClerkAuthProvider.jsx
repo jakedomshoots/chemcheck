@@ -285,5 +285,3 @@ export function ClerkAuthProvider({ children }) {
     </ClerkProvider>
   );
 }
-
-export default ClerkAuthProvider;

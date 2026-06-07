@@ -4,6 +4,7 @@ import { normalizeTaxRate } from "./tax";
 
 const VALID_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
+const WORK_ORDER_WRITE_ROLES = new Set(["owner", "admin", "technician"]);
 
 async function resolveBusinessContext(ctx: any, userEmail: string) {
   const teamMember = await ctx.db
@@ -79,6 +80,37 @@ async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): 
   if (workOrder.created_by === userEmail) return true;
   const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
   return allowedEmails.has(workOrder.created_by);
+}
+
+async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
+  const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
+  const ownerEmail = String(business?.owner_email || "").trim().toLowerCase();
+  if (ownerEmail && normalizedUserEmail === ownerEmail) {
+    return "owner";
+  }
+
+  const member = await ctx.db
+    .query("team_members")
+    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
+    .filter((q: any) =>
+      q.and(
+        q.eq(q.field("business_id"), business._id),
+        q.eq(q.field("is_active"), true),
+      )
+    )
+    .first();
+
+  return member?.role || null;
+}
+
+async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set<string>): Promise<void> {
+  const business = await resolveBusinessContext(ctx, userEmail);
+  if (!business) return;
+
+  const role = await getBusinessRole(ctx, business, userEmail);
+  if (!role || !allowedRoles.has(role)) {
+    throw new Error("Insufficient role permissions");
+  }
 }
 
 function normalizeWorkOrderDate(value: unknown): string {
@@ -181,6 +213,7 @@ export const create = mutation({
     if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
       throw new Error("Customer not found or access denied");
     }
+    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
 
     validatePriority(args.priority);
 
@@ -226,6 +259,7 @@ export const update = mutation({
     const current = await ctx.db.get(args.id);
     if (!current) throw new Error("Work order not found");
     if (!(await canAccessWorkOrder(ctx, current, identity.email!))) throw new Error("Access denied");
+    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
 
     if (args.status) validateStatus(args.status);
     if (args.priority) validatePriority(args.priority);
@@ -264,6 +298,7 @@ export const complete = mutation({
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
     if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
+    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
 
     const customer = await ctx.db.get(workOrder.customer_id);
     if (!customer) {
@@ -395,6 +430,7 @@ export const remove = mutation({
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
     if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
+    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
 
     await ctx.db.delete(args.id);
   },

@@ -30,17 +30,6 @@ vi.mock('../components/servicelog/SimplifiedChemicalInput', () => ({
     default: ({ label }) => <div>{label} Input</div>
 }));
 
-// Mock time tracker hook
-vi.mock('@/hooks/useTimeTracker', () => ({
-    useTimeTracker: () => ({
-        state: { isTracking: false, startTime: null, endTime: null },
-        startTracking: vi.fn(),
-        stopTracking: vi.fn(),
-        resetTracking: vi.fn(),
-        getDurationDisplay: () => '0 min'
-    })
-}));
-
 // Mock business settings hook
 vi.mock('@/hooks/useBusinessSettings', () => ({
     useBusinessSettings: () => ({

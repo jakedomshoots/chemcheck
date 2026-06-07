@@ -106,5 +106,3 @@ export function EmailPreview({
     </div>
   );
 }
-
-export default EmailPreview;

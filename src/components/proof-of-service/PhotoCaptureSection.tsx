@@ -265,5 +265,3 @@ export function PhotoCaptureSection({
     </Card>
   );
 }
-
-export default PhotoCaptureSection;

@@ -158,5 +158,3 @@ export function ProofStatus({
     </div>
   );
 }
-
-export default ProofStatus;

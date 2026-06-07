@@ -184,5 +184,3 @@ export function RobustLoginPage() {
     </div>
   );
 }
-
-export default RobustLoginPage;

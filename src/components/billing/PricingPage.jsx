@@ -224,5 +224,3 @@ export function PricingPage() {
     </div>
   );
 }
-
-export default PricingPage;

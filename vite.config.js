@@ -49,27 +49,22 @@ export default defineConfig({
           'vendor-clerk': ['@clerk/clerk-react'],
           // Split heavy Radix primitives by package so routes only download what they use.
           'vendor-radix-dialog': ['@radix-ui/react-dialog'],
-          'vendor-radix-dropdown': ['@radix-ui/react-dropdown-menu'],
           'vendor-radix-select': ['@radix-ui/react-select'],
           // Secondary Radix components (less frequently used)
           'vendor-radix-ui': [
             '@radix-ui/react-tabs',
-            '@radix-ui/react-tooltip',
             '@radix-ui/react-popover',
           ],
           // Other Radix components (lazy loaded on demand)
           'vendor-radix-extra': [
-            '@radix-ui/react-accordion',
             '@radix-ui/react-alert-dialog',
             '@radix-ui/react-checkbox',
             '@radix-ui/react-switch',
-            '@radix-ui/react-slider',
           ],
-          'vendor-charts': ['recharts'],
-          'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
-          'vendor-dates': ['date-fns', 'react-day-picker'],
+          'vendor-validation': ['zod'],
+          'vendor-dates': ['date-fns'],
           'vendor-router': ['react-router-dom'],
-          'vendor-stripe': ['@stripe/stripe-js', '@stripe/react-stripe-js'],
+          'vendor-stripe': ['@stripe/stripe-js'],
           'vendor-convex': ['convex/react', 'convex/react-clerk'],
           'vendor-dexie-core': ['dexie'],
           'vendor-dexie-hooks': ['dexie-react-hooks'],

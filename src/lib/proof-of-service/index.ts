@@ -87,7 +87,6 @@ export {
   isNotInFuture,
   isWithin24Hours,
   isEndAtOrAfterStart,
-  isEndAfterStart, // deprecated alias for backward compatibility
 } from './timeUtils';
 
 // Photo sync service

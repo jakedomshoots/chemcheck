@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
+import { query, internalMutation } from "./_generated/server";
 import { Id, Doc } from "./_generated/dataModel";
 
 // ============================================
@@ -83,7 +83,7 @@ type RateLimitAction = keyof typeof RATE_LIMITS;
  * Check rate limit and increment counter atomically using database
  * This is the core rate limiting function that should be called within mutations
  */
-export const checkAndConsumeRateLimit = mutation({
+export const checkAndConsumeRateLimit = internalMutation({
   args: {
     userId: v.string(),
     action: v.string(),
@@ -294,20 +294,22 @@ export async function enforceRateLimitInMutation(
  * Get rate limit status for a user (for displaying in UI)
  */
 export const getRateLimitStatus = query({
-  args: {
-    userId: v.string(),
-  },
+  args: {},
   handler: async (ctx, args): Promise<Record<string, {
     action: string;
     remaining: number;
     resetIn: number;
     limit: number;
   }>> => {
+    void args;
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+
     const status: Record<string, { action: string; remaining: number; resetIn: number; limit: number }> = {};
     const now = Date.now();
 
     for (const [action, config] of Object.entries(RATE_LIMITS)) {
-      const key = `${args.userId}:${action}`;
+      const key = `${identity.email}:${action}`;
       const entry = await ctx.db
         .query("rateLimits")
         .withIndex("by_key", (q) => q.eq("key", key))
@@ -374,15 +376,17 @@ export const cleanupExpiredRateLimits = internalMutation({
  * Get violation history for a user (for admin/monitoring)
  */
 export const getViolationHistory = query({
-  args: {
-    userId: v.string(),
-  },
+  args: {},
   handler: async (ctx, args): Promise<Array<{
     action: string;
     violationCount: number;
     lastViolation: number;
     expiresAt: number;
   }>> => {
+    void args;
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+
     const now = Date.now();
     const violations: Array<{
       action: string;
@@ -397,8 +401,8 @@ export const getViolationHistory = query({
       .filter((q) =>
         q.and(
           q.gt(q.field("expires_at"), now),
-          q.gte(q.field("key"), `${args.userId}:`),
-          q.lt(q.field("key"), `${args.userId}:\uffff`)
+          q.gte(q.field("key"), `${identity.email}:`),
+          q.lt(q.field("key"), `${identity.email}:\uffff`)
         )
       )
       .take(50);

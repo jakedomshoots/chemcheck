@@ -248,5 +248,3 @@ function PhotoSection({ title, photos, onPhotoClick, badgeColor }: PhotoSectionP
     </div>
   );
 }
-
-export default ServicePhotoGallery;

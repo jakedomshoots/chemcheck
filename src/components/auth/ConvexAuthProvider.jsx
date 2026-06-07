@@ -40,5 +40,3 @@ export function ConvexAuthProvider({ children }) {
 
   return <ConvexAuthProviderClerk>{children}</ConvexAuthProviderClerk>;
 }
-
-export default ConvexAuthProvider;

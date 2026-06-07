@@ -269,5 +269,3 @@ function AuthErrorScreen({ error, onRetry }) {
     </div>
   );
 }
-
-export default RobustAuthGuard;
