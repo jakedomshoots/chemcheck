@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQuery } from 'convex/react';
+import { Link } from 'react-router-dom';
+import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
+import { APP_ROUTES } from '@/lib/routeConfig';
 import {
   Building2,
   User,
@@ -25,10 +27,22 @@ import {
   Eye,
   BarChart3,
   LogOut,
-  AlertCircle
+  AlertCircle,
+  HelpCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,12 +77,13 @@ import {
 
 function AccountSection({ userData, setUserData }) {
   const auth = useAuthContext();
-  const deleteAccountData = useMutation(api.account.deleteMyAccount);
+  const deleteAccountData = useAction(api.account.deleteMyAccount);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deleteProgress, setDeleteProgress] = useState('');
 
   const handleLogout = async () => {
     if (!auth?.logout) {
@@ -91,14 +106,17 @@ function AccountSection({ userData, setUserData }) {
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     setDeleteError('');
+    setDeleteProgress('Deleting account data from the server...');
 
     try {
       if (auth?.isSignedIn && auth?.clerkUser) {
         await deleteAccountData({});
       }
 
+      setDeleteProgress('Cleaning up local data...');
       await deleteAllUserData();
 
+      setDeleteProgress('Removing user account...');
       if (auth?.clerkUser && typeof auth.clerkUser.delete === 'function') {
         await auth.clerkUser.delete();
       }
@@ -109,11 +127,13 @@ function AccountSection({ userData, setUserData }) {
 
       setShowDeleteConfirm(false);
       setIsDeleting(false);
+      setDeleteProgress('');
     } catch (error) {
       console.error('Account deletion failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setDeleteError(`Failed to delete account: ${errorMessage}`);
       setIsDeleting(false);
+      setDeleteProgress('');
     }
   };
 
@@ -126,27 +146,29 @@ function AccountSection({ userData, setUserData }) {
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <Label htmlFor="account-name" className="block text-sm font-medium text-slate-700 mb-2">
             Full Name
-          </label>
-          <input
+          </Label>
+          <Input
+            id="account-name"
             type="text"
             value={userData.name}
             onChange={(e) => setUserData(prev => ({ ...prev, name: e.target.value }))}
             placeholder="Enter your full name"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+            className="rounded-lg"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <Label htmlFor="account-email" className="block text-sm font-medium text-slate-700 mb-2">
             Email Address
-          </label>
-          <input
+          </Label>
+          <Input
+            id="account-email"
             type="email"
             value={userData.email}
             disabled
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500"
+            className="rounded-lg"
           />
           <p className="text-xs text-slate-500 mt-1">Email cannot be changed</p>
         </div>
@@ -249,6 +271,9 @@ function AccountSection({ userData, setUserData }) {
                 )}
               </Button>
             </div>
+            {deleteProgress && (
+              <p className="text-sm text-red-700 text-right">{deleteProgress}</p>
+            )}
           </div>
         )}
       </div>
@@ -632,7 +657,8 @@ export default function Settings() {
     { id: 'schedule', label: 'Schedule', icon: Calendar },
     { id: 'services', label: 'Service Types', icon: Beaker },
     { id: 'backup', label: 'Data Backup', icon: HardDrive },
-    { id: 'privacy', label: 'Privacy & Data', icon: Eye }
+    { id: 'privacy', label: 'Privacy & Data', icon: Eye },
+    { id: 'support', label: 'Help & Support', icon: HelpCircle }
   ];
 
   if (showBackupManager) {
@@ -702,58 +728,62 @@ export default function Settings() {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="business-name" className="block text-sm font-medium text-slate-700 mb-2">
                       <Building2 className="w-4 h-4 inline mr-2" />
                       Business Name
-                    </label>
-                    <input
+                    </Label>
+                    <Input
+                      id="business-name"
                       type="text"
                       value={businessData.name}
                       onChange={(e) => setBusinessData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="Enter your business name"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                      className="rounded-lg"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="business-address" className="block text-sm font-medium text-slate-700 mb-2">
                       <MapPin className="w-4 h-4 inline mr-2" />
                       Address
-                    </label>
-                    <textarea
+                    </Label>
+                    <Textarea
+                      id="business-address"
                       value={businessData.address}
                       onChange={(e) => setBusinessData(prev => ({ ...prev, address: e.target.value }))}
                       rows={2}
                       placeholder="Enter your business address"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                      className="rounded-lg"
                     />
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                      <Label htmlFor="business-phone" className="block text-sm font-medium text-slate-700 mb-2">
                         <Phone className="w-4 h-4 inline mr-2" />
                         Phone
-                      </label>
-                      <input
+                      </Label>
+                      <Input
+                        id="business-phone"
                         type="tel"
                         value={businessData.phone}
                         onChange={(e) => setBusinessData(prev => ({ ...prev, phone: e.target.value }))}
                         placeholder="(555) 123-4567"
-                        className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-base text-slate-900 placeholder:text-gray-400"
+                        className="rounded-lg"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                      <Label htmlFor="business-email" className="block text-sm font-medium text-slate-700 mb-2">
                         <Mail className="w-4 h-4 inline mr-2" />
                         Email
-                      </label>
-                      <input
+                      </Label>
+                      <Input
+                        id="business-email"
                         type="email"
                         value={businessData.email}
                         onChange={(e) => setBusinessData(prev => ({ ...prev, email: e.target.value }))}
                         placeholder="business@example.com"
-                        className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-base text-slate-900 placeholder:text-gray-400"
+                        className="rounded-lg"
                       />
                     </div>
                   </div>
@@ -777,97 +807,106 @@ export default function Settings() {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-language" className="block text-sm font-medium text-slate-700 mb-2">
                       <Globe className="w-4 h-4 inline mr-2" />
                       Language
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       value={preferences.language}
-                      onChange={(e) => setPreferences(prev => ({ ...prev, language: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 disabled:text-slate-500 disabled:bg-slate-50"
+                      onValueChange={(value) => setPreferences(prev => ({ ...prev, language: value }))}
                       disabled
                     >
-                      <option value="en">English</option>
-                    </select>
+                      <SelectTrigger id="pref-language" className="rounded-lg">
+                        <SelectValue placeholder="English" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">English</SelectItem>
+                      </SelectContent>
+                    </Select>
                     {showPlaceholderLabels && (
                       <p className="text-xs text-slate-500 mt-1">Additional languages coming soon</p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-default-view" className="block text-sm font-medium text-slate-700 mb-2">
                       Default View
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       value={preferences.defaultView}
-                      onChange={(e) => setPreferences(prev => ({ ...prev, defaultView: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
+                      onValueChange={(value) => setPreferences(prev => ({ ...prev, defaultView: value }))}
                     >
-                      <option value="route">Route View</option>
-                      <option value="customers">Customer List</option>
-                    </select>
+                      <SelectTrigger id="pref-default-view" className="rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="route">Route View</SelectItem>
+                        <SelectItem value="customers">Customer List</SelectItem>
+                      </SelectContent>
+                    </Select>
                     {showPlaceholderLabels && (
                       <p className="text-xs text-slate-500 mt-1">Calendar view coming soon</p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-workorders-section" className="block text-sm font-medium text-slate-700 mb-2">
                       Default Work Orders Section
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       value={businessSettings.defaultWorkordersSection}
-                      onChange={(e) => {
-                        const nextValue = e.target.value;
+                      onValueChange={(nextValue) => {
                         setBusinessSettings((prev) => ({ ...prev, defaultWorkordersSection: nextValue }));
                         setPreferences((prev) => ({ ...prev, default_workorders_section: nextValue }));
                       }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
                     >
-                      <option value="dispatch">Dispatch</option>
-                      <option value="quotes">Quotes</option>
-                      <option value="invoices">Invoices</option>
-                      <option value="comms">Communications</option>
-                    </select>
+                      <SelectTrigger id="pref-workorders-section" className="rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dispatch">Dispatch</SelectItem>
+                        <SelectItem value="quotes">Quotes</SelectItem>
+                        <SelectItem value="invoices">Invoices</SelectItem>
+                        <SelectItem value="comms">Communications</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-home-action" className="block text-sm font-medium text-slate-700 mb-2">
                       Home Primary Action
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       value={businessSettings.homePrimaryAction}
-                      onChange={(e) => {
-                        const nextValue = e.target.value;
+                      onValueChange={(nextValue) => {
                         setBusinessSettings((prev) => ({ ...prev, homePrimaryAction: nextValue }));
                         setPreferences((prev) => ({ ...prev, home_primary_action: nextValue }));
                       }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
                     >
-                      <option value="start_next_pending">Start Next Pending</option>
-                      <option value="open_route_plan">Open Route Plan</option>
-                      <option value="add_client">Add Client</option>
-                    </select>
+                      <SelectTrigger id="pref-home-action" className="rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="start_next_pending">Start Next Pending</SelectItem>
+                        <SelectItem value="open_route_plan">Open Route Plan</SelectItem>
+                        <SelectItem value="add_client">Add Client</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
                     <div>
-                      <p className="font-medium text-slate-900">Show Daily Ops Brief</p>
+                      <Label htmlFor="ops-brief-switch" className="font-medium text-slate-900">Show Daily Ops Brief</Label>
                       <p className="text-sm text-slate-600">Display estimated route summary on Home.</p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={businessSettings.showOpsBrief}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setBusinessSettings((prev) => ({ ...prev, showOpsBrief: checked }));
-                          setPreferences((prev) => ({ ...prev, show_ops_brief: checked }));
-                        }}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                    </label>
+                    <Switch
+                      id="ops-brief-switch"
+                      checked={businessSettings.showOpsBrief}
+                      onCheckedChange={(checked) => {
+                        setBusinessSettings((prev) => ({ ...prev, showOpsBrief: checked }));
+                        setPreferences((prev) => ({ ...prev, show_ops_brief: checked }));
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -888,21 +927,17 @@ export default function Settings() {
                   ].map((item) => (
                     <div key={item.key} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
                       <div>
-                        <p className="font-medium text-slate-900">{item.label}</p>
+                        <Label htmlFor={`notification-${item.key}`} className="font-medium text-slate-900">{item.label}</Label>
                         <p className="text-sm text-slate-600">{item.desc}</p>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={preferences.notifications[item.key]}
-                          onChange={(e) => setPreferences(prev => ({
-                            ...prev,
-                            notifications: { ...prev.notifications, [item.key]: e.target.checked }
-                          }))}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                      </label>
+                      <Switch
+                        id={`notification-${item.key}`}
+                        checked={preferences.notifications[item.key]}
+                        onCheckedChange={(checked) => setPreferences(prev => ({
+                          ...prev,
+                          notifications: { ...prev.notifications, [item.key]: checked }
+                        }))}
+                      />
                     </div>
                   ))}
                 </div>
@@ -918,71 +953,66 @@ export default function Settings() {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-slate-700 mb-3">
                       <Calendar className="w-4 h-4 inline mr-2" />
                       Working Days
-                    </label>
+                    </Label>
                     <div className="flex flex-wrap gap-2">
-                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
-                        <label
-                          key={day}
-                          className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${businessSettings.workingDays.includes(day)
-                            ? 'bg-cyan-600 text-white'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={businessSettings.workingDays.includes(day)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setBusinessSettings(prev => ({
-                                  ...prev,
-                                  workingDays: [...prev.workingDays, day]
-                                }));
-                              } else {
-                                setBusinessSettings(prev => ({
-                                  ...prev,
-                                  workingDays: prev.workingDays.filter(d => d !== day)
-                                }));
-                              }
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
+                        const included = businessSettings.workingDays.includes(day);
+                        return (
+                          <Button
+                            key={day}
+                            type="button"
+                            variant={included ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => {
+                              setBusinessSettings(prev => ({
+                                ...prev,
+                                workingDays: included
+                                  ? prev.workingDays.filter(d => d !== day)
+                                  : [...prev.workingDays, day]
+                              }));
                             }}
-                            className="sr-only"
-                          />
-                          {day.slice(0, 3)}
-                        </label>
-                      ))}
+                            className="px-4 py-2 rounded-lg"
+                          >
+                            {day.slice(0, 3)}
+                          </Button>
+                        );
+                      })}
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-slate-700 mb-3">
                       <Clock className="w-4 h-4 inline mr-2" />
                       Working Hours
-                    </label>
+                    </Label>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs text-slate-500 mb-1">Start Time</label>
-                        <input
+                        <Label htmlFor="start-time" className="block text-xs text-slate-500 mb-1">Start Time</Label>
+                        <Input
+                          id="start-time"
                           type="time"
                           value={businessSettings.workingHours.start}
                           onChange={(e) => setBusinessSettings(prev => ({
                             ...prev,
                             workingHours: { ...prev.workingHours, start: e.target.value }
                           }))}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
+                          className="rounded-lg"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-slate-500 mb-1">End Time</label>
-                        <input
+                        <Label htmlFor="end-time" className="block text-xs text-slate-500 mb-1">End Time</Label>
+                        <Input
+                          id="end-time"
                           type="time"
                           value={businessSettings.workingHours.end}
                           onChange={(e) => setBusinessSettings(prev => ({
                             ...prev,
                             workingHours: { ...prev.workingHours, end: e.target.value }
                           }))}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900"
+                          className="rounded-lg"
                         />
                       </div>
                     </div>
@@ -1000,14 +1030,14 @@ export default function Settings() {
 
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-slate-700 mb-3">
                       <Beaker className="w-4 h-4 inline mr-2" />
                       Service Types
-                    </label>
+                    </Label>
                     <div className="space-y-2">
                       {businessSettings.serviceTypes.map((type, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <input
+                          <Input
                             type="text"
                             value={type}
                             onChange={(e) => {
@@ -1015,7 +1045,7 @@ export default function Settings() {
                               newTypes[index] = e.target.value;
                               setBusinessSettings(prev => ({ ...prev, serviceTypes: newTypes }));
                             }}
-                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                            className="flex-1 rounded-lg"
                           />
                           <Button
                             onClick={() => {
@@ -1047,13 +1077,13 @@ export default function Settings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-slate-700 mb-3">
                       Chemical Types
-                    </label>
+                    </Label>
                     <div className="space-y-2">
                       {businessSettings.chemicalTypes.map((type, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <input
+                          <Input
                             type="text"
                             value={type}
                             onChange={(e) => {
@@ -1061,7 +1091,7 @@ export default function Settings() {
                               newTypes[index] = e.target.value;
                               setBusinessSettings(prev => ({ ...prev, chemicalTypes: newTypes }));
                             }}
-                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-slate-900 placeholder:text-gray-400"
+                            className="flex-1 rounded-lg"
                           />
                           <Button
                             onClick={() => {
@@ -1095,77 +1125,65 @@ export default function Settings() {
                   <div className="grid grid-cols-1 gap-4">
                     <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                        <Label htmlFor="route-optimization" className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
                           <Route className="w-4 h-4" />
                           Route Optimization
-                        </p>
+                        </Label>
                         <p className="text-xs sm:text-sm text-slate-600">Automatically optimize daily routes</p>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={businessSettings.routeOptimization}
-                          onChange={(e) => setBusinessSettings(prev => ({ ...prev, routeOptimization: e.target.checked }))}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                      </label>
+                      <Switch
+                        id="route-optimization"
+                        checked={businessSettings.routeOptimization}
+                        onCheckedChange={(checked) => setBusinessSettings(prev => ({ ...prev, routeOptimization: checked }))}
+                      />
                     </div>
 
                     <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                        <Label htmlFor="require-photos" className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
                           <Camera className="w-4 h-4" />
                           Require Photos
-                        </p>
+                        </Label>
                         <p className="text-xs sm:text-sm text-slate-600">Require before/after photos for service completion</p>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={businessSettings.requirePhotos}
-                          onChange={(e) => {
-                            setBusinessSettings(prev => ({ ...prev, requirePhotos: e.target.checked }));
-                            try {
-                              const stored = localStorage.getItem('chemcheck_business_proof_settings');
-                              const proofSettings = stored ? JSON.parse(stored) : { proof_of_service: {} };
-                              proofSettings.proof_of_service = {
-                                ...proofSettings.proof_of_service,
-                                require_before_photos: e.target.checked,
-                                require_after_photos: e.target.checked,
-                                min_photos_before: e.target.checked ? 1 : 0,
-                                min_photos_after: e.target.checked ? 1 : 0,
-                              };
-                              localStorage.setItem('chemcheck_business_proof_settings', JSON.stringify(proofSettings));
-                            } catch (err) {
-                              console.error('Failed to update proof settings:', err);
-                            }
-                          }}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                      </label>
+                      <Switch
+                        id="require-photos"
+                        checked={businessSettings.requirePhotos}
+                        onCheckedChange={(checked) => {
+                          setBusinessSettings(prev => ({ ...prev, requirePhotos: checked }));
+                          try {
+                            const stored = localStorage.getItem('chemcheck_business_proof_settings');
+                            const proofSettings = stored ? JSON.parse(stored) : { proof_of_service: {} };
+                            proofSettings.proof_of_service = {
+                              ...proofSettings.proof_of_service,
+                              require_before_photos: checked,
+                              require_after_photos: checked,
+                              min_photos_before: checked ? 1 : 0,
+                              min_photos_after: checked ? 1 : 0,
+                            };
+                            localStorage.setItem('chemcheck_business_proof_settings', JSON.stringify(proofSettings));
+                          } catch (err) {
+                            console.error('Failed to update proof settings:', err);
+                          }
+                        }}
+                      />
                     </div>
 
                     {showPlaceholderLabels && (
                       <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg opacity-60">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                          <Label htmlFor="require-signatures" className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
                             <FileSignature className="w-4 h-4" />
                             Require Signatures
                             <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">Coming Soon</span>
-                          </p>
+                          </Label>
                           <p className="text-xs sm:text-sm text-slate-600">Require customer signatures for services</p>
                         </div>
-                        <label className="relative inline-flex items-center cursor-not-allowed flex-shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={businessSettings.requireSignatures}
-                            disabled
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                        </label>
+                        <Switch
+                          id="require-signatures"
+                          checked={businessSettings.requireSignatures}
+                          disabled
+                        />
                       </div>
                     )}
                   </div>
@@ -1209,16 +1227,12 @@ export default function Settings() {
                       }
                     </p>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-700">Enable Auto-Backup</span>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={preferences.autoBackup}
-                          onChange={(e) => setPreferences(prev => ({ ...prev, autoBackup: e.target.checked }))}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                      </label>
+                      <Label htmlFor="auto-backup" className="text-sm text-slate-700">Enable Auto-Backup</Label>
+                      <Switch
+                        id="auto-backup"
+                        checked={preferences.autoBackup}
+                        onCheckedChange={(checked) => setPreferences(prev => ({ ...prev, autoBackup: checked }))}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1242,7 +1256,8 @@ export default function Settings() {
                         <p className="font-medium text-slate-900">Export Your Data</p>
                         <p className="text-sm text-slate-600 mb-3">
                           Download all your data in a machine-readable format (JSON).
-                          This includes customers, service logs, chemical usage, and notes.
+                          This includes customers, service logs, chemical usage, notes, salt cell logs,
+                          businesses, team memberships, subscriptions, and communications.
                         </p>
                         <Button
                           onClick={async () => {
@@ -1269,28 +1284,24 @@ export default function Settings() {
                       <div className="flex items-center gap-3">
                         <BarChart3 className="w-5 h-5 text-slate-600" />
                         <div>
-                          <p className="font-medium text-slate-900">Usage Analytics</p>
+                          <Label htmlFor="usage-analytics" className="font-medium text-slate-900">Usage Analytics</Label>
                           <p className="text-sm text-slate-600">
                             Help improve ChemCheck by sharing anonymous usage data
                           </p>
                         </div>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!hasOptedOut()}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              optInAnalytics();
-                            } else {
-                              optOutAnalytics();
-                            }
-                            setPreferences(prev => ({ ...prev }));
-                          }}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                      </label>
+                      <Switch
+                        id="usage-analytics"
+                        checked={!hasOptedOut()}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            optInAnalytics();
+                          } else {
+                            optOutAnalytics();
+                          }
+                          setPreferences(prev => ({ ...prev }));
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -1383,6 +1394,46 @@ export default function Settings() {
                       </a>.
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeSection === 'support' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Help & Support</h2>
+                  <p className="text-sm text-slate-600">Get help or contact the ChemCheck team</p>
+                </div>
+
+                <Card className="p-4 hover:shadow-md transition-shadow">
+                  <Link
+                    to={APP_ROUTES.Support}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-cyan-50 rounded-lg">
+                        <HelpCircle className="w-5 h-5 text-cyan-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-900">Visit Support Center</p>
+                        <p className="text-sm text-slate-600">FAQs, contact form, and legal links</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-400" />
+                  </Link>
+                </Card>
+
+                <div className="p-4 bg-slate-50 rounded-lg">
+                  <p className="text-sm text-slate-600">
+                    For direct assistance, email{' '}
+                    <a href="mailto:support@chemcheck.xyz" className="text-cyan-600 hover:underline">
+                      support@chemcheck.xyz
+                    </a>
+                    {' '}or visit our{' '}
+                    <Link to={APP_ROUTES.Support} className="text-cyan-600 hover:underline">
+                      support page
+                    </Link>.
+                  </p>
                 </div>
               </div>
             )}
@@ -1480,10 +1531,10 @@ export default function Settings() {
               Type <span className="font-semibold">DELETE</span> to confirm.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <input
+          <Input
             value={deleteAllDataConfirmText}
             onChange={(e) => setDeleteAllDataConfirmText(e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            className="rounded-lg"
             placeholder="Type DELETE"
           />
           <AlertDialogFooter>

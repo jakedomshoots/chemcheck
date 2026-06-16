@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import { 
   CreditCard, 
   Calendar, 
@@ -12,8 +14,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { SUBSCRIPTION_PLANS, formatPrice, isStripeConfigured } from '@/lib/stripe';
 import { useSubscription } from '@/hooks/useSubscription';
+import { getPlatform, isNativePlatform } from '@/lib/native/platform';
 import { cn } from '@/lib/utils';
 
 export function BillingDashboard() {
@@ -28,9 +32,13 @@ export function BillingDashboard() {
     createPortalSession,
     cancelSubscription,
   } = useSubscription();
+
+  const customerCountData = useQuery(api.customers.count);
+  const teamMemberCountData = useQuery(api.teamMembers.count);
   
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const isNativeIos = isNativePlatform() && getPlatform() === 'ios';
 
   const handleManageBilling = async () => {
     try {
@@ -163,7 +171,11 @@ export function BillingDashboard() {
           <h3 className="font-semibold text-slate-900 mb-4">Billing Actions</h3>
           
           <div className="flex flex-wrap gap-3">
-            {isStripeConfigured() ? (
+            {isNativeIos ? (
+              <p className="text-sm text-slate-600">
+                Billing changes are handled outside the iOS app.
+              </p>
+            ) : isStripeConfigured() ? (
               isBillingBackendConfigured ? (
                 <>
                   <Button variant="outline" onClick={handleManageBilling}>
@@ -187,7 +199,7 @@ export function BillingDashboard() {
               </p>
             )}
 
-            {!subscription.cancelAtPeriodEnd && (!isStripeConfigured() || isBillingBackendConfigured) && (
+            {!isNativeIos && !subscription.cancelAtPeriodEnd && (!isStripeConfigured() || isBillingBackendConfigured) && (
               <Button 
                 variant="ghost" 
                 className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -236,18 +248,35 @@ export function BillingDashboard() {
       {subscription && currentPlan && (
         <Card className="p-6">
           <h3 className="font-semibold text-slate-900 mb-4">Usage</h3>
-          
+
           <div className="grid md:grid-cols-2 gap-6">
-            <UsageBar
-              label="Team Members"
-              current={1}
-              limit={currentPlan.limits.users}
-            />
-            <UsageBar
-              label="Customers"
-              current={25}
-              limit={currentPlan.limits.customers}
-            />
+            {customerCountData === undefined || teamMemberCountData === undefined ? (
+              <>
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-2 w-full" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-2 w-full" />
+                </div>
+              </>
+            ) : (
+              <>
+                <UsageBar
+                  label="Team Members"
+                  current={teamMemberCountData?.count ?? 0}
+                  limit={currentPlan.limits.users}
+                  isCapped={teamMemberCountData?.isCapped}
+                />
+                <UsageBar
+                  label="Customers"
+                  current={customerCountData?.count ?? 0}
+                  limit={currentPlan.limits.customers}
+                  isCapped={customerCountData?.isCapped}
+                />
+              </>
+            )}
           </div>
         </Card>
       )}
@@ -261,8 +290,9 @@ export function BillingDashboard() {
   );
 }
 
-function UsageBar({ label, current, limit }) {
+function UsageBar({ label, current, limit, isCapped }) {
   const isUnlimited = limit === -1;
+  const displayCurrent = isCapped ? `${current}+` : current;
   const percentage = isUnlimited ? 0 : Math.min(100, (current / limit) * 100);
   const isNearLimit = !isUnlimited && percentage >= 80;
 
@@ -271,7 +301,7 @@ function UsageBar({ label, current, limit }) {
       <div className="flex justify-between text-sm mb-2">
         <span className="text-slate-600">{label}</span>
         <span className={cn("font-medium", isNearLimit ? "text-amber-600" : "text-slate-900")}>
-          {current} / {isUnlimited ? '∞' : limit}
+          {displayCurrent} / {isUnlimited ? '∞' : limit}
         </span>
       </div>
       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -283,6 +313,11 @@ function UsageBar({ label, current, limit }) {
           style={{ width: isUnlimited ? '10%' : `${percentage}%` }}
         />
       </div>
+      {isCapped && (
+        <p className="text-xs text-slate-500 mt-1">
+          Display count is capped
+        </p>
+      )}
       {isNearLimit && (
         <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
           <TrendingUp className="w-3 h-3" />

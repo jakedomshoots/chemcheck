@@ -353,7 +353,7 @@ export function PhotoLightbox({
     return (
         <div className="fixed inset-0 z-50 bg-black">
             {/* Header */}
-            <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/70 to-transparent">
+            <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] bg-gradient-to-b from-black/70 to-transparent">
                 <div className="flex items-center gap-2 text-white">
                     <span className="text-sm font-medium">
                         {currentIndex + 1} / {photos.length}
@@ -454,7 +454,7 @@ export function PhotoLightbox({
             )}
 
             {/* Bottom Toolbar */}
-            <div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-center gap-4 p-4 bg-gradient-to-t from-black/70 to-transparent">
+            <div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-center gap-4 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-gradient-to-t from-black/70 to-transparent">
                 {/* Zoom Controls */}
                 <div className="flex items-center gap-2 bg-black/50 rounded-full px-3 py-1">
                     <button

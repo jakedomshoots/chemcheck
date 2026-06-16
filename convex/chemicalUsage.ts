@@ -2,62 +2,52 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 
-// Helper: Get all customer IDs owned by the current user (for tenant isolation)
-async function getUserCustomerIds(ctx: any, userEmail: string): Promise<Set<string>> {
-    const customers = await ctx.db
-        .query("customers")
-        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
-        .collect();
-    return new Set(customers.map((c: any) => c._id.toString()));
+const DEFAULT_PAGE_LIMIT = 100;
+const MAX_PAGE_LIMIT = 500;
+
+function boundedLimit(limit: number | undefined): number {
+    if (limit === undefined) return DEFAULT_PAGE_LIMIT;
+    if (limit > MAX_PAGE_LIMIT) return MAX_PAGE_LIMIT;
+    if (limit < 1) return 1;
+    return Math.floor(limit);
 }
 
-// List all chemical usage records for the current user's customers only
+// List all chemical usage records created by the current user, paginated.
 export const list = query({
     args: {
         order: v.optional(v.string()),
         limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Get user's customer IDs for tenant isolation
-        const userCustomerIds = await getUserCustomerIds(ctx, identity.email!);
+        const sortOrder = args.order === "-created_date" ? "desc" : "asc";
+        const usageQuery = ctx.db
+            .query("chemicalUsage")
+            .withIndex("by_created_by_and_created_date", (q) =>
+                q.eq("created_by", identity.email!)
+            )
+            .order(sortOrder);
 
-        // Query records for each customer using index
-        const logPromises = Array.from(userCustomerIds).map(customerId =>
-            ctx.db.query("chemicalUsage")
-                .withIndex("by_customer", (q) => q.eq("customer_id", customerId as any))
-                .collect()
-        );
-        const logsPerCustomer = await Promise.all(logPromises);
-        const userRecords = logsPerCustomer.flat();
-
-        // Sort after collecting
-        userRecords.sort((a, b) => {
-            const dateA = a.created_date || "";
-            const dateB = b.created_date || "";
-            if (args.order === "-created_date") {
-                return dateB.localeCompare(dateA);
-            }
-            return dateA.localeCompare(dateB);
+        return await usageQuery.paginate({
+            cursor: args.cursor || null,
+            numItems: boundedLimit(args.limit),
         });
-
-        return userRecords.slice(0, args.limit || 100);
     },
 });
 
-// Filter chemical usage by customer
+// Filter chemical usage by customer, paginated.
 export const filter = query({
     args: {
         customer_id: v.optional(v.id("customers")),
+        limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
-
-        // Get user's customer IDs for tenant isolation
-        const userCustomerIds = await getUserCustomerIds(ctx, identity.email!);
 
         if (args.customer_id) {
             // Verify ownership first
@@ -65,27 +55,30 @@ export const filter = query({
             if (!customer || customer.created_by !== identity.email) {
                 throw new Error("Customer not found or access denied");
             }
-            // Query with index
-            return await ctx.db
-                .query("chemicalUsage")
-                .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id!))
-                .collect();
         }
 
-        // For no args, query per customer for tenant isolation (reuse userCustomerIds from above)
-        const logPromises = Array.from(userCustomerIds).map(customerId =>
-            ctx.db.query("chemicalUsage")
-                .withIndex("by_customer", (q) => q.eq("customer_id", customerId as any))
-                .collect()
-        );
-        const logsPerCustomer = await Promise.all(logPromises);
-        return logsPerCustomer.flat();
+        let usageQuery = ctx.db
+            .query("chemicalUsage")
+            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!));
+
+        if (args.customer_id) {
+            usageQuery = usageQuery.filter((q) => q.eq(q.field("customer_id"), args.customer_id!));
+        }
+
+        return await usageQuery.paginate({
+            cursor: args.cursor || null,
+            numItems: boundedLimit(args.limit),
+        });
     },
 });
 
-// Get chemical usage for a specific customer (with ownership verification)
+// Get chemical usage for a specific customer (with ownership verification), paginated.
 export const getByCustomer = query({
-    args: { customer_id: v.id("customers") },
+    args: {
+        customer_id: v.id("customers"),
+        limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
@@ -96,13 +89,14 @@ export const getByCustomer = query({
             throw new Error("Customer not found or access denied");
         }
 
-        const records = await ctx.db
+        return await ctx.db
             .query("chemicalUsage")
             .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id))
             .order("desc")
-            .collect();
-
-        return records;
+            .paginate({
+                cursor: args.cursor || null,
+                numItems: boundedLimit(args.limit),
+            });
     },
 });
 
@@ -133,6 +127,7 @@ export const create = mutation({
         const recordId = await ctx.db.insert("chemicalUsage", {
             ...args,
             created_date: today,
+            created_by: identity.email!,
         });
 
         return recordId;

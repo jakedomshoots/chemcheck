@@ -89,10 +89,31 @@ export const serviceLogSchema = z.object({
   alkalinity: z.enum(['good', 'low', 'high']),
   stabilizer: z.enum(['good', 'low', 'high']),
 
+  ph_value: z.number()
+    .min(0, 'pH value must be positive')
+    .max(14, 'pH value must be at most 14')
+    .optional(),
+  chlorine_value: z.number()
+    .min(0, 'Chlorine value must be positive')
+    .max(100, 'Chlorine value seems unrealistic (max 100 ppm)')
+    .optional(),
+  alkalinity_value: z.number()
+    .min(0, 'Alkalinity value must be positive')
+    .max(1000, 'Alkalinity value seems unrealistic (max 1000 ppm)')
+    .optional(),
+  stabilizer_value: z.number()
+    .min(0, 'Stabilizer value must be positive')
+    .max(1000, 'Stabilizer value seems unrealistic (max 1000 ppm)')
+    .optional(),
+
   salt: z.number()
     .min(0, 'Salt level must be positive')
     .max(10000, 'Salt level seems unrealistic (max 10,000 ppm)')
     .optional(),
+
+  start_time: z.string().optional(),
+  end_time: z.string().optional(),
+  duration_ms: z.number().min(0).optional(),
 
   service_type: z.string().optional(),
 });

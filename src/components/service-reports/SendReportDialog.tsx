@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, AlertCircle, Loader2, Mail, AlertTriangle, Image as ImageIcon, MessageSquare } from 'lucide-react';
+import { Send, AlertCircle, Loader2, Mail, AlertTriangle, Image as ImageIcon, MessageSquare, WifiOff } from 'lucide-react';
 import { EmailPreview } from './EmailPreview';
 import { getEmailDeliveryValidationError } from '@/lib/emailValidation';
 
@@ -117,7 +117,20 @@ export function SendReportDialog({
   const [selectedMethod, setSelectedMethod] = useState<DeliveryMethod>('email');
   const [internalCustomNote, setInternalCustomNote] = useState('');
   const [noteValidationError, setNoteValidationError] = useState<string | null>(null);
-  
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+
+  // Track online/offline state so the UI can explain queued sends.
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Use external custom note if provided, otherwise use internal state
   const customNote = externalCustomNote !== undefined ? externalCustomNote : internalCustomNote;
   
@@ -482,6 +495,16 @@ export function SendReportDialog({
             </div>
           )}
 
+          {/* Offline Queue Notice - Phase 2.5 */}
+          {!isOnline && (
+            <Alert className="py-2 bg-amber-50 border-amber-200 text-amber-700">
+              <WifiOff className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-xs" data-testid="offline-queue-notice">
+                You appear offline. Tapping Send will queue this report and it will send automatically when connectivity returns.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Error Display - Requirements: 2.6, 2.7 */}
           {error && (
             <Alert variant="destructive" className="py-2">
@@ -521,12 +544,14 @@ export function SendReportDialog({
             {loading ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                Sending...
+                {isOnline ? 'Sending...' : 'Queuing...'}
               </>
             ) : (
               <>
                 <Send className="w-3.5 h-3.5 mr-1.5" />
-                {isResend ? 'Resend Report' : 'Send Report'}
+                {!isOnline
+                  ? (isResend ? 'Queue Resend' : 'Queue Report')
+                  : (isResend ? 'Resend Report' : 'Send Report')}
               </>
             )}
           </Button>

@@ -343,8 +343,12 @@ export default function Home() {
 
   const handleMapCustomer = (customer) => {
     if (!customer?.address) return;
-    const query = encodeURIComponent(customer.address);
-    window.open(`https://maps.google.com/?q=${query}`, "_blank", "noopener,noreferrer");
+    const encoded = encodeURIComponent(customer.address);
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const url = isIOS
+      ? `https://maps.apple.com/?daddr=${encoded}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const stats = useMemo(() => {
@@ -541,20 +545,20 @@ export default function Home() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-col gap-2">
         <Button
           onClick={handlePrimaryHomeAction}
           disabled={primaryActionConfig.disabled}
-          className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg"
+          className="w-full h-14 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg text-base font-semibold rounded-xl"
         >
-          <primaryActionConfig.icon className="w-4 h-4 mr-2" />
+          <primaryActionConfig.icon className="w-5 h-5 mr-2" />
           {primaryActionConfig.label}
         </Button>
         <Button
           type="button"
           variant="outline"
           onClick={handleOpenOffDayPicker}
-          className="border-2 border-slate-200 hover:border-cyan-500 text-slate-700"
+          className="w-full h-11 border-2 border-slate-200 hover:border-cyan-500 text-slate-700 rounded-xl"
         >
           <Calendar className="w-4 h-4 mr-2" />
           Service Another Day

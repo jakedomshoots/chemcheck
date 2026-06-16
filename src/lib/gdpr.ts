@@ -9,6 +9,8 @@
 
 import { db } from '@/db/chemcheck-db';
 import { downloadFile } from '@/utils/exportCsv';
+import { api } from '../../convex/_generated/api';
+import { getSharedConvexClient } from '@/lib/convexClient';
 
 export interface UserDataExport {
   exportDate: string;
@@ -57,14 +59,37 @@ export async function exportUserData(): Promise<UserDataExport> {
   };
 }
 
+function downloadFromUrl(url: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 /**
- * Download user data as JSON file
+ * Download user data as JSON file.
+ *
+ * Calls the server-side GDPR export action so the user receives their full
+ * cloud data (customers, service logs, chemical usage, notes, salt cell logs,
+ * businesses, team memberships, subscriptions, and communications). If the
+ * export is small the JSON is downloaded directly; otherwise a temporary
+ * storage URL is used.
  */
 export async function downloadUserData(): Promise<void> {
-  const data = await exportUserData();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const client = getSharedConvexClient();
+  const result = await client.action(api.account.exportUserData, {});
   const date = new Date().toISOString().split('T')[0];
-  downloadFile(blob, `chemcheck-gdpr-export-${date}.json`);
+
+  if (result.type === 'url') {
+    downloadFromUrl(result.url, result.filename || `chemcheck-gdpr-export-${date}.json`);
+  } else {
+    const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+    downloadFile(blob, `chemcheck-gdpr-export-${date}.json`);
+  }
 }
 
 /**

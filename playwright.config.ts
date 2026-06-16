@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const host = process.env.PLAYWRIGHT_HOST || '127.0.0.1';
+const port = Number(process.env.PLAYWRIGHT_PORT || 5174);
+const baseURL = `http://${host}:${port}`;
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -8,7 +12,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -33,11 +37,19 @@ export default defineConfig({
       name: 'Mobile Safari',
       use: { ...devices['iPhone 12'] },
     },
+    {
+      name: 'iPad',
+      use: { ...devices['iPad (gen 7)'] },
+    },
+    {
+      name: 'offline',
+      use: { ...devices['Desktop Chrome'], offline: true },
+    },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    command: `PLAYWRIGHT_E2E=true npm run dev -- --host ${host} --port ${port} --strictPort`,
+    url: baseURL,
+    reuseExistingServer: false,
     timeout: 120 * 1000,
   },
 });

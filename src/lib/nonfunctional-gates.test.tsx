@@ -32,6 +32,7 @@ vi.mock('@/pages/EditClient', () => ({ default: () => <div>Edit Client Page</div
 vi.mock('@/pages/ChemicalUsage', () => ({ default: () => <div>Chemical Usage Page</div> }));
 vi.mock('@/pages/NewChemicalUsage', () => ({ default: () => <div>New Chemical Usage Page</div> }));
 vi.mock('@/pages/Notes', () => ({ default: () => <div>Notes Page</div> }));
+vi.mock('@/pages/History', () => ({ default: () => <div>History Page</div> }));
 vi.mock('@/pages/Settings', () => ({ default: () => <div>Settings Page</div> }));
 vi.mock('@/pages/PoolSchool', () => ({ default: () => <div>Pool School Page</div> }));
 vi.mock('@/pages/WorkOrders', () => ({ default: () => <div>Work Orders Page</div> }));
@@ -116,7 +117,7 @@ describe('Non-functional gates', () => {
     const cases = [
       ['/clients', 'Clients Page'],
       ['/newclient', 'New Client Page'],
-      ['/history', 'Clients Page'],
+      ['/history', 'History Page'],
       ['/billing', 'Billing Dashboard Page'],
       ['/notes', 'Notes Page'],
     ];

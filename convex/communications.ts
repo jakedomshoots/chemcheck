@@ -231,30 +231,63 @@ async function deliverCommunication(item: any, businessName: string): Promise<De
   };
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
+
+function clampPageSize(numItems: number | undefined): number {
+  return Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(numItems ?? DEFAULT_PAGE_SIZE)));
+}
+
 export const list = query({
   args: {
     status: v.optional(v.string()),
     customer_id: v.optional(v.id("customers")),
+    cursor: v.optional(v.string()),
+    numItems: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    let items = await ctx.db
-      .query("communications")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    const numItems = clampPageSize(args.numItems);
+    const email = identity.email!;
 
-    if (args.status) {
+    // Prefer the most selective index, then apply remaining filters in JS.
+    let query;
+    if (args.customer_id) {
+      query = ctx.db
+        .query("communications")
+        .withIndex("by_created_by_and_customer", (q) =>
+          q.eq("created_by", email).eq("customer_id", args.customer_id)
+        );
+    } else if (args.status) {
+      query = ctx.db
+        .query("communications")
+        .withIndex("by_created_by_and_status", (q) =>
+          q.eq("created_by", email).eq("status", args.status)
+        );
+    } else {
+      query = ctx.db
+        .query("communications")
+        .withIndex("by_created_by", (q) => q.eq("created_by", email));
+    }
+
+    const pageResult = await query.order("desc").paginate({
+      cursor: args.cursor ?? null,
+      numItems,
+    });
+
+    let items = pageResult.page;
+
+    if (args.status && args.customer_id) {
       items = items.filter((item) => item.status === args.status);
     }
 
-    if (args.customer_id) {
-      items = items.filter((item) => item.customer_id === args.customer_id);
-    }
-
-    items.sort((a, b) => b.created_at - a.created_at);
-    return items;
+    return {
+      page: items,
+      continueCursor: pageResult.continueCursor,
+      isDone: pageResult.isDone,
+    };
   },
 });
 
@@ -346,14 +379,17 @@ export const requeueFailed = mutation({
     const limit = toPositiveInt(args.limit, 25);
     const allowedTemplates = new Set((args.only_template_keys || []).map((key) => key.trim()).filter(Boolean));
 
+    // Bounded scan using the status index; filter template_key in JS.
     const items = await ctx.db
       .query("communications")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+      .withIndex("by_created_by_and_status", (q) =>
+        q.eq("created_by", identity.email!).eq("status", "failed")
+      )
+      .order("desc")
+      .take(limit * 4);
 
     const failed = items
       .filter((item) => {
-        if (item.status !== "failed") return false;
         if (allowedTemplates.size === 0) return true;
         return Boolean(item.template_key && allowedTemplates.has(item.template_key));
       })
@@ -410,10 +446,14 @@ export const listQueuedForDelivery = internalQuery({
     const limit = toPositiveInt(args.limit, 25);
     const now = args.now ?? Date.now();
 
+    // Bounded scan of queued communications for this user.
     const queued = await ctx.db
       .query("communications")
-      .withIndex("by_created_by", (q) => q.eq("created_by", args.user_email))
-      .collect();
+      .withIndex("by_created_by_and_status", (q) =>
+        q.eq("created_by", args.user_email).eq("status", "queued")
+      )
+      .order("asc")
+      .take(limit * 4);
 
     const business = await ctx.db
       .query("businesses")
@@ -421,7 +461,7 @@ export const listQueuedForDelivery = internalQuery({
       .first();
 
     return queued
-      .filter((item) => item.status === "queued" && (!item.scheduled_for || item.scheduled_for <= now))
+      .filter((item) => !item.scheduled_for || item.scheduled_for <= now)
       .sort((a, b) => a.created_at - b.created_at)
       .slice(0, limit)
       .map((item) => ({

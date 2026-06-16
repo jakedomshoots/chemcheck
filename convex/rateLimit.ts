@@ -345,27 +345,37 @@ export const cleanupExpiredRateLimits = internalMutation({
   handler: async (ctx): Promise<{ cleaned: number }> => {
     const now = Date.now();
     let cleaned = 0;
+    const BATCH_SIZE = 100;
 
-    // Clean up expired rate limit entries
-    const expiredLimits = await ctx.db
-      .query("rateLimits")
-      .filter((q) => q.lt(q.field("reset_time"), now - 86400000)) // Older than 1 day
-      .take(100); // Process in batches
+    // Clean up expired rate limit entries (older than 1 day) in batches so a
+    // single cron run can clear the full backlog.
+    while (true) {
+      const expiredLimits = await ctx.db
+        .query("rateLimits")
+        .filter((q) => q.lt(q.field("reset_time"), now - 86400000))
+        .take(BATCH_SIZE);
 
-    for (const entry of expiredLimits) {
-      await ctx.db.delete(entry._id);
-      cleaned++;
+      if (expiredLimits.length === 0) break;
+
+      for (const entry of expiredLimits) {
+        await ctx.db.delete(entry._id);
+        cleaned++;
+      }
     }
 
-    // Clean up expired violation entries
-    const expiredViolations = await ctx.db
-      .query("rateLimitViolations")
-      .filter((q) => q.lt(q.field("expires_at"), now))
-      .take(100);
+    // Clean up expired violation entries in batches.
+    while (true) {
+      const expiredViolations = await ctx.db
+        .query("rateLimitViolations")
+        .filter((q) => q.lt(q.field("expires_at"), now))
+        .take(BATCH_SIZE);
 
-    for (const entry of expiredViolations) {
-      await ctx.db.delete(entry._id);
-      cleaned++;
+      if (expiredViolations.length === 0) break;
+
+      for (const entry of expiredViolations) {
+        await ctx.db.delete(entry._id);
+        cleaned++;
+      }
     }
 
     return { cleaned };

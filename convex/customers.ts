@@ -5,6 +5,10 @@ import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
 
 const CUSTOMER_WRITE_ROLES = new Set(["owner", "admin"]);
 
+function normalizeEmail(email: any): string {
+    return String(email || "").trim().toLowerCase();
+}
+
 async function resolveBusinessContext(ctx: any, userEmail: string) {
     const teamMember = await ctx.db
         .query("team_members")
@@ -46,7 +50,7 @@ async function getActiveBusinessMemberEmails(
 async function listAccessibleCustomers(ctx: any, userEmail: string) {
     // Guard: if userEmail is undefined/empty (e.g. Clerk token missing email claim),
     // throw a clear error instead of silently returning an empty list.
-    const normalizedEmail = String(userEmail || "").trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(userEmail);
     if (!normalizedEmail) {
         throw new Error("listAccessibleCustomers: userEmail is empty or undefined. Check that the Clerk JWT includes an email claim.");
     }
@@ -54,42 +58,34 @@ async function listAccessibleCustomers(ctx: any, userEmail: string) {
     const business = await resolveBusinessContext(ctx, userEmail);
 
     if (business) {
-        const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-        const normalizedAllowedEmails = new Set(
-            [...allowedEmails]
-                .map((email) => String(email || "").trim().toLowerCase())
-                .filter(Boolean)
-        );
-        const businessId = String(business._id);
-
-        const allCustomers = await ctx.db.query("customers").collect();
-        return allCustomers.filter((customer: any) => {
-            const customerBusinessId = customer?.business_id ? String(customer.business_id) : "";
-            if (customerBusinessId && customerBusinessId === businessId) {
-                return true;
-            }
-
-            const createdBy = String(customer?.created_by || "").trim().toLowerCase();
-            return createdBy ? normalizedAllowedEmails.has(createdBy) : false;
-        });
+        return await ctx.db
+            .query("customers")
+            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+            .collect();
     }
 
-    const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
-    const allCustomers = await ctx.db.query("customers").collect();
-    return allCustomers.filter((customer: any) =>
-        String(customer?.created_by || "").trim().toLowerCase() === normalizedUserEmail
-    );
+    return await ctx.db
+        .query("customers")
+        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
+        .collect();
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
     if (!customer) return false;
-    const customers = await listAccessibleCustomers(ctx, userEmail);
-    return customers.some((item: any) => String(item._id) === String(customer._id));
+
+    const business = await resolveBusinessContext(ctx, userEmail);
+    if (business) {
+        return String(customer.business_id || "") === String(business._id);
+    }
+
+    const normalizedUserEmail = normalizeEmail(userEmail);
+    const createdBy = normalizeEmail(customer.created_by);
+    return createdBy === normalizedUserEmail;
 }
 
 async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
-    const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
-    const ownerEmail = String(business?.owner_email || "").trim().toLowerCase();
+    const normalizedUserEmail = normalizeEmail(userEmail);
+    const ownerEmail = normalizeEmail(business?.owner_email);
     if (ownerEmail && normalizedUserEmail === ownerEmail) {
         return "owner";
     }
@@ -118,18 +114,49 @@ async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set
     }
 }
 
-// Get all customers for the current user
+// Count accessible customers for the current user, bounded by a safe cap.
+export const count = query({
+    args: {},
+    handler: async (ctx) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) throw new Error("Not authenticated");
+
+        const COUNT_CAP = 1000;
+        const business = await resolveBusinessContext(ctx, identity.email!);
+
+        let customers;
+        if (business) {
+            customers = await ctx.db
+                .query("customers")
+                .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .take(COUNT_CAP + 1);
+        } else {
+            customers = await ctx.db
+                .query("customers")
+                .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+                .take(COUNT_CAP + 1);
+        }
+
+        const isCapped = customers.length > COUNT_CAP;
+        return { count: Math.min(customers.length, COUNT_CAP), isCapped };
+    },
+});
+
+// Get customers for the current user, bounded to a safe default page size.
 export const list = query({
     args: {},
     handler: async (ctx) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        return await listAccessibleCustomers(ctx, identity.email!);
+        const customers = await listAccessibleCustomers(ctx, identity.email!);
+        // Default limit keeps the query bounded while remaining compatible with existing callers.
+        const DEFAULT_LIST_LIMIT = 100;
+        return customers.slice(0, DEFAULT_LIST_LIMIT);
     },
 });
 
-// Paginated customer list for large datasets
+// Cursor-paginated customer list for large datasets.
 export const listPaginated = query({
     args: {
         limit: v.optional(v.number()),
@@ -140,27 +167,32 @@ export const listPaginated = query({
         if (!identity) throw new Error("Not authenticated");
 
         const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
-        const allCustomers = await listAccessibleCustomers(ctx, identity.email!);
-        const sortedCustomers = allCustomers.sort((a: any, b: any) =>
-            String(a.full_name || "").localeCompare(String(b.full_name || ""))
-        );
+        const business = await resolveBusinessContext(ctx, identity.email!);
 
-        const offset = args.cursor && Number.isFinite(Number(args.cursor))
-            ? Math.max(0, Number(args.cursor))
-            : 0;
-        const page = sortedCustomers.slice(offset, offset + limit);
-        const nextOffset = offset + page.length;
-        const hasMore = nextOffset < sortedCustomers.length;
+        let result: any;
+        if (business) {
+            result = await ctx.db
+                .query("customers")
+                .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .paginate({ cursor: args.cursor ?? null, numItems: limit });
+        } else {
+            result = await ctx.db
+                .query("customers")
+                .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+                .paginate({ cursor: args.cursor ?? null, numItems: limit });
+        }
 
         return {
-            customers: page,
-            cursor: hasMore ? String(nextOffset) : undefined,
-            hasMore,
+            customers: result.page.sort((a: any, b: any) =>
+                String(a.full_name || "").localeCompare(String(b.full_name || ""))
+            ),
+            cursor: result.continueCursor,
+            hasMore: !result.isDone,
         };
     },
 });
 
-// Filter customers by criteria
+// Filter customers by criteria using indexed queries.
 export const filter = query({
     args: {
         created_by: v.optional(v.string()),
@@ -170,14 +202,38 @@ export const filter = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Ignore created_by input and enforce tenant-safe list on server
-        const customers = await listAccessibleCustomers(ctx, identity.email!);
+        // Ignore created_by input and enforce tenant-safe lookup on the server.
+        const business = await resolveBusinessContext(ctx, identity.email!);
 
-        if (args.service_day) {
-            return customers.filter((c: any) => c.service_day === args.service_day);
+        if (business) {
+            if (args.service_day) {
+                return await ctx.db
+                    .query("customers")
+                    .withIndex("by_business_and_day", (q: any) =>
+                        q.eq("business_id", String(business._id)).eq("service_day", args.service_day)
+                    )
+                    .collect();
+            }
+
+            return await ctx.db
+                .query("customers")
+                .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .collect();
         }
 
-        return customers;
+        if (args.service_day) {
+            return await ctx.db
+                .query("customers")
+                .withIndex("by_created_by_and_service_day" as any, (q: any) =>
+                    q.eq("created_by", identity.email!).eq("service_day", args.service_day)
+                )
+                .collect();
+        }
+
+        return await ctx.db
+            .query("customers")
+            .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+            .collect();
     },
 });
 
@@ -191,9 +247,7 @@ export const get = query({
         const customer = await ctx.db.get(args.id);
         if (!customer) throw new Error("Customer not found");
 
-        const accessibleCustomers = await listAccessibleCustomers(ctx, identity.email!);
-        const canAccess = accessibleCustomers.some((item: any) => String(item._id) === String(customer._id));
-        if (!canAccess) {
+        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
 

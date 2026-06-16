@@ -45,6 +45,10 @@ export interface ServiceLog extends SyncableRecord {
     chlorine: string;
     alkalinity: string;
     stabilizer: string;
+    ph_value?: number;
+    chlorine_value?: number;
+    alkalinity_value?: number;
+    stabilizer_value?: number;
     salt?: number;
     start_time?: string;
     end_time?: string;

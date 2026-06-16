@@ -93,7 +93,7 @@ test.describe('App Navigation', () => {
       return;
     }
 
-    await expect(page).toHaveURL(/\/$/);
+    expect(getPathname(page)).toMatch(/^\/(?:home)?$/i);
     await expect(page.getByRole('heading', { name: /Today's Route/i })).toBeVisible();
   });
 

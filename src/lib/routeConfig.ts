@@ -12,10 +12,13 @@ export const APP_ROUTES = {
   ChemicalUsage: createPageUrl('ChemicalUsage'),
   NewChemicalUsage: createPageUrl('NewChemicalUsage'),
   Notes: createPageUrl('Notes'),
+  History: createPageUrl('History'),
   Settings: createPageUrl('Settings'),
   PoolSchool: createPageUrl('PoolSchool'),
   WorkOrders: createPageUrl('WorkOrders'),
   Billing: createPageUrl('Billing'),
+  Landing: createPageUrl('Landing'),
+  Support: createPageUrl('Support'),
 }
 
 export const SYSTEM_ROUTES = {
@@ -37,6 +40,8 @@ const PUBLIC_STATIC_ROUTES = new Set([
   READY_ROUTE,
   '/privacy-policy.html',
   '/terms-of-service.html',
+  createPageUrl('Landing'),
+  createPageUrl('Support'),
 ]);
 
 const canonicalPaths = new Set(canonicalRoutes.map(([, path]) => path))
@@ -81,7 +86,7 @@ export const APP_ROUTE_ALIAS_MAP: Record<string, string> = (() => {
     '/poolschool': APP_ROUTES.PoolSchool,
     '/workorders': APP_ROUTES.WorkOrders,
     '/billing': APP_ROUTES.Billing,
-    '/history': APP_ROUTES.Clients,
+    '/history': APP_ROUTES.History,
     '/health': HEALTH_ROUTE,
     '/ready': READY_ROUTE,
   };

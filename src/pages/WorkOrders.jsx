@@ -20,8 +20,23 @@ import {
   Send,
   Trash2,
   RotateCcw,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   calculateInvoiceTotalsFromQuote,
   canConvertQuote,
@@ -437,6 +452,9 @@ export default function WorkOrders() {
     channel: "email",
     recipient: "",
   });
+  const [mobileCreateDrawerOpen, setMobileCreateDrawerOpen] = useState(false);
+  const [mobileBillingExpanded, setMobileBillingExpanded] = useState(false);
+  const woTitleRef = useRef(null);
   const reminderAutopilotRunningRef = useRef(false);
   const queueRemindersRef = useRef(null);
 
@@ -613,11 +631,23 @@ export default function WorkOrders() {
 
   const cloudCustomersData = useQuery(api.customers.list, cloudEnabled ? {} : "skip");
   const teamMembersData = useQuery(api.businesses.getTeamMembers, cloudEnabled ? {} : "skip");
-  const workOrdersData = useQuery(api.workOrders.list, cloudEnabled ? { scheduled_date: selectedDate } : "skip");
-  const allWorkOrdersData = useQuery(api.workOrders.list, cloudEnabled ? {} : "skip");
-  const allInvoicesData = useQuery(api.invoices.list, cloudEnabled ? {} : "skip");
+  const workOrdersData = useQuery(
+    api.workOrders.list,
+    cloudEnabled ? { scheduled_date: selectedDate, numItems: 1000 } : "skip"
+  );
+  const allWorkOrdersData = useQuery(
+    api.workOrders.list,
+    cloudEnabled ? { numItems: 1000 } : "skip"
+  );
+  const allInvoicesData = useQuery(
+    api.invoices.list,
+    cloudEnabled ? { numItems: 1000 } : "skip"
+  );
   const allQuotesData = useQuery(api.quotes.list, cloudEnabled ? {} : "skip");
-  const communicationsData = useQuery(api.communications.list, cloudEnabled ? {} : "skip");
+  const communicationsData = useQuery(
+    api.communications.list,
+    cloudEnabled ? { numItems: 1000 } : "skip"
+  );
 
   const createWorkOrder = useMutation(api.workOrders.create);
   const updateWorkOrder = useMutation(api.workOrders.update);
@@ -646,20 +676,20 @@ export default function WorkOrders() {
   const teamMembers = useMemo(() => teamMembersData ?? [], [teamMembersData]);
 
   const workOrders = useMemo(() => {
-    if (cloudEnabled) return workOrdersData ?? [];
+    if (cloudEnabled) return workOrdersData?.page ?? [];
     return (localWorkOrders ?? [])
       .filter((item) => item.scheduled_date === selectedDate)
       .sort((a, b) => a.created_at - b.created_at);
   }, [cloudEnabled, workOrdersData, localWorkOrders, selectedDate]);
 
   const allWorkOrders = useMemo(() => {
-    if (cloudEnabled) return allWorkOrdersData ?? [];
+    if (cloudEnabled) return allWorkOrdersData?.page ?? [];
     return (localWorkOrders ?? []).slice().sort((a, b) => a.created_at - b.created_at);
   }, [cloudEnabled, allWorkOrdersData, localWorkOrders]);
 
   const allInvoices = useMemo(() => {
     if (cloudEnabled) {
-      return (allInvoicesData ?? []).map((invoice) => normalizeInvoiceRecord(invoice));
+      return (allInvoicesData?.page ?? []).map((invoice) => normalizeInvoiceRecord(invoice));
     }
     return (localInvoices ?? [])
       .map((invoice) => normalizeInvoiceRecord(invoice))
@@ -678,7 +708,7 @@ export default function WorkOrders() {
   }, [cloudEnabled, allQuotesData, localQuotes]);
 
   const allCommunications = useMemo(() => {
-    if (cloudEnabled) return communicationsData ?? [];
+    if (cloudEnabled) return communicationsData?.page ?? [];
     return (localCommunications ?? []).slice().sort((a, b) => b.created_at - a.created_at);
   }, [cloudEnabled, communicationsData, localCommunications]);
 
@@ -2662,6 +2692,514 @@ export default function WorkOrders() {
     };
   }, [reminderAutopilotEnabled, reminderAutopilotIntervalMinutes, reminderAutopilotNextRunAt]);
 
+const workOrderCreateForm = (
+    <div className="space-y-4">
+      <div className="mb-4 border-b border-slate-200 pb-2">
+        <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950">Create Work Order</h2>
+      </div>
+      <form className="space-y-4" onSubmit={handleCreate}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="wo-customer">Customer</Label>
+            <select
+              id="wo-customer"
+              value={form.customer_id}
+              onChange={(e) => setForm((prev) => ({ ...prev, customer_id: e.target.value }))}
+              className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
+            >
+              <option value="">Select customer...</option>
+              {customers.map((customer) => (
+                <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <Label htmlFor="wo-assignee">Assignee</Label>
+            <select
+              id="wo-assignee"
+              value={form.assignee_email}
+              onChange={(e) => setForm((prev) => ({ ...prev, assignee_email: e.target.value }))}
+              className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
+            >
+              <option value="">Unassigned</option>
+              {teamMembers.map((member) => (
+                <option key={member._id} value={member.user_email}>{member.name} ({member.user_email})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="wo-title">Title</Label>
+            <Input
+              id="wo-title"
+              ref={woTitleRef}
+              value={form.title}
+              placeholder="Filter clean / equipment repair / green-to-clean"
+              onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="wo-priority">Priority</Label>
+            <select
+              id="wo-priority"
+              value={form.priority}
+              onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value }))}
+              className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="wo-description">Description</Label>
+          <textarea
+            id="wo-description"
+            value={form.description}
+            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+            rows={3}
+            className="w-full border border-slate-300 rounded-md px-3 py-2"
+            placeholder="Add context, parts needed, and customer requests"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="wo-recurring"
+              checked={form.is_recurring}
+              onCheckedChange={(checked) => setForm((prev) => ({ ...prev, is_recurring: !!checked }))}
+            />
+            <Label htmlFor="wo-recurring">Recurring</Label>
+          </div>
+
+          {form.is_recurring && (
+            <select
+              value={form.recurrence_rule}
+              onChange={(e) => setForm((prev) => ({ ...prev, recurrence_rule: e.target.value }))}
+              className="h-10 border border-slate-300 rounded-md px-3 bg-white"
+            >
+              <option value="WEEKLY">Weekly</option>
+              <option value="BIWEEKLY">Every 2 weeks</option>
+              <option value="MONTHLY">Monthly</option>
+            </select>
+          )}
+        </div>
+
+        <Button type="submit" disabled={isCreating}>
+          {isCreating ? "Creating..." : "Create Work Order"}
+        </Button>
+      </form>
+    </div>
+  );
+
+  const quoteCreateForm = (
+    <form className="space-y-3" onSubmit={handleCreateQuoteDraft}>
+      <div>
+        <Label htmlFor="quote-customer">Customer</Label>
+        <select
+          id="quote-customer"
+          value={quoteForm.customer_id}
+          onChange={(e) => setQuoteForm((prev) => ({ ...prev, customer_id: e.target.value }))}
+          className="w-full h-10 lg:h-9 border border-slate-300 rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
+        >
+          <option value="">Select customer...</option>
+          {customers.map((customer) => (
+            <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
+          ))}
+        </select>
+        {quoteFormErrors.customer && (
+          <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.customer}</p>
+        )}
+      </div>
+
+      <div>
+        <Label htmlFor="quote-title">Title</Label>
+        <Input
+          id="quote-title"
+          value={quoteForm.title}
+          onChange={(e) => setQuoteForm((prev) => ({ ...prev, title: e.target.value }))}
+          className="h-10 lg:h-9 text-sm lg:text-xs"
+          placeholder="Green-to-clean package / pump replacement"
+        />
+        {quoteFormErrors.title && (
+          <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.title}</p>
+        )}
+      </div>
+
+      <div>
+        <Label htmlFor="quote-description">Description</Label>
+        <Input
+          id="quote-description"
+          value={quoteForm.description}
+          onChange={(e) => setQuoteForm((prev) => ({ ...prev, description: e.target.value }))}
+          className="h-10 lg:h-9 text-sm lg:text-xs"
+          placeholder="Scope details and line-item summary"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label htmlFor="quote-qty">Qty</Label>
+          <Input
+            id="quote-qty"
+            value={quoteForm.quantity}
+            onChange={(e) => setQuoteForm((prev) => ({ ...prev, quantity: e.target.value }))}
+            className="h-10 lg:h-9 text-sm lg:text-xs"
+          />
+          {quoteFormErrors.quantity && (
+            <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.quantity}</p>
+          )}
+        </div>
+        <div>
+          <Label htmlFor="quote-price">Unit $</Label>
+          <Input
+            id="quote-price"
+            value={quoteForm.unit_price}
+            onChange={(e) => setQuoteForm((prev) => ({ ...prev, unit_price: e.target.value }))}
+            className="h-10 lg:h-9 text-sm lg:text-xs"
+          />
+          {quoteFormErrors.unitPrice && (
+            <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.unitPrice}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label htmlFor="quote-tax">Tax Rate</Label>
+          <Input
+            id="quote-tax"
+            value={quoteForm.tax_rate}
+            onChange={(e) => setQuoteForm((prev) => ({ ...prev, tax_rate: e.target.value }))}
+            className="h-10 lg:h-9 text-sm lg:text-xs"
+            placeholder="8.25 or 0.0825"
+          />
+          <p className="mt-1 text-[11px] text-slate-500">Enter 8.25 for 8.25% tax.</p>
+        </div>
+        <div>
+          <Label htmlFor="quote-deposit">Deposit $</Label>
+          <Input
+            id="quote-deposit"
+            value={quoteForm.deposit_required}
+            onChange={(e) => setQuoteForm((prev) => ({ ...prev, deposit_required: e.target.value }))}
+            className="h-10 lg:h-9 text-sm lg:text-xs"
+            placeholder="Optional"
+          />
+          {quoteFormErrors.deposit && (
+            <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.deposit}</p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="quote-valid-until">Valid Until</Label>
+        <Input
+          id="quote-valid-until"
+          type="date"
+          value={quoteForm.valid_until}
+          onChange={(e) => setQuoteForm((prev) => ({ ...prev, valid_until: e.target.value }))}
+          className="h-10 lg:h-9 text-sm lg:text-xs"
+        />
+      </div>
+
+      <Button
+        type="submit"
+        className="w-full h-11 lg:h-8 text-sm lg:text-xs"
+        disabled={isCreatingQuote || Object.values(quoteFormErrors).some(Boolean)}
+      >
+        {isCreatingQuote ? "Creating..." : "Create Quote Draft"}
+      </Button>
+    </form>
+  );
+
+  const invoiceCreatePanel = (
+    <div className="space-y-4">
+      <form className="space-y-3 mb-4 pb-4 border-b border-slate-200" onSubmit={handleCreateInvoiceDraft}>
+        <div>
+          <Label htmlFor="inv-customer">Customer</Label>
+          <select
+            id="inv-customer"
+            value={invoiceForm.customer_id}
+            onChange={(e) => handleInvoiceCustomerSelect(e.target.value)}
+            className="w-full h-10 lg:h-9 border border-slate-300 rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
+          >
+            <option value="">Select customer...</option>
+            {customers.map((customer) => (
+              <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
+            ))}
+          </select>
+          {invoiceFormErrors.customer && (
+            <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.customer}</p>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="inv-work-order">Work Order (optional)</Label>
+          <select
+            id="inv-work-order"
+            value={invoiceForm.work_order_id}
+            onChange={(e) => handleInvoiceWorkOrderSelect(e.target.value)}
+            className="w-full h-10 lg:h-9 border border-slate-300 rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
+          >
+            <option value="">No linked work order</option>
+            {invoiceWorkOrderOptions.map((order) => (
+              <option key={order._id} value={String(order._id)}>
+                {order.title} ({order.status.replace("_", " ")})
+              </option>
+            ))}
+          </select>
+          {invoiceForm.customer_id && invoiceWorkOrderOptions.length === 0 && (
+            <p className="mt-1 text-[11px] text-slate-500">No work orders found for this customer yet.</p>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="inv-description">Description</Label>
+          <Input
+            id="inv-description"
+            value={invoiceForm.description}
+            onChange={(e) => setInvoiceForm((prev) => ({ ...prev, description: e.target.value }))}
+            className="h-10 lg:h-9 text-sm lg:text-xs"
+            placeholder="Monthly service / repair / clean-up"
+          />
+          {invoiceFormErrors.description && (
+            <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.description}</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label htmlFor="inv-qty">Qty</Label>
+            <Input
+              id="inv-qty"
+              value={invoiceForm.quantity}
+              onChange={(e) => setInvoiceForm((prev) => ({ ...prev, quantity: e.target.value }))}
+              className="h-10 lg:h-9 text-sm lg:text-xs"
+            />
+            {invoiceFormErrors.quantity && (
+              <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.quantity}</p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="inv-price">Unit $</Label>
+            <Input
+              id="inv-price"
+              value={invoiceForm.unit_price}
+              onChange={(e) => setInvoiceForm((prev) => ({ ...prev, unit_price: e.target.value }))}
+              className="h-10 lg:h-9 text-sm lg:text-xs"
+            />
+            {invoiceFormErrors.unitPrice && (
+              <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.unitPrice}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label htmlFor="inv-tax">Tax Rate</Label>
+            <Input
+              id="inv-tax"
+              value={invoiceForm.tax_rate}
+              onChange={(e) => setInvoiceForm((prev) => ({ ...prev, tax_rate: e.target.value }))}
+              className="h-10 lg:h-9 text-sm lg:text-xs"
+              placeholder="8.25 or 0.0825"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">Enter 8.25 for 8.25% tax.</p>
+          </div>
+          <div>
+            <Label htmlFor="inv-due">Due Date</Label>
+            <Input
+              id="inv-due"
+              type="date"
+              value={invoiceForm.due_date}
+              onChange={(e) => setInvoiceForm((prev) => ({ ...prev, due_date: e.target.value }))}
+              className="h-10 lg:h-9 text-sm lg:text-xs"
+            />
+            {invoiceFormErrors.dueDate && (
+              <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.dueDate}</p>
+            )}
+          </div>
+        </div>
+
+        <Button
+          type="submit"
+          className="w-full h-11 lg:h-8 text-sm lg:text-xs"
+          disabled={isCreatingInvoice || Object.values(invoiceFormErrors).some(Boolean)}
+        >
+          {isCreatingInvoice ? "Creating..." : "Create Invoice Draft"}
+        </Button>
+      </form>
+
+      <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Batch Invoicing</p>
+          <Button
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleBatchCreateInvoices}
+            disabled={isBatchInvoicing || Object.values(batchInvoiceErrors).some(Boolean)}
+          >
+            {isBatchInvoicing ? "Processing..." : "Run Batch"}
+          </Button>
+        </div>
+        <p className="text-[11px] text-slate-600">
+          Batch run always uses the Unit $, Tax Rate, and Due In Days values below.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div>
+            <Label htmlFor="batch-from" className="text-xs">From</Label>
+            <Input
+              id="batch-from"
+              type="date"
+              value={batchInvoiceForm.from_date}
+              onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, from_date: e.target.value }))}
+              className="h-10 lg:h-8 text-sm lg:text-xs"
+            />
+          </div>
+          <div>
+            <Label htmlFor="batch-to" className="text-xs">To</Label>
+            <Input
+              id="batch-to"
+              type="date"
+              value={batchInvoiceForm.to_date}
+              onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, to_date: e.target.value }))}
+              className="h-10 lg:h-8 text-sm lg:text-xs"
+            />
+          </div>
+          <div>
+            <Label htmlFor="batch-unit" className="text-xs">Unit $</Label>
+            <Input
+              id="batch-unit"
+              value={batchInvoiceForm.unit_price}
+              onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, unit_price: e.target.value }))}
+              className="h-10 lg:h-8 text-sm lg:text-xs"
+            />
+          </div>
+          <div>
+            <Label htmlFor="batch-tax" className="text-xs">Tax Rate</Label>
+            <Input
+              id="batch-tax"
+              value={batchInvoiceForm.tax_rate}
+              onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, tax_rate: e.target.value }))}
+              className="h-10 lg:h-8 text-sm lg:text-xs"
+              placeholder="8.25 or 0.0825"
+            />
+          </div>
+          <div>
+            <Label htmlFor="batch-due" className="text-xs">Due In Days</Label>
+            <Input
+              id="batch-due"
+              value={batchInvoiceForm.due_in_days}
+              onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, due_in_days: e.target.value }))}
+              className="h-10 lg:h-8 text-sm lg:text-xs"
+            />
+          </div>
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 text-xs text-slate-700">
+              <Checkbox
+                checked={batchInvoiceForm.auto_send}
+                onCheckedChange={(checked) => setBatchInvoiceForm((prev) => ({ ...prev, auto_send: !!checked }))}
+              />
+              Auto-send after draft
+            </label>
+          </div>
+        </div>
+        {batchInvoiceErrors.dateRange && (
+          <p className="text-[11px] text-rose-600">{batchInvoiceErrors.dateRange}</p>
+        )}
+        {batchInvoiceErrors.unitPrice && (
+          <p className="text-[11px] text-rose-600">{batchInvoiceErrors.unitPrice}</p>
+        )}
+        {batchInvoiceErrors.dueDays && (
+          <p className="text-[11px] text-rose-600">{batchInvoiceErrors.dueDays}</p>
+        )}
+      </div>
+
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Reminder Autopilot</p>
+            <p className="text-[11px] text-slate-600">
+              Auto-queues unpaid reminders on a fixed interval.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-700">
+            <Checkbox
+              checked={reminderAutopilotEnabled}
+              onCheckedChange={(checked) => {
+                const enabled = !!checked;
+                setReminderAutopilotEnabled(enabled);
+                if (!enabled) {
+                  setReminderAutopilotNextRunAt(null);
+                  return;
+                }
+                const minutes = Math.max(
+                  15,
+                  Math.min(720, Math.floor(toFiniteNumber(reminderAutopilotIntervalMinutes, 60)))
+                );
+                setReminderAutopilotNextRunAt(Date.now() + (minutes * 60 * 1000));
+              }}
+            />
+            Enabled
+          </label>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+          <div className="sm:w-40">
+            <Label htmlFor="autopilot-interval" className="text-xs">Interval (minutes)</Label>
+            <Input
+              id="autopilot-interval"
+              value={reminderAutopilotIntervalMinutes}
+              onChange={(e) => setReminderAutopilotIntervalMinutes(e.target.value)}
+              onBlur={() => {
+                const minutes = Math.max(
+                  15,
+                  Math.min(720, Math.floor(toFiniteNumber(reminderAutopilotIntervalMinutes, 60)))
+                );
+                setReminderAutopilotIntervalMinutes(String(minutes));
+                if (reminderAutopilotEnabled) {
+                  setReminderAutopilotNextRunAt(Date.now() + (minutes * 60 * 1000));
+                }
+              }}
+              className="h-10 lg:h-8 text-sm lg:text-xs"
+              inputMode="numeric"
+              disabled={!reminderAutopilotEnabled}
+            />
+          </div>
+          <div className="text-[11px] text-slate-600">
+            Next run: {reminderAutopilotEnabled
+              ? (formatTimestamp(reminderAutopilotNextRunAt) || "Scheduling...")
+              : "Autopilot disabled"}
+            {isReminderAutopilotRunning ? " (running now)" : ""}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const mobileCreateDrawerTitle = useMemo(() => {
+    switch (activeSection) {
+      case "dispatch": return "Create Work Order";
+      case "quotes": return "Create Quote";
+      case "invoices": return "Create Invoice";
+      default: return "Create";
+    }
+  }, [activeSection]);
+
+  const handleEmptyStateCreate = () => {
+    if (window.innerWidth < 1024) {
+      setMobileCreateDrawerOpen(true);
+    } else {
+      woTitleRef.current?.focus();
+    }
+  };
+
   const hideOverviewPanelsOnMobile = activeSection !== "dispatch";
 
   return (
@@ -2784,19 +3322,27 @@ export default function WorkOrders() {
       </div>
 
       <Card className={`${hideOverviewPanelsOnMobile ? "hidden sm:block" : "block"} p-3 sm:p-5`}>
-        <div className="flex items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+        <div
+          className="flex items-center justify-between gap-2 sm:gap-3 mb-0 sm:mb-3 cursor-pointer sm:cursor-default"
+          onClick={() => setMobileBillingExpanded((prev) => !prev)}
+        >
           <h2 className="text-xs sm:text-base font-bold tracking-tight text-slate-950">Billing Reliability</h2>
-          <span
-            className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-medium ${
-              billingHealth.totalIssues > 0
-                ? "bg-amber-100 text-amber-800"
-                : "bg-emerald-100 text-emerald-700"
-            }`}
-          >
-            {billingHealth.totalIssues > 0 ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"}` : "Healthy"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-medium ${
+                billingHealth.totalIssues > 0
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-emerald-100 text-emerald-700"
+              }`}
+            >
+              {billingHealth.totalIssues > 0 ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"}` : "Healthy"}
+            </span>
+            <span className="sm:hidden text-xs text-slate-500">
+              {mobileBillingExpanded ? "▲" : "▼"}
+            </span>
+          </div>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="hidden sm:grid grid-cols-5 gap-2">
           <div className="rounded-md border border-slate-200 p-2">
             <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Failed Sends</p>
             <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-rose-700" : "text-slate-900"}`}>
@@ -2828,113 +3374,57 @@ export default function WorkOrders() {
             </p>
           </div>
         </div>
+        <div className="sm:hidden">
+          {!mobileBillingExpanded ? (
+            <p className="text-xs text-slate-600">
+              {billingHealth.totalIssues > 0
+                ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"} — tap to expand`
+                : "All billing health checks are clear."}
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-md border border-slate-200 p-2">
+                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Failed Sends</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-rose-700" : "text-slate-900"}`}>
+                  {billingHealth.failedDeliveries}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-2">
+                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Stuck Queue</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-amber-700" : "text-slate-900"}`}>
+                  {billingHealth.queuedStale}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-2">
+                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Old Drafts</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-blue-700" : "text-slate-900"}`}>
+                  {billingHealth.staleDrafts}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-2">
+                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Missing Pay Link</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-rose-700" : "text-slate-900"}`}>
+                  {billingHealth.sentMissingPayLink}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-2">
+                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">30+ Days Unpaid</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-rose-700" : "text-slate-900"}`}>
+                  {billingHealth.unpaidThirtyPlus}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </Card>
 
       <div className={isCompactView ? "space-y-4" : "space-y-6"}>
         {activeSection === "dispatch" && (
-        <Card className="p-4 sm:p-5">
-          <div className="mb-4 border-b border-slate-200 pb-2">
-            <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950">Create Work Order</h2>
-          </div>
-          <form className="space-y-4" onSubmit={handleCreate}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="wo-customer">Customer</Label>
-                <select
-                  id="wo-customer"
-                  value={form.customer_id}
-                  onChange={(e) => setForm((prev) => ({ ...prev, customer_id: e.target.value }))}
-                  className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
-                >
-                  <option value="">Select customer...</option>
-                  {customers.map((customer) => (
-                    <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <Label htmlFor="wo-assignee">Assignee</Label>
-                <select
-                  id="wo-assignee"
-                  value={form.assignee_email}
-                  onChange={(e) => setForm((prev) => ({ ...prev, assignee_email: e.target.value }))}
-                  className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
-                >
-                  <option value="">Unassigned</option>
-                  {teamMembers.map((member) => (
-                    <option key={member._id} value={member.user_email}>{member.name} ({member.user_email})</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="wo-title">Title</Label>
-                <Input
-                  id="wo-title"
-                  value={form.title}
-                  placeholder="Filter clean / equipment repair / green-to-clean"
-                  onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="wo-priority">Priority</Label>
-                <select
-                  id="wo-priority"
-                  value={form.priority}
-                  onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value }))}
-                  className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="wo-description">Description</Label>
-              <textarea
-                id="wo-description"
-                value={form.description}
-                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                rows={3}
-                className="w-full border border-slate-300 rounded-md px-3 py-2"
-                placeholder="Add context, parts needed, and customer requests"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="wo-recurring"
-                  checked={form.is_recurring}
-                  onCheckedChange={(checked) => setForm((prev) => ({ ...prev, is_recurring: !!checked }))}
-                />
-                <Label htmlFor="wo-recurring">Recurring</Label>
-              </div>
-
-              {form.is_recurring && (
-                <select
-                  value={form.recurrence_rule}
-                  onChange={(e) => setForm((prev) => ({ ...prev, recurrence_rule: e.target.value }))}
-                  className="h-10 border border-slate-300 rounded-md px-3 bg-white"
-                >
-                  <option value="WEEKLY">Weekly</option>
-                  <option value="BIWEEKLY">Every 2 weeks</option>
-                  <option value="MONTHLY">Monthly</option>
-                </select>
-              )}
-            </div>
-
-            <Button type="submit" disabled={isCreating}>
-              {isCreating ? "Creating..." : "Create Work Order"}
-            </Button>
-          </form>
-        </Card>
+        <div className="hidden lg:block">
+          <Card className="p-4 sm:p-5">
+            {workOrderCreateForm}
+          </Card>
+        </div>
         )}
 
         {activeSection === "quotes" && (
@@ -2946,136 +3436,21 @@ export default function WorkOrders() {
               </h2>
             </div>
 
-            <form className="space-y-3 mb-4 pb-4 border-b border-slate-200" onSubmit={handleCreateQuoteDraft}>
-              <div>
-                <Label htmlFor="quote-customer">Customer</Label>
-                <select
-                  id="quote-customer"
-                  value={quoteForm.customer_id}
-                  onChange={(e) => setQuoteForm((prev) => ({ ...prev, customer_id: e.target.value }))}
-                  className="w-full h-9 border border-slate-300 rounded-md px-2 text-xs bg-white"
-                >
-                  <option value="">Select customer...</option>
-                  {customers.map((customer) => (
-                    <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
-                  ))}
-                </select>
-                {quoteFormErrors.customer && (
-                  <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.customer}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="quote-title">Title</Label>
-                <Input
-                  id="quote-title"
-                  value={quoteForm.title}
-                  onChange={(e) => setQuoteForm((prev) => ({ ...prev, title: e.target.value }))}
-                  className="h-9 text-xs"
-                  placeholder="Green-to-clean package / pump replacement"
-                />
-                {quoteFormErrors.title && (
-                  <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.title}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="quote-description">Description</Label>
-                <Input
-                  id="quote-description"
-                  value={quoteForm.description}
-                  onChange={(e) => setQuoteForm((prev) => ({ ...prev, description: e.target.value }))}
-                  className="h-9 text-xs"
-                  placeholder="Scope details and line-item summary"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="quote-qty">Qty</Label>
-                  <Input
-                    id="quote-qty"
-                    value={quoteForm.quantity}
-                    onChange={(e) => setQuoteForm((prev) => ({ ...prev, quantity: e.target.value }))}
-                    className="h-9 text-xs"
-                  />
-                  {quoteFormErrors.quantity && (
-                    <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.quantity}</p>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="quote-price">Unit $</Label>
-                  <Input
-                    id="quote-price"
-                    value={quoteForm.unit_price}
-                    onChange={(e) => setQuoteForm((prev) => ({ ...prev, unit_price: e.target.value }))}
-                    className="h-9 text-xs"
-                  />
-                  {quoteFormErrors.unitPrice && (
-                    <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.unitPrice}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="quote-tax">Tax Rate</Label>
-                  <Input
-                    id="quote-tax"
-                    value={quoteForm.tax_rate}
-                    onChange={(e) => setQuoteForm((prev) => ({ ...prev, tax_rate: e.target.value }))}
-                    className="h-9 text-xs"
-                    placeholder="8.25 or 0.0825"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">Enter 8.25 for 8.25% tax.</p>
-                </div>
-                <div>
-                  <Label htmlFor="quote-deposit">Deposit $</Label>
-                  <Input
-                    id="quote-deposit"
-                    value={quoteForm.deposit_required}
-                    onChange={(e) => setQuoteForm((prev) => ({ ...prev, deposit_required: e.target.value }))}
-                    className="h-9 text-xs"
-                    placeholder="Optional"
-                  />
-                  {quoteFormErrors.deposit && (
-                    <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.deposit}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="quote-valid-until">Valid Until</Label>
-                <Input
-                  id="quote-valid-until"
-                  type="date"
-                  value={quoteForm.valid_until}
-                  onChange={(e) => setQuoteForm((prev) => ({ ...prev, valid_until: e.target.value }))}
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                size="sm"
-                className="w-full h-8 text-xs"
-                disabled={isCreatingQuote || Object.values(quoteFormErrors).some(Boolean)}
-              >
-                {isCreatingQuote ? "Creating..." : "Create Quote Draft"}
-              </Button>
-            </form>
+            <div className="hidden lg:block mb-4 pb-4 border-b border-slate-200">
+              {quoteCreateForm}
+            </div>
 
             <div className="mb-3 flex flex-col sm:flex-row sm:items-center gap-2">
               <Input
                 value={quoteSearchTerm}
                 onChange={(e) => setQuoteSearchTerm(e.target.value)}
-                className="h-8 text-xs"
+                className="h-10 sm:h-8 text-sm sm:text-xs"
                 placeholder="Search quotes by title, customer, or notes"
               />
               <select
                 value={quoteStatusFilter}
                 onChange={(e) => setQuoteStatusFilter(e.target.value)}
-                className="h-8 border border-slate-300 rounded-md px-2 text-xs bg-white sm:w-[170px]"
+                className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[170px]"
               >
                 <option value="active">Active</option>
                 <option value="all">All</option>
@@ -3131,21 +3506,19 @@ export default function WorkOrders() {
                       <p className="text-[11px] text-blue-700 truncate">Deposit URL: {quote.deposit_payment_url}</p>
                     )}
                     {!canSendToCustomer && (
-                      <div className="flex items-center justify-between gap-2 mt-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
                         <p className="text-xs text-rose-600">Add a valid customer phone or email to send deposit links.</p>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="h-6 text-[10px] px-2"
+                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2 w-full sm:w-auto"
                             onClick={() => openAlternateRecipientEditor("quote", quote._id, customer)}
                           >
                             Use Alternate
                           </Button>
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="h-6 text-[10px] px-2"
+                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2 w-full sm:w-auto"
                             onClick={() => handleFixCustomerContact(quote.customer_id)}
                           >
                             Fix Contact
@@ -3160,7 +3533,7 @@ export default function WorkOrders() {
                           <select
                             value={alternateRecipientEditor.channel}
                             onChange={(e) => setAlternateRecipientEditor((prev) => ({ ...prev, channel: e.target.value }))}
-                            className="h-8 border border-slate-300 rounded-md px-2 text-xs bg-white"
+                            className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white"
                           >
                             <option value="email">Email</option>
                             <option value="sms">SMS</option>
@@ -3169,13 +3542,12 @@ export default function WorkOrders() {
                             value={alternateRecipientEditor.recipient}
                             onChange={(e) => setAlternateRecipientEditor((prev) => ({ ...prev, recipient: e.target.value }))}
                             placeholder={alternateRecipientEditor.channel === "sms" ? "(555) 123-4567" : "name@example.com"}
-                            className="h-8 text-xs"
+                            className="h-10 sm:h-8 text-sm sm:text-xs"
                           />
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <Button
-                            size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                             disabled={
                               quoteIsBusy
                               || !isValidRecipientForChannel(alternateRecipientEditor.channel, alternateRecipientEditor.recipient.trim())
@@ -3185,9 +3557,8 @@ export default function WorkOrders() {
                             {quoteIsBusy ? "Sending..." : "Send Deposit Link"}
                           </Button>
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                             onClick={closeAlternateRecipientEditor}
                           >
                             Cancel
@@ -3209,11 +3580,10 @@ export default function WorkOrders() {
                         Invoice: {linkedInvoice.status}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
                       {quote.status === "draft" && (
                         <Button
-                          size="sm"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleQuoteStatusChange(quote, "sent")}
                         >
@@ -3223,17 +3593,15 @@ export default function WorkOrders() {
                       {quote.status === "sent" && (
                         <>
                           <Button
-                            size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                             disabled={quoteIsBusy}
                             onClick={() => handleQuoteStatusChange(quote, "approved")}
                           >
                             {quoteIsBusy ? "Saving..." : "Approve"}
                           </Button>
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                             disabled={quoteIsBusy}
                             onClick={() => handleQuoteStatusChange(quote, "declined")}
                           >
@@ -3243,9 +3611,8 @@ export default function WorkOrders() {
                       )}
                       {quote.status !== "declined" && quote.deposit_required > 0 && quote.deposit_status !== "paid" && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleMarkDepositPaid(quote)}
                         >
@@ -3254,9 +3621,8 @@ export default function WorkOrders() {
                       )}
                       {canCreateDepositLink && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={quoteIsBusy || !canSendToCustomer}
                           onClick={() => handleCreateDepositLink(quote)}
                         >
@@ -3265,18 +3631,16 @@ export default function WorkOrders() {
                       )}
                       {hasDepositLink && quote.deposit_status !== "paid" && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           onClick={() => window.open(quote.deposit_payment_url, "_blank", "noopener,noreferrer")}
                         >
                           Open Deposit Link
                         </Button>
                       )}
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="h-7 text-[11px]"
+                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                         type="button"
                         onClick={() => handleDownloadQuotePdf(quote)}
                       >
@@ -3284,18 +3648,16 @@ export default function WorkOrders() {
                         PDF
                       </Button>
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="h-7 text-[11px]"
+                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                         type="button"
                         onClick={() => handleUseQuoteTemplate(quote)}
                       >
                         Use Template
                       </Button>
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="h-7 text-[11px]"
+                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                         disabled={quoteIsBusy}
                         onClick={() => handleDuplicateQuote(quote)}
                       >
@@ -3303,9 +3665,8 @@ export default function WorkOrders() {
                       </Button>
                       {canConvert && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleConvertQuote(quote)}
                         >
@@ -3314,9 +3675,8 @@ export default function WorkOrders() {
                       )}
                       {canDraftInvoice && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleCreateInvoiceFromQuote(quote)}
                         >
@@ -3325,9 +3685,8 @@ export default function WorkOrders() {
                       )}
                       {depositPending && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled
                         >
                           Deposit Needed
@@ -3343,16 +3702,16 @@ export default function WorkOrders() {
 
         {activeSection === "invoices" && (
         <Card className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-200 pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-slate-200 pb-2">
               <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950 flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-emerald-700" />
                 Invoices
               </h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-xs"
+                  className="h-11 sm:h-8 text-sm sm:text-xs"
                   onClick={handleQueueReminders}
                   disabled={isQueueingReminders}
                 >
@@ -3361,7 +3720,7 @@ export default function WorkOrders() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-xs"
+                  className="h-11 sm:h-8 text-sm sm:text-xs"
                   onClick={handleRetryFailedCommunications}
                   disabled={isRetryingFailedCommunications || failedCommunications.length === 0}
                 >
@@ -3370,321 +3729,64 @@ export default function WorkOrders() {
                     ? "Retrying..."
                     : `Retry Failed${failedCommunications.length > 0 ? ` (${failedCommunications.length})` : ""}`}
                 </Button>
+              </div>
+            </div>
+
+            <div className="hidden lg:block">
+              {invoiceCreatePanel}
+            </div>
+
+            <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Month-End Close</p>
+                  <p className="text-[11px] text-slate-600">
+                    Quick close summary for invoices created in the selected month.
+                  </p>
+                </div>
                 <Button
                   size="sm"
-                  className="h-8 text-xs"
-                  onClick={handleBatchCreateInvoices}
-                  disabled={isBatchInvoicing || Object.values(batchInvoiceErrors).some(Boolean)}
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  type="button"
+                  onClick={handleExportMonthCloseCsv}
+                  disabled={monthCloseSummary.createdInMonth.length === 0}
                 >
-                  {isBatchInvoicing ? "Processing..." : "Run Batch"}
+                  <FileDown className="w-3.5 h-3.5 mr-1" />
+                  Export CSV
                 </Button>
               </div>
-            </div>
-
-            <form className="space-y-3 mb-4 pb-4 border-b border-slate-200" onSubmit={handleCreateInvoiceDraft}>
-              <div>
-                <Label htmlFor="inv-customer">Customer</Label>
-                <select
-                  id="inv-customer"
-                  value={invoiceForm.customer_id}
-                  onChange={(e) => handleInvoiceCustomerSelect(e.target.value)}
-                  className="w-full h-9 border border-slate-300 rounded-md px-2 text-xs bg-white"
-                >
-                  <option value="">Select customer...</option>
-                  {customers.map((customer) => (
-                    <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
-                  ))}
-                </select>
-                {invoiceFormErrors.customer && (
-                  <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.customer}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="inv-work-order">Work Order (optional)</Label>
-                <select
-                  id="inv-work-order"
-                  value={invoiceForm.work_order_id}
-                  onChange={(e) => handleInvoiceWorkOrderSelect(e.target.value)}
-                  className="w-full h-9 border border-slate-300 rounded-md px-2 text-xs bg-white"
-                >
-                  <option value="">No linked work order</option>
-                  {invoiceWorkOrderOptions.map((order) => (
-                    <option key={order._id} value={String(order._id)}>
-                      {order.title} ({order.status.replace("_", " ")})
-                    </option>
-                  ))}
-                </select>
-                {invoiceForm.customer_id && invoiceWorkOrderOptions.length === 0 && (
-                  <p className="mt-1 text-[11px] text-slate-500">No work orders found for this customer yet.</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="inv-description">Description</Label>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <Label htmlFor="month-close-month" className="text-xs sm:w-24">Month</Label>
                 <Input
-                  id="inv-description"
-                  value={invoiceForm.description}
-                  onChange={(e) => setInvoiceForm((prev) => ({ ...prev, description: e.target.value }))}
-                  className="h-9 text-xs"
-                  placeholder="Monthly service / repair / clean-up"
+                  id="month-close-month"
+                  type="month"
+                  value={monthCloseMonth}
+                  onChange={(e) => setMonthCloseMonth(e.target.value)}
+                  className="h-8 text-xs sm:w-44"
                 />
-                {invoiceFormErrors.description && (
-                  <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.description}</p>
-                )}
+                <p className="text-[11px] text-slate-600">{monthCloseSummary.label}</p>
               </div>
-
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="inv-qty">Qty</Label>
-                  <Input
-                    id="inv-qty"
-                    value={invoiceForm.quantity}
-                    onChange={(e) => setInvoiceForm((prev) => ({ ...prev, quantity: e.target.value }))}
-                    className="h-9 text-xs"
-                  />
-                  {invoiceFormErrors.quantity && (
-                    <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.quantity}</p>
-                  )}
+                <div className="rounded-md border border-slate-200 bg-white p-2">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Billed</p>
+                  <p className="text-sm font-semibold text-slate-900">${monthCloseSummary.billedTotal.toFixed(2)}</p>
                 </div>
-                <div>
-                  <Label htmlFor="inv-price">Unit $</Label>
-                  <Input
-                    id="inv-price"
-                    value={invoiceForm.unit_price}
-                    onChange={(e) => setInvoiceForm((prev) => ({ ...prev, unit_price: e.target.value }))}
-                    className="h-9 text-xs"
-                  />
-                  {invoiceFormErrors.unitPrice && (
-                    <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.unitPrice}</p>
-                  )}
+                <div className="rounded-md border border-slate-200 bg-white p-2">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Collected</p>
+                  <p className="text-sm font-semibold text-emerald-700">${monthCloseSummary.collectedTotal.toFixed(2)}</p>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="inv-tax">Tax Rate</Label>
-                  <Input
-                    id="inv-tax"
-                    value={invoiceForm.tax_rate}
-                    onChange={(e) => setInvoiceForm((prev) => ({ ...prev, tax_rate: e.target.value }))}
-                    className="h-9 text-xs"
-                    placeholder="8.25 or 0.0825"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">Enter 8.25 for 8.25% tax.</p>
+                <div className="rounded-md border border-slate-200 bg-white p-2">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Outstanding</p>
+                  <p className={`text-sm font-semibold ${monthCloseSummary.outstandingTotal > 0 ? "text-rose-700" : "text-slate-900"}`}>
+                    ${monthCloseSummary.outstandingTotal.toFixed(2)}
+                  </p>
                 </div>
-                <div>
-                  <Label htmlFor="inv-due">Due Date</Label>
-                  <Input
-                    id="inv-due"
-                    type="date"
-                    value={invoiceForm.due_date}
-                    onChange={(e) => setInvoiceForm((prev) => ({ ...prev, due_date: e.target.value }))}
-                    className="h-9 text-xs"
-                  />
-                  {invoiceFormErrors.dueDate && (
-                    <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.dueDate}</p>
-                  )}
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                size="sm"
-                className="w-full h-8 text-xs"
-                disabled={isCreatingInvoice || Object.values(invoiceFormErrors).some(Boolean)}
-              >
-                {isCreatingInvoice ? "Creating..." : "Create Invoice Draft"}
-              </Button>
-            </form>
-
-            <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Batch Invoicing</p>
-              <p className="text-[11px] text-slate-600">
-                Batch run always uses the Unit $, Tax Rate, and Due In Days values below.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                <div>
-                  <Label htmlFor="batch-from" className="text-xs">From</Label>
-                  <Input
-                    id="batch-from"
-                    type="date"
-                    value={batchInvoiceForm.from_date}
-                    onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, from_date: e.target.value }))}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="batch-to" className="text-xs">To</Label>
-                  <Input
-                    id="batch-to"
-                    type="date"
-                    value={batchInvoiceForm.to_date}
-                    onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, to_date: e.target.value }))}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="batch-unit" className="text-xs">Unit $</Label>
-                  <Input
-                    id="batch-unit"
-                    value={batchInvoiceForm.unit_price}
-                    onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, unit_price: e.target.value }))}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="batch-tax" className="text-xs">Tax Rate</Label>
-                  <Input
-                    id="batch-tax"
-                    value={batchInvoiceForm.tax_rate}
-                    onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, tax_rate: e.target.value }))}
-                    className="h-8 text-xs"
-                    placeholder="8.25 or 0.0825"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="batch-due" className="text-xs">Due In Days</Label>
-                  <Input
-                    id="batch-due"
-                    value={batchInvoiceForm.due_in_days}
-                    onChange={(e) => setBatchInvoiceForm((prev) => ({ ...prev, due_in_days: e.target.value }))}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2 text-xs text-slate-700">
-                    <Checkbox
-                      checked={batchInvoiceForm.auto_send}
-                      onCheckedChange={(checked) => setBatchInvoiceForm((prev) => ({ ...prev, auto_send: !!checked }))}
-                    />
-                    Auto-send after draft
-                  </label>
-                </div>
-              </div>
-              {batchInvoiceErrors.dateRange && (
-                <p className="text-[11px] text-rose-600">{batchInvoiceErrors.dateRange}</p>
-              )}
-              {batchInvoiceErrors.unitPrice && (
-                <p className="text-[11px] text-rose-600">{batchInvoiceErrors.unitPrice}</p>
-              )}
-              {batchInvoiceErrors.dueDays && (
-                <p className="text-[11px] text-rose-600">{batchInvoiceErrors.dueDays}</p>
-              )}
-            </div>
-
-            <div className="mb-4 grid grid-cols-1 xl:grid-cols-2 gap-3">
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Reminder Autopilot</p>
-                    <p className="text-[11px] text-slate-600">
-                      Auto-queues unpaid reminders on a fixed interval.
-                    </p>
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-slate-700">
-                    <Checkbox
-                      checked={reminderAutopilotEnabled}
-                      onCheckedChange={(checked) => {
-                        const enabled = !!checked;
-                        setReminderAutopilotEnabled(enabled);
-                        if (!enabled) {
-                          setReminderAutopilotNextRunAt(null);
-                          return;
-                        }
-                        const minutes = Math.max(
-                          15,
-                          Math.min(720, Math.floor(toFiniteNumber(reminderAutopilotIntervalMinutes, 60)))
-                        );
-                        setReminderAutopilotNextRunAt(Date.now() + (minutes * 60 * 1000));
-                      }}
-                    />
-                    Enabled
-                  </label>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-end gap-2">
-                  <div className="sm:w-40">
-                    <Label htmlFor="autopilot-interval" className="text-xs">Interval (minutes)</Label>
-                    <Input
-                      id="autopilot-interval"
-                      value={reminderAutopilotIntervalMinutes}
-                      onChange={(e) => setReminderAutopilotIntervalMinutes(e.target.value)}
-                      onBlur={() => {
-                        const minutes = Math.max(
-                          15,
-                          Math.min(720, Math.floor(toFiniteNumber(reminderAutopilotIntervalMinutes, 60)))
-                        );
-                        setReminderAutopilotIntervalMinutes(String(minutes));
-                        if (reminderAutopilotEnabled) {
-                          setReminderAutopilotNextRunAt(Date.now() + (minutes * 60 * 1000));
-                        }
-                      }}
-                      className="h-8 text-xs"
-                      inputMode="numeric"
-                      disabled={!reminderAutopilotEnabled}
-                    />
-                  </div>
-                  <div className="text-[11px] text-slate-600">
-                    Next run: {reminderAutopilotEnabled
-                      ? (formatTimestamp(reminderAutopilotNextRunAt) || "Scheduling...")
-                      : "Autopilot disabled"}
-                    {isReminderAutopilotRunning ? " (running now)" : ""}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Month-End Close</p>
-                    <p className="text-[11px] text-slate-600">
-                      Quick close summary for invoices created in the selected month.
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-[11px]"
-                    type="button"
-                    onClick={handleExportMonthCloseCsv}
-                    disabled={monthCloseSummary.createdInMonth.length === 0}
-                  >
-                    <FileDown className="w-3.5 h-3.5 mr-1" />
-                    Export CSV
-                  </Button>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <Label htmlFor="month-close-month" className="text-xs sm:w-24">Month</Label>
-                  <Input
-                    id="month-close-month"
-                    type="month"
-                    value={monthCloseMonth}
-                    onChange={(e) => setMonthCloseMonth(e.target.value)}
-                    className="h-8 text-xs sm:w-44"
-                  />
-                  <p className="text-[11px] text-slate-600">{monthCloseSummary.label}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-md border border-slate-200 bg-white p-2">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Billed</p>
-                    <p className="text-sm font-semibold text-slate-900">${monthCloseSummary.billedTotal.toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-md border border-slate-200 bg-white p-2">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Collected</p>
-                    <p className="text-sm font-semibold text-emerald-700">${monthCloseSummary.collectedTotal.toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-md border border-slate-200 bg-white p-2">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Outstanding</p>
-                    <p className={`text-sm font-semibold ${monthCloseSummary.outstandingTotal > 0 ? "text-rose-700" : "text-slate-900"}`}>
-                      ${monthCloseSummary.outstandingTotal.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-slate-200 bg-white p-2">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Invoices</p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {monthCloseSummary.createdInMonth.length} total / {monthCloseSummary.paidInMonth.length} paid
-                    </p>
-                  </div>
+                <div className="rounded-md border border-slate-200 bg-white p-2">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Invoices</p>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {monthCloseSummary.createdInMonth.length} total / {monthCloseSummary.paidInMonth.length} paid
+                  </p>
                 </div>
               </div>
             </div>
@@ -3693,13 +3795,13 @@ export default function WorkOrders() {
               <Input
                 value={invoiceSearchTerm}
                 onChange={(e) => setInvoiceSearchTerm(e.target.value)}
-                className="h-8 text-xs"
+                className="h-10 sm:h-8 text-sm sm:text-xs"
                 placeholder="Search invoices by customer, notes, or line item"
               />
               <select
                 value={invoiceStatusFilter}
                 onChange={(e) => setInvoiceStatusFilter(e.target.value)}
-                className="h-8 border border-slate-300 rounded-md px-2 text-xs bg-white sm:w-[160px]"
+                className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[160px]"
               >
                 <option value="open">Open</option>
                 <option value="all">All</option>
@@ -3750,13 +3852,13 @@ export default function WorkOrders() {
                       <p className="text-[11px] text-blue-700 truncate">Pay URL: {invoice.payment_url}</p>
                     )}
                     {!canSendToCustomer && (
-                      <div className="flex items-center justify-between gap-2 mt-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
                         <p className="text-xs text-rose-600">Add a valid customer phone or email before sending this invoice.</p>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 text-[10px] px-2"
+                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2"
                             onClick={() => openAlternateRecipientEditor("invoice", invoice._id, customer)}
                           >
                             Use Alternate
@@ -3764,7 +3866,7 @@ export default function WorkOrders() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 text-[10px] px-2"
+                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2"
                             onClick={() => handleFixCustomerContact(invoice.customer_id)}
                           >
                             Fix Contact
@@ -3779,7 +3881,7 @@ export default function WorkOrders() {
                           <select
                             value={alternateRecipientEditor.channel}
                             onChange={(e) => setAlternateRecipientEditor((prev) => ({ ...prev, channel: e.target.value }))}
-                            className="h-8 border border-slate-300 rounded-md px-2 text-xs bg-white"
+                            className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white"
                           >
                             <option value="email">Email</option>
                             <option value="sms">SMS</option>
@@ -3788,13 +3890,13 @@ export default function WorkOrders() {
                             value={alternateRecipientEditor.recipient}
                             onChange={(e) => setAlternateRecipientEditor((prev) => ({ ...prev, recipient: e.target.value }))}
                             placeholder={alternateRecipientEditor.channel === "sms" ? "(555) 123-4567" : "name@example.com"}
-                            className="h-8 text-xs"
+                            className="h-10 sm:h-8 text-sm sm:text-xs"
                           />
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <Button
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px]"
                             disabled={
                               invoiceActionId === invoice._id
                               || !isValidRecipientForChannel(alternateRecipientEditor.channel, alternateRecipientEditor.recipient.trim())
@@ -3806,7 +3908,7 @@ export default function WorkOrders() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px]"
                             onClick={closeAlternateRecipientEditor}
                           >
                             Cancel
@@ -3833,11 +3935,10 @@ export default function WorkOrders() {
                     {stripeManaged && (
                       <p className="text-[11px] text-slate-500 mt-1">Awaiting Stripe payment confirmation.</p>
                     )}
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
                       {invoice.status === "draft" && (
                         <Button
-                          size="sm"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={invoiceActionId === invoice._id || !canSendToCustomer}
                           onClick={() => handleSendInvoice(invoice._id)}
                         >
@@ -3846,9 +3947,8 @@ export default function WorkOrders() {
                       )}
                       {invoice.status === "sent" && !stripeManaged && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={invoiceActionId === invoice._id}
                           onClick={() => handleMarkPaid(invoice._id)}
                         >
@@ -3857,9 +3957,8 @@ export default function WorkOrders() {
                       )}
                       {invoice.status === "sent" && (
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="h-7 text-[11px]"
+                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                           disabled={invoiceActionId === invoice._id}
                           onClick={() => handleOpenPayLink(invoice)}
                         >
@@ -3867,9 +3966,8 @@ export default function WorkOrders() {
                         </Button>
                       )}
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="h-7 text-[11px]"
+                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                         type="button"
                         onClick={() => handleDownloadInvoicePdf(invoice)}
                       >
@@ -3877,18 +3975,16 @@ export default function WorkOrders() {
                         PDF
                       </Button>
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="h-7 text-[11px]"
+                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                         type="button"
                         onClick={() => handleUseInvoiceTemplate(invoice)}
                       >
                         Use Template
                       </Button>
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="h-7 text-[11px]"
+                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                         disabled={invoiceActionId === invoice._id}
                         onClick={() => handleDuplicateInvoice(invoice)}
                       >
@@ -3946,11 +4042,10 @@ export default function WorkOrders() {
                         <p className="text-[11px] text-slate-500">Paid: {formatTimestamp(invoice.paid_at)}</p>
                       )}
                       <div className="mt-2">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                             type="button"
                             onClick={() => handleDownloadInvoicePdf(invoice)}
                           >
@@ -3958,18 +4053,16 @@ export default function WorkOrders() {
                             PDF
                           </Button>
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                             type="button"
                             onClick={() => handleUseInvoiceTemplate(invoice)}
                           >
                             Use Template
                           </Button>
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
                             disabled={invoiceActionId === invoice._id}
                             onClick={() => handleDuplicateInvoice(invoice)}
                           >
@@ -4067,7 +4160,22 @@ export default function WorkOrders() {
 
         <div className="space-y-3">
           {workOrders.length === 0 && (
-            <p className="text-sm text-slate-500">No jobs on this dispatch date yet.</p>
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-cyan-50">
+                <ClipboardList className="h-6 w-6 text-cyan-600" />
+              </div>
+              <h3 className="text-base font-semibold text-slate-900">No jobs scheduled</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Add your first work order for {selectedDate} to start dispatching.
+              </p>
+              <Button
+                className="mt-4 h-11 sm:h-9 text-sm sm:text-xs"
+                onClick={handleEmptyStateCreate}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Work Order
+              </Button>
+            </div>
           )}
 
           {workOrders.map((order) => {
@@ -4121,34 +4229,41 @@ export default function WorkOrders() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <select
+                  <Select
                     value={order.assignee_email || ""}
-                    onChange={(e) => handleAssigneeChange(order._id, e.target.value)}
-                    className="h-9 border border-slate-300 rounded-md px-2 text-xs bg-white"
+                    onValueChange={(value) => handleAssigneeChange(order._id, value)}
                   >
-                    <option value="">Unassigned</option>
-                    {teamMembers.map((member) => (
-                      <option key={member._id} value={member.user_email}>{member.name}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="h-12 lg:h-9 text-sm lg:text-xs">
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Unassigned</SelectItem>
+                      {teamMembers.map((member) => (
+                        <SelectItem key={member._id} value={member.user_email}>{member.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                  <select
+                  <Select
                     value={order.status}
-                    onChange={(e) => handleStatusChange(order._id, e.target.value)}
-                    className="h-9 border border-slate-300 rounded-md px-2 text-xs bg-white"
+                    onValueChange={(value) => handleStatusChange(order._id, value)}
                   >
-                    <option value="scheduled">Scheduled</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                    <SelectTrigger className="h-12 lg:h-9 text-sm lg:text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="scheduled">Scheduled</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   {!isWorkOrderCompleted(order.status) && (
                     <Button
-                      size="sm"
-                      className="h-8 text-xs"
+                      className="h-11 sm:h-8 text-sm sm:text-xs w-full sm:w-auto"
                       onClick={() => handleComplete(order._id)}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
@@ -4157,9 +4272,8 @@ export default function WorkOrders() {
                   )}
 
                   <Button
-                    size="sm"
                     variant="outline"
-                    className="h-8 text-xs"
+                    className="h-11 sm:h-8 text-sm sm:text-xs w-full sm:w-auto"
                     disabled={hasInvoice || quoteDepositPending}
                     onClick={() => handleQuickInvoiceFromWorkOrder(order)}
                   >
@@ -4168,9 +4282,8 @@ export default function WorkOrders() {
                   </Button>
 
                   <Button
-                    size="sm"
                     variant="outline"
-                    className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                    className="h-11 sm:h-8 text-sm sm:text-xs w-full sm:w-auto text-rose-600 border-rose-200 hover:bg-rose-50"
                     onClick={() => handleRemove(order._id)}
                   >
                     <Trash2 className="w-3.5 h-3.5 mr-1" />
@@ -4183,6 +4296,35 @@ export default function WorkOrders() {
         </div>
       </Card>
       )}
+
+      {activeSection !== "comms" && (
+        <button
+          type="button"
+          onClick={() => setMobileCreateDrawerOpen(true)}
+          className="fixed bottom-6 right-6 z-40 lg:hidden h-14 w-14 rounded-full bg-cyan-600 text-white shadow-lg hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 flex items-center justify-center"
+          aria-label={mobileCreateDrawerTitle}
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
+
+      <Drawer open={mobileCreateDrawerOpen} onOpenChange={setMobileCreateDrawerOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>{mobileCreateDrawerTitle}</DrawerTitle>
+            <DrawerDescription>
+              {activeSection === "dispatch" && "Add a new work order for the selected dispatch date."}
+              {activeSection === "quotes" && "Create a new quote draft for a customer."}
+              {activeSection === "invoices" && "Create an invoice, run a batch, or configure autopilot."}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="p-4 max-h-[70vh] overflow-auto">
+            {activeSection === "dispatch" && workOrderCreateForm}
+            {activeSection === "quotes" && quoteCreateForm}
+            {activeSection === "invoices" && invoiceCreatePanel}
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

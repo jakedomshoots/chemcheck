@@ -349,6 +349,10 @@ export interface ValidatedServiceLogData {
     alkalinity?: ReadingLevel;
     stabilizer?: ReadingLevel;
     salt?: number;
+    ph_value?: number;
+    chlorine_value?: number;
+    alkalinity_value?: number;
+    stabilizer_value?: number;
     start_time?: string;
     end_time?: string;
     duration_ms?: number;
@@ -364,6 +368,10 @@ export function validateServiceLogCreate(data: {
     alkalinity?: string;
     stabilizer?: string;
     salt?: number;
+    ph_value?: number;
+    chlorine_value?: number;
+    alkalinity_value?: number;
+    stabilizer_value?: number;
     start_time?: string;
     end_time?: string;
     duration_ms?: number;
@@ -384,8 +392,12 @@ export function validateServiceLogCreate(data: {
         alkalinity: validateEnum(data.alkalinity, READING_LEVELS, 'Alkalinity', false),
         stabilizer: validateEnum(data.stabilizer, READING_LEVELS, 'Stabilizer', false),
         salt: validatePositiveNumber(data.salt, 'Salt level', false, 0, 10000),
-        start_time: validateOptionalString(data.start_time, 'Start time', 20),
-        end_time: validateOptionalString(data.end_time, 'End time', 20),
+        ph_value: validatePositiveNumber(data.ph_value, 'pH value', false, 0, 14),
+        chlorine_value: validatePositiveNumber(data.chlorine_value, 'Chlorine value', false, 0, 100),
+        alkalinity_value: validatePositiveNumber(data.alkalinity_value, 'Alkalinity value', false, 0, 1000),
+        stabilizer_value: validatePositiveNumber(data.stabilizer_value, 'Stabilizer value', false, 0, 1000),
+        start_time: validateOptionalString(data.start_time, 'Start time', 30),
+        end_time: validateOptionalString(data.end_time, 'End time', 30),
         duration_ms: validatePositiveNumber(data.duration_ms, 'Duration', false, 0, 86400000), // Max 24 hours
     };
 }

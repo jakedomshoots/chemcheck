@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CAPACITOR_DEBUG</key>
+	<string>$(CAPACITOR_DEBUG)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+    <string>ChemCheck</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+
+	<!-- Permission usage descriptions -->
+	<key>NSCameraUsageDescription</key>
+	<string>ChemCheck uses the camera to capture before and after photos of pool service visits.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ChemCheck needs access to your photo library so you can attach existing pool photos to service logs.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>ChemCheck saves service photos to your photo library when you choose to download them.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ChemCheck uses your location to record service stop check-ins and provide turn-by-turn directions.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>ChemCheck can use Face ID to keep your account secure.</string>
+
+	<!-- App-Bound Domains required by limitsNavigationsToAppBoundDomains -->
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>clerk.chemcheck.xyz</string>
+		<string>challenges.cloudflare.com</string>
+	</array>
+</dict>
+</plist>

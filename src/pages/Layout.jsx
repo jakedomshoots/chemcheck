@@ -1,7 +1,19 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { APP_ROUTES, getCanonicalRoute } from '@/lib/routeConfig';
-import { Home, Users, FileText, TestTube, StickyNote, Menu, X, Settings, BookOpen, ClipboardList, Navigation } from "lucide-react";
+import {
+  Home,
+  Users,
+  FileText,
+  TestTube,
+  StickyNote,
+  X,
+  Settings,
+  BookOpen,
+  ClipboardList,
+  Navigation,
+  MoreHorizontal,
+} from "lucide-react";
 import { importWithRetry } from "@/lib/chunkErrorRecovery";
 import chemcheckLogo from "@/assets/chemcheck-logo.svg";
 
@@ -14,7 +26,7 @@ const SyncStatusIndicator = lazy(() =>
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [renderSyncIndicator, setRenderSyncIndicator] = useState(false);
 
   // Defer sync UI hydration until idle time to keep first paint responsive.
@@ -36,6 +48,21 @@ export default function Layout({ children, currentPageName }) {
     { name: "Notes", path: APP_ROUTES.Notes, icon: StickyNote },
     { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: TestTube },
     { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: Navigation },
+    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: BookOpen },
+    { name: "Settings", path: APP_ROUTES.Settings, icon: Settings },
+  ];
+
+  const primaryTabs = [
+    { name: "Home", path: APP_ROUTES.Home, icon: Home },
+    { name: "Clients", path: APP_ROUTES.Clients, icon: Users },
+    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: ClipboardList },
+    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: Navigation },
+  ];
+
+  const moreItems = [
+    { name: "Notes", path: APP_ROUTES.Notes, icon: StickyNote },
+    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: TestTube },
+    { name: "Reports", path: APP_ROUTES.WeeklyReport, icon: FileText },
     { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: BookOpen },
     { name: "Settings", path: APP_ROUTES.Settings, icon: Settings },
   ];
@@ -65,13 +92,6 @@ export default function Layout({ children, currentPageName }) {
             <Suspense fallback={<div className="h-8 w-8" aria-hidden="true" />}>
               {renderSyncIndicator ? <SyncStatusIndicator showPendingCount={true} /> : <div className="h-8 w-8" aria-hidden="true" />}
             </Suspense>
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-2.5 -mr-1 hover:bg-slate-100/80 active:bg-slate-200/80 active:scale-90 rounded-xl transition-all touch-manipulation flex items-center justify-center min-w-[40px] min-h-[40px]"
-              aria-label="Open navigation menu"
-            >
-              <Menu className="w-7 h-7 stroke-[2]" />
-            </button>
           </div>
         </div>
       </header>
@@ -96,7 +116,7 @@ export default function Layout({ children, currentPageName }) {
                 key={item.name}
                 to={item.path}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${active
-                  ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg"
+                  ? "bg-primary text-white shadow-sm"
                   : "text-slate-700 hover:bg-slate-100"
                   }`}
               >
@@ -119,58 +139,92 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </aside>
 
-      {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-[60]">
+      <main className="lg:ml-64 min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
+        {children}
+      </main>
+
+      {/* Mobile bottom tab bar */}
+      <nav
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-t border-slate-200/60 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]"
+        aria-label="Primary navigation"
+      >
+        <div className="flex items-center justify-around h-16">
+          {primaryTabs.map((item) => {
+            const active = isActive(item.path);
+            return (
+              <Link
+                key={item.name}
+                to={item.path}
+                className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 ${active
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"
+                  }`}
+                aria-current={active ? "page" : undefined}
+              >
+                <item.icon className={`h-5 w-5 stroke-[1.75] ${active ? "text-white" : ""}`} />
+                <span className="text-[10px] font-medium truncate px-1">{item.name}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            className="flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"
+            aria-label="More navigation"
+          >
+            <MoreHorizontal className="h-5 w-5 stroke-[1.75]" />
+            <span className="text-[10px] font-medium truncate px-1">More</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* More bottom sheet */}
+      {moreOpen && (
+        <div className="lg:hidden fixed inset-0 z-[60] flex items-end justify-center">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => setMoreOpen(false)}
           />
-          <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl flex flex-col transform transition-transform duration-200 ease-out translate-x-0">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center">
-                <img
-                  src={chemcheckLogo}
-                  alt="ChemCheck"
-                  className="h-7 sm:h-8 w-auto max-w-[160px] sm:max-w-[200px]"
-                />
-              </div>
+          <div
+            className="relative w-full max-w-md mx-auto bg-white rounded-t-2xl shadow-2xl p-4 pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-bottom duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-label="More options"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-semibold text-slate-900">More</h2>
               <button
-                onClick={() => setSidebarOpen(false)}
+                type="button"
+                onClick={() => setMoreOpen(false)}
                 className="p-2 -mr-2 hover:bg-slate-100 active:bg-slate-200 active:scale-95 rounded-lg transition-all touch-manipulation"
-                aria-label="Close navigation menu"
+                aria-label="Close more options"
               >
-                <X className="w-6 h-6 stroke-[1.75] text-slate-500" />
+                <X className="w-5 h-5 stroke-[1.75] text-slate-500" />
               </button>
             </div>
-
-            <nav className="p-4 space-y-1">
-              {navItems.map((item) => {
+            <nav className="grid grid-cols-1 gap-1">
+              {moreItems.map((item) => {
                 const active = isActive(item.path);
                 return (
                   <Link
                     key={item.name}
                     to={item.path}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${active
-                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg"
+                    onClick={() => setMoreOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${active
+                      ? "bg-primary text-white shadow-sm"
                       : "text-slate-700 hover:bg-slate-100"
                       }`}
+                    aria-current={active ? "page" : undefined}
                   >
-                    <item.icon className={`h-5 w-5 stroke-[1.75] transition-all ${active ? "text-white" : "text-muted-foreground group-hover:text-primary"
-                      }`} />
+                    <item.icon className={`h-5 w-5 stroke-[1.75] ${active ? "text-white" : "text-muted-foreground"}`} />
                     <span className="font-medium">{item.name}</span>
                   </Link>
                 );
               })}
             </nav>
-          </aside>
+          </div>
         </div>
       )}
-
-      <main className="lg:ml-64 min-h-screen safe-area-bottom">
-        {children}
-      </main>
-
     </div>
   );
 }

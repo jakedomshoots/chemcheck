@@ -19,6 +19,7 @@ const EditClient = lazy(() => importWithRetry(() => import('./EditClient'), 'Edi
 const ChemicalUsage = lazy(() => importWithRetry(() => import('./ChemicalUsage'), 'ChemicalUsage'));
 const NewChemicalUsage = lazy(() => importWithRetry(() => import('./NewChemicalUsage'), 'NewChemicalUsage'));
 const Notes = lazy(() => importWithRetry(() => import('./Notes'), 'Notes'));
+const History = lazy(() => importWithRetry(() => import('./History'), 'History'));
 const Settings = lazy(() => importWithRetry(() => import('./Settings'), 'Settings'));
 const PoolSchool = lazy(() => importWithRetry(() => import('./PoolSchool'), 'PoolSchool'));
 const WorkOrders = lazy(() => importWithRetry(() => import('./WorkOrders'), 'WorkOrders'));
@@ -66,6 +67,7 @@ const ROUTES = [
   { path: APP_ROUTES.ChemicalUsage, element: <ChemicalUsage /> },
   { path: APP_ROUTES.NewChemicalUsage, element: <NewChemicalUsage /> },
   { path: APP_ROUTES.Notes, element: <Notes /> },
+  { path: APP_ROUTES.History, element: <History /> },
   { path: APP_ROUTES.Settings, element: <Settings /> },
   { path: APP_ROUTES.PoolSchool, element: <PoolSchool /> },
   { path: APP_ROUTES.Billing, element: <BillingDashboard /> },

@@ -1,0 +1,78 @@
+# ChemCheck App Store Environment Template
+
+Use this as the release-environment checklist for the parked iOS shell. Do not commit real secrets or generated `.env*` files.
+
+## Web Build Values
+
+```bash
+VITE_APP_VERSION=1.0.0
+VITE_DISABLE_AUTH_BYPASS=true
+VITE_ENABLE_LOCALHOST_AUTH_BYPASS=false
+VITE_IOS_SIM_AUTH_BYPASS=false
+VITE_DISABLE_SERVICE_WORKER=false
+```
+
+## Clerk
+
+```bash
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_replace_me
+VITE_CLERK_PROXY_URL=https://clerk.chemcheck.xyz
+VITE_CLERK_DOMAIN=clerk.chemcheck.xyz
+```
+
+Clerk dashboard checks:
+
+- Production application uses `clerk.chemcheck.xyz`.
+- iOS/WebView origins and redirect URLs are allowed.
+- Development domain `game-sloth-45.clerk.accounts.dev` is not used for the App Store build.
+- If Google, Facebook, or another third-party/social sign-in provider is enabled for iOS, Sign in with Apple is enabled too.
+
+## Convex
+
+```bash
+VITE_CONVEX_URL=https://your-production-deployment.convex.cloud
+CONVEX_DEPLOYMENT_ENV=production
+```
+
+Set `VITE_CONVEX_URL` to the exact production deployment host. This value is required for the native shell but is not a `WKAppBoundDomains` navigation entry unless the app actually navigates the WebView there.
+
+## Billing
+
+The parked iOS shell blocks Stripe checkout and Stripe portal actions in native iOS. Keep the PWA/web billing configuration separate from the App Store review decision.
+
+If this build is only for existing ChemCheck accounts, leave Stripe checkout URLs out of the iOS release build:
+
+```bash
+VITE_STRIPE_PUBLISHABLE_KEY=
+VITE_STRIPE_CHECKOUT_URL=
+VITE_STRIPE_PORTAL_URL=
+VITE_STRIPE_CANCEL_URL=
+VITE_STRIPE_STARTER_PRICE_ID=
+VITE_STRIPE_PRO_PRICE_ID=
+VITE_STRIPE_BUSINESS_PRICE_ID=
+```
+
+If native iOS later sells digital ChemCheck access, replace this approach with Apple In-App Purchase before App Review.
+
+## Monitoring
+
+```bash
+VITE_SENTRY_DSN=
+SENTRY_AUTH_TOKEN=
+```
+
+Only set monitoring values that are valid for the production release. Keep private tokens in the build environment, not in Git.
+
+## Native Toolchain
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+xcodebuild -list -project ios/App/App.xcodeproj
+```
+
+## Release Gate
+
+```bash
+scripts/app-store-preflight.sh --full
+```

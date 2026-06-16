@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, ChevronDown, Trash2, Lock, Camera, Send, CheckCheck } from "lucide-react";
+import { Calendar, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, ChevronDown, Trash2, Lock, Camera, Send, CheckCheck, Loader2, RefreshCw } from "lucide-react";
 import { formatServiceDateFull } from "@/utils";
 import {
   AlertDialog,
@@ -94,9 +94,10 @@ export function formatReportSentDate(timestamp) {
  * @param {Object} props.log - The service log data
  * @param {Function} props.onDelete - Callback when delete is confirmed
  * @param {Function} [props.onSendReport] - Callback when Send Report is clicked
- * @param {Object} [props.reportStatus] - Report status { sentAt?: number, sentToPhone?: string }
+ * @param {Function} [props.onRetryReport] - Callback when a failed report should be retried
+ * @param {Object} [props.reportStatus] - Report status { status?: 'sent'|'queued'|'sending'|'failed', sentAt?: number, method?: string }
  */
-export default function ServiceLogCard({ log, onDelete, onSendReport, reportStatus }) {
+export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryReport, reportStatus }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [photos, setPhotos] = useState([]);
@@ -199,7 +200,21 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, reportStat
   };
 
   const hasPhotos = photoCounts.total > 0;
-  const isReportSent = reportStatus?.sentAt;
+
+  const reportStatusKey = reportStatus?.status;
+  const isReportSent = reportStatusKey === 'sent' || (!reportStatusKey && reportStatus?.sentAt);
+  const isReportQueued = reportStatusKey === 'queued';
+  const isReportSending = reportStatusKey === 'sending';
+  const isReportFailed = reportStatusKey === 'failed';
+
+  const handleRetryReport = (e) => {
+    e.stopPropagation();
+    if (onRetryReport) {
+      onRetryReport();
+    } else if (onSendReport) {
+      onSendReport();
+    }
+  };
 
   return (
     <>
@@ -235,7 +250,25 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, reportStat
                   </span>
                 )}
 
-                {/* Report Sent Indicator - Requirements: 5.1 */}
+                {/* Report Status Indicators - Requirements: 5.1, Phase 2.5 */}
+                {isReportSending && (
+                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-blue-600 ml-1" data-testid="report-sending-indicator">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    <span>Sending...</span>
+                  </span>
+                )}
+                {isReportQueued && (
+                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-600 ml-1" data-testid="report-queued-indicator">
+                    <AlertCircle className="w-2.5 h-2.5" />
+                    <span>Queued</span>
+                  </span>
+                )}
+                {isReportFailed && (
+                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-red-600 ml-1" data-testid="report-failed-indicator">
+                    <XCircle className="w-2.5 h-2.5" />
+                    <span>Failed</span>
+                  </span>
+                )}
                 {isReportSent && (
                   <span className="flex items-center gap-0.5 text-[10px] font-medium text-green-600 ml-1" data-testid="report-sent-indicator">
                     <CheckCheck className="w-2.5 h-2.5" />
@@ -325,20 +358,42 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, reportStat
                 </div>
               )}
 
-              {/* Send Report Button - Requirements: 2.1 */}
+              {/* Send Report Button - Requirements: 2.1, Phase 2.5 retry */}
               {onSendReport && (
                 <div className="mt-3 pt-3 border-t border-slate-200/60 flex justify-end">
                   <Button
-                    variant={isReportSent ? "outline" : "default"}
+                    variant={isReportSent ? "outline" : isReportFailed ? "outline" : "default"}
                     size="sm"
-                    onClick={handleSendReport}
-                    className={isReportSent 
-                      ? "border-green-200 text-green-700 hover:bg-green-50" 
-                      : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                    onClick={isReportFailed ? handleRetryReport : handleSendReport}
+                    disabled={isReportSending}
+                    className={isReportSent
+                      ? "border-green-200 text-green-700 hover:bg-green-50"
+                      : isReportFailed
+                        ? "border-red-200 text-red-700 hover:bg-red-50"
+                        : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
                     }
                   >
-                    <Send className="w-3.5 h-3.5 mr-1.5" />
-                    {isReportSent ? 'Resend Report' : 'Send Report'}
+                    {isReportSending ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        Sending...
+                      </>
+                    ) : isReportFailed ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                        Retry Report
+                      </>
+                    ) : isReportSent ? (
+                      <>
+                        <Send className="w-3.5 h-3.5 mr-1.5" />
+                        Resend Report
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5 mr-1.5" />
+                        Send Report
+                      </>
+                    )}
                   </Button>
                 </div>
               )}

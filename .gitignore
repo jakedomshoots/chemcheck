@@ -30,8 +30,11 @@ dist-ssr
 *.env
 *.env.*
 
-# Capacitor native projects (regenerated via `npx cap add ios`)
-ios/
+# Capacitor native projects (now committed; ignore generated build/web assets)
+ios/App/build/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/.DS_Store
 .worktrees/
 
 # Test artifacts (regenerated on every run)
@@ -49,6 +52,8 @@ tmp_report_error.mjs
 # Internal AI tooling artifacts (Kiro specs, planning docs)
 .kiro/
 plans/
+!docs/superpowers/plans/
+!docs/superpowers/plans/*.md
 
 # Emergent agent leftovers
 .emergent/

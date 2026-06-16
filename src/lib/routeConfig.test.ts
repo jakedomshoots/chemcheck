@@ -32,8 +32,8 @@ describe('routeConfig', () => {
   it('classifies route aliases for compatibility', () => {
     expect(getCanonicalRoute('/newclient')).toBe(APP_ROUTES.NewClient);
     expect(getCanonicalPageName('/newclient')).toBe('NewClient');
-    expect(getCanonicalRoute('/history')).toBe(APP_ROUTES.Clients);
-    expect(getCanonicalPageName('/history')).toBe('Clients');
+    expect(getCanonicalRoute('/history')).toBe(APP_ROUTES.History);
+    expect(getCanonicalPageName('/history')).toBe('History');
   });
 
   it('identifies standalone and report entry points', () => {

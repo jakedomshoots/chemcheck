@@ -42,7 +42,7 @@ export function UpdateNotification() {
     <>
       {/* Update Available Notification */}
       {updateAvailable && (
-        <div className="fixed top-4 right-4 z-50 max-w-sm">
+        <div className="fixed top-4 right-4 z-50 max-w-sm pt-[calc(1rem+env(safe-area-inset-top))]">
           <div className="bg-blue-600 text-white rounded-lg shadow-lg p-4 border border-blue-500">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">

@@ -114,35 +114,68 @@ function resolveInvoiceNotes(
   return fallbackText || undefined;
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
+
+function clampPageSize(numItems: number | undefined): number {
+  return Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(numItems ?? DEFAULT_PAGE_SIZE)));
+}
+
 export const list = query({
   args: {
     status: v.optional(v.string()),
     customer_id: v.optional(v.id("customers")),
     source_quote_id: v.optional(v.id("quotes")),
+    cursor: v.optional(v.string()),
+    numItems: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    let invoices = await ctx.db
-      .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    const numItems = clampPageSize(args.numItems);
+    const email = identity.email!;
 
-    if (args.status) {
-      invoices = invoices.filter((invoice) => invoice.status === args.status);
+    let query;
+    // Prefer the most selective index, then apply any remaining filters in JS.
+    if (args.customer_id) {
+      query = ctx.db
+        .query("invoices")
+        .withIndex("by_created_by_and_customer", (q) =>
+          q.eq("created_by", email).eq("customer_id", args.customer_id)
+        );
+    } else if (args.status) {
+      query = ctx.db
+        .query("invoices")
+        .withIndex("by_created_by_and_status", (q) =>
+          q.eq("created_by", email).eq("status", args.status)
+        );
+    } else {
+      query = ctx.db
+        .query("invoices")
+        .withIndex("by_created_by", (q) => q.eq("created_by", email));
     }
 
-    if (args.customer_id) {
-      invoices = invoices.filter((invoice) => invoice.customer_id === args.customer_id);
+    const pageResult = await query.order("desc").paginate({
+      cursor: args.cursor ?? null,
+      numItems,
+    });
+
+    let invoices = pageResult.page;
+
+    if (args.status && args.customer_id) {
+      invoices = invoices.filter((invoice) => invoice.status === args.status);
     }
 
     if (args.source_quote_id) {
       invoices = invoices.filter((invoice) => invoice.source_quote_id === args.source_quote_id);
     }
 
-    invoices.sort((a, b) => b.created_at - a.created_at);
-    return invoices;
+    return {
+      page: invoices,
+      continueCursor: pageResult.continueCursor,
+      isDone: pageResult.isDone,
+    };
   },
 });
 
@@ -430,23 +463,24 @@ export const batchCreateFromCompletedWorkOrders = mutation({
     const dueInDays = Math.max(0, Math.min(60, Math.floor(args.due_in_days ?? 7)));
     const limit = Math.max(1, Math.min(200, Math.floor(args.limit ?? 100)));
 
-    const allWorkOrders = await ctx.db
+    const workOrders = await ctx.db
       .query("workOrders")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
-
-    const candidates = allWorkOrders
-      .filter((workOrder) =>
-        workOrder.status === "completed"
-        && workOrder.scheduled_date >= args.from_date
-        && workOrder.scheduled_date <= args.to_date
+      .withIndex("by_created_by_and_scheduled_date", (q) =>
+        q
+          .eq("created_by", identity.email!)
+          .gte("scheduled_date", args.from_date)
+          .lte("scheduled_date", args.to_date)
       )
+      .filter((q) => q.eq(q.field("status"), "completed"))
+      .take(limit);
+
+    const candidates = workOrders
+      .slice()
       .sort((a, b) => {
         const dateDiff = a.scheduled_date.localeCompare(b.scheduled_date);
         if (dateDiff !== 0) return dateDiff;
         return a.created_at - b.created_at;
-      })
-      .slice(0, limit);
+      });
 
     let created = 0;
     let skippedExisting = 0;
@@ -776,43 +810,61 @@ export const markPaidFromStripe = internalMutation({
   },
 });
 
+const REMINDER_STATUSES = ["queued", "sent", "delivered", "failed"] as const;
+const MAX_REMINDER_COMM_SCAN_PER_STATUS = 500;
+const MAX_SENT_INVOICE_SCAN = 200;
+const MAX_REMINDERS_QUEUED = 50;
+
 export const queueUnpaidReminders = mutation({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const invoices = await ctx.db
-      .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
-    const communications = await ctx.db
-      .query("communications")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
-
-    const pending = invoices.filter((invoice) => invoice.status === "sent");
+    const email = identity.email!;
     const now = Date.now();
     const today = new Date().toISOString().slice(0, 10);
-    let queued = 0;
 
+    // Bounded scan: only look at recent communications per status, filter to
+    // invoice_unpaid_reminder in JS. This avoids collecting all communications.
     const latestReminderByInvoice = new Map<string, { status: string; timestamp: number }>();
-    for (const communication of communications) {
-      if (communication.template_key !== "invoice_unpaid_reminder") continue;
-      if (!communication.invoice_id) continue;
-      const key = String(communication.invoice_id);
-      const existing = latestReminderByInvoice.get(key);
-      const currentTs = communication.updated_at || communication.created_at || 0;
-      if (!existing || currentTs >= existing.timestamp) {
-        latestReminderByInvoice.set(key, {
-          status: communication.status,
-          timestamp: currentTs,
-        });
+    for (const status of REMINDER_STATUSES) {
+      const communications = await ctx.db
+        .query("communications")
+        .withIndex("by_created_by_and_status", (q) =>
+          q.eq("created_by", email).eq("status", status)
+        )
+        .order("desc")
+        .take(MAX_REMINDER_COMM_SCAN_PER_STATUS);
+
+      for (const communication of communications) {
+        if (communication.template_key !== "invoice_unpaid_reminder") continue;
+        if (!communication.invoice_id) continue;
+        const key = String(communication.invoice_id);
+        const existing = latestReminderByInvoice.get(key);
+        const currentTs = communication.updated_at || communication.created_at || 0;
+        if (!existing || currentTs >= existing.timestamp) {
+          latestReminderByInvoice.set(key, {
+            status: communication.status,
+            timestamp: currentTs,
+          });
+        }
       }
     }
 
+    // Bounded scan: only consider sent invoices for this user.
+    const pending = await ctx.db
+      .query("invoices")
+      .withIndex("by_created_by_and_status", (q) =>
+        q.eq("created_by", email).eq("status", "sent")
+      )
+      .order("desc")
+      .take(MAX_SENT_INVOICE_SCAN);
+
+    let queued = 0;
+
     for (const invoice of pending) {
-      if (queued >= 50) break;
+      if (queued >= MAX_REMINDERS_QUEUED) break;
       if (invoice.due_date && invoice.due_date > today) continue;
 
       const latestReminder = latestReminderByInvoice.get(String(invoice._id));
@@ -822,7 +874,7 @@ export const queueUnpaidReminders = mutation({
       }
 
       const customer = await ctx.db.get(invoice.customer_id);
-      if (!customer || customer.created_by !== identity.email) continue;
+      if (!customer || customer.created_by !== email) continue;
 
       const destination = resolveReminderDestination(customer);
       if (!destination) continue;
@@ -846,7 +898,7 @@ export const queueUnpaidReminders = mutation({
         provider: undefined,
         provider_message_id: undefined,
         error: undefined,
-        created_by: identity.email!,
+        created_by: email,
         created_at: now,
         updated_at: now,
       });

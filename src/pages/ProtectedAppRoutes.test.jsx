@@ -27,6 +27,7 @@ vi.mock('./EditClient', () => ({ default: () => <div>Edit Client Page</div> }));
 vi.mock('./ChemicalUsage', () => ({ default: () => <div>Chemical Usage Page</div> }));
 vi.mock('./NewChemicalUsage', () => ({ default: () => <div>New Chemical Usage Page</div> }));
 vi.mock('./Notes', () => ({ default: () => <div>Notes Page</div> }));
+vi.mock('./History', () => ({ default: () => <div>History Page</div> }));
 vi.mock('./Settings', () => ({ default: () => <div>Settings Page</div> }));
 vi.mock('./PoolSchool', () => ({ default: () => <div>Pool School Page</div> }));
 vi.mock('./WorkOrders', () => ({ default: () => <div>Work Orders Page</div> }));
@@ -79,22 +80,22 @@ describe('ProtectedAppRoutes', () => {
     expect(await screen.findByText('Not Found Page')).toBeInTheDocument();
   });
 
-  it('normalizes legacy /history alias to clients page', async () => {
+  it('normalizes legacy /history alias to history page', async () => {
     render(
       <MemoryRouter initialEntries={['/history']}>
         <ProtectedAppRoutes />
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Clients Page')).toBeInTheDocument();
-    expect(screen.getByTestId('layout-page').textContent).toBe('Clients');
+    expect(await screen.findByText('History Page')).toBeInTheDocument();
+    expect(screen.getByTestId('layout-page').textContent).toBe('History');
   });
 
   it('keeps core route transitions inside an accessibility-friendly performance envelope', async () => {
     const cases = [
       ['/clients', 'Clients Page'],
       ['/newclient', 'New Client Page'],
-      ['/history', 'Clients Page'],
+      ['/history', 'History Page'],
       ['/access-denied', 'Access Denied Page'],
     ];
 

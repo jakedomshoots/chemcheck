@@ -10,6 +10,7 @@ import {
   PhoneCall,
   MapPin,
   ShieldCheck,
+  Lock,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,19 +53,50 @@ const CustomerCard = memo(function CustomerCard({
       ? "bg-amber-50/20"
       : "bg-slate-50/40";
   const borderClassName = cardState === "done" ? "border-emerald-200" : "border-slate-200/60";
-  const startLabel = isCompleted ? "View" : isSkipped ? "Resume" : "Start";
+  const startLabel = isSkipped ? "Resume" : "Start";
   const skipLabel = isSkipped ? "Unskip" : "Skip";
+
+  const handleHeaderClick = () => {
+    if (isCompleted) {
+      setIsExpanded(!isExpanded);
+    } else {
+      onStart?.();
+    }
+  };
+
+  const handleChevronClick = (e) => {
+    e.stopPropagation();
+    setIsExpanded(!isExpanded);
+  };
 
   return (
     <Card className={`overflow-hidden transition-all duration-200 border-2 ${cardClassName}`}>
       <div
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleHeaderClick}
         className="p-3 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-sm text-slate-900 truncate">{customer.full_name}</h3>
-            <p className="text-xs text-slate-500 truncate">{customer.address}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs text-slate-500 truncate">{customer.address}</p>
+              {customer.phone && (
+                <a
+                  href={`tel:${customer.phone}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cyan-50 text-cyan-600 hover:bg-cyan-100 active:bg-cyan-200 shrink-0"
+                  aria-label={`Call ${customer.phone}`}
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                </a>
+              )}
+            </div>
+            {customer.gate_code && (
+              <div className="mt-1.5 inline-flex items-center gap-1 bg-amber-50/70 border border-amber-200 rounded-md px-1.5 py-0.5">
+                <Lock className="w-3 h-3 text-amber-700" />
+                <span className="text-[10px] font-semibold text-amber-800">Gate: {customer.gate_code}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -72,68 +104,61 @@ const CustomerCard = memo(function CustomerCard({
           <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${statusBadgeClassName}`}>
             {statusLabel}
           </span>
-          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          <button
+            type="button"
+            onClick={handleChevronClick}
+            className="p-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors"
+            aria-label={isExpanded ? "Collapse details" : "Expand details"}
+          >
+            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          </button>
         </div>
       </div>
 
       <div className={`px-3 pb-2 ${rowClassName}`}>
-        <div className="grid grid-cols-4 gap-1">
+        {isCompleted ? (
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 text-[11px]"
+            className="w-full h-10 text-xs bg-white/60 hover:bg-white/80 text-slate-700"
             onClick={(e) => {
               e.stopPropagation();
-              (onStart || onClick)?.();
+              onClick?.();
             }}
           >
-            <Clock className="w-3 h-3 mr-1" />
-            {startLabel}
+            <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-600" />
+            View Service Log
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-[11px]"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isSkipped) {
-                onUnskip?.();
-                return;
-              }
-              onSkip?.();
-            }}
-            disabled={isCompleted}
-          >
-            <SkipForward className="w-3 h-3 mr-1" />
-            {skipLabel}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-[11px]"
-            onClick={(e) => {
-              e.stopPropagation();
-              onCall?.();
-            }}
-            disabled={!customer.phone}
-          >
-            <PhoneCall className="w-3 h-3 mr-1" />
-            Call
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-[11px]"
-            onClick={(e) => {
-              e.stopPropagation();
-              onMap?.();
-            }}
-            disabled={!customer.address}
-          >
-            <MapPin className="w-3 h-3 mr-1" />
-            Map
-          </Button>
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              className={`h-12 text-sm font-semibold text-white ${
+                isSkipped
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
+                  : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStart?.();
+              }}
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              {startLabel}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-12 text-sm font-semibold border-2 border-slate-200 hover:border-cyan-500 hover:text-cyan-700"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMap?.();
+              }}
+              disabled={!customer.address}
+            >
+              <MapPin className="w-4 h-4 mr-2" />
+              Map
+            </Button>
+          </div>
+        )}
       </div>
 
       {isExpanded && (
@@ -164,7 +189,8 @@ const CustomerCard = memo(function CustomerCard({
 
             {customer.gate_code && (
               <div className="flex items-center gap-2 bg-amber-50/60 border border-amber-200 rounded-lg p-2">
-                <span className="text-xs font-semibold text-amber-800">🔐 Gate: {customer.gate_code}</span>
+                <Lock className="w-3 h-3 text-amber-700" />
+                <span className="text-xs font-semibold text-amber-800">Gate: {customer.gate_code}</span>
               </div>
             )}
 
@@ -215,31 +241,39 @@ const CustomerCard = memo(function CustomerCard({
               </div>
             )}
 
-            <div className="pt-2 space-y-2">
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClick();
-                }}
-                className={`w-full text-sm h-9 ${isCompleted
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700'
-                  : isSkipped
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
-                    : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
-                  } text-white`}
-              >
-                {isCompleted ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    View Service Log
-                  </>
-                ) : (
-                  <>
-                    <Clock className="w-4 h-4 mr-2" />
-                    {isSkipped ? "Resume Service" : "Start Service"}
-                  </>
-                )}
-              </Button>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              {customer.phone && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCall?.();
+                  }}
+                >
+                  <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
+                  Call
+                </Button>
+              )}
+              {!isCompleted && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isSkipped) {
+                      onUnskip?.();
+                    } else {
+                      onSkip?.();
+                    }
+                  }}
+                >
+                  <SkipForward className="w-3.5 h-3.5 mr-1.5" />
+                  {skipLabel}
+                </Button>
+              )}
             </div>
           </div>
         </div>

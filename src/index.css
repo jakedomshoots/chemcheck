@@ -89,9 +89,11 @@
   100% { background-position: 0% 50%; }
 }
 
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-xy 3s ease infinite;
+@media (prefers-reduced-motion: no-preference) {
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient-xy 3s ease infinite;
+  }
 }
 
 /* Beaker Fill Animation */

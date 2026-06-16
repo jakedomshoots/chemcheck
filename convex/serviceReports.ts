@@ -15,8 +15,6 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
 
-const PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY = "public-report-access";
-
 /**
  * Helper: Verify service log ownership
  */
@@ -230,6 +228,54 @@ export const updateReportSent = internalMutation({
       send_count: currentSendCount + 1,
       last_delivery_method: args.delivery_method,
     });
+  },
+});
+
+/**
+ * Cleanup expired service reports and stale access logs.
+ * Run daily via the cleanup-expired-reports cron job.
+ */
+export const cleanupExpiredReportsAndLogs = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ deletedReports: number; deletedAccessLogs: number }> => {
+    const now = Date.now();
+    const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+    let deletedReports = 0;
+    let deletedAccessLogs = 0;
+    const BATCH_SIZE = 100;
+
+    // Delete expired service reports using the by_expires_at index.
+    while (true) {
+      const expiredReports = await ctx.db
+        .query("serviceReports")
+        .withIndex("by_expires_at", (q) => q.lt(q.field("expires_at"), now))
+        .take(BATCH_SIZE);
+
+      if (expiredReports.length === 0) break;
+
+      for (const report of expiredReports) {
+        await ctx.db.delete(report._id);
+        deletedReports++;
+      }
+    }
+
+    // Delete access logs older than 90 days using the by_accessed_at index.
+    const cutoff = now - NINETY_DAYS_MS;
+    while (true) {
+      const oldLogs = await ctx.db
+        .query("reportAccessLogs")
+        .withIndex("by_accessed_at", (q) => q.lt(q.field("accessed_at"), cutoff))
+        .take(BATCH_SIZE);
+
+      if (oldLogs.length === 0) break;
+
+      for (const log of oldLogs) {
+        await ctx.db.delete(log._id);
+        deletedAccessLogs++;
+      }
+    }
+
+    return { deletedReports, deletedAccessLogs };
   },
 });
 
@@ -1255,15 +1301,30 @@ export const logReportAccess = internalMutation({
   },
 });
 
+function resolveReportAccessRateLimitKey(
+  ipAddress: string | undefined,
+  reportToken: string
+): string {
+  // Never use a single global key such as the old PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY.
+  // Prefer IP-based limiting, and fall back to a per-token key so a missing IP
+  // cannot exhaust a shared global pool.
+  if (ipAddress && ipAddress.trim().length > 0) {
+    return `report_access:ip:${ipAddress.trim()}`;
+  }
+  return `report_access:token:${reportToken}`;
+}
+
 /**
  * Internal query to check rate limit for report access
  * Returns whether access should be allowed based on IP-based rate limiting
  */
 export const checkReportAccessRateLimit = internalQuery({
-  args: {},
+  args: {
+    ip_address: v.optional(v.string()),
+    report_token: v.string(),
+  },
   handler: async (ctx, args) => {
-    void args;
-    const key = `report_access:${PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY}`;
+    const key = resolveReportAccessRateLimitKey(args.ip_address, args.report_token);
     const now = Date.now();
     const windowMs = 60 * 1000; // 1 minute window
     const maxRequests = 30; // 30 requests per minute per IP
@@ -1300,10 +1361,12 @@ export const checkReportAccessRateLimit = internalQuery({
  * Internal mutation to update rate limit counter for report access
  */
 export const updateReportAccessRateLimit = internalMutation({
-  args: {},
+  args: {
+    ip_address: v.optional(v.string()),
+    report_token: v.string(),
+  },
   handler: async (ctx, args) => {
-    void args;
-    const key = `report_access:${PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY}`;
+    const key = resolveReportAccessRateLimitKey(args.ip_address, args.report_token);
     const now = Date.now();
     const windowMs = 60 * 1000; // 1 minute window
 
@@ -1400,9 +1463,12 @@ export const getReportByToken = action({
       };
     };
   }> => {
-    // SECURITY: Check rate limit for this IP
+    // SECURITY: Check rate limit for this IP/token
     const rateLimitCheck: { allowed: boolean; remaining: number; reset_time: number; error?: string } =
-      await ctx.runQuery(internal.serviceReports.checkReportAccessRateLimit, {});
+      await ctx.runQuery(internal.serviceReports.checkReportAccessRateLimit, {
+        ip_address: args.ip_address,
+        report_token: args.token,
+      });
 
     if (!rateLimitCheck.allowed) {
       // Log rate-limited access attempt
@@ -1422,7 +1488,10 @@ export const getReportByToken = action({
     }
 
     // Update rate limit counter
-    await ctx.runMutation(internal.serviceReports.updateReportAccessRateLimit, {});
+    await ctx.runMutation(internal.serviceReports.updateReportAccessRateLimit, {
+      ip_address: args.ip_address,
+      report_token: args.token,
+    });
 
     // Get the report data
     const result: any = await ctx.runQuery(internal.serviceReports.getReportByTokenInternal, {

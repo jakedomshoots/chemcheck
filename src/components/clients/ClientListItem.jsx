@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronDown, MapPin, Phone, Mail, Droplets, Trash2, Edit, ArrowUp, ArrowDown } from "lucide-react";
+import { ChevronDown, MapPin, Phone, Mail, Lock, Droplets, Trash2, Edit, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function ClientListItem({
@@ -95,7 +95,8 @@ export default function ClientListItem({
 
             {customer.gate_code && (
               <div className="flex items-center gap-2 text-slate-500">
-                <span className="text-xs font-medium">🔐 Gate: {customer.gate_code}</span>
+                <Lock className="w-3 h-3 text-slate-500" />
+                <span className="text-xs font-medium text-slate-500">Gate: {customer.gate_code}</span>
               </div>
             )}
 

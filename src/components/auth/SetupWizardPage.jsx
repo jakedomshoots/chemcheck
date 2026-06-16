@@ -14,10 +14,17 @@ import {
   ArrowRight,
   ArrowLeft,
   CheckCircle,
-  Loader2
+  Loader2,
+  CalendarDays,
+  Clock,
+  Wrench,
+  Plus,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+
+const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // Default business settings constants
 const DEFAULT_BUSINESS_SETTINGS = {
@@ -50,8 +57,9 @@ export function SetupWizardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Convex mutation for syncing business to cloud
+  // Convex mutations for syncing business to cloud
   const updateConvexBusiness = useMutation(api.businesses.update);
+  const updateConvexBusinessSettings = useMutation(api.businesses.updateSettings);
 
   const [formData, setFormData] = useState({
     businessName: '',
@@ -60,6 +68,14 @@ export function SetupWizardPage() {
     businessAddress: '',
     ownerName: '',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  });
+
+  const [scheduleData, setScheduleData] = useState({
+    workingDays: [...DEFAULT_BUSINESS_SETTINGS.workingDays],
+    workingHoursStart: DEFAULT_BUSINESS_SETTINGS.workingHours.start,
+    workingHoursEnd: DEFAULT_BUSINESS_SETTINGS.workingHours.end,
+    serviceTypes: [...DEFAULT_BUSINESS_SETTINGS.serviceTypes],
+    newServiceType: ''
   });
 
   // Pre-fill data from Clerk user
@@ -85,26 +101,52 @@ export function SetupWizardPage() {
     setError('');
   };
 
-  const handleNext = () => {
-    if (step === 1 && (!formData.businessName.trim() || !formData.ownerName.trim())) {
-      setError('Please fill in all required fields');
-      return;
-    }
-    setStep(2);
+  const toggleWorkingDay = (day) => {
+    setScheduleData(prev => {
+      const hasDay = prev.workingDays.includes(day);
+      return {
+        ...prev,
+        workingDays: hasDay
+          ? prev.workingDays.filter(d => d !== day)
+          : [...prev.workingDays, day]
+      };
+    });
+    setError('');
   };
 
-  const handleComplete = async () => {
-    if (!auth.clerkUser?.primaryEmailAddress?.emailAddress) {
-      setError('No email address found. Please ensure your account has a verified email.');
+  const handleScheduleChange = (field, value) => {
+    setScheduleData(prev => ({ ...prev, [field]: value }));
+    setError('');
+  };
+
+  const addServiceType = () => {
+    const value = scheduleData.newServiceType.trim();
+    if (!value) return;
+    if (scheduleData.serviceTypes.includes(value)) {
+      setError('This service type already exists');
       return;
     }
+    setScheduleData(prev => ({
+      ...prev,
+      serviceTypes: [...prev.serviceTypes, value],
+      newServiceType: ''
+    }));
+    setError('');
+  };
 
-    // Validate Step 2 fields if provided
+  const removeServiceType = (type) => {
+    setScheduleData(prev => ({
+      ...prev,
+      serviceTypes: prev.serviceTypes.filter(t => t !== type)
+    }));
+  };
+
+  const validateStep2 = () => {
     if (formData.businessEmail.trim()) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.businessEmail.trim())) {
         setError('Please enter a valid business email address');
-        return;
+        return false;
       }
     }
 
@@ -112,15 +154,75 @@ export function SetupWizardPage() {
       const phoneRegex = /^[\d\s()+-]+$/;
       if (!phoneRegex.test(formData.businessPhone.trim()) || formData.businessPhone.trim().length < 10) {
         setError('Please enter a valid phone number');
-        return;
+        return false;
       }
     }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (step === 1) {
+      if (!formData.businessName.trim() || !formData.ownerName.trim()) {
+        setError('Please fill in all required fields');
+        return;
+      }
+      setStep(2);
+      return;
+    }
+
+    if (step === 2) {
+      if (!validateStep2()) return;
+      setStep(3);
+    }
+  };
+
+  const validateStep3 = () => {
+    if (scheduleData.workingDays.length === 0) {
+      setError('Please select at least one working day');
+      return false;
+    }
+    if (scheduleData.workingHoursStart >= scheduleData.workingHoursEnd) {
+      setError('Working hours end time must be after start time');
+      return false;
+    }
+    if (scheduleData.serviceTypes.length === 0) {
+      setError('Please add at least one service type');
+      return false;
+    }
+    return true;
+  };
+
+  const buildSettings = () => ({
+    ...DEFAULT_BUSINESS_SETTINGS,
+    workingDays: scheduleData.workingDays,
+    workingHours: {
+      start: scheduleData.workingHoursStart,
+      end: scheduleData.workingHoursEnd
+    },
+    serviceTypes: scheduleData.serviceTypes
+  });
+
+  const buildConvexSettingsPayload = () => ({
+    working_days: scheduleData.workingDays,
+    working_hours_start: scheduleData.workingHoursStart,
+    working_hours_end: scheduleData.workingHoursEnd,
+    service_types: scheduleData.serviceTypes
+  });
+
+  const handleComplete = async ({ skip = false } = {}) => {
+    if (!auth.clerkUser?.primaryEmailAddress?.emailAddress) {
+      setError('No email address found. Please ensure your account has a verified email.');
+      return;
+    }
+
+    if (!skip && !validateStep3()) return;
 
     setIsLoading(true);
     setError('');
 
     try {
       const userEmail = auth.clerkUser.primaryEmailAddress.emailAddress;
+      const settings = buildSettings();
 
       // Create business
       const business = await userManager.createBusiness({
@@ -131,6 +233,10 @@ export function SetupWizardPage() {
         ownerId: '', // Will be set after user creation
         settings: DEFAULT_BUSINESS_SETTINGS
       });
+
+      // Apply the wizard's schedule/service settings to localStorage
+      // (createBusiness currently overwrites settings with defaults)
+      await userManager.updateBusinessSettings(settings);
 
       // Create user
       const user = await userManager.createUser({
@@ -158,6 +264,9 @@ export function SetupWizardPage() {
           phone: formData.businessPhone.trim() || undefined,
           email: formData.businessEmail.trim() || userEmail,
         });
+
+        // Persist schedule/service settings to Convex
+        await updateConvexBusinessSettings(buildConvexSettingsPayload());
       } catch (convexErr) {
         console.warn('Failed to sync business to Convex, will retry on next load:', convexErr);
         // Non-blocking: setup can still proceed with localStorage
@@ -215,7 +324,12 @@ export function SetupWizardPage() {
             <div className={`w-12 h-1 transition-colors ${step > 1 ? 'bg-cyan-600' : 'bg-slate-200'}`} />
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${step >= 2 ? 'bg-cyan-600 text-white' : 'bg-slate-200 text-slate-600'
               }`}>
-              2
+              {step > 2 ? <CheckCircle className="w-5 h-5" /> : '2'}
+            </div>
+            <div className={`w-12 h-1 transition-colors ${step > 2 ? 'bg-cyan-600' : 'bg-slate-200'}`} />
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${step >= 3 ? 'bg-cyan-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>
+              3
             </div>
           </div>
 
@@ -347,18 +461,159 @@ export function SetupWizardPage() {
                 </Button>
                 <Button
                   type="button"
-                  onClick={handleComplete}
-                  disabled={isLoading}
+                  onClick={handleNext}
                   className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
                 >
-                  {isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Complete Setup
-                      <CheckCircle className="w-4 h-4 ml-2" />
-                    </>
-                  )}
+                  Continue
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Schedule & Service Types */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold text-slate-900">Schedule & Services</h2>
+                <p className="text-slate-600 text-sm">Set your working schedule and service types</p>
+              </div>
+
+              {/* Working Days */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <CalendarDays className="w-4 h-4 inline-block mr-1 -mt-0.5" />
+                  Working Days
+                </label>
+                <div className="grid grid-cols-7 gap-1">
+                  {ALL_DAYS.map(day => {
+                    const isSelected = scheduleData.workingDays.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => toggleWorkingDay(day)}
+                        className={`text-xs font-medium py-2 rounded-lg transition-colors ${
+                          isSelected
+                            ? 'bg-cyan-600 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                        title={day}
+                      >
+                        {day.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Working Hours */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <Clock className="w-4 h-4 inline-block mr-1 -mt-0.5" />
+                  Working Hours
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="time"
+                    value={scheduleData.workingHoursStart}
+                    onChange={(e) => handleScheduleChange('workingHoursStart', e.target.value)}
+                    className="flex-1 pl-3 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  />
+                  <span className="text-slate-500 text-sm">to</span>
+                  <input
+                    type="time"
+                    value={scheduleData.workingHoursEnd}
+                    onChange={(e) => handleScheduleChange('workingHoursEnd', e.target.value)}
+                    className="flex-1 pl-3 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              {/* Service Types */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <Wrench className="w-4 h-4 inline-block mr-1 -mt-0.5" />
+                  Service Types
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={scheduleData.newServiceType}
+                    onChange={(e) => handleScheduleChange('newServiceType', e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addServiceType();
+                      }
+                    }}
+                    placeholder="Add a service type"
+                    className="flex-1 pl-3 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addServiceType}
+                    disabled={!scheduleData.newServiceType.trim()}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {scheduleData.serviceTypes.map(type => (
+                    <span
+                      key={type}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-cyan-50 text-cyan-800 text-sm rounded-full"
+                    >
+                      {type}
+                      <button
+                        type="button"
+                        onClick={() => removeServiceType(type)}
+                        className="text-cyan-600 hover:text-cyan-900"
+                        aria-label={`Remove ${type}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setStep(2)}
+                    className="flex-1"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Back
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleComplete()}
+                    disabled={isLoading}
+                    className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Complete Setup
+                        <CheckCircle className="w-4 h-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => handleComplete({ skip: true })}
+                  disabled={isLoading}
+                  className="w-full text-slate-500 hover:text-slate-700"
+                >
+                  Set up later
                 </Button>
               </div>
             </div>

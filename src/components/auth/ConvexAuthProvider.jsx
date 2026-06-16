@@ -1,15 +1,15 @@
 import { useAuth } from '@clerk/clerk-react';
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
+import { ConvexProvider } from 'convex/react';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
-import { normalizeConvexUrl } from '@/lib/convexUrl';
+import { getSharedConvexClient } from '@/lib/convexClient';
 import {
   getAuthBypassReason,
   shouldUseIosSimulatorAuthBypass,
   shouldUseLocalhostAuthBypass,
 } from '@/lib/platformPolicy';
 
-const convex = new ConvexReactClient(normalizeConvexUrl(import.meta.env.VITE_CONVEX_URL));
+const convex = getSharedConvexClient();
 
 const isIosSimulatorBypass = shouldUseIosSimulatorAuthBypass();
 const isDevBypass = shouldUseLocalhostAuthBypass();

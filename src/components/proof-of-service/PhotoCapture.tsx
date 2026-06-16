@@ -455,7 +455,7 @@ export function PhotoCapture({
           </div>
           <div className="text-center">
             <p className="font-medium text-red-700">Camera Error</p>
-            <p className="text-sm text-red-600 mt-1">{cameraError.message}</p>
+            <p className="text-sm text-red-600 mt-1" data-testid="camera-error-message">{cameraError.message}</p>
           </div>
           <Button
             type="button"

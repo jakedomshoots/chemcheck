@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCustomers, useServiceLogsByCustomer, useServiceLogDelete, useCustomerUpdate } from "@/api/convexHooks";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl, formatServiceDate, parseLocalDate } from "@/utils";
@@ -11,6 +11,13 @@ import { SendReportDialog } from "@/components/service-reports";
 import { ReportSettingsPanel } from "@/components/service-reports/ReportSettingsPanel";
 import { formatSmsMessage, buildReportUrl } from "@/lib/smsReport";
 import { syncPhotosForServiceLog, getPhotos } from "@/lib/proof-of-service";
+import {
+  addToReportQueue,
+  getReportQueue,
+  removeFromReportQueue,
+  updateReportQueueItem,
+  MAX_REPORT_SEND_RETRIES,
+} from "@/lib/reportQueue";
 import { toast } from "sonner";
 import { subWeeks, startOfWeek, endOfWeek } from "date-fns";
 import { useAction, useConvex, useQuery } from "convex/react";
@@ -33,6 +40,14 @@ function toFriendlySendError(error) {
   if (normalized.includes("app_url")) return "Email system is not fully configured yet. Please set APP_URL before sending.";
   if (normalized.includes("network") || normalized.includes("fetch")) return "Network issue while sending. Check connection and try again.";
   return raw;
+}
+
+function isNetworkError(error) {
+  if (!navigator.onLine) return true;
+  if (error && error.name === 'TypeError') return true;
+  const message = typeof error === "string" ? error : error?.message || "";
+  const normalized = message.toLowerCase();
+  return normalized.includes("network") || normalized.includes("fetch") || normalized.includes("failed to fetch");
 }
 
 export default function CustomerDetail() {
@@ -71,6 +86,9 @@ export default function CustomerDetail() {
   const [reportStatuses, setReportStatuses] = useState({});
   const [customNote, setCustomNote] = useState('');
   const [attachedPhotosPreview, setAttachedPhotosPreview] = useState([]);
+
+  const processingQueueRef = useRef(false);
+  const processQueueRef = useRef(null);
 
   const customer = useMemo(() => {
     if (!customers || !customerId) return navigationCustomer || null;
@@ -157,6 +175,33 @@ export default function CustomerDetail() {
     };
   }, [selectedLogForReport, customer]);
 
+  // Load any queued/failed report sends from localStorage and replay them when
+  // the device comes back online.
+  useEffect(() => {
+    const queue = getReportQueue();
+    if (queue.length > 0) {
+      const restoredStatuses = {};
+      queue.forEach((item) => {
+        const logId = String(item.localServiceLogId);
+        const isFailed = item.status === 'failed' || (item.retryCount || 0) >= MAX_REPORT_SEND_RETRIES;
+        restoredStatuses[logId] = {
+          status: isFailed ? 'failed' : 'queued',
+          retryCount: item.retryCount || 0,
+          method: item.deliveryMethod,
+          queuedAt: item.timestamp,
+        };
+      });
+      setReportStatuses((prev) => ({ ...prev, ...restoredStatuses }));
+    }
+
+    const handleOnline = () => {
+      processQueueRef.current?.();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
+
   const handleDeleteLog = async (logId) => {
     await deleteServiceLog(logId);
   };
@@ -228,40 +273,24 @@ export default function CustomerDetail() {
     setAttachedPhotosPreview([]);
   }, []);
 
-  const handleConfirmSendReport = useCallback(async (deliveryMethod, customNoteParam) => {
-    if (!selectedLogForReport || !customer) return;
-
-    setSendReportLoading(true);
-    setSendReportError(null);
-
-    const customNote = typeof customNoteParam === 'string' ? customNoteParam.trim() : '';
-    if (customNote.length > 500) {
-      setSendReportError("Custom note is too long. Please keep it under 500 characters.");
-      setSendReportLoading(false);
-      return;
-    }
-
+  const sendReportForLog = useCallback(async (customerArg, logArg, deliveryMethod, customNote) => {
     try {
-      if (deliveryMethod === 'sms' && !customer.phone) {
-        setSendReportError("No phone number on file. Please add a phone number to send SMS reports.");
-        setSendReportLoading(false);
-        return;
+      if (deliveryMethod === 'sms' && !customerArg.phone) {
+        return { success: false, error: "No phone number on file. Please add a phone number to send SMS reports." };
       }
 
       if (deliveryMethod === 'email') {
-        const emailError = getEmailDeliveryValidationError(customer.email);
+        const emailError = getEmailDeliveryValidationError(customerArg.email);
         if (emailError) {
-          setSendReportError(emailError);
-          setSendReportLoading(false);
-          return;
+          return { success: false, error: emailError };
         }
       }
 
       if (deliveryMethod === 'email' || deliveryMethod === 'sms') {
         let customerSyncProblem = null;
         try {
-          console.log(`Ensuring customer ${customer._id} is up-to-date in cloud before sending report...`);
-          const customerSync = await syncService.syncRecord('customers', customer._id);
+          console.log(`Ensuring customer ${customerArg._id} is up-to-date in cloud before sending report...`);
+          const customerSync = await syncService.syncRecord('customers', customerArg._id || customerArg.id);
           if (!customerSync.success) {
             customerSyncProblem = customerSync.error || "Customer contact info failed to sync.";
           }
@@ -275,9 +304,7 @@ export default function CustomerDetail() {
             console.warn("Continuing email send with recipient override after customer sync issue:", customerSyncProblem);
             toast.warning("Customer cloud sync is delayed. Sending with the current email anyway.");
           } else {
-            setSendReportError(`${customerSyncProblem} Please check your connection and retry.`);
-            setSendReportLoading(false);
-            return;
+            return { success: false, error: `${customerSyncProblem} Please check your connection and retry.` };
           }
         }
       }
@@ -289,18 +316,16 @@ export default function CustomerDetail() {
       });
 
       if (!isConvexAvailable) {
-        setSendReportError(`${deliveryMethod === 'sms' ? 'SMS' : 'Email'} reports require online mode with Convex. Please configure VITE_CONVEX_URL and VITE_CLERK_PUBLISHABLE_KEY environment variables.`);
-        setSendReportLoading(false);
-        return;
+        return { success: false, error: `${deliveryMethod === 'sms' ? 'SMS' : 'Email'} reports require online mode with Convex. Please configure VITE_CONVEX_URL and VITE_CLERK_PUBLISHABLE_KEY environment variables.` };
       }
 
-      let serviceLogId = selectedLogForReport.convex_id;
+      let serviceLogId = logArg.convex_id;
 
       if (!serviceLogId) {
         try {
-          console.log("Service log missing convex_id, attempting sync for log ID:", selectedLogForReport._id || selectedLogForReport.id);
+          console.log("Service log missing convex_id, attempting sync for log ID:", logArg._id || logArg.id);
           toast.info("Syncing service log to cloud...");
-          const logId = selectedLogForReport._id || selectedLogForReport.id;
+          const logId = logArg._id || logArg.id;
           const syncResult = await syncService.syncRecord('serviceLogs', logId);
 
           console.log("Sync result:", syncResult);
@@ -313,29 +338,23 @@ export default function CustomerDetail() {
             console.log("Service log ID after sync:", serviceLogId);
 
             if (!serviceLogId) {
-              setSendReportError("Service log synced but ID not yet available. Please try again in a moment.");
-              setSendReportLoading(false);
-              return;
+              return { success: false, error: "Service log synced but ID not yet available. Please try again in a moment." };
             }
 
             toast.success("Service log synced successfully!");
           } else {
             console.error("Sync failed:", syncResult);
-            setSendReportError(syncResult.error || "Failed to sync service log. Please ensure you're online and try again.");
-            setSendReportLoading(false);
-            return;
+            return { success: false, error: syncResult.error || "Failed to sync service log. Please ensure you're online and try again." };
           }
         } catch (syncError) {
           console.error("Sync error:", syncError);
-          setSendReportError("Failed to sync service log. Please ensure you're online and try again.");
-          setSendReportLoading(false);
-          return;
+          return { success: false, error: "Failed to sync service log. Please ensure you're online and try again." };
         }
       }
 
-      const localLogId = selectedLogForReport._id || selectedLogForReport.id;
-      const localCustomerId = customer._id || customer.id;
-      let customerConvexId = customer.convex_id;
+      const localLogId = logArg._id || logArg.id;
+      const localCustomerId = customerArg._id || customerArg.id;
+      let customerConvexId = customerArg.convex_id;
 
       try {
         if (!customerConvexId && localCustomerId) {
@@ -348,9 +367,7 @@ export default function CustomerDetail() {
           if (deliveryMethod === 'email') {
             toast.warning("Customer sync is still catching up, so new photos may be missing from this email.");
           } else {
-            setSendReportError("Customer sync is incomplete, so report photos can't be attached yet. Please try again in a moment.");
-            setSendReportLoading(false);
-            return;
+            return { success: false, error: "Customer sync is incomplete, so report photos can't be attached yet. Please try again in a moment." };
           }
         } else {
           const photoSyncResults = await syncPhotosForServiceLog({
@@ -376,9 +393,7 @@ export default function CustomerDetail() {
             if (deliveryMethod === 'email') {
               toast.warning("Some photos couldn't sync in time. This email may show fewer photos.");
             } else {
-              setSendReportError("Some service photos failed to sync. Please retry so photos are included in the customer report.");
-              setSendReportLoading(false);
-              return;
+              return { success: false, error: "Some service photos failed to sync. Please retry so photos are included in the customer report." };
             }
           }
 
@@ -391,13 +406,11 @@ export default function CustomerDetail() {
         if (deliveryMethod === 'email') {
           toast.warning("Couldn't sync all photos before sending. We'll still send the report.");
         } else {
-          setSendReportError("Couldn't attach service photos yet. Please check your connection and try again.");
-          setSendReportLoading(false);
-          return;
+          return { success: false, error: "Couldn't attach service photos yet. Please check your connection and try again." };
         }
       }
 
-      const poolStatus = getPoolStatus(selectedLogForReport);
+      const poolStatus = getPoolStatus(logArg);
 
       console.log("Calling sendReportAction with:", {
         service_log_id: serviceLogId,
@@ -412,7 +425,7 @@ export default function CustomerDetail() {
         delivery_method: deliveryMethod,
         pool_status: poolStatus,
         custom_note: customNote,
-        recipient_email: deliveryMethod === 'email' ? customer.email?.trim() : undefined,
+        recipient_email: deliveryMethod === 'email' ? customerArg.email?.trim() : undefined,
         report_base_url: window.location.origin,
       });
 
@@ -420,42 +433,247 @@ export default function CustomerDetail() {
         if (result.was_duplicate) {
           toast.info("This report was already sent less than a minute ago. No duplicate email was sent.");
         } else {
-          const destination = deliveryMethod === 'email' ? customer.email : customer.phone;
+          const destination = deliveryMethod === 'email' ? customerArg.email : customerArg.phone;
           toast.success(`Report sent via ${deliveryMethod === 'sms' ? 'SMS' : 'email'} to ${destination}.`);
         }
 
         console.log("Report send result:", {
           deliveryMethod,
-          recipient: deliveryMethod === 'email' ? customer.email : customer.phone,
+          recipient: deliveryMethod === 'email' ? customerArg.email : customerArg.phone,
           messageId: result.message_id,
           wasDuplicate: result.was_duplicate,
           reportToken: result.report_token,
         });
-        const selectedLogId = selectedLogForReport._id || selectedLogForReport.id;
 
-        setReportStatuses(prev => ({
-          ...prev,
-          [selectedLogId]: {
-            sentAt: Date.now(),
-            method: deliveryMethod,
-            reportToken: result.report_token,
-          }
-        }));
-
-        setCustomNote('');
-        handleCloseSendReport();
+        return { success: true, result, deliveryMethod };
       } else {
         console.error("Send report failed:", result);
-        setSendReportError(toFriendlySendError(result.error));
+        return { success: false, error: toFriendlySendError(result.error), rawError: result.error };
       }
-
     } catch (error) {
       console.error("Failed to send report:", error);
-      setSendReportError(toFriendlySendError(error));
-    } finally {
-      setSendReportLoading(false);
+      return { success: false, error: toFriendlySendError(error), rawError: error };
     }
-  }, [selectedLogForReport, customer, convex, sendReportAction, handleCloseSendReport, getPoolStatus]);
+  }, [convex, sendReportAction, getPoolStatus]);
+
+  const processQueue = useCallback(async () => {
+    if (processingQueueRef.current || !navigator.onLine || !isConvexAvailable) return;
+
+    const queue = getReportQueue();
+    const pending = queue.filter((item) =>
+      (item.retryCount || 0) < MAX_REPORT_SEND_RETRIES && item.status !== 'failed'
+    );
+    if (pending.length === 0) return;
+
+    processingQueueRef.current = true;
+
+    for (const item of pending) {
+      const logId = String(item.localServiceLogId);
+      const customerId = String(item.localCustomerId);
+
+      setReportStatuses((prev) => ({
+        ...prev,
+        [logId]: { status: 'sending', method: item.deliveryMethod },
+      }));
+
+      let log = logs?.find((l) => String(l._id || l.id) === logId);
+      let cust = customer?._id && String(customer._id || customer.id) === customerId
+        ? customer
+        : customers?.find((c) => String(c._id || c.id) === customerId);
+
+      if (!log || !cust) {
+        try {
+          const { db } = await import('@/db/chemcheck-db');
+          if (!log) log = await db.serviceLogs.get(Number(item.localServiceLogId));
+          if (!cust) cust = await db.customers.get(Number(item.localCustomerId));
+        } catch (dbError) {
+          console.warn("Failed to load queued report records from local DB:", dbError);
+        }
+      }
+
+      if (!log || !cust) {
+        console.warn("Cannot replay queued report: log or customer missing", item);
+        removeFromReportQueue(item.id);
+        setReportStatuses((prev) => ({
+          ...prev,
+          [logId]: { status: 'failed', retryCount: MAX_REPORT_SEND_RETRIES },
+        }));
+        continue;
+      }
+
+      const result = await sendReportForLog(cust, log, item.deliveryMethod, item.customNote || '');
+
+      if (result.success) {
+        removeFromReportQueue(item.id);
+        setReportStatuses((prev) => ({
+          ...prev,
+          [logId]: {
+            status: 'sent',
+            sentAt: Date.now(),
+            method: item.deliveryMethod,
+            reportToken: result.result.report_token,
+          },
+        }));
+        toast.success(`Queued report sent via ${item.deliveryMethod === 'sms' ? 'SMS' : 'email'}.`);
+      } else {
+        const nextRetry = (item.retryCount || 0) + 1;
+        const failed = nextRetry >= MAX_REPORT_SEND_RETRIES;
+        updateReportQueueItem(item.id, {
+          retryCount: nextRetry,
+          status: failed ? 'failed' : 'queued',
+          lastError: result.error,
+        });
+        setReportStatuses((prev) => ({
+          ...prev,
+          [logId]: {
+            status: failed ? 'failed' : 'queued',
+            retryCount: nextRetry,
+            method: item.deliveryMethod,
+          },
+        }));
+        if (failed) {
+          toast.error(`Report could not be sent after ${MAX_REPORT_SEND_RETRIES} attempts. Tap Retry to try again.`);
+        }
+      }
+    }
+
+    processingQueueRef.current = false;
+  }, [logs, customers, customer, sendReportForLog]);
+
+  useEffect(() => {
+    processQueueRef.current = processQueue;
+    if (navigator.onLine) {
+      processQueue();
+    }
+  }, [processQueue]);
+
+  const handleConfirmSendReport = useCallback(async (deliveryMethod, customNoteParam) => {
+    if (!selectedLogForReport || !customer) return;
+
+    setSendReportLoading(true);
+    setSendReportError(null);
+
+    const customNote = typeof customNoteParam === 'string' ? customNoteParam.trim() : '';
+    if (customNote.length > 500) {
+      setSendReportError("Custom note is too long. Please keep it under 500 characters.");
+      setSendReportLoading(false);
+      return;
+    }
+
+    if (deliveryMethod === 'sms' && !customer.phone) {
+      setSendReportError("No phone number on file. Please add a phone number to send SMS reports.");
+      setSendReportLoading(false);
+      return;
+    }
+
+    if (deliveryMethod === 'email') {
+      const emailError = getEmailDeliveryValidationError(customer.email);
+      if (emailError) {
+        setSendReportError(emailError);
+        setSendReportLoading(false);
+        return;
+      }
+    }
+
+    const localLogId = selectedLogForReport._id || selectedLogForReport.id;
+    const localCustomerId = customer._id || customer.id;
+
+    if (!navigator.onLine) {
+      addToReportQueue({
+        localCustomerId,
+        localServiceLogId: localLogId,
+        deliveryMethod,
+        customNote,
+        customerEmail: customer.email,
+        customerPhone: customer.phone,
+      });
+      setReportStatuses((prev) => ({
+        ...prev,
+        [String(localLogId)]: {
+          status: 'queued',
+          retryCount: 0,
+          method: deliveryMethod,
+          queuedAt: Date.now(),
+        },
+      }));
+      toast.info("You appear offline. This report has been queued and will send when connectivity returns.");
+      handleCloseSendReport();
+      setSendReportLoading(false);
+      return;
+    }
+
+    const result = await sendReportForLog(customer, selectedLogForReport, deliveryMethod, customNote);
+
+    if (result.success) {
+      setReportStatuses((prev) => ({
+        ...prev,
+        [String(localLogId)]: {
+          status: 'sent',
+          sentAt: Date.now(),
+          method: deliveryMethod,
+          reportToken: result.result.report_token,
+        },
+      }));
+      // If a queued send for this log existed, clear it so it doesn't duplicate.
+      getReportQueue()
+        .filter((item) => String(item.localServiceLogId) === String(localLogId))
+        .forEach((item) => removeFromReportQueue(item.id));
+      setCustomNote('');
+      handleCloseSendReport();
+    } else if (isNetworkError(result.rawError)) {
+      addToReportQueue({
+        localCustomerId,
+        localServiceLogId: localLogId,
+        deliveryMethod,
+        customNote,
+        customerEmail: customer.email,
+        customerPhone: customer.phone,
+      });
+      setReportStatuses((prev) => ({
+        ...prev,
+        [String(localLogId)]: {
+          status: 'queued',
+          retryCount: 0,
+          method: deliveryMethod,
+          queuedAt: Date.now(),
+        },
+      }));
+      toast.info("Send failed due to a network issue. Report queued and will retry when connectivity returns.");
+      handleCloseSendReport();
+    } else {
+      setSendReportError(result.error);
+    }
+
+    setSendReportLoading(false);
+  }, [selectedLogForReport, customer, sendReportForLog, handleCloseSendReport]);
+
+  const handleRetryReport = useCallback((log) => {
+    const localLogId = log._id || log.id;
+    const queue = getReportQueue();
+    const item = queue.find((i) => String(i.localServiceLogId) === String(localLogId));
+
+    if (!item) {
+      handleOpenSendReport(log);
+      return;
+    }
+
+    updateReportQueueItem(item.id, { retryCount: 0, status: 'queued' });
+    setReportStatuses((prev) => ({
+      ...prev,
+      [String(localLogId)]: {
+        status: 'queued',
+        retryCount: 0,
+        method: item.deliveryMethod,
+        queuedAt: item.timestamp,
+      },
+    }));
+
+    if (navigator.onLine) {
+      processQueueRef.current?.();
+    } else {
+      toast.info("You are offline. Report re-queued and will send when connectivity returns.");
+    }
+  }, [handleOpenSendReport]);
 
   const getMessagePreview = useCallback(() => {
     if (!selectedLogForReport || !customer) return "";
@@ -648,6 +866,7 @@ export default function CustomerDetail() {
               log={log}
               onDelete={() => handleDeleteLog(log._id)}
               onSendReport={() => handleOpenSendReport(log)}
+              onRetryReport={() => handleRetryReport(log)}
               reportStatus={reportStatuses[log._id]}
             />
           ))}

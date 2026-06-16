@@ -9,6 +9,20 @@ const UpdateNotification = lazy(() =>
 
 function App() {
   useEffect(() => {
+    // Hide the native splash screen once the web app is ready.
+    // This is a no-op when running in a browser.
+    const hideSplash = async () => {
+      try {
+        const { SplashScreen } = await import('@capacitor/splash-screen');
+        await SplashScreen.hide({ fadeOutDuration: 500 });
+      } catch {
+        // Not running in a Capacitor native shell.
+      }
+    };
+    void hideSplash();
+  }, []);
+
+  useEffect(() => {
     let unmounted = false;
     let teardown = () => {};
 

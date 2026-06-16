@@ -56,6 +56,25 @@ const gradeColors = {
   F: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' }
 };
 
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleChange = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
 // Simple cache for analysis results (persists during session)
 const analysisCache = new Map();
 
@@ -97,14 +116,28 @@ function ChemicalSparkline({ readings, color = '#0ea5e9' }) {
 
 // Animated score ring component
 function AnimatedScoreRing({ score, grade, gradeStyle }) {
-  const [animatedScore, setAnimatedScore] = useState(0);
-  const [strokeDashoffset, setStrokeDashoffset] = useState(352);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const targetOffset = useMemo(() => 352 - (score / 100) * 352, [score]);
+  const [animatedScore, setAnimatedScore] = useState(() =>
+    prefersReducedMotion ? score : 0
+  );
+  const [strokeDashoffset, setStrokeDashoffset] = useState(() =>
+    prefersReducedMotion ? targetOffset : 352
+  );
   const animationRef = useRef(null);
 
   useEffect(() => {
+    if (prefersReducedMotion) {
+      setAnimatedScore(score);
+      setStrokeDashoffset(targetOffset);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      return;
+    }
+
     const duration = 1200;
     const startTime = Date.now();
-    const targetOffset = 352 - (score / 100) * 352;
 
     const animate = () => {
       const elapsed = Date.now() - startTime;
@@ -127,7 +160,7 @@ function AnimatedScoreRing({ score, grade, gradeStyle }) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [score]);
+  }, [score, prefersReducedMotion, targetOffset]);
 
   // Get stroke color based on grade
   const strokeColor = {

@@ -20,6 +20,23 @@ async function isOnLoginRoute(page: Page): Promise<boolean> {
   return getPathname(page).startsWith('/login');
 }
 
+async function waitForAuthShellToSettle(page: Page): Promise<void> {
+  await page.waitForLoadState('domcontentloaded');
+
+  const loadingTexts = [
+    /Loading ChemCheck/i,
+    /Initializing your workspace/i,
+    /^Loading\.\.\.$/i,
+  ];
+
+  for (const text of loadingTexts) {
+    const loading = page.getByText(text).first();
+    if (await loading.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await expect(loading).toBeHidden({ timeout: 20000 });
+    }
+  }
+}
+
 async function seedHistoryData(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const mod = await import('/src/db/chemcheck-db.ts');
@@ -146,6 +163,7 @@ test.describe('Gameday Readiness', () => {
 
   test('settings sections and advanced tools are reachable', async ({ page }) => {
     await page.goto('/settings');
+    await waitForAuthShellToSettle(page);
     await recoverFromErrorScreen(page);
     await expect(page.getByRole('heading', { name: /^Settings$/i })).toBeVisible();
 
@@ -174,20 +192,15 @@ test.describe('Gameday Readiness', () => {
     await page.getByRole('button', { name: '×' }).click();
     await expect(page.getByRole('heading', { name: /^Settings$/i })).toBeVisible();
 
-    await page.getByRole('button', { name: /^Admin Tools$/i }).click();
-    await expect(page.getByRole('heading', { name: /Admin Tools/i })).toBeVisible();
-    await page.getByRole('button', { name: /Admin Dashboard/i }).click();
-    await expect(page.getByRole('heading', { name: /Admin Dashboard/i })).toBeVisible();
-    await page.getByRole('button', { name: /^PWA$/i }).click();
-    await expect(page.getByRole('heading', { name: /PWA Status/i })).toBeVisible();
-    await expect(page.getByText(/Service Worker/i).first()).toBeVisible();
-    await expect(page.getByText(/Cache Storage/i).first()).toBeVisible();
-    await page.getByRole('button', { name: '×' }).click();
-    await expect(page.getByRole('heading', { name: /^Settings$/i })).toBeVisible();
+    await page.getByRole('button', { name: /^Privacy & Data$/i }).click();
+    await expect(page.getByRole('heading', { name: /Privacy & Data/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Privacy Policy/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Terms of Service/i })).toBeVisible();
   });
 
   test('privacy actions are functional and do not crash', async ({ page }) => {
     await page.goto('/settings');
+    await waitForAuthShellToSettle(page);
     await recoverFromErrorScreen(page);
     await expect(page.getByRole('heading', { name: /^Settings$/i })).toBeVisible();
 
@@ -196,11 +209,11 @@ test.describe('Gameday Readiness', () => {
     await expect(page.getByRole('button', { name: /Download My Data/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /View Data Summary/i })).toBeVisible();
 
-    page.once('dialog', (dialog) => {
-      void dialog.accept();
-    });
     await page.getByRole('button', { name: /View Data Summary/i }).click();
-    await page.waitForTimeout(750);
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Data Summary/i })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: /^Close$/i }).first().click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await expect(page.getByRole('heading', { name: /^Settings$/i })).toBeVisible();
     await expect(page.getByText(/Oops! Something went wrong/i)).toHaveCount(0);
@@ -232,9 +245,11 @@ test.describe('Gameday Readiness', () => {
 
   test('history proof filters do not crash and hide non-matching customers', async ({ page }) => {
     await page.goto('/history');
+    await waitForAuthShellToSettle(page);
     await recoverFromErrorScreen(page);
     await seedHistoryData(page);
     await page.reload();
+    await waitForAuthShellToSettle(page);
 
     await expect(page.getByRole('heading', { name: 'Service History', exact: true })).toBeVisible();
     await expect(page.getByText(/Filter Test One/i)).toBeVisible();
@@ -259,8 +274,9 @@ test.describe('Gameday Readiness', () => {
     await expect(page.getByText(/Filter Test Two/i)).toBeVisible();
   });
 
-  test('account deletion flow confirms and returns to stable account UI', async ({ page }) => {
+  test('account deletion flow confirms and completes without an error', async ({ page }) => {
     await page.goto('/settings');
+    await waitForAuthShellToSettle(page);
     await recoverFromErrorScreen(page);
     await page.getByRole('button', { name: /^Account$/i }).click();
     await expect(page.getByText(/Delete Account/i)).toBeVisible();
@@ -269,8 +285,12 @@ test.describe('Gameday Readiness', () => {
     await expect(page.getByText(/Are you sure/i)).toBeVisible();
     await page.getByRole('button', { name: /Yes, Delete My Account/i }).click();
 
-    await expect(page.getByRole('button', { name: /^Delete$/i })).toBeVisible();
     await expect(page.getByText(/Failed to delete account/i)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /Deleting\.\.\./i })).toHaveCount(0);
+    await expect(async () => {
+      const pathname = new URL(page.url()).pathname;
+      const onLogin = pathname.startsWith('/login');
+      const inDevShell = await page.getByRole('heading', { name: /^Settings$/i }).isVisible().catch(() => false);
+      expect(onLogin || inDevShell).toBe(true);
+    }).toPass({ timeout: 20000 });
   });
 });

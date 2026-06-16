@@ -30,7 +30,8 @@ export default defineSchema({
     .index("by_created_by", ["created_by"])
     .index("by_service_day", ["service_day"])
     .index("by_business", ["business_id"])
-    .index("by_business_and_day", ["business_id", "service_day"]),
+    .index("by_business_and_day", ["business_id", "service_day"])
+    .index("by_created_by_and_service_day", ["created_by", "service_day"]),
 
   serviceLogs: defineTable({
     customer_id: v.id("customers"),
@@ -44,6 +45,10 @@ export default defineSchema({
     alkalinity: v.string(), // good, low, high
     stabilizer: v.string(), // good, low, high
     salt: v.optional(v.number()), // Only for salt pools
+    ph_value: v.optional(v.number()),
+    chlorine_value: v.optional(v.number()),
+    alkalinity_value: v.optional(v.number()),
+    stabilizer_value: v.optional(v.number()),
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
     // Proof-of-service time tracking fields
@@ -63,6 +68,7 @@ export default defineSchema({
 
   chemicalUsage: defineTable({
     customer_id: v.id("customers"),
+    created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     chemical_type: v.string(),
     quantity: v.string(),
     notes: v.optional(v.string()),
@@ -71,7 +77,9 @@ export default defineSchema({
     updated_at: v.optional(v.number()), // Timestamp for sync
   })
     .index("by_customer", ["customer_id"])
-    .index("by_created_date", ["created_date"]),
+    .index("by_created_date", ["created_date"])
+    .index("by_created_by", ["created_by"])
+    .index("by_created_by_and_created_date", ["created_by", "created_date"]),
 
   notes: defineTable({
     title: v.string(),
@@ -88,7 +96,10 @@ export default defineSchema({
     .index("by_customer", ["customer_id"])
     .index("by_completed", ["completed"])
     .index("by_created_date", ["created_date"])
-    .index("by_created_by", ["created_by"]),
+    .index("by_created_by", ["created_by"])
+    .index("by_created_by_and_created_date", ["created_by", "created_date"])
+    .index("by_created_by_and_customer_id", ["created_by", "customer_id"])
+    .index("by_created_by_and_completed", ["created_by", "completed"]),
 
   subscriptions: defineTable({
     user_email: v.string(),
@@ -230,7 +241,9 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_scheduled_date", ["scheduled_date"])
     .index("by_created_by_and_scheduled_date", ["created_by", "scheduled_date"])
-    .index("by_assignee_email", ["assignee_email"]),
+    .index("by_assignee_email", ["assignee_email"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_scheduled_date", ["business_id", "scheduled_date", "created_at"]),
 
   // Month 1 roadmap: invoice drafts for completed work
   invoices: defineTable({
@@ -265,7 +278,9 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_work_order", ["work_order_id"])
     .index("by_source_quote", ["source_quote_id"])
-    .index("by_stripe_checkout_session", ["stripe_checkout_session_id"]),
+    .index("by_stripe_checkout_session", ["stripe_checkout_session_id"])
+    .index("by_created_by_and_status", ["created_by", "status", "created_at"])
+    .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"]),
 
   // Phase 2 roadmap: quote/deposit workflow
   quotes: defineTable({
@@ -329,7 +344,9 @@ export default defineSchema({
     .index("by_customer", ["customer_id"])
     .index("by_work_order", ["work_order_id"])
     .index("by_invoice", ["invoice_id"])
-    .index("by_quote", ["quote_id"]),
+    .index("by_quote", ["quote_id"])
+    .index("by_created_by_and_status", ["created_by", "status", "created_at"])
+    .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"]),
 
   // Stripe webhook idempotency and delivery diagnostics
   stripeWebhookEvents: defineTable({

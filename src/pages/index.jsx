@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import { RobustAuthGuard } from '@/components/auth/RobustAuthGuard';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
-import { PUBLIC_REPORT_PATH, SYSTEM_ROUTES } from '@/lib/routeConfig';
+import { APP_ROUTES, PUBLIC_REPORT_PATH, SYSTEM_ROUTES } from '@/lib/routeConfig';
 
 const RobustLoginPage = lazy(() =>
   importWithRetry(
@@ -34,6 +34,8 @@ const SSOCallback = lazy(() => importWithRetry(() => import('@/components/auth/S
 const ReportPage = lazy(() => importWithRetry(() => import('./ReportPage'), 'ReportPage'));
 const HealthPage = lazy(() => importWithRetry(() => import('./HealthPage'), 'HealthPage'));
 const ReadyPage = lazy(() => importWithRetry(() => import('./ReadyPage').then((m) => ({ default: m.ReadyPage })), 'ReadyPage'));
+const LandingPage = lazy(() => importWithRetry(() => import('./LandingPage'), 'LandingPage'));
+const SupportPage = lazy(() => importWithRetry(() => import('./SupportPage'), 'SupportPage'));
 
 // Loading fallback component
 function PageLoader() {
@@ -79,6 +81,10 @@ export default function Pages() {
 
           {/* Public pricing page */}
           <Route path="/pricing" element={<PricingPageWithProviders />} />
+
+          {/* Public marketing & support pages */}
+          <Route path={APP_ROUTES.Landing} element={<LandingPage />} />
+          <Route path={APP_ROUTES.Support} element={<SupportPage />} />
 
           {/* Public report page - Requirements: 3.1 (no auth required) */}
           <Route path={PUBLIC_REPORT_PATH} element={<ReportPage />} />

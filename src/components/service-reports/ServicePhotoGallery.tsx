@@ -157,7 +157,7 @@ export function ServicePhotoGallery({
           aria-modal="true"
           aria-label={`${lightboxPhoto.category} photo`}
           tabIndex={-1}
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 focus:outline-none"
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] focus:outline-none"
           onClick={closeLightbox}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {

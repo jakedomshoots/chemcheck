@@ -11,4 +11,12 @@ crons.hourly(
   {}
 );
 
+// Run daily cleanup of expired service reports and stale access logs.
+crons.daily(
+  "cleanup-expired-reports",
+  { hourUTC: 6, minuteUTC: 0 },
+  internal.serviceReports.cleanupExpiredReportsAndLogs,
+  {}
+);
+
 export default crons;

@@ -50,22 +50,39 @@ async function getAllowedCreatedByEmails(ctx: any, userEmail: string): Promise<S
   return await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
 }
 
-async function listAccessibleWorkOrders(ctx: any, userEmail: string) {
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  const merged = new Map<string, any>();
+async function accessibleWorkOrdersQuery(
+  ctx: any,
+  userEmail: string,
+  scheduledDate: string | undefined
+) {
+  const business = await resolveBusinessContext(ctx, userEmail);
 
-  for (const email of allowedEmails) {
-    const records = await ctx.db
+  if (business) {
+    return ctx.db
       .query("workOrders")
-      .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
-      .collect();
-
-    for (const record of records) {
-      merged.set(String(record._id), record);
-    }
+      .withIndex("by_business_and_scheduled_date", (q: any) => {
+        let builder = q.eq("business_id", business._id);
+        if (scheduledDate) {
+          builder = builder.eq("scheduled_date", scheduledDate);
+        }
+        return builder;
+      });
   }
 
-  return [...merged.values()];
+  // Fallback for users not associated with a business.
+  return ctx.db
+    .query("workOrders")
+    .withIndex("by_created_by_and_scheduled_date", (q: any) => {
+      let builder = q.eq("created_by", userEmail);
+      if (scheduledDate) {
+        builder = builder.eq("scheduled_date", scheduledDate);
+      }
+      return builder;
+    });
+}
+
+function clampWorkOrderPageSize(numItems: number | undefined): number {
+  return Math.max(1, Math.min(200, Math.floor(numItems ?? 50)));
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
@@ -145,18 +162,22 @@ export const list = query({
   args: {
     scheduled_date: v.optional(v.string()),
     status: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    numItems: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    let workOrders = await listAccessibleWorkOrders(ctx, identity.email!);
+    const numItems = clampWorkOrderPageSize(args.numItems);
+    const query = await accessibleWorkOrdersQuery(ctx, identity.email!, args.scheduled_date);
 
-    if (args.scheduled_date) {
-      workOrders = workOrders.filter(
-        (item) => normalizeWorkOrderDate((item as { scheduled_date?: unknown }).scheduled_date) === args.scheduled_date,
-      );
-    }
+    const pageResult = await query.order("asc").paginate({
+      cursor: args.cursor ?? null,
+      numItems,
+    });
+
+    let workOrders = pageResult.page;
 
     if (args.status) {
       workOrders = workOrders.filter((item) => item.status === args.status);
@@ -172,7 +193,11 @@ export const list = query({
       return aCreatedAt - bCreatedAt;
     });
 
-    return workOrders;
+    return {
+      page: workOrders,
+      continueCursor: pageResult.continueCursor,
+      isDone: pageResult.isDone,
+    };
   },
 });
 
@@ -217,10 +242,12 @@ export const create = mutation({
 
     validatePriority(args.priority);
 
+    const business = await resolveBusinessContext(ctx, identity.email!);
+
     const now = Date.now();
     const workOrderId = await ctx.db.insert("workOrders", {
       customer_id: args.customer_id,
-      business_id: undefined,
+      business_id: business?._id,
       created_by: customer.created_by || identity.email!,
       title: args.title.trim(),
       description: args.description?.trim(),

@@ -25,10 +25,105 @@ import {
   hasAnyRequirements,
   getRequirementsSummary,
 } from "@/lib/proof-of-service";
+import {
+  saveTimeState,
+  getTimeState,
+  storedToTimeTrackerState,
+  updateEndTime,
+  clearTimeState,
+} from "@/lib/proof-of-service/timeTrackingStorage";
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleChange = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
+const CHEMICAL_CONFIGS = {
+  ph: {
+    min: 6.8,
+    max: 8.2,
+    step: 0.1,
+    unit: "",
+    hint: "Ideal range: 6.8–8.2",
+    ranges: [
+      { status: "critical", min: -Infinity, max: 6.8 },
+      { status: "low", min: 6.8, max: 7.2 },
+      { status: "good", min: 7.2, max: 7.8 },
+      { status: "high", min: 7.8, max: 8.2 },
+      { status: "critical", min: 8.2, max: Infinity },
+    ],
+  },
+  chlorine: {
+    min: 0,
+    max: 10,
+    step: 0.5,
+    unit: "ppm",
+    hint: "Ideal range: 1–3 ppm (max 10 ppm)",
+    ranges: [
+      { status: "critical", min: -Infinity, max: 0.5 },
+      { status: "low", min: 0.5, max: 1 },
+      { status: "good", min: 1, max: 3 },
+      { status: "high", min: 3, max: 10 },
+      { status: "critical", min: 10, max: Infinity },
+    ],
+  },
+  alkalinity: {
+    min: 80,
+    max: 120,
+    step: 1,
+    unit: "ppm",
+    hint: "Ideal range: 80–120 ppm",
+    ranges: [
+      { status: "critical", min: -Infinity, max: 80 },
+      { status: "low", min: 80, max: 100 },
+      { status: "good", min: 100, max: 120 },
+      { status: "high", min: 120, max: 200 },
+      { status: "critical", min: 200, max: Infinity },
+    ],
+  },
+  stabilizer: {
+    min: 30,
+    max: 100,
+    step: 1,
+    unit: "ppm",
+    hint: "Ideal range: 30–50 ppm (max 100 ppm)",
+    ranges: [
+      { status: "critical", min: -Infinity, max: 10 },
+      { status: "low", min: 10, max: 30 },
+      { status: "good", min: 30, max: 50 },
+      { status: "high", min: 50, max: 100 },
+      { status: "critical", min: 100, max: Infinity },
+    ],
+  },
+};
+
+function formatDuration(ms) {
+  if (!ms || ms < 0) return "00:00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+}
 
 export default function NewServiceLog() {
   const navigate = useNavigate();
   const location = useLocation();
+  const prefersReducedMotion = usePrefersReducedMotion();
   // Parse URL params once per URL change, not on every render
   const { customerIdParam, customerId } = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -38,21 +133,6 @@ export default function NewServiceLog() {
       customerId: raw ? parseInt(raw, 10) : null,
     };
   }, [window.location.search]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('timeTracker_')) {
-          keysToRemove.push(key);
-        }
-      }
-      if (keysToRemove.length > 0) {
-        keysToRemove.forEach(key => localStorage.removeItem(key));
-      }
-    }
-  }, []);
 
   const navigationCustomer = location.state?.customer;
   const serviceFlow = location.state?.serviceFlow;
@@ -73,14 +153,24 @@ export default function NewServiceLog() {
 
   const [customer, setCustomer] = useState(navigationCustomer || null);
   const [saving, setSaving] = useState(false);
+  const existingLog = location.state?.serviceLog;
+
   const [formData, setFormData] = useState({
-    service_type: "",
-    ph: "good",
-    chlorine: "good",
-    alkalinity: "good",
-    stabilizer: "good",
-    salt: "",
-    notes: ""
+    service_type: existingLog?.service_type || "",
+    ph: existingLog?.ph || "good",
+    ph_mode: existingLog?.ph_value !== undefined ? "numeric" : "quick",
+    ph_value: existingLog?.ph_value ?? "",
+    chlorine: existingLog?.chlorine || "good",
+    chlorine_mode: existingLog?.chlorine_value !== undefined ? "numeric" : "quick",
+    chlorine_value: existingLog?.chlorine_value ?? "",
+    alkalinity: existingLog?.alkalinity || "good",
+    alkalinity_mode: existingLog?.alkalinity_value !== undefined ? "numeric" : "quick",
+    alkalinity_value: existingLog?.alkalinity_value ?? "",
+    stabilizer: existingLog?.stabilizer || "good",
+    stabilizer_mode: existingLog?.stabilizer_value !== undefined ? "numeric" : "quick",
+    stabilizer_value: existingLog?.stabilizer_value ?? "",
+    salt: existingLog?.salt ?? "",
+    notes: existingLog?.notes || ""
   });
   const [draftSavedAt, setDraftSavedAt] = useState(null);
   const draftStorageKey = useMemo(() => (
@@ -88,6 +178,41 @@ export default function NewServiceLog() {
   ), [customerIdParam]);
   const draftReadyRef = useRef(false);
   const prevServiceTypesRef = useRef(null);
+
+  // Proof-of-service time tracking state
+  const [startTime, setStartTime] = useState(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  // Restore or record check-in time when the page loads
+  useEffect(() => {
+    if (!customerIdParam) return;
+
+    const stored = getTimeState(customerIdParam);
+    if (stored) {
+      const state = storedToTimeTrackerState(stored);
+      setStartTime(state.startTime);
+    } else {
+      const now = new Date().toISOString();
+      setStartTime(now);
+      saveTimeState(customerIdParam, {
+        startTime: now,
+        endTime: null,
+        duration: null,
+        isTracking: true,
+      });
+    }
+  }, [customerIdParam]);
+
+  // Update the sticky elapsed-time banner every second
+  useEffect(() => {
+    if (!startTime) return;
+    const tick = () => {
+      setElapsedMs(Date.now() - new Date(startTime).getTime());
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
 
   // Only set service_type when the available types actually change,
   // not on every Convex re-render. Prevents dropdown flicker.
@@ -243,6 +368,11 @@ export default function NewServiceLog() {
     const day = String(today.getDate()).padStart(2, '0');
     const localDate = `${year}-${month}-${day}`;
 
+    const endTime = new Date().toISOString();
+    const durationMs = startTime
+      ? Math.max(0, new Date(endTime).getTime() - new Date(startTime).getTime())
+      : undefined;
+
     const logData = {
       customer_id: customerId,
       service_date: localDate,
@@ -253,13 +383,25 @@ export default function NewServiceLog() {
       chlorine: formData.chlorine,
       alkalinity: formData.alkalinity,
       stabilizer: formData.stabilizer,
+      ph_value: formData.ph_value !== "" ? parseFloat(formData.ph_value) : undefined,
+      chlorine_value: formData.chlorine_value !== "" ? parseFloat(formData.chlorine_value) : undefined,
+      alkalinity_value: formData.alkalinity_value !== "" ? parseFloat(formData.alkalinity_value) : undefined,
+      stabilizer_value: formData.stabilizer_value !== "" ? parseFloat(formData.stabilizer_value) : undefined,
       photo_count: actualBeforeCount + actualAfterCount,
       has_before_photos: actualBeforeCount > 0,
       has_after_photos: actualAfterCount > 0,
+      start_time: startTime || undefined,
+      end_time: endTime,
+      duration_ms: durationMs,
     };
 
     if (customer?.pool_type === "Salt" && formData.salt) {
       logData.salt = parseFloat(formData.salt);
+    }
+
+    // Persist check-out time for crash resilience before submitting
+    if (customerIdParam) {
+      updateEndTime(customerIdParam, endTime);
     }
 
     try {
@@ -274,16 +416,22 @@ export default function NewServiceLog() {
         }
       }
 
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#06b6d4', '#3b82f6', '#a855f7']
-      });
+      if (!prefersReducedMotion) {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ['#06b6d4', '#3b82f6', '#a855f7']
+        });
+      }
 
       if (draftStorageKey && typeof window !== "undefined" && window.localStorage) {
         window.localStorage.removeItem(draftStorageKey);
         setDraftSavedAt(null);
+      }
+
+      if (customerIdParam) {
+        clearTimeState(customerIdParam);
       }
 
       if (startedFromOffDayPicker && serviceFlow?.selectedDay) {
@@ -336,6 +484,29 @@ export default function NewServiceLog() {
       </div>
 
       <form onSubmit={handleSubmit}>
+        {startTime && (
+          <div className="sticky top-0 z-50 mb-6 p-4 bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-200 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-cyan-700 uppercase tracking-wide">
+                  Checked in
+                </p>
+                <p className="text-sm font-medium text-cyan-900">
+                  {new Date(startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-semibold text-cyan-700 uppercase tracking-wide">
+                  Elapsed
+                </p>
+                <p className="text-2xl font-bold text-cyan-900 tabular-nums">
+                  {formatDuration(elapsedMs)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mb-6">
           <PhotoCaptureSection
             serviceLogId={null}
@@ -382,28 +553,52 @@ export default function NewServiceLog() {
               label="pH Balance"
               value={formData.ph}
               onChange={(val) => setFormData({ ...formData, ph: val })}
+              mode={formData.ph_mode}
+              onModeChange={(mode) => setFormData({ ...formData, ph_mode: mode })}
+              numericValue={formData.ph_value}
+              onNumericValueChange={(val) => setFormData({ ...formData, ph_value: val })}
+              config={CHEMICAL_CONFIGS.ph}
               icon={<Activity className="w-4 h-4 stroke-[1.75]" />}
+              testId="ph-numeric-input"
             />
 
             <SimplifiedChemicalInput
               label="Chlorine Level"
               value={formData.chlorine}
               onChange={(val) => setFormData({ ...formData, chlorine: val })}
+              mode={formData.chlorine_mode}
+              onModeChange={(mode) => setFormData({ ...formData, chlorine_mode: mode })}
+              numericValue={formData.chlorine_value}
+              onNumericValueChange={(val) => setFormData({ ...formData, chlorine_value: val })}
+              config={CHEMICAL_CONFIGS.chlorine}
               icon={<Droplets className="w-4 h-4 stroke-[1.75]" />}
+              testId="chlorine-numeric-input"
             />
 
             <SimplifiedChemicalInput
               label="Total Alkalinity"
               value={formData.alkalinity}
               onChange={(val) => setFormData({ ...formData, alkalinity: val })}
+              mode={formData.alkalinity_mode}
+              onModeChange={(mode) => setFormData({ ...formData, alkalinity_mode: mode })}
+              numericValue={formData.alkalinity_value}
+              onNumericValueChange={(val) => setFormData({ ...formData, alkalinity_value: val })}
+              config={CHEMICAL_CONFIGS.alkalinity}
               icon={<TestTube className="w-4 h-4 stroke-[1.75]" />}
+              testId="alkalinity-numeric-input"
             />
 
             <SimplifiedChemicalInput
               label="Stabilizer (Cyanuric Acid)"
               value={formData.stabilizer}
               onChange={(val) => setFormData({ ...formData, stabilizer: val })}
+              mode={formData.stabilizer_mode}
+              onModeChange={(mode) => setFormData({ ...formData, stabilizer_mode: mode })}
+              numericValue={formData.stabilizer_value}
+              onNumericValueChange={(val) => setFormData({ ...formData, stabilizer_value: val })}
+              config={CHEMICAL_CONFIGS.stabilizer}
               icon={<TestTube className="w-4 h-4 stroke-[1.75]" />}
+              testId="stabilizer-numeric-input"
             />
 
             {customer.pool_type === "Salt" && (

@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { SUBSCRIPTION_PLANS, formatPrice, getAnnualPrice, isStripeConfigured } from '@/lib/stripe';
 import { useSubscription } from '@/hooks/useSubscription';
+import { getPlatform, isNativePlatform } from '@/lib/native/platform';
 import { cn } from '@/lib/utils';
 
 const planIcons = {
@@ -22,8 +23,11 @@ export function PricingPage() {
     isBillingBackendConfigured,
     createCheckoutSession,
   } = useSubscription();
+  const isNativeIos = isNativePlatform() && getPlatform() === 'ios';
 
   const handleSelectPlan = async (planId) => {
+    if (isNativeIos) return;
+
     setLoadingPlan(planId);
     try {
       await createCheckoutSession(planId, isAnnual);
@@ -43,29 +47,33 @@ export function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Choose the plan that fits your pool service business. All plans include a 14-day free trial.
+            {isNativeIos
+              ? 'ChemCheck for iOS is available for existing workspaces. Plan selection is unavailable in this iOS build.'
+              : 'Choose the plan that fits your pool service business. All plans include a 14-day free trial.'}
           </p>
 
           {/* Billing Toggle */}
-          <div className="flex items-center justify-center gap-4 mt-8">
-            <span className={cn("text-sm font-medium", !isAnnual ? "text-slate-900" : "text-slate-500")}>
-              Monthly
-            </span>
-            <Switch
-              checked={isAnnual}
-              onCheckedChange={setIsAnnual}
-            />
-            <span className={cn("text-sm font-medium", isAnnual ? "text-slate-900" : "text-slate-500")}>
-              Annual
-              <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                Save 20%
+          {!isNativeIos && (
+            <div className="flex items-center justify-center gap-4 mt-8">
+              <span className={cn("text-sm font-medium", !isAnnual ? "text-slate-900" : "text-slate-500")}>
+                Monthly
               </span>
-            </span>
-          </div>
+              <Switch
+                checked={isAnnual}
+                onCheckedChange={setIsAnnual}
+              />
+              <span className={cn("text-sm font-medium", isAnnual ? "text-slate-900" : "text-slate-500")}>
+                Annual
+                <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                  Save 20%
+                </span>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Demo Mode Notice */}
-        {!isStripeConfigured() && (
+        {!isNativeIos && !isStripeConfigured() && (
           <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-lg text-center">
             <p className="text-amber-800">
               <strong>Demo Mode:</strong> Stripe is not configured. Selecting a plan will start a simulated 14-day trial.
@@ -73,7 +81,7 @@ export function PricingPage() {
           </div>
         )}
 
-        {isStripeConfigured() && !isBillingBackendConfigured && (
+        {!isNativeIos && isStripeConfigured() && !isBillingBackendConfigured && (
           <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
             <p className="text-red-800">
               <strong>Billing Setup Required:</strong> Stripe is enabled but checkout endpoints are not configured.
@@ -136,7 +144,7 @@ export function PricingPage() {
 
                 <Button
                   onClick={() => handleSelectPlan(planId)}
-                  disabled={loadingPlan || isCurrentPlan || (isStripeConfigured() && !isBillingBackendConfigured)}
+                  disabled={isNativeIos || loadingPlan || isCurrentPlan || (isStripeConfigured() && !isBillingBackendConfigured)}
                   className={cn(
                     "w-full",
                     plan.popular
@@ -149,6 +157,8 @@ export function PricingPage() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : isCurrentPlan ? (
                     "Current Plan"
+                  ) : isNativeIos ? (
+                    "Plan changes are handled outside the iOS app"
                   ) : isStripeConfigured() && !isBillingBackendConfigured ? (
                     "Billing Setup Required"
                   ) : (
@@ -167,6 +177,7 @@ export function PricingPage() {
         )}
 
         {/* FAQ Section */}
+        {!isNativeIos && (
         <div className="mt-16 max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">
             Frequently Asked Questions
@@ -210,6 +221,7 @@ export function PricingPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Contact CTA */}
         <div className="mt-16 text-center">

@@ -2,21 +2,48 @@
   "appId": "com.chemcheck.app",
   "appName": "ChemCheck",
   "webDir": "dist",
+  "backgroundColor": "#ffffff",
   "server": {
     "hostname": "localhost",
     "androidScheme": "https",
     "iosScheme": "capacitor",
     "allowNavigation": [
-      "*.clerk.accounts.dev",
-      "*.clerk.com",
       "clerk.chemcheck.xyz",
-      "*.convex.cloud",
       "challenges.cloudflare.com"
     ]
   },
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
+    },
+    "SplashScreen": {
+      "launchShowDuration": 3000,
+      "launchAutoHide": false,
+      "backgroundColor": "#ffffff",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": true,
+      "androidSpinnerStyle": "large",
+      "iosSpinnerStyle": "large",
+      "spinnerColor": "#0ea5e9",
+      "splashFullScreen": true,
+      "splashImmersive": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#ffffff",
+      "overlaysWebView": false
+    },
+    "Keyboard": {
+      "resize": "body",
+      "style": "DARK"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon_config_sample",
+      "iconColor": "#0ea5e9"
     }
   },
   "cordova": {
@@ -27,7 +54,7 @@
   },
   "ios": {
     "contentInset": "automatic",
-    "backgroundColor": "#0f172a",
+    "backgroundColor": "#ffffff",
     "limitsNavigationsToAppBoundDomains": true
   }
 }

@@ -1,6 +1,27 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleChange = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  return prefersReducedMotion;
+}
 
 export const ChemicalBeakerLoader = ({ className }) => {
+  const reducedMotion = usePrefersReducedMotion();
+
   return (
     <div className={`relative w-24 h-32 mx-auto ${className}`}>
       {/* Beaker Body */}
@@ -12,11 +33,20 @@ export const ChemicalBeakerLoader = ({ className }) => {
         <div className="absolute top-3/4 left-2 right-2 h-0.5 bg-slate-200/50 w-4"></div>
 
         {/* Liquid */}
-        <div className="absolute bottom-0 left-0 right-0 h-full bg-gradient-to-t from-cyan-500 via-blue-500 to-purple-500 opacity-80 animate-[fill-up_2s_ease-in-out_infinite_alternate]" style={{ transformOrigin: 'bottom' }}>
-          {/* Bubbles */}
-          <div className="absolute bottom-2 left-1/4 w-2 h-2 bg-white rounded-full animate-[bubble-rise_1.5s_ease-in_infinite]"></div>
-          <div className="absolute bottom-4 left-1/2 w-3 h-3 bg-white rounded-full animate-[bubble-rise_2s_ease-in_infinite_0.5s]"></div>
-          <div className="absolute bottom-3 left-3/4 w-1.5 h-1.5 bg-white rounded-full animate-[bubble-rise_1.2s_ease-in_infinite_0.8s]"></div>
+        <div
+          className={`absolute bottom-0 left-0 right-0 h-full bg-gradient-to-t from-cyan-500 via-blue-500 to-purple-500 opacity-80 ${
+            reducedMotion ? "" : "animate-[fill-up_2s_ease-in-out_infinite_alternate]"
+          }`}
+          style={{ transformOrigin: 'bottom' }}
+        >
+          {/* Bubbles - hidden for users who prefer reduced motion */}
+          {!reducedMotion && (
+            <>
+              <div className="absolute bottom-2 left-1/4 w-2 h-2 bg-white rounded-full animate-[bubble-rise_1.5s_ease-in_infinite]"></div>
+              <div className="absolute bottom-4 left-1/2 w-3 h-3 bg-white rounded-full animate-[bubble-rise_2s_ease-in_infinite_0.5s]"></div>
+              <div className="absolute bottom-3 left-3/4 w-1.5 h-1.5 bg-white rounded-full animate-[bubble-rise_1.2s_ease-in_infinite_0.8s]"></div>
+            </>
+          )}
         </div>
         
         {/* Surface Tension/Highlight */}

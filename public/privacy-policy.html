@@ -22,17 +22,21 @@
         }
         h1 {
             color: #1f2937;
-            border-bottom: 3px solid #3b82f6;
+            border-bottom: 3px solid #0891b2;
             padding-bottom: 10px;
         }
         h2 {
             color: #374151;
             margin-top: 30px;
         }
+        h3 {
+            color: #4b5563;
+            margin-top: 20px;
+        }
         .highlight {
-            background: #dbeafe;
+            background: #ecfeff;
             padding: 15px;
-            border-left: 4px solid #3b82f6;
+            border-left: 4px solid #0891b2;
             margin: 20px 0;
             border-radius: 0 8px 8px 0;
         }
@@ -50,88 +54,198 @@
             padding-top: 20px;
             border-top: 1px solid #e5e7eb;
         }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #e5e7eb;
+            padding: 10px 12px;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            background: #f9fafb;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>ChemCheck Privacy Policy</h1>
-        
+
         <div class="highlight">
-            <strong>TL;DR:</strong> ChemCheck stores all your data locally on your device. We don't collect, transmit, or store any personal information on external servers.
+            <strong>Summary:</strong> ChemCheck is a pool service operations platform. We store your business data in secure cloud services and keep a local copy on your device for offline use. We use trusted third-party providers for authentication, billing, and reliability. You can export or delete your data at any time from Settings.
         </div>
 
+        <p>
+            This Privacy Policy describes how ChemCheck ("ChemCheck," "we," "us," or "our") collects, uses,
+            stores, and shares information when you use our website, mobile apps, and related services
+            (collectively, the "Service"). By using the Service, you agree to this policy.
+        </p>
+
         <h2>1. Information We Collect</h2>
-        <p><strong>None.</strong> ChemCheck is designed as a local-first application that stores all data directly on your device using your browser's local storage (IndexedDB).</p>
 
-        <h2>2. Data Storage</h2>
-        <p>All information you enter into ChemCheck, including:</p>
+        <h3>1.1 Account and identity information</h3>
+        <p>When you create an account, we collect information needed to authenticate you and operate your workspace, such as:</p>
         <ul>
-            <li>Customer information (names, addresses, contact details)</li>
-            <li>Pool service logs and chemical readings</li>
-            <li>Notes and chemical usage records</li>
-            <li>Application preferences and settings</li>
+            <li>Name and email address</li>
+            <li>Authentication identifiers and session metadata</li>
+            <li>Business profile details you provide during setup</li>
         </ul>
-        <p>Is stored exclusively on your local device and never transmitted to external servers.</p>
+        <p>Authentication is handled by <strong>Clerk</strong>, our identity provider.</p>
 
-        <h2>3. Data Sharing</h2>
-        <p><strong>We don't share your data because we don't have access to it.</strong> Since all data remains on your device, there is no data sharing with third parties, advertisers, or analytics services.</p>
-
-        <h2>4. Data Security</h2>
-        <p>Your data security depends on:</p>
+        <h3>1.2 Business and customer data you enter</h3>
+        <p>You may store operational data in ChemCheck, including:</p>
         <ul>
-            <li>Your device's security settings and access controls</li>
-            <li>Your browser's security features</li>
-            <li>Regular backups you create using the app's export feature</li>
-        </ul>
-        <p>We recommend using the built-in backup feature regularly to protect against data loss.</p>
-
-        <h2>5. Data Retention</h2>
-        <p>Data remains on your device until you:</p>
-        <ul>
-            <li>Manually delete it within the application</li>
-            <li>Clear your browser's storage/cache</li>
-            <li>Uninstall the application</li>
+            <li>Customer names, addresses, phone numbers, and email addresses</li>
+            <li>Service logs, chemical readings, notes, and route information</li>
+            <li>Photos captured for proof-of-service</li>
+            <li>Chemical usage, invoices, quotes, and work order records</li>
+            <li>Report settings and communication preferences</li>
         </ul>
 
-        <h2>6. Your Rights</h2>
-        <p>Since all data is stored locally on your device, you have complete control:</p>
+        <h3>1.3 Device and local storage data</h3>
+        <p>ChemCheck uses local device storage (IndexedDB and related browser or app storage) to cache data for offline access, improve performance, and queue changes for sync when connectivity returns.</p>
+
+        <h3>1.4 Payment and subscription information</h3>
+        <p>If you purchase a paid plan, subscription and billing details are processed by <strong>Stripe</strong>. ChemCheck receives subscription status and limited billing metadata needed to provide the Service. We do not store full payment card numbers on our servers.</p>
+
+        <h3>1.5 Diagnostics, analytics, and support data</h3>
+        <p>We may collect technical and usage information to keep the Service reliable and improve product quality, including:</p>
         <ul>
-            <li><strong>Access:</strong> All your data is always accessible within the app</li>
-            <li><strong>Export:</strong> Use the backup feature to export all data</li>
-            <li><strong>Delete:</strong> Remove individual records or clear all data</li>
-            <li><strong>Portability:</strong> Export and import data between devices</li>
+            <li>Error reports and performance diagnostics through <strong>Sentry</strong></li>
+            <li>Optional, anonymized product analytics if you have not opted out in Settings</li>
+            <li>App version, device type, and basic interaction events needed for troubleshooting</li>
         </ul>
 
-        <h2>7. Technical Information</h2>
-        <p>ChemCheck may access the following device features (only when explicitly requested):</p>
+        <h3>1.6 Communications you send through the Service</h3>
+        <p>If you send customer reports by SMS or email, we process recipient contact details and message content needed to deliver those communications and maintain delivery records.</p>
+
+        <h2>2. How We Use Information</h2>
+        <p>We use collected information to:</p>
         <ul>
-            <li><strong>Local Storage:</strong> To save your pool service data</li>
-            <li><strong>File System:</strong> To export/import backup files (with your permission)</li>
+            <li>Provide, maintain, and secure the Service</li>
+            <li>Authenticate users and enforce account access controls</li>
+            <li>Sync data between your devices and our cloud backend</li>
+            <li>Generate and deliver service reports to your customers</li>
+            <li>Process subscriptions and manage billing status</li>
+            <li>Detect, investigate, and prevent fraud, abuse, or security incidents</li>
+            <li>Respond to support requests and legal obligations</li>
+            <li>Improve performance, reliability, and product features</li>
         </ul>
-        <p>No network requests are made for data storage or synchronization.</p>
 
-        <h2>8. Children's Privacy</h2>
-        <p>ChemCheck does not collect any personal information from anyone, including children under 13. The app is designed for professional pool service use.</p>
+        <h2>3. Where Data Is Stored</h2>
+        <p>ChemCheck uses a hybrid storage model:</p>
+        <ul>
+            <li><strong>Cloud database:</strong> Team-shared business data is stored in <strong>Convex</strong>, our backend platform.</li>
+            <li><strong>Local cache:</strong> A copy of relevant data is stored on your device for offline-first operation.</li>
+            <li><strong>File storage:</strong> Service photos and related media may be stored in cloud object storage associated with your account.</li>
+        </ul>
+        <p>Data remains available locally for a period after sign-out, but cloud-backed features require an authenticated account and network connectivity.</p>
 
-        <h2>9. Changes to This Policy</h2>
-        <p>If we make changes to this privacy policy, we will update this page and the "Last Updated" date below. Since the app operates offline, you may need to refresh the app to see policy updates.</p>
+        <h2>4. How We Share Information</h2>
+        <p>We do not sell your personal information. We share information only as needed to operate the Service:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Provider</th>
+                    <th>Purpose</th>
+                    <th>Data involved</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Clerk</td>
+                    <td>Authentication and account management</td>
+                    <td>Email, name, auth/session identifiers</td>
+                </tr>
+                <tr>
+                    <td>Convex</td>
+                    <td>Cloud database and application backend</td>
+                    <td>Business, customer, and service data you store in ChemCheck</td>
+                </tr>
+                <tr>
+                    <td>Stripe</td>
+                    <td>Subscription billing</td>
+                    <td>Billing contact details, subscription status, payment metadata</td>
+                </tr>
+                <tr>
+                    <td>Sentry</td>
+                    <td>Error monitoring and diagnostics</td>
+                    <td>Error events, device/browser metadata, limited user context</td>
+                </tr>
+                <tr>
+                    <td>Email/SMS delivery providers</td>
+                    <td>Customer report delivery</td>
+                    <td>Recipient contact details and report content you choose to send</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>We may also disclose information if required by law, to protect rights and safety, or in connection with a merger, acquisition, or asset sale with appropriate safeguards.</p>
+
+        <h2>5. Device Permissions</h2>
+        <p>Depending on how you use ChemCheck, the app may request access to:</p>
+        <ul>
+            <li><strong>Camera and photo library:</strong> To capture and attach proof-of-service photos</li>
+            <li><strong>Local storage:</strong> To save data offline and improve sync reliability</li>
+            <li><strong>Notifications:</strong> To deliver optional service reminders if you enable them</li>
+            <li><strong>Network access:</strong> To authenticate, sync data, send reports, and process billing</li>
+        </ul>
+        <p>You can deny permissions in your device settings, but some features may not work without them.</p>
+
+        <h2>6. Data Retention</h2>
+        <p>We retain information for as long as your account is active or as needed to provide the Service. If you delete your account, we delete or de-identify associated cloud account data within a reasonable period, subject to:</p>
+        <ul>
+            <li>Backup retention cycles</li>
+            <li>Legal, tax, or fraud-prevention obligations</li>
+            <li>Records required to resolve disputes or enforce agreements</li>
+        </ul>
+        <p>Local device data may remain until you clear app storage, uninstall the app, or use in-app deletion tools in Settings.</p>
+
+        <h2>7. Your Rights and Choices</h2>
+        <p>Depending on your location, you may have rights to access, correct, export, restrict, or delete personal information. ChemCheck provides self-service tools in <strong>Settings &gt; Privacy &amp; Data</strong>, including:</p>
+        <ul>
+            <li><strong>Export your data:</strong> Download a machine-readable copy of your records</li>
+            <li><strong>Delete all data:</strong> Remove local records from the current device</li>
+            <li><strong>Delete account:</strong> Permanently delete your account and associated cloud data</li>
+            <li><strong>Analytics opt-out:</strong> Disable optional usage analytics in Settings</li>
+        </ul>
+        <p>To make a privacy request, contact us using the information below. We may need to verify your identity before completing certain requests.</p>
+
+        <h2>8. Security</h2>
+        <p>We use administrative, technical, and organizational safeguards designed to protect your information, including encrypted transport (HTTPS), access controls, and monitoring. No method of transmission or storage is completely secure, so we also recommend regular exports using the built-in backup tools.</p>
+
+        <h2>9. Children's Privacy</h2>
+        <p>ChemCheck is intended for business use by pool service professionals and is not directed to children under 13. We do not knowingly collect personal information from children.</p>
 
         <h2>10. International Users</h2>
-        <p>Since ChemCheck operates entirely offline with local data storage, there are no international data transfers or jurisdiction-specific considerations.</p>
+        <p>If you access the Service from outside the United States, your information may be processed in the United States or other countries where our service providers operate. Those locations may have different data protection laws than your jurisdiction.</p>
+
+        <h2>11. Changes to This Policy</h2>
+        <p>We may update this Privacy Policy from time to time. When we make material changes, we will update the "Last Updated" date below and, where appropriate, provide additional notice in the app or by email.</p>
 
         <div class="contact">
-            <h2>Contact Information</h2>
-            <p>If you have questions about this privacy policy or ChemCheck's data practices:</p>
+            <h2>Contact Us</h2>
+            <p>If you have questions about this Privacy Policy or our data practices:</p>
             <ul>
-                <li><strong>Email:</strong> [Your Contact Email]</li>
-                <li><strong>GitHub:</strong> [Your GitHub Repository URL]</li>
+                <li><strong>Email:</strong> <a href="mailto:privacy@chemcheck.xyz">privacy@chemcheck.xyz</a></li>
+                <li><strong>Website:</strong> <a href="https://chemcheck.xyz">https://chemcheck.xyz</a></li>
             </ul>
-            <p><em>Note: Since we don't collect data, most privacy inquiries relate to local data management, which you control directly through the app.</em></p>
         </div>
 
         <div class="last-updated">
-            <p><strong>Last Updated:</strong> December 13, 2024</p>
-            <p><strong>Effective Date:</strong> December 13, 2024</p>
+            <p><strong>Last Updated:</strong> June 11, 2026</p>
+            <p><strong>Effective Date:</strong> June 11, 2026</p>
         </div>
     </div>
 </body>

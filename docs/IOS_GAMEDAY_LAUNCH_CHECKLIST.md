@@ -1,127 +1,117 @@
 # ChemCheck iOS Gameday Launch Checklist
 
-This checklist is tailored to the current codebase and release path for App Store review.
+Audit date: 2026-06-15
+Source checkout: `/Users/jakedom/Documents/chemcheck-main`
+Parked iOS branch: `app-store-ios-shell`
 
-## 1) Blockers (must pass before submission)
+This checklist keeps the PWA as the active shipping product while preserving the Capacitor iOS shell for a future App Store submission.
 
-- [ ] **Disable auth bypass for production builds**
-  - Current bypass flags are read in `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/components/auth/ClerkAuthProvider.jsx`.
-  - Ensure `VITE_IOS_SIM_AUTH_BYPASS=false` in production.
-  - Confirm localhost bypass logic is not reachable in production hosts.
+## Current Verified State
 
-- [ ] **Clerk domain/origin configuration is valid for production app origin**
-  - The app currently uses `VITE_CLERK_PROXY_URL` and `VITE_CLERK_DOMAIN`.
-  - In Clerk dashboard, set:
-    - Allowed Origins (web and any embedded web origin used by iOS WebView)
-    - Allowed Redirect URLs
-    - Frontend API / proxy domain values matching production config.
-  - Verify no `Invalid HTTP Origin header` errors on production URL.
+- [x] PWA readiness gates pass: `npm run test:gates` reported 13/13 passing tests.
+- [x] Lint passes: `npm run lint`.
+- [x] Production build passes on Vite 8.0.16 with the stale Browserslist warning cleared.
+- [x] Security audit is clean at the high threshold: `npm audit --audit-level=high` reported 0 vulnerabilities.
+- [x] Unit/integration suite passes: `npm test -- --reporter=dot` reported 87 files and 860 tests passing.
+- [x] Chromium E2E passes on an isolated ChemCheck server: `PLAYWRIGHT_PORT=5174 npm run test:e2e -- --project=chromium` reported 31/31 passing tests.
+- [x] Capacitor sync passes: `npm run ios:sync`.
+- [x] Native plist syntax passes: `plutil -lint ios/App/App/Info.plist ios/App/App/PrivacyInfo.xcprivacy`.
+- [x] Native iOS pricing route does not expose Stripe checkout actions.
+- [x] Native iOS billing dashboard does not expose Stripe portal or cancellation actions.
+- [x] Native App-Bound Domains are restricted to known production WebView navigation hosts.
+- [x] Privacy manifest uses Apple required-reason API category names and the app-only UserDefaults reason code.
 
-- [ ] **Account deletion is fully functional and user-visible**
-  - UI entrypoint: `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/pages/Settings.jsx` -> Account -> Delete Account.
-  - Backend deletion mutation: `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/convex/account.ts`.
-  - Identity deletion: Clerk `user.delete()` in Settings account flow.
-  - Validate deletion end-to-end with a real account (not bypass mode).
+## Local Native Blockers
 
-- [ ] **Privacy links and policy content are live and accurate**
-  - Verify `/privacy-policy.html` and `/terms-of-service.html` are accessible and reflect:
-    - account deletion behavior
-    - data retention
-    - cloud + local storage behavior.
+- [ ] Install and select full Xcode.
+  - Current blocker: `xcode-select` points at `/Library/Developer/CommandLineTools`.
+  - `xcodebuild -list -project ios/App/App.xcodeproj` cannot run until full Xcode is installed and selected.
+  - Expected fix: `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`.
 
-## 2) High Priority (strongly recommended pre-submit)
+- [ ] Open the project in Xcode and configure signing.
+  - Bundle ID: `com.chemcheck.app`.
+  - Set the Apple Developer Team that owns the App Store Connect app.
+  - Confirm `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`.
+  - Create or select the App Store Connect app record before archiving.
 
-- [ ] **Proof-of-service history filters regression tested**
-  - E2E coverage added in `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/e2e/gameday.spec.ts`.
-  - Unit regression coverage:
-    - `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/pages/History.test.jsx`
-    - `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/components/history/CustomerHistoryCard.test.jsx`
+- [ ] Run simulator smoke tests from the native shell.
+  - Command after Xcode is active: `npm run ios:sim`.
+  - Verify launch, auth, core navigation, service log creation, camera/photo permission prompts, offline queue behavior, logout, and account deletion entrypoint.
 
-- [ ] **Settings page is production-clean (no placeholder copy)**
-  - Placeholder text now hidden unless `VITE_SHOW_PLACEHOLDERS=true` or dev mode.
-  - File: `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/pages/Settings.jsx`.
+- [ ] Create a TestFlight archive.
+  - Command after signing is configured: `npm run ios:archive`.
+  - Upload through Xcode Organizer.
+  - Smoke test the TestFlight build on a physical iPhone.
 
-- [ ] **Convex data deletion integrity validation**
-  - Run manual validation for each deleted domain:
-    - customers, serviceLogs, servicePhotos/storage, chemicalUsage, notes, saltCellLogs, serviceReports, reportAccessLogs, team_members, businesses, subscriptions.
-  - Confirm no orphaned storage files remain for deleted photos.
+## App Review Readiness
 
-- [ ] **iOS permissions and denial paths**
-  - Validate camera/location deny flows for proof-of-service and photo capture.
-  - Ensure user-facing error messaging is clear and non-blocking.
+- [x] Replace broad App-Bound Domains before submission.
+  - Current `WKAppBoundDomains`: `clerk.chemcheck.xyz`, `challenges.cloudflare.com`.
+  - Keep only domains the iOS WebView must navigate to.
+  - `VITE_CONVEX_URL` still needs the exact production Convex API host in the release environment, but Convex API fetches should not require a broad WebView navigation domain.
 
-## 3) iOS Review Readiness Checks
+- [x] Use Apple-valid required-reason API categories in the privacy manifest.
+  - Current `NSPrivacyAccessedAPITypes`: `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1`.
+  - Keep `Info.plist` permission strings aligned with camera, photo library, location, and Face ID usage.
+  - Final App Store Connect/Xcode upload validation is still required.
 
-- [ ] **Reviewer account available**
-  - Provide App Review notes with test credentials and exact steps to:
-    - log in
-    - create data
-    - delete account.
+- [ ] Complete App Store Connect App Privacy answers.
+  - Cover account identifiers, email, phone, customer data, service logs, service photos, location/directions, diagnostics, auth providers, billing providers, and server logs.
+  - Make the answers consistent with `public/privacy-policy.html` and `ios/App/App/PrivacyInfo.xcprivacy`.
 
-- [ ] **In-app purchase/subscription consistency**
-  - If subscriptions are active, ensure pricing/entitlements match App Store metadata.
-  - Validate access gating and cancellation messaging.
+- [ ] Provide a reviewer account.
+  - Create a dedicated Clerk/App account for Apple review.
+  - Put the password only in App Store Connect review notes, not in Git.
+  - Include steps from `docs/app-store-review-notes.md`.
 
-- [ ] **Offline and reconnect behavior**
-  - Verify that settings save, logs, and sync status behave correctly in airplane mode and after reconnect.
+- [ ] Confirm in-app account deletion with a real account.
+  - The user must be able to initiate account deletion inside the iOS app.
+  - Validate deletion outside bypass/dev mode.
+  - Document any legally required retention exceptions in the privacy policy.
 
-- [ ] **No dead-end screens**
-  - Validate all top-level nav destinations from sidebar on iPhone viewport.
+- [x] Gate iOS billing behavior.
+  - The native iOS pricing page no longer exposes Stripe checkout actions.
+  - The native iOS billing dashboard no longer exposes Stripe portal or cancellation actions.
+  - PWA/web pricing and billing behavior remains unchanged.
+  - Final App Store Connect notes should classify the iOS app as existing-account/field-operations access unless Apple In-App Purchase is added later.
 
-## 4) Pre-Submission Command Gate
+- [ ] Decide Sign in with Apple.
+  - If Clerk exposes Google, Facebook, or another third-party/social sign-in in the iOS build, add Sign in with Apple or remove those providers for iOS review.
 
-Run these from `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main`:
+- [ ] Confirm all links and support endpoints.
+  - Privacy policy URL.
+  - Terms URL.
+  - Support URL or email.
+  - Any contact or delete-account support path referenced from the app.
+
+## Release Command Gate
+
+Run from `/Users/jakedom/Documents/chemcheck-main` before creating a release candidate:
 
 ```bash
-npx vitest run src/pages/History.test.jsx src/components/history/CustomerHistoryCard.test.jsx
-npx playwright test e2e/gameday.spec.ts --project=chromium
-npm run build
+scripts/app-store-preflight.sh --pre-xcode
 ```
 
-## 5) Release Day Rollback Plan
+Then run after full Xcode is installed:
 
-- [ ] Tag release candidate commit.
-- [ ] Keep previous TestFlight build active until smoke tests pass.
-- [ ] Monitor:
-  - auth failures
-  - account deletion failures
-  - history page runtime errors
-  - sync errors.
+```bash
+scripts/app-store-preflight.sh --full
+npm run ios:sim
+npm run ios:archive
+```
 
-## 6) Ownership Matrix
+## Parking Plan
 
-- Product: final go/no-go and App Review notes.
-- Engineering: checklist execution + evidence capture.
-- Support: prepared macro for account deletion and privacy requests.
+- [ ] Keep normal PWA work shipping from `main`.
+- [ ] Keep App Store shell work isolated on `app-store-ios-shell`.
+- [ ] After a clean Xcode/TestFlight pass, commit the iOS shell artifacts and tag the release candidate, for example `ios-rc-0.1.0`.
+- [ ] Do not submit to App Review until the native blockers, App Store Connect metadata, reviewer account, production environment values, and privacy answers are complete.
 
-## 7) Audit Findings (February 10, 2026)
+## Monitor On TestFlight
 
-- [x] **History filter crash fixed and verified**
-  - `Has Photos` and `Complete Proof` no longer route users into error boundary.
-  - Verified with `e2e/gameday.spec.ts` on Chromium and Mobile Safari.
-
-- [x] **iOS runtime crash on Settings fixed**
-  - Root cause: direct `Notification` global access on WebKit environments where it is unavailable.
-  - Fixed in `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/lib/notifications.ts`.
-
-- [x] **iOS permission strings added**
-  - Added camera/photo/location usage descriptions to `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/ios/App/App/Info.plist`.
-  - Confirmed plist validity with `plutil -lint`.
-
-- [ ] **Email preview parity still needs final cleanup**
-  - Frontend preview logic and backend send logic are now much closer, but parity tests still fail.
-  - Files:
-    - `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/lib/emailPreview.ts`
-    - `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/convex/serviceReports.ts`
-
-- [ ] **Known unfinished/placeholder product behavior**
-  - Route optimizer is still manual fallback and explicitly says AI optimization is not implemented:
-    - `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/pages/RouteOptimizer.jsx`
-  - Customer report/SMS preview still uses hardcoded business name and a preview token in one path:
-    - `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/src/pages/CustomerDetail.jsx`
-  - Stripe payment-failed webhook path logs only (no user notification action):
-    - `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/convex/stripeWebhook.ts`
-
-- [ ] **Automation quality gate still red**
-  - Lint now ignores generated iOS build artifacts, but there are still many real lint errors across app/test/config files.
-  - Ignore improvements added in `/Users/jakedominick/Documents/CODING PROJECTS/chemcheck-main/eslint.config.js`.
+- Auth errors, especially Clerk domain/origin failures.
+- Account deletion failures.
+- Camera/photo permission denial flows.
+- Offline queue and reconnect failures.
+- Service report sending failures.
+- Crash reports and startup blank-screen reports.

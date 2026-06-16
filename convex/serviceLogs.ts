@@ -46,57 +46,6 @@ function calculateDuration(startTime: string | undefined, endTime: string | unde
     return duration;
 }
 
-// Helper: Get all customer IDs owned by the current user (for tenant isolation)
-async function getUserCustomerIds(ctx: any, userEmail: string): Promise<Set<string>> {
-    const customers = await ctx.db
-        .query("customers")
-        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
-        .collect();
-    return new Set(customers.map((c: any) => c._id.toString()));
-}
-
-function sortLogsByServiceDate<T extends { service_date: string }>(logs: T[], descending: boolean): T[] {
-    logs.sort((a, b) => descending
-        ? b.service_date.localeCompare(a.service_date)
-        : a.service_date.localeCompare(b.service_date)
-    );
-    return logs;
-}
-
-function dedupeLogsById<T extends { _id: any }>(logs: T[]): T[] {
-    const seen = new Set<string>();
-    const deduped: T[] = [];
-
-    for (const log of logs) {
-        const id = log._id.toString();
-        if (seen.has(id)) continue;
-        seen.add(id);
-        deduped.push(log);
-    }
-
-    return deduped;
-}
-
-async function getLegacyLogsForUser(ctx: any, userEmail: string, serviceDate?: string) {
-    const userCustomerIds = await getUserCustomerIds(ctx, userEmail);
-    const logPromises = Array.from(userCustomerIds).map(customerId => {
-        if (serviceDate) {
-            return ctx.db.query("serviceLogs")
-                .withIndex("by_customer_and_date", (q: any) =>
-                    q.eq("customer_id", customerId as any).eq("service_date", serviceDate)
-                )
-                .collect();
-        }
-
-        return ctx.db.query("serviceLogs")
-            .withIndex("by_customer", (q: any) => q.eq("customer_id", customerId as any))
-            .collect();
-    });
-
-    const logsPerCustomer = await Promise.all(logPromises);
-    return logsPerCustomer.flat();
-}
-
 // Valid status values for service logs
 const VALID_STATUS_VALUES = ['completed', 'pending', 'scheduled', 'in_progress', 'cancelled'] as const;
 type ServiceLogStatus = typeof VALID_STATUS_VALUES[number];
@@ -107,92 +56,94 @@ function validateStatus(status: string): void {
     }
 }
 
-// List all service logs for the current user's customers only
+function clampLimit(limit: number | undefined): number {
+    return Math.max(1, Math.min(limit || 100, 500));
+}
+
+// List all service logs for the current user using cursor-based pagination.
 export const list = query({
     args: {
         order: v.optional(v.string()),
         limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
         const descending = args.order === "-service_date";
-        const limit = Math.max(1, Math.min(args.limit || 100, 500));
+        const numItems = clampLimit(args.limit);
 
-        // Primary path: single indexed tenant query
-        const indexedLogs = await ctx.db
+        return await ctx.db
             .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
                 q.eq("created_by", identity.email!)
             )
             .order(descending ? "desc" : "asc")
-            .take(limit);
-
-        // Temporary fallback while backfill is rolling out
-        if (indexedLogs.length >= limit) {
-            return indexedLogs;
-        }
-
-        const legacyLogs = await getLegacyLogsForUser(ctx, identity.email!);
-        const merged = dedupeLogsById([...indexedLogs, ...legacyLogs]);
-        return sortLogsByServiceDate(merged, descending).slice(0, limit);
+            .paginate({ cursor: args.cursor ?? null, numItems });
     },
 });
 
-// Filter service logs by criteria
+// Filter service logs by criteria using cursor-based pagination.
+// Filters are applied in JS after fetching a bounded page from the primary index.
 export const filter = query({
     args: {
         customer_id: v.optional(v.id("customers")),
-        service_date: v.optional(v.string()),
+        service_date_from: v.optional(v.string()),
+        service_date_to: v.optional(v.string()),
+        status: v.optional(v.string()),
+        limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
+        if (args.service_date_from && !isValidDateString(args.service_date_from)) {
+            throw new Error(`Invalid service_date_from: "${args.service_date_from}". Expected ISO 8601 date string.`);
+        }
+        if (args.service_date_to && !isValidDateString(args.service_date_to)) {
+            throw new Error(`Invalid service_date_to: "${args.service_date_to}". Expected ISO 8601 date string.`);
+        }
+        if (args.status) {
+            validateStatus(args.status);
+        }
+
+        const numItems = clampLimit(args.limit);
+        const result = await ctx.db
+            .query("serviceLogs")
+            .withIndex("by_created_by_and_service_date", (q: any) =>
+                q.eq("created_by", identity.email!)
+            )
+            .order("desc")
+            .paginate({ cursor: args.cursor ?? null, numItems });
+
+        let page = result.page;
+
         if (args.customer_id) {
-            // Verify ownership first
-            const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Customer not found or access denied");
-            }
-            // Query with index
-            return await ctx.db.query("serviceLogs")
-                .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id!))
-                .collect();
+            page = page.filter((log: any) => log.customer_id === args.customer_id);
+        }
+        if (args.service_date_from) {
+            page = page.filter((log: any) => log.service_date >= args.service_date_from!);
+        }
+        if (args.service_date_to) {
+            page = page.filter((log: any) => log.service_date <= args.service_date_to!);
+        }
+        if (args.status) {
+            page = page.filter((log: any) => log.status === args.status);
         }
 
-        if (args.service_date) {
-            const indexedLogs = await ctx.db.query("serviceLogs")
-                .withIndex("by_created_by_and_service_date", (q: any) =>
-                    q.eq("created_by", identity.email!).eq("service_date", args.service_date!)
-                )
-                .collect();
-
-            if (indexedLogs.length > 0) {
-                return indexedLogs;
-            }
-
-            // Temporary fallback while backfill is rolling out
-            return await getLegacyLogsForUser(ctx, identity.email!, args.service_date);
-        }
-
-        const indexedLogs = await ctx.db.query("serviceLogs")
-            .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
-            .collect();
-
-        if (indexedLogs.length > 0) {
-            return indexedLogs;
-        }
-
-        // Temporary fallback while backfill is rolling out
-        return await getLegacyLogsForUser(ctx, identity.email!);
+        return { ...result, page };
     },
 });
 
 // Get logs for a specific customer (with ownership verification)
 export const getByCustomer = query({
-    args: { customer_id: v.id("customers") },
+    args: {
+        customer_id: v.id("customers"),
+        limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
@@ -203,35 +154,33 @@ export const getByCustomer = query({
             throw new Error("Customer not found or access denied");
         }
 
-        const logs = await ctx.db
+        const numItems = clampLimit(args.limit);
+        return await ctx.db
             .query("serviceLogs")
             .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id))
             .order("desc")
-            .collect();
-
-        return logs;
+            .paginate({ cursor: args.cursor ?? null, numItems });
     },
 });
 
 // Get logs for a specific date
 export const getByDate = query({
-    args: { service_date: v.string() },
+    args: {
+        service_date: v.string(),
+        limit: v.optional(v.number()),
+        cursor: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        const indexedLogs = await ctx.db.query("serviceLogs")
+        const numItems = clampLimit(args.limit);
+        return await ctx.db
+            .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
                 q.eq("created_by", identity.email!).eq("service_date", args.service_date)
             )
-            .collect();
-
-        if (indexedLogs.length > 0) {
-            return indexedLogs;
-        }
-
-        // Temporary fallback while backfill is rolling out
-        return await getLegacyLogsForUser(ctx, identity.email!, args.service_date);
+            .paginate({ cursor: args.cursor ?? null, numItems });
     },
 });
 
@@ -248,6 +197,10 @@ export const create = mutation({
         alkalinity: v.string(),
         stabilizer: v.string(),
         salt: v.optional(v.number()),
+        ph_value: v.optional(v.number()),
+        chlorine_value: v.optional(v.number()),
+        alkalinity_value: v.optional(v.number()),
+        stabilizer_value: v.optional(v.number()),
         // Proof-of-service time tracking fields
         start_time: v.optional(v.string()),
         end_time: v.optional(v.string()),
@@ -287,6 +240,10 @@ export const create = mutation({
             alkalinity: args.alkalinity,
             stabilizer: args.stabilizer,
             salt: args.salt,
+            ph_value: args.ph_value,
+            chlorine_value: args.chlorine_value,
+            alkalinity_value: args.alkalinity_value,
+            stabilizer_value: args.stabilizer_value,
             start_time: args.start_time,
             end_time: args.end_time,
             duration_ms,
@@ -315,6 +272,10 @@ export const update = mutation({
         alkalinity: v.optional(v.string()),
         stabilizer: v.optional(v.string()),
         salt: v.optional(v.number()),
+        ph_value: v.optional(v.number()),
+        chlorine_value: v.optional(v.number()),
+        alkalinity_value: v.optional(v.number()),
+        stabilizer_value: v.optional(v.number()),
         // Proof-of-service time tracking fields
         start_time: v.optional(v.string()),
         end_time: v.optional(v.string()),
