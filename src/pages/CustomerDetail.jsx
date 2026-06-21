@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCustomers, useServiceLogsByCustomer, useServiceLogDelete, useCustomerUpdate } from "@/api/convexHooks";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl, formatServiceDate, parseLocalDate } from "@/utils";
-import { ArrowLeft, MapPin, Phone, Mail, Droplets, Plus, Calendar, FileText, BarChart3, Settings } from "lucide-react";
+import { MapPin, Phone, Mail, Droplets, Plus, Calendar, FileText, BarChart3, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { BackButton } from "@/components/navigation/BackButton";
 import ServiceLogCard from "../components/servicelog/ServiceLogCard";
 import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
 import { SendReportDialog } from "@/components/service-reports";
@@ -702,15 +703,12 @@ export default function CustomerDetail() {
 
   return (
     <div className="max-w-3xl mx-auto px-3 py-4">
-      <Button
-        variant="ghost"
+      <BackButton
+        fallback={createPageUrl("Clients")}
+        label="Back"
         size="sm"
-        onClick={() => navigate(createPageUrl("Home"))}
         className="mb-3 -ml-2"
-      >
-        <ArrowLeft className="w-4 h-4 mr-1" />
-        Back
-      </Button>
+      />
 
       <Card className="p-4 mb-3 border-2 shadow-lg">
         <div className="mb-3">

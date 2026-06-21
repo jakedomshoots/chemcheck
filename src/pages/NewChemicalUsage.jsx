@@ -4,8 +4,9 @@ import { api } from "../../convex/_generated/api";
 import { useCustomersFilter, useChemicalUsageCreate, useCurrentUser } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/navigation/BackButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,7 +120,11 @@ export default function NewChemicalUsage() {
     try {
       await createChemicalUsage(formData);
       toast.success("Chemical usage recorded");
-      navigate(createPageUrl("ChemicalUsage"));
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        navigate(createPageUrl("ChemicalUsage"));
+      }
     } catch (error) {
       console.error("Failed to save chemical usage:", error);
       toast.error("Failed to save chemical usage. Please try again.");
@@ -130,14 +135,11 @@ export default function NewChemicalUsage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 font-sans">
       <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => navigate(createPageUrl("ChemicalUsage"))}
-          className="mb-4 group"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2 stroke-[1.75] group-hover:-translate-x-1 transition-transform" />
-          Back to Chemical Usage
-        </Button>
+        <BackButton
+          fallback={createPageUrl("ChemicalUsage")}
+          label="Back to Chemical Usage"
+          className="mb-4"
+        />
 
         <div>
           <div>
@@ -224,14 +226,12 @@ export default function NewChemicalUsage() {
         </Card>
 
         <div className="flex gap-3">
-          <Button
-            type="button"
+          <BackButton
+            fallback={createPageUrl("ChemicalUsage")}
+            label="Cancel"
             variant="outline"
-            onClick={() => navigate(createPageUrl("ChemicalUsage"))}
             className="flex-1 border-2 rounded-xl font-medium"
-          >
-            Cancel
-          </Button>
+          />
           <Button
             type="submit"
             disabled={saving}

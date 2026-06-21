@@ -4,8 +4,9 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Save, Droplets, TestTube, Waves, Activity, AlertCircle, ClipboardList } from "lucide-react";
+import { Save, Droplets, TestTube, Waves, Activity, AlertCircle, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/navigation/BackButton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -436,11 +437,15 @@ export default function NewServiceLog() {
 
       if (startedFromOffDayPicker && serviceFlow?.selectedDay) {
         toast.success(
-          `Saved ${customer?.full_name || "client"} from ${serviceFlow.selectedDay}. Returning to ${serviceFlow?.todayDay || "today"}.`
+          `Saved ${customer?.full_name || "client"} from ${serviceFlow.selectedDay}.`
         );
       }
 
-      navigate(createPageUrl("Home"));
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        navigate(createPageUrl("CustomerDetail") + `?id=${customerIdParam}`);
+      }
     } catch (error) {
       console.error('[NewServiceLog] Failed to create service log:', error);
 
@@ -461,14 +466,11 @@ export default function NewServiceLog() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 font-sans">
       <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => navigate(createPageUrl("Home"))}
-          className="mb-4 group"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2 stroke-[1.75] group-hover:-translate-x-1 transition-transform" />
-          {backToRouteLabel}
-        </Button>
+        <BackButton
+          fallback={createPageUrl("Home")}
+          label={backToRouteLabel}
+          className="mb-4"
+        />
 
         <div className="flex items-center justify-between">
           <div>
@@ -663,14 +665,12 @@ export default function NewServiceLog() {
         )}
 
         <div className="flex gap-3">
-          <Button
-            type="button"
+          <BackButton
+            fallback={createPageUrl("Home")}
+            label="Cancel"
             variant="outline"
-            onClick={() => navigate(createPageUrl("Home"))}
             className="flex-1 border-2 rounded-xl"
-          >
-            Cancel
-          </Button>
+          />
           <Button
             type="submit"
             disabled={saving}

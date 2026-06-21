@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import { useCustomerCreate } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Save, User, MapPin, Phone, Mail, Droplets } from "lucide-react";
+import { Save, User, MapPin, Phone, Mail, Droplets } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/navigation/BackButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -69,7 +70,11 @@ export default function NewClient() {
         pool_gallons: formData.pool_gallons ? parseInt(formData.pool_gallons) : undefined
       };
       await createCustomer(data);
-      navigate(createPageUrl("Clients"));
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        navigate(createPageUrl("Clients"));
+      }
     } catch (error) {
       console.error("Error creating customer:", error);
       setSaving(false);
@@ -79,14 +84,11 @@ export default function NewClient() {
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => navigate(createPageUrl("Clients"))}
+        <BackButton
+          fallback={createPageUrl("Clients")}
+          label="Back to Clients"
           className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Clients
-        </Button>
+        />
       </div>
 
       <form onSubmit={handleSubmit}>
@@ -264,14 +266,12 @@ export default function NewClient() {
         </Card>
 
         <div className="flex gap-3">
-          <Button
-            type="button"
+          <BackButton
+            fallback={createPageUrl("Clients")}
+            label="Cancel"
             variant="outline"
-            onClick={() => navigate(createPageUrl("Clients"))}
             className="flex-1 h-11 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </Button>
+          />
           <Button
             type="submit"
             disabled={saving}
