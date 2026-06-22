@@ -387,7 +387,10 @@ export default function RouteOptimizer() {
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">Select Service Day</label>
             <Select value={selectedDay} onValueChange={setSelectedDay}>
-              <SelectTrigger className="bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+              <SelectTrigger
+                aria-label="Select Service Day"
+                className="bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

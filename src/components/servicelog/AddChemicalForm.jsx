@@ -120,7 +120,10 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
             value={formData.customer_id ? String(formData.customer_id) : ""}
             onValueChange={(value) => setFormData({ ...formData, customer_id: parseInt(value, 10) })}
           >
-            <SelectTrigger className="mt-1 bg-white text-slate-900 border-2 border-slate-200 focus:border-purple-500 rounded-xl h-11">
+            <SelectTrigger
+              aria-label="Customer"
+              className="mt-1 bg-white text-slate-900 border-2 border-slate-200 focus:border-purple-500 rounded-xl h-11"
+            >
               <SelectValue placeholder="Select customer" />
             </SelectTrigger>
             <SelectContent>
@@ -141,7 +144,10 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
             value={formData.chemical_type}
             onValueChange={(value) => setFormData({ ...formData, chemical_type: value })}
           >
-            <SelectTrigger className="mt-1 bg-white text-slate-900 border-2 border-slate-200 focus:border-purple-500 rounded-xl h-11">
+            <SelectTrigger
+              aria-label="Chemical Type"
+              className="mt-1 bg-white text-slate-900 border-2 border-slate-200 focus:border-purple-500 rounded-xl h-11"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

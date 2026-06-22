@@ -188,7 +188,10 @@ export function SaltCellLogSection({ customers }) {
                   onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
                   required
                 >
-                  <SelectTrigger className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                  <SelectTrigger
+                    aria-label="Customer"
+                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                  >
                     <SelectValue placeholder="Select salt pool customer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -223,7 +226,10 @@ export function SaltCellLogSection({ customers }) {
                 value={formData.condition}
                 onValueChange={(value) => setFormData({ ...formData, condition: value })}
               >
-                <SelectTrigger className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                <SelectTrigger
+                  aria-label="Scale Condition"
+                  className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

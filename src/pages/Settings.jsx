@@ -816,7 +816,7 @@ export default function Settings() {
                       onValueChange={(value) => setPreferences(prev => ({ ...prev, language: value }))}
                       disabled
                     >
-                      <SelectTrigger id="pref-language" className="rounded-lg">
+                      <SelectTrigger id="pref-language" aria-label="Language" className="rounded-lg">
                         <SelectValue placeholder="English" />
                       </SelectTrigger>
                       <SelectContent>
@@ -836,7 +836,7 @@ export default function Settings() {
                       value={preferences.defaultView}
                       onValueChange={(value) => setPreferences(prev => ({ ...prev, defaultView: value }))}
                     >
-                      <SelectTrigger id="pref-default-view" className="rounded-lg">
+                      <SelectTrigger id="pref-default-view" aria-label="Default View" className="rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -860,7 +860,7 @@ export default function Settings() {
                         setPreferences((prev) => ({ ...prev, default_workorders_section: nextValue }));
                       }}
                     >
-                      <SelectTrigger id="pref-workorders-section" className="rounded-lg">
+                      <SelectTrigger id="pref-workorders-section" aria-label="Default Work Orders Section" className="rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -883,7 +883,7 @@ export default function Settings() {
                         setPreferences((prev) => ({ ...prev, home_primary_action: nextValue }));
                       }}
                     >
-                      <SelectTrigger id="pref-home-action" className="rounded-lg">
+                      <SelectTrigger id="pref-home-action" aria-label="Home Primary Action" className="rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

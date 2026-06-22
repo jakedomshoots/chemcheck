@@ -192,7 +192,10 @@ export default function Notes() {
                   value={formData.category}
                   onValueChange={(value) => setFormData({ ...formData, category: value })}
                 >
-                  <SelectTrigger className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11">
+                  <SelectTrigger
+                    aria-label="Category"
+                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -209,7 +212,10 @@ export default function Notes() {
                   value={formData.priority}
                   onValueChange={(value) => setFormData({ ...formData, priority: value })}
                 >
-                  <SelectTrigger className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11">
+                  <SelectTrigger
+                    aria-label="Priority"
+                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -228,7 +234,10 @@ export default function Notes() {
                   value={formData.customer_id ? String(formData.customer_id) : ""}
                   onValueChange={(value) => setFormData({ ...formData, customer_id: parseInt(value, 10) })}
                 >
-                  <SelectTrigger className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11">
+                  <SelectTrigger
+                    aria-label="Customer"
+                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11"
+                  >
                     <SelectValue placeholder="Select customer (optional)" />
                   </SelectTrigger>
                   <SelectContent>

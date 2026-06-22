@@ -70,11 +70,7 @@ export default function NewClient() {
         pool_gallons: formData.pool_gallons ? parseInt(formData.pool_gallons) : undefined
       };
       await createCustomer(data);
-      if (window.history.length > 1) {
-        navigate(-1);
-      } else {
-        navigate(createPageUrl("Clients"));
-      }
+      navigate(createPageUrl("Clients"));
     } catch (error) {
       console.error("Error creating customer:", error);
       setSaving(false);
@@ -184,14 +180,18 @@ export default function NewClient() {
             </div>
 
             <div>
-              <Label htmlFor="service_day" className="text-slate-700 text-sm font-medium">
+              <Label id="service_day_label" htmlFor="service_day" className="text-slate-700 text-sm font-medium">
                 Service Day *
               </Label>
               <Select
                 value={formData.service_day}
                 onValueChange={(value) => setFormData({ ...formData, service_day: value })}
               >
-                <SelectTrigger className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                <SelectTrigger
+                  id="service_day"
+                  aria-label="Service Day"
+                  className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -212,14 +212,18 @@ export default function NewClient() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="pool_type" className="text-slate-700 text-sm font-medium">
+              <Label id="pool_type_label" htmlFor="pool_type" className="text-slate-700 text-sm font-medium">
                 Pool Type
               </Label>
               <Select
                 value={formData.pool_type}
                 onValueChange={(value) => setFormData({ ...formData, pool_type: value })}
               >
-                <SelectTrigger className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                <SelectTrigger
+                  id="pool_type"
+                  aria-label="Pool Type"
+                  className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -230,14 +234,18 @@ export default function NewClient() {
             </div>
 
             <div>
-              <Label htmlFor="surface_type" className="text-slate-700 text-sm font-medium">
+              <Label id="surface_type_label" htmlFor="surface_type" className="text-slate-700 text-sm font-medium">
                 Surface Type
               </Label>
               <Select
                 value={formData.surface_type}
                 onValueChange={(value) => setFormData({ ...formData, surface_type: value })}
               >
-                <SelectTrigger className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                <SelectTrigger
+                  id="surface_type"
+                  aria-label="Surface Type"
+                  className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -51,6 +51,8 @@ async function expectBrowserOffline(page) {
 }
 
 test.describe('Offline resilience', () => {
+  test.describe.configure({ mode: 'serial' });
+
   async function openAuthenticatedHome(page) {
     await page.goto('/');
     await waitForAuthShellToSettle(page);

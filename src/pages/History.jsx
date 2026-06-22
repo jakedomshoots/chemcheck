@@ -233,7 +233,10 @@ export default function History() {
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" />
             <Select value={proofFilter} onValueChange={setProofFilter}>
-              <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg">
+              <SelectTrigger
+                aria-label="History Range"
+                className="w-full sm:w-[180px] h-9 text-sm bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg"
+              >
                 <SelectValue placeholder="Filter by proof" />
               </SelectTrigger>
               <SelectContent>

@@ -219,6 +219,23 @@ describe('SyncStatusIndicator', () => {
       );
     });
 
+    it('gives the compact icon-only sync control an accessible name', () => {
+      (useSyncState as any).mockReturnValue({
+        status: 'idle',
+        pendingCount: 0,
+        lastSyncAt: null,
+        error: null,
+        syncNow: vi.fn(),
+        isRecordSynced: vi.fn(),
+        getRecordSyncStatus: vi.fn(),
+        refreshPendingCount: vi.fn(),
+      });
+
+      renderWithCleanup(<SyncStatusIndicator showLabel={false} showPendingCount={false} />);
+
+      expect(screen.getByRole('button', { name: 'All synced' })).toBeInTheDocument();
+    });
+
     it('displays status text only when showLabel is true', () => {
       fc.assert(
         fc.property(

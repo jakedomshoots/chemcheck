@@ -22,6 +22,7 @@ export function SyncStatusIndicator({
   showPendingCount = true 
 }) {
   const { status, pendingCount, lastSyncAt, error, syncNow } = useSyncState();
+  const statusText = getStatusText(status, pendingCount);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -58,12 +59,14 @@ export function SyncStatusIndicator({
             variant="outline"
             size="sm"
             disabled={isSyncButtonDisabled(status)}
+            aria-label={statusText}
+            title={statusText}
             className="h-8 rounded-full border-slate-200 bg-white/90 px-3 text-slate-700 hover:bg-slate-100"
           >
             {getStatusIcon()}
             {showLabel && (
               <span className="ml-2 text-sm text-slate-700">
-                {getStatusText(status, pendingCount)}
+                {statusText}
               </span>
             )}
           </Button>
@@ -72,7 +75,7 @@ export function SyncStatusIndicator({
           <div className="space-y-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sync Status</p>
-              <p className="text-sm font-medium text-slate-900">{getStatusText(status, pendingCount)}</p>
+              <p className="text-sm font-medium text-slate-900">{statusText}</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">

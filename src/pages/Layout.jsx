@@ -171,6 +171,9 @@ export default function Layout({ children, currentPageName }) {
             onClick={() => setMoreOpen(true)}
             className="flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"
             aria-label="More navigation"
+            aria-haspopup="dialog"
+            aria-expanded={moreOpen}
+            aria-controls="mobile-more-navigation"
           >
             <MoreHorizontal className="h-5 w-5 stroke-[1.75]" />
             <span className="text-[10px] font-medium truncate px-1">More</span>
@@ -186,6 +189,7 @@ export default function Layout({ children, currentPageName }) {
             onClick={() => setMoreOpen(false)}
           />
           <div
+            id="mobile-more-navigation"
             className="relative w-full max-w-md mx-auto bg-white rounded-t-2xl shadow-2xl p-4 pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-bottom duration-200"
             role="dialog"
             aria-modal="true"

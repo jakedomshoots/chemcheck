@@ -86,4 +86,11 @@ describe('New Service Log Page', () => {
         expect(screen.getByText(/pH Balance Input/i)).toBeInTheDocument();
         expect(screen.getByText(/Chlorine Level Input/i)).toBeInTheDocument();
     });
+
+    it('labels the service type selector', () => {
+        window.history.pushState({}, 'Test Page', '/?customerId=1');
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        expect(screen.getByRole('combobox', { name: 'Service Type' })).toBeInTheDocument();
+    });
 });

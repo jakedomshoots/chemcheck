@@ -233,7 +233,11 @@ export default function EditClient() {
                 value={formData.service_day}
                 onValueChange={(value) => setFormData({ ...formData, service_day: value })}
               >
-                <SelectTrigger className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                <SelectTrigger
+                  id="service_day"
+                  aria-label="Service Day"
+                  className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -261,7 +265,11 @@ export default function EditClient() {
                 value={formData.pool_type}
                 onValueChange={(value) => setFormData({ ...formData, pool_type: value })}
               >
-                <SelectTrigger className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                <SelectTrigger
+                  id="pool_type"
+                  aria-label="Pool Type"
+                  className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -279,7 +287,11 @@ export default function EditClient() {
                 value={formData.surface_type}
                 onValueChange={(value) => setFormData({ ...formData, surface_type: value })}
               >
-                <SelectTrigger className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11">
+                <SelectTrigger
+                  id="surface_type"
+                  aria-label="Surface Type"
+                  className="mt-1.5 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

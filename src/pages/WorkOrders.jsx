@@ -4233,7 +4233,7 @@ const workOrderCreateForm = (
                     value={order.assignee_email || ""}
                     onValueChange={(value) => handleAssigneeChange(order._id, value)}
                   >
-                    <SelectTrigger className="h-12 lg:h-9 text-sm lg:text-xs">
+                    <SelectTrigger aria-label={`Assignee for ${order.title || 'work order'}`} className="h-12 lg:h-9 text-sm lg:text-xs">
                       <SelectValue placeholder="Unassigned" />
                     </SelectTrigger>
                     <SelectContent>
@@ -4248,7 +4248,7 @@ const workOrderCreateForm = (
                     value={order.status}
                     onValueChange={(value) => handleStatusChange(order._id, value)}
                   >
-                    <SelectTrigger className="h-12 lg:h-9 text-sm lg:text-xs">
+                    <SelectTrigger aria-label={`Status for ${order.title || 'work order'}`} className="h-12 lg:h-9 text-sm lg:text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

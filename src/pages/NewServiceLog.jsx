@@ -530,7 +530,10 @@ export default function NewServiceLog() {
             value={formData.service_type}
             onValueChange={(value) => setFormData({ ...formData, service_type: value })}
           >
-            <SelectTrigger className="bg-white text-slate-900 border-2 border-slate-200 focus:border-cyan-500 rounded-xl h-11">
+            <SelectTrigger
+              aria-label="Service Type"
+              className="bg-white text-slate-900 border-2 border-slate-200 focus:border-cyan-500 rounded-xl h-11"
+            >
               <SelectValue placeholder="Select service type" />
             </SelectTrigger>
             <SelectContent>
