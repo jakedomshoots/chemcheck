@@ -55,13 +55,13 @@ export default function Layout({ children, currentPageName }) {
   const primaryTabs = [
     { name: "Home", path: APP_ROUTES.Home, icon: Home },
     { name: "Clients", path: APP_ROUTES.Clients, icon: Users },
-    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: ClipboardList },
-    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: Navigation },
+    { name: "Chemical", path: APP_ROUTES.ChemicalUsage, icon: TestTube },
+    { name: "Notes", path: APP_ROUTES.Notes, icon: StickyNote },
   ];
 
   const moreItems = [
-    { name: "Notes", path: APP_ROUTES.Notes, icon: StickyNote },
-    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: TestTube },
+    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: ClipboardList },
+    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: Navigation },
     { name: "Reports", path: APP_ROUTES.WeeklyReport, icon: FileText },
     { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: BookOpen },
     { name: "Settings", path: APP_ROUTES.Settings, icon: Settings },
