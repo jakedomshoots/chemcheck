@@ -152,7 +152,9 @@ describe('Home Page - Comprehensive Tests', () => {
 
     it('uses service-only timing in daily ops brief', () => {
       renderWithProviders(<Home />);
+      expect(screen.getByTestId('route-header')).toContainElement(screen.getByLabelText('Daily Ops Brief'));
       expect(screen.getByText('2 stops · 30 min')).toBeInTheDocument();
+      expect(screen.getAllByText(/Daily Ops Brief/i)).toHaveLength(1);
     });
   });
 

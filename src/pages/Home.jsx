@@ -474,15 +474,37 @@ export default function Home() {
 
   return (
     <main className="max-w-7xl mx-auto px-3 py-4 font-sans" aria-label="Home">
-      <div className="mb-4">
-        <div className="mb-1">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
-            <p className="text-xs font-medium text-slate-600">
-              {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
-            </p>
-          </div>
+      <div
+        data-testid="route-header"
+        className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+      >
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
+          <p className="text-xs font-medium text-slate-600">
+            {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
+          </p>
         </div>
+
+        {showOpsBrief && (
+          <aside
+            aria-label="Daily Ops Brief"
+            className="w-full rounded-xl border border-cyan-100 bg-white/85 px-3 py-2 shadow-sm shadow-cyan-900/5 backdrop-blur sm:w-auto sm:min-w-[230px] sm:max-w-[270px] sm:shrink-0"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-cyan-700" />
+                  <span>Daily Ops Brief</span>
+                </div>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-500">Estimated route</p>
+              </div>
+              <p className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-bold tabular-nums text-cyan-700">
+                <Route className="h-3.5 w-3.5" />
+                {opsBrief.pendingStops} stops · {formatRouteDuration(opsBrief.estimatedRouteMinutes)}
+              </p>
+            </div>
+          </aside>
+        )}
       </div>
 
       {missedServices.length > 0 && (
@@ -564,24 +586,6 @@ export default function Home() {
           Service Another Day
         </Button>
       </div>
-
-      {showOpsBrief && (
-        <div className="mb-4 rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <ShieldAlert className="w-4 h-4 text-cyan-700" />
-            <h3 className="text-sm font-semibold text-slate-900">Daily Ops Brief</h3>
-          </div>
-          <div className="grid grid-cols-1 gap-2">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-              <p className="text-[11px] uppercase tracking-wide text-slate-500">Estimated Route</p>
-              <p className="text-lg font-bold text-cyan-700 flex items-center gap-1">
-                <Route className="w-3.5 h-3.5" />
-                {opsBrief.pendingStops} stops · {formatRouteDuration(opsBrief.estimatedRouteMinutes)}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       <QuickStats
         total={stats.total}

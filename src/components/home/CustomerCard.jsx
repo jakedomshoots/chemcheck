@@ -16,6 +16,38 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatServiceDate } from "@/utils";
 
+const chemicalReadingMeta = [
+  { key: "ph", label: "pH" },
+  { key: "chlorine", label: "Cl" },
+  { key: "alkalinity", label: "Alk" },
+  { key: "stabilizer", label: "CYA" },
+  { key: "salt", label: "Salt", suffix: " PPM" },
+];
+
+const chemicalToneClassByStatus = {
+  good: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  low: "border-amber-200 bg-amber-50 text-amber-700",
+  high: "border-orange-200 bg-orange-50 text-orange-700",
+  critical: "border-red-200 bg-red-50 text-red-700",
+};
+
+function getChemicalReadings(log) {
+  if (!log) return [];
+
+  return chemicalReadingMeta
+    .map(({ key, label, suffix = "" }) => {
+      const value = log[key];
+      if (value === null || value === undefined || value === "") return null;
+      return {
+        key,
+        label,
+        value: `${value}${suffix}`,
+        toneClassName: chemicalToneClassByStatus[String(value).toLowerCase()] || "border-slate-200 bg-white/70 text-slate-700",
+      };
+    })
+    .filter(Boolean);
+}
+
 const CustomerCard = memo(function CustomerCard({
   customer,
   isCompleted,
@@ -55,6 +87,7 @@ const CustomerCard = memo(function CustomerCard({
   const borderClassName = cardState === "done" ? "border-emerald-200" : "border-slate-200/60";
   const startLabel = isSkipped ? "Resume" : "Start";
   const skipLabel = isSkipped ? "Unskip" : "Skip";
+  const chemicalReadings = getChemicalReadings(lastWeekLog);
 
   const handleHeaderClick = () => {
     if (isCompleted) {
@@ -78,17 +111,23 @@ const CustomerCard = memo(function CustomerCard({
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-sm text-slate-900 truncate">{customer.full_name}</h3>
-            <div className="flex items-center gap-1.5">
-              <p className="text-xs text-slate-500 truncate">{customer.address}</p>
-              {customer.phone && (
-                <a
-                  href={`tel:${customer.phone}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cyan-50 text-cyan-600 hover:bg-cyan-100 active:bg-cyan-200 shrink-0"
-                  aria-label={`Call ${customer.phone}`}
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                </a>
+            <div className="mt-1" aria-label="Quick chemical view">
+              {chemicalReadings.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {chemicalReadings.slice(0, 4).map((reading) => (
+                    <span
+                      key={reading.key}
+                      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${reading.toneClassName}`}
+                    >
+                      <span>{reading.label}</span>
+                      <span className="font-bold capitalize tabular-nums">{reading.value}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] font-medium text-slate-500">
+                  No recent chemical readings
+                </p>
               )}
             </div>
             {customer.gate_code && (
@@ -115,7 +154,7 @@ const CustomerCard = memo(function CustomerCard({
         </div>
       </div>
 
-      <div className={`px-3 pb-2 ${rowClassName}`}>
+      <div className={`px-3 pb-3 ${rowClassName}`}>
         {isCompleted ? (
           <Button
             variant="ghost"
@@ -130,9 +169,10 @@ const CustomerCard = memo(function CustomerCard({
             View Service Log
           </Button>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] gap-1.5 rounded-xl bg-slate-100/70 p-1">
             <Button
-              className={`h-12 text-sm font-semibold text-white ${
+              size="sm"
+              className={`h-9 rounded-lg px-2 text-xs font-semibold text-white shadow-sm ${
                 isSkipped
                   ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
                   : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
@@ -142,20 +182,28 @@ const CustomerCard = memo(function CustomerCard({
                 onStart?.();
               }}
             >
-              <Clock className="w-4 h-4 mr-2" />
+              <Clock className="w-3.5 h-3.5" />
               {startLabel}
             </Button>
             <Button
               variant="outline"
-              className="h-12 text-sm font-semibold border-2 border-slate-200 hover:border-cyan-500 hover:text-cyan-700"
+              size="sm"
+              className={`h-9 rounded-lg border px-2 text-xs font-semibold shadow-none ${
+                isSkipped
+                  ? 'border-amber-200 bg-amber-50/80 text-amber-700 hover:border-amber-300 hover:bg-amber-100'
+                  : 'border-slate-200 bg-white/80 text-slate-600 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700'
+              }`}
               onClick={(e) => {
                 e.stopPropagation();
-                onMap?.();
+                if (isSkipped) {
+                  onUnskip?.();
+                } else {
+                  onSkip?.();
+                }
               }}
-              disabled={!customer.address}
             >
-              <MapPin className="w-4 h-4 mr-2" />
-              Map
+              <SkipForward className="w-3.5 h-3.5" />
+              {skipLabel}
             </Button>
           </div>
         )}
@@ -177,6 +225,13 @@ const CustomerCard = memo(function CustomerCard({
               <div className="flex items-center gap-2 text-slate-700">
                 <Phone className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
                 <span className="text-xs">{customer.phone}</span>
+              </div>
+            )}
+
+            {customer.address && (
+              <div className="flex items-center gap-2 text-slate-700">
+                <MapPin className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
+                <span className="text-xs truncate">{customer.address}</span>
               </div>
             )}
 
@@ -204,28 +259,16 @@ const CustomerCard = memo(function CustomerCard({
                   </span>
                 </div>
 
-                {(lastWeekLog.ph || lastWeekLog.chlorine || lastWeekLog.stabilizer || lastWeekLog.salt) && (
+                {chemicalReadings.length > 0 && (
                   <div className="flex gap-1.5 mb-1.5 flex-wrap">
-                    {lastWeekLog.ph && (
-                      <span className="text-[9px] px-1.5 py-0.5 bg-white/60 text-slate-700 rounded font-medium">
-                        pH: {lastWeekLog.ph}
+                    {chemicalReadings.map((reading) => (
+                      <span
+                        key={reading.key}
+                        className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${reading.toneClassName}`}
+                      >
+                        {reading.label}: <span className="capitalize tabular-nums">{reading.value}</span>
                       </span>
-                    )}
-                    {lastWeekLog.chlorine && (
-                      <span className="text-[9px] px-1.5 py-0.5 bg-white/60 text-slate-700 rounded font-medium">
-                        Cl: {lastWeekLog.chlorine}
-                      </span>
-                    )}
-                    {lastWeekLog.stabilizer && (
-                      <span className="text-[9px] px-1.5 py-0.5 bg-white/60 text-slate-700 rounded font-medium">
-                        CYA: {lastWeekLog.stabilizer}
-                      </span>
-                    )}
-                    {lastWeekLog.salt && (
-                      <span className="text-[9px] px-1.5 py-0.5 bg-white/60 text-slate-700 rounded font-medium">
-                        Salt: {lastWeekLog.salt} PPM
-                      </span>
-                    )}
+                    ))}
                   </div>
                 )}
 
@@ -241,40 +284,39 @@ const CustomerCard = memo(function CustomerCard({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              {customer.phone && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-10 text-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCall?.();
-                  }}
-                >
-                  <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
-                  Call
-                </Button>
-              )}
-              {!isCompleted && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-10 text-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isSkipped) {
-                      onUnskip?.();
-                    } else {
-                      onSkip?.();
-                    }
-                  }}
-                >
-                  <SkipForward className="w-3.5 h-3.5 mr-1.5" />
-                  {skipLabel}
-                </Button>
-              )}
-            </div>
+            {(customer.phone || customer.address) && (
+              <div className={`grid gap-2 pt-2 ${customer.phone && customer.address ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {customer.phone && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-10 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCall?.();
+                    }}
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
+                    Call
+                  </Button>
+                )}
+
+                {customer.address && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-10 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMap?.();
+                    }}
+                  >
+                    <MapPin className="w-3.5 h-3.5 mr-1.5" />
+                    Map
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
