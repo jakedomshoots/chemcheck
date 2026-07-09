@@ -252,7 +252,7 @@ describe('Home Page - Comprehensive Tests', () => {
       
       renderWithProviders(<Home />);
       
-      expect(screen.getByRole('heading', { name: /No Stops on Today/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /No Stops Scheduled/i })).toBeInTheDocument();
     });
 
     it('handles API errors gracefully', () => {

@@ -625,7 +625,7 @@ export default function Home() {
             <Calendar className="w-8 h-8 text-slate-400 stroke-[1.75]" />
           </div>
           <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-2">
-            No Stops on Today&apos;s Route
+            No Stops Scheduled
           </h3>
           <p className="text-sm font-medium text-slate-600 mb-4">
             {missedServices.length > 0
