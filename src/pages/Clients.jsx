@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useCustomersFilter, useCurrentUser, useCustomerUpdate, useCustomerDelete } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Plus, Users, Search, ArrowUp, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,17 @@ import { toast } from "sonner";
 import { DAY_ORDER, getEffectiveWorkingDays } from "@/lib/workingDays";
 
 const FALLBACK_SORT_ORDER = Number.MAX_SAFE_INTEGER;
+
+function getTodayServiceDay() {
+  return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date());
+}
+
+export function getInitialActiveDay(navigationState) {
+  const selectedDay = navigationState?.selectedDay;
+  return typeof selectedDay === "string" && DAY_ORDER.includes(selectedDay)
+    ? selectedDay
+    : getTodayServiceDay();
+}
 
 function getSortFallback(createdAt) {
   if (!createdAt) return FALLBACK_SORT_ORDER;
@@ -52,6 +63,7 @@ function getDisplaySortOrder(customer) {
 
 export default function Clients() {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useCurrentUser();
 
   const convexBusiness = useQuery(api.businesses.getCurrent);
@@ -62,7 +74,7 @@ export default function Clients() {
 
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeDay, setActiveDay] = useState("Monday");
+  const [activeDay, setActiveDay] = useState(() => getInitialActiveDay(location.state));
   const [deleteCustomer, setDeleteCustomer] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [reorderMode, setReorderMode] = useState(false);

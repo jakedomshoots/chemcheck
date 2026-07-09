@@ -69,6 +69,11 @@ describe('New Client Page', () => {
             full_name: 'E2E Pool',
             address: '123 Test Lane',
         }));
-        expect(mockNavigate).toHaveBeenCalledWith('/page/Clients');
+        expect(mockNavigate).toHaveBeenCalledWith('/page/Clients', {
+            state: {
+                selectedDay: 'Monday',
+                newlyCreatedCustomerName: 'E2E Pool',
+            },
+        });
     });
 });

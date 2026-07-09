@@ -70,7 +70,12 @@ export default function NewClient() {
         pool_gallons: formData.pool_gallons ? parseInt(formData.pool_gallons) : undefined
       };
       await createCustomer(data);
-      navigate(createPageUrl("Clients"));
+      navigate(createPageUrl("Clients"), {
+        state: {
+          selectedDay: formData.service_day,
+          newlyCreatedCustomerName: formData.full_name,
+        },
+      });
     } catch (error) {
       console.error("Error creating customer:", error);
       setSaving(false);

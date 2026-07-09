@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import Clients from './Clients';
+import Clients, { getInitialActiveDay } from './Clients';
 import { BrowserRouter } from 'react-router-dom';
 
 // Mock stable data and functions
@@ -83,6 +83,11 @@ describe('Clients Page', () => {
         // We mock ClientListItem to just show name, so we look for that
         expect(await screen.findByText('Alice Smith')).toBeInTheDocument();
         expect(await screen.findByText('Bob Jones')).toBeInTheDocument();
+    });
+
+    it('uses the saved service day after creating a client', () => {
+        expect(getInitialActiveDay({ selectedDay: 'Thursday' })).toBe('Thursday');
+        expect(getInitialActiveDay({ selectedDay: 'not a service day' })).not.toBe('not a service day');
     });
 
     it('filters clients by search', async () => {
