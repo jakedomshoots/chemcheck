@@ -1,6 +1,12 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { enforceRateLimit } from "./rateLimit";
+import {
+  assertBusinessRole,
+  normalizeEmail,
+  requireBusinessContext,
+  requireCustomerRole,
+} from "./authorization";
 
 /**
  * Convex mutations for syncing data from Dexie (local IndexedDB) to Convex (cloud)
@@ -9,102 +15,16 @@ import { enforceRateLimit } from "./rateLimit";
  * SECURITY: All sync mutations require authentication and enforce tenant isolation
  */
 
-function normalizeEmail(value: unknown): string {
-  return String(value || "").trim().toLowerCase();
-}
-
 async function resolveBusinessContext(ctx: any, userEmail: string) {
-  const normalizedUserEmail = normalizeEmail(userEmail);
-
-  const exactTeamMember = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-
-  if (exactTeamMember) {
-    const teamBusiness = await ctx.db.get(exactTeamMember.business_id);
-    if (teamBusiness) return teamBusiness;
-  }
-
-  const exactOwnedBusiness = await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-    .first();
-
-  if (exactOwnedBusiness) return exactOwnedBusiness;
-
-  // Legacy records may differ only by email casing/whitespace. Index lookups are
-  // exact, so fall back to normalized scans before denying sync.
-  const teamMembers = await ctx.db
-    .query("team_members")
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .collect();
-
-  const normalizedTeamMember = teamMembers.find(
-    (member: any) => normalizeEmail(member.user_email) === normalizedUserEmail
-  );
-
-  if (normalizedTeamMember) {
-    const teamBusiness = await ctx.db.get(normalizedTeamMember.business_id);
-    if (teamBusiness) return teamBusiness;
-  }
-
-  const businesses = await ctx.db.query("businesses").collect();
-  return businesses.find(
-    (business: any) => normalizeEmail(business.owner_email) === normalizedUserEmail
-  );
-}
-
-async function getActiveBusinessMemberEmails(
-  ctx: any,
-  businessId: any,
-  ownerEmail: string
-): Promise<Set<string>> {
-  const members = await ctx.db
-    .query("team_members")
-    .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .collect();
-
-  const emails = new Set<string>([normalizeEmail(ownerEmail)]);
-  for (const member of members) {
-    const email = normalizeEmail(member.user_email);
-    if (email) emails.add(email);
-  }
-  return emails;
-}
-
-async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-  if (!customer) return false;
-
-  const normalizedUserEmail = normalizeEmail(userEmail);
-  const customerCreatedBy = normalizeEmail(customer.created_by);
-
-  if (customerCreatedBy && customerCreatedBy === normalizedUserEmail) {
-    return true;
-  }
-
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return false;
-
-  const businessId = String(business._id);
-  const customerBusinessId = customer.business_id ? String(customer.business_id) : "";
-  if (customerBusinessId && customerBusinessId === businessId) {
-    return true;
-  }
-
-  const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-  return customerCreatedBy ? allowedEmails.has(customerCreatedBy) : false;
+  return requireBusinessContext(ctx, userEmail);
 }
 
 async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: string): Promise<void> {
   const customer = await ctx.db.get(customerId);
-  const allowed = await canAccessCustomer(ctx, customer, userEmail);
-  if (!allowed) {
-    throw new Error("Access denied: cannot sync data for another user's customer");
-  }
+  await requireCustomerRole(ctx, customer, userEmail, ["owner", "admin", "technician"]);
 }
+
+const CUSTOMER_WRITE_ROLES = ["owner", "admin"] as const;
 
 // ============================================
 // Customer Sync
@@ -152,8 +72,9 @@ export const syncCustomer = mutation({
 
     // Resolve business context so we can set business_id (matches customers.create behavior)
     const business = await resolveBusinessContext(ctx, identity.email!);
-    const createdBy = business ? business.owner_email : identity.email!;
-    const businessId = business?._id;
+    assertBusinessRole(business.role, CUSTOMER_WRITE_ROLES);
+    const createdBy = business.ownerEmail;
+    const businessId = business.businessId;
 
     const customerData = {
       ...data,
@@ -170,9 +91,7 @@ export const syncCustomer = mutation({
       }
 
       // SECURITY: Verify ownership of existing record
-      if (!(await canAccessCustomer(ctx, existingCustomer, identity.email!))) {
-        throw new Error("Access denied: cannot update another user's customer");
-      }
+      await requireCustomerRole(ctx, existingCustomer, identity.email!, CUSTOMER_WRITE_ROLES);
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingCustomer.updated_at || 0;
@@ -275,9 +194,7 @@ export const syncServiceLog = mutation({
     }
 
     // SECURITY: Verify customer ownership
-    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-      throw new Error("Access denied: cannot sync data for another user's customer");
-    }
+    await ensureCustomerOwnedByUser(ctx, customer._id, identity.email!);
 
     // If convex_id provided, update existing record
     if (convex_id) {
@@ -329,6 +246,7 @@ export const syncServiceLog = mutation({
     const newServiceLogId = await ctx.db.insert("serviceLogs", {
       ...data,
       customer_id: convex_customer_id,
+      business_id: customer.business_id,
       created_by: customer.created_by || identity.email!,
       created_at: now,
       updated_at: now,
@@ -381,9 +299,7 @@ export const syncChemicalUsage = mutation({
     }
 
     // SECURITY: Verify customer ownership
-    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-      throw new Error("Access denied: cannot sync data for another user's customer");
-    }
+    await ensureCustomerOwnedByUser(ctx, customer._id, identity.email!);
 
     // If convex_id provided, update existing record
     if (convex_id) {
@@ -434,6 +350,7 @@ export const syncChemicalUsage = mutation({
     const newChemicalUsageId = await ctx.db.insert("chemicalUsage", {
       ...data,
       customer_id: convex_customer_id,
+      business_id: customer.business_id,
       created_at: now,
       updated_at: now,
     });
@@ -487,9 +404,7 @@ export const syncNote = mutation({
         throw new Error(`Customer with id ${convex_customer_id} not found`);
       }
       // SECURITY: Verify customer ownership
-      if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-        throw new Error("Access denied: cannot sync notes for another user's customer");
-      }
+      await ensureCustomerOwnedByUser(ctx, customer._id, identity.email!);
     }
 
     // If convex_id provided, update existing record
@@ -500,7 +415,11 @@ export const syncNote = mutation({
       }
       if (existingNote.customer_id) {
         await ensureCustomerOwnedByUser(ctx, existingNote.customer_id, identity.email!);
-      } else if (existingNote.created_by && existingNote.created_by !== identity.email) {
+      } else if (existingNote.business_id) {
+        const business = await requireBusinessContext(ctx, identity.email!, String(existingNote.business_id));
+        assertBusinessRole(business.role, ["owner", "admin", "technician"]);
+      } else if (normalizeEmail(existingNote.created_by) !== normalizeEmail(identity.email)) {
+        // Legacy general notes remain owner-only until backfilled.
         throw new Error("Access denied: cannot update another user's note");
       }
 
@@ -541,12 +460,16 @@ export const syncNote = mutation({
       };
     }
 
-    // Create new note record with user's email for tenant isolation
+    // Create general notes inside the active business, never under an
+    // unscoped caller email.
+    const business = await resolveBusinessContext(ctx, identity.email!);
+    assertBusinessRole(business.role, ["owner", "admin", "technician"]);
     const now = Date.now();
     const newNoteId = await ctx.db.insert("notes", {
       ...data,
       customer_id: convex_customer_id,
-      created_by: identity.email, // SECURITY: Set created_by for general notes
+      created_by: business.ownerEmail,
+      business_id: business.businessId,
       created_at: now,
       updated_at: now,
     });
@@ -598,9 +521,7 @@ export const syncSaltCellLog = mutation({
     }
 
     // SECURITY: Verify customer ownership
-    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-      throw new Error("Access denied: cannot sync data for another user's customer");
-    }
+    await ensureCustomerOwnedByUser(ctx, customer._id, identity.email!);
 
     // If convex_id provided, update existing record
     if (convex_id) {
@@ -651,6 +572,7 @@ export const syncSaltCellLog = mutation({
     const newSaltCellLogId = await ctx.db.insert("saltCellLogs", {
       ...data,
       customer_id: convex_customer_id,
+      business_id: customer.business_id,
       created_at: now,
       updated_at: now,
     });
@@ -722,14 +644,17 @@ export const deleteRecord = mutation({
     if (!record) return { success: true, already_deleted: true };
 
     if (args.table === "customers") {
-      if (!(await canAccessCustomer(ctx, record, identity.email))) throw new Error("Access denied");
+      await requireCustomerRole(ctx, record, identity.email, CUSTOMER_WRITE_ROLES);
       await removeCustomerChildren(ctx, record._id);
       await ctx.db.delete(record._id);
       return { success: true, deleted_at: Date.now() };
     }
 
     if (args.table === "notes" && !record.customer_id) {
-      if (normalizeEmail(record.created_by) !== normalizeEmail(identity.email)) {
+      if (record.business_id) {
+        const business = await requireBusinessContext(ctx, identity.email, String(record.business_id));
+        assertBusinessRole(business.role, ["owner", "admin"]);
+      } else if (normalizeEmail(record.created_by) !== normalizeEmail(identity.email)) {
         throw new Error("Access denied");
       }
     } else {
@@ -787,8 +712,9 @@ export const batchSyncCustomers = mutation({
 
     // Resolve business context so we can set business_id (matches customers.create behavior)
     const business = await resolveBusinessContext(ctx, identity.email!);
-    const createdBy = business ? business.owner_email : identity.email!;
-    const businessId = business?._id;
+    assertBusinessRole(business.role, CUSTOMER_WRITE_ROLES);
+    const createdBy = business.ownerEmail;
+    const businessId = business.businessId;
 
     for (const customer of args.customers) {
       try {
