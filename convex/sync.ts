@@ -24,6 +24,30 @@ async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: s
   await requireCustomerRole(ctx, customer, userEmail, ["owner", "admin", "technician"]);
 }
 
+async function ensureServiceTargetBelongsToCustomer(
+  ctx: any,
+  customerId: any,
+  siteId: any | undefined,
+  poolId: any | undefined,
+): Promise<void> {
+  let site: any;
+  if (siteId) {
+    site = await ctx.db.get(siteId);
+    if (!site || String(site.customer_id) !== String(customerId)) {
+      throw new Error("Service site does not belong to this customer");
+    }
+  }
+  if (poolId) {
+    const pool = await ctx.db.get(poolId);
+    if (!pool || String(pool.customer_id) !== String(customerId)) {
+      throw new Error("Pool does not belong to this customer");
+    }
+    if (siteId && String(pool.site_id) !== String(siteId)) {
+      throw new Error("Pool does not belong to the selected service site");
+    }
+  }
+}
+
 const CUSTOMER_WRITE_ROLES = ["owner", "admin"] as const;
 const SYNC_PULL_TABLES = ["customers", "serviceLogs", "chemicalUsage", "notes", "saltCellLogs"] as const;
 
@@ -224,6 +248,8 @@ export const syncServiceLog = mutation({
       start_time: v.optional(v.string()),
       end_time: v.optional(v.string()),
       duration_ms: v.optional(v.number()),
+      site_id: v.optional(v.id("sites")),
+      pool_id: v.optional(v.id("pools")),
     }),
     local_updated_at: v.number(),
     convex_id: v.optional(v.id("serviceLogs")), // If updating existing record
@@ -249,6 +275,7 @@ export const syncServiceLog = mutation({
 
     // SECURITY: Verify customer ownership
     await ensureCustomerOwnedByUser(ctx, customer._id, identity.email!);
+    await ensureServiceTargetBelongsToCustomer(ctx, customer._id, args.data.site_id, args.data.pool_id);
 
     // If convex_id provided, update existing record
     if (convex_id) {
