@@ -3,11 +3,12 @@
 // Tracks important user actions for security and compliance
 // ============================================
 
+import { getActiveTenantScope } from '@/lib/tenantScope';
+
 export interface AuditLogEntry {
   id: string;
   timestamp: string;
   userId: string;
-  userEmail: string;
   action: AuditAction;
   resource: AuditResource;
   resourceId?: string;
@@ -44,16 +45,47 @@ export type AuditResource =
   | 'BACKUP'
   | 'SESSION';
 
-const STORAGE_KEY = 'chemcheck_audit_log';
+const LEGACY_STORAGE_KEY = 'chemcheck_audit_log';
+const STORAGE_KEY_PREFIX = 'chemcheck_audit_log_v2_';
 const MAX_ENTRIES = 1000;
 const RETENTION_DAYS = 90;
+const SENSITIVE_DETAIL_KEY = /address|email|phone|gate|code|note|photo|location|token|message|customer/i;
+
+function hashScope(scopeKey: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < scopeKey.length; index += 1) {
+    hash ^= scopeKey.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function sanitizeDetails(value: unknown, key = '', depth = 0): unknown {
+  if (SENSITIVE_DETAIL_KEY.test(key)) return '[redacted]';
+  if (depth > 3) return '[truncated]';
+  if (typeof value === 'string') return value.slice(0, 120);
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
+  if (Array.isArray(value)) return value.slice(0, 20).map((item) => sanitizeDetails(item, '', depth + 1));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([entryKey, entryValue]) => [
+        entryKey,
+        sanitizeDetails(entryValue, entryKey, depth + 1),
+      ]),
+    );
+  }
+  return undefined;
+}
 
 class AuditLogger {
   private entries: AuditLogEntry[] = [];
+  private storageKey: string | null = null;
 
   constructor() {
-    this.loadEntries();
-    this.cleanOldEntries();
+    // Remove the unscoped legacy log. It could contain another user's email
+    // and actions on a shared device, and has no safe ownership boundary.
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_STORAGE_KEY);
+    this.ensureTenantLoaded();
   }
 
   // ============================================
@@ -68,35 +100,31 @@ class AuditLogger {
       details?: Record<string, any>;
       success?: boolean;
       errorMessage?: string;
-    } = {}
+  } = {}
   ): string {
+    if (!this.ensureTenantLoaded()) return '';
     const { resourceId, details, success = true, errorMessage } = options;
 
-    // Get current user info
+    // The browser audit trail is intentionally scoped and pseudonymous. It is
+    // operational context, not a second store of customer or account PII.
     const currentUser = this.getCurrentUserInfo();
 
     const entry: AuditLogEntry = {
       id: this.generateId(),
       timestamp: new Date().toISOString(),
       userId: currentUser.userId,
-      userEmail: currentUser.userEmail,
       action,
       resource,
       resourceId,
-      details,
+      details: sanitizeDetails(details) as Record<string, any> | undefined,
       userAgent: navigator.userAgent,
       success,
-      errorMessage
+      errorMessage: errorMessage ? 'Action failed' : undefined,
     };
 
     this.entries.push(entry);
     this.trimEntries();
     this.saveEntries();
-
-    // Log to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[AUDIT] ${action} ${resource}`, entry);
-    }
 
     return entry.id;
   }
@@ -150,6 +178,7 @@ class AuditLogger {
     endDate?: string;
     limit?: number;
   } = {}): AuditLogEntry[] {
+    if (!this.ensureTenantLoaded()) return [];
     let filtered = [...this.entries];
 
     if (options.action) {
@@ -187,6 +216,7 @@ class AuditLogger {
   }
 
   getSecurityEvents(): AuditLogEntry[] {
+    if (!this.ensureTenantLoaded()) return [];
     return this.entries.filter(e => 
       e.action === 'LOGIN' || 
       e.action === 'LOGOUT' || 
@@ -197,6 +227,7 @@ class AuditLogger {
   }
 
   getFailedActions(): AuditLogEntry[] {
+    if (!this.ensureTenantLoaded()) return [];
     return this.entries.filter(e => !e.success)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
@@ -213,6 +244,9 @@ class AuditLogger {
     oldestEntry: string | null;
     newestEntry: string | null;
   } {
+    if (!this.ensureTenantLoaded()) {
+      return { totalEntries: 0, entriesByAction: {}, entriesByResource: {}, failedActions: 0, oldestEntry: null, newestEntry: null };
+    }
     const entriesByAction: Record<string, number> = {};
     const entriesByResource: Record<string, number> = {};
     let failedActions = 0;
@@ -242,6 +276,7 @@ class AuditLogger {
   // ============================================
 
   exportLog(): string {
+    this.ensureTenantLoaded();
     return JSON.stringify({
       exportDate: new Date().toISOString(),
       totalEntries: this.entries.length,
@@ -268,6 +303,7 @@ class AuditLogger {
   }
 
   clearLog(): void {
+    if (!this.ensureTenantLoaded()) return;
     this.entries = [];
     this.saveEntries();
   }
@@ -276,29 +312,26 @@ class AuditLogger {
   // Private Helper Methods
   // ============================================
 
-  private getCurrentUserInfo(): { userId: string; userEmail: string } {
-    try {
-      const userData = localStorage.getItem('chemcheck_current_user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        return {
-          userId: user.id || 'unknown',
-          userEmail: user.email || 'unknown'
-        };
-      }
-    } catch (error) {
-      console.warn('Failed to get current user for audit log:', error);
-    }
-    return { userId: 'anonymous', userEmail: 'anonymous' };
+  private getCurrentUserInfo(): { userId: string } {
+    const scope = getActiveTenantScope();
+    return { userId: scope ? `tenant_${hashScope(scope.key)}` : 'anonymous' };
   }
 
   private generateId(): string {
     return `audit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private loadEntries(): void {
+  private ensureTenantLoaded(): boolean {
+    const scope = getActiveTenantScope();
+    const nextStorageKey = scope ? `${STORAGE_KEY_PREFIX}${hashScope(scope.key)}` : null;
+    if (nextStorageKey === this.storageKey) return Boolean(nextStorageKey);
+
+    this.entries = [];
+    this.storageKey = nextStorageKey;
+    if (!nextStorageKey) return false;
+
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
+      const data = localStorage.getItem(nextStorageKey);
       if (data) {
         this.entries = JSON.parse(data);
       }
@@ -306,11 +339,14 @@ class AuditLogger {
       console.warn('Failed to load audit log:', error);
       this.entries = [];
     }
+    this.cleanOldEntries();
+    return true;
   }
 
   private saveEntries(): void {
+    if (!this.storageKey || !getActiveTenantScope()) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.entries));
+      localStorage.setItem(this.storageKey, JSON.stringify(this.entries));
     } catch (error) {
       console.warn('Failed to save audit log:', error);
     }
