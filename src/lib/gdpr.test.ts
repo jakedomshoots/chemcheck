@@ -7,26 +7,40 @@ vi.mock('@/db/chemcheck-db', () => ({
     customers: {
       toArray: vi.fn(),
       count: vi.fn(),
-      clear: vi.fn(),
+      where: vi.fn(),
     },
     serviceLogs: {
       toArray: vi.fn(),
       count: vi.fn(),
-      clear: vi.fn(),
+      where: vi.fn(),
     },
     chemicalUsage: {
       toArray: vi.fn(),
       count: vi.fn(),
-      clear: vi.fn(),
+      where: vi.fn(),
     },
     notes: {
       toArray: vi.fn(),
       count: vi.fn(),
-      clear: vi.fn(),
+      where: vi.fn(),
     },
-    transaction: vi.fn((mode, tables, callback) => callback()),
+    purgeTenant: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/tenantScope', () => ({
+  requireActiveTenantScope: () => ({ key: 'business_test:owner@chemcheck.test' }),
+}));
+
+vi.mock('@/lib/proof-of-service/offlinePhotoStorage', () => ({
+  clearAllPhotos: vi.fn(),
+}));
+
+vi.mock('@/lib/convexClient', () => ({
+  getSharedConvexClient: () => ({ action: vi.fn(async () => ({ success: true })) }),
+}));
+
+vi.mock('@/utils/exportCsv', () => ({ downloadFile: vi.fn() }));
 
 // Import the mocked db
 import { db } from '@/db/chemcheck-db';
@@ -34,6 +48,11 @@ import { db } from '@/db/chemcheck-db';
 describe('GDPR Utilities', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const table of [db.customers, db.serviceLogs, db.chemicalUsage, db.notes]) {
+      table.where.mockReturnValue({
+        equals: vi.fn(() => ({ toArray: table.toArray, count: table.count })),
+      });
+    }
   });
 
   describe('exportUserData', () => {
@@ -88,11 +107,7 @@ describe('GDPR Utilities', () => {
       expect(result.deleted.chemicalUsage).toBe(10);
       expect(result.deleted.notes).toBe(3);
       
-      // Verify clear was called on all tables
-      expect(db.customers.clear).toHaveBeenCalled();
-      expect(db.serviceLogs.clear).toHaveBeenCalled();
-      expect(db.chemicalUsage.clear).toHaveBeenCalled();
-      expect(db.notes.clear).toHaveBeenCalled();
+      expect(db.purgeTenant).toHaveBeenCalledWith('business_test:owner@chemcheck.test');
     });
   });
 

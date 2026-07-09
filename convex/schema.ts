@@ -386,6 +386,17 @@ export default defineSchema({
     .index("by_event_id", ["event_id"])
     .index("by_status", ["status"]),
 
+  // Time-limited GDPR/account export artifacts. The storage object is deleted
+  // by the daily retention job and as part of account erasure.
+  dataExports: defineTable({
+    user_email: v.string(),
+    storage_id: v.id("_storage"),
+    expires_at: v.number(),
+    created_at: v.number(),
+  })
+    .index("by_user_email", ["user_email"])
+    .index("by_expires_at", ["expires_at"]),
+
   // Audit logging for public report access
   // Tracks all attempts to access reports for security monitoring
   reportAccessLogs: defineTable({

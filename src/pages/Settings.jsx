@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAction, useMutation, useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { APP_ROUTES } from '@/lib/routeConfig';
 import {
@@ -77,7 +77,6 @@ import {
 
 function AccountSection({ userData, setUserData }) {
   const auth = useAuthContext();
-  const deleteAccountData = useAction(api.account.deleteMyAccount);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -109,11 +108,7 @@ function AccountSection({ userData, setUserData }) {
     setDeleteProgress('Deleting account data from the server...');
 
     try {
-      if (auth?.isSignedIn && auth?.clerkUser) {
-        await deleteAccountData({});
-      }
-
-      setDeleteProgress('Cleaning up local data...');
+      setDeleteProgress('Deleting cloud and local data...');
       await deleteAllUserData();
 
       setDeleteProgress('Removing user account...');

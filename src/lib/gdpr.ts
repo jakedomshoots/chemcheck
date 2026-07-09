@@ -11,6 +11,8 @@ import { db } from '@/db/chemcheck-db';
 import { downloadFile } from '@/utils/exportCsv';
 import { api } from '../../convex/_generated/api';
 import { getSharedConvexClient } from '@/lib/convexClient';
+import { requireActiveTenantScope } from '@/lib/tenantScope';
+import { clearAllPhotos } from '@/lib/proof-of-service/offlinePhotoStorage';
 
 export interface UserDataExport {
   exportDate: string;
@@ -33,11 +35,12 @@ export interface UserDataExport {
  * Satisfies: Right to Access (Article 15) and Right to Portability (Article 20)
  */
 export async function exportUserData(): Promise<UserDataExport> {
+  const scope = requireActiveTenantScope();
   const [customers, serviceLogs, chemicalUsage, notes] = await Promise.all([
-    db.customers.toArray(),
-    db.serviceLogs.toArray(),
-    db.chemicalUsage.toArray(),
-    db.notes.toArray(),
+    db.customers.where('tenant_id').equals(scope.key).toArray(),
+    db.serviceLogs.where('tenant_id').equals(scope.key).toArray(),
+    db.chemicalUsage.where('tenant_id').equals(scope.key).toArray(),
+    db.notes.where('tenant_id').equals(scope.key).toArray(),
   ]);
 
   const totalRecords = customers.length + serviceLogs.length + chemicalUsage.length + notes.length;
@@ -83,11 +86,18 @@ export async function downloadUserData(): Promise<void> {
   const client = getSharedConvexClient();
   const result = await client.action(api.account.exportUserData, {});
   const date = new Date().toISOString().split('T')[0];
+  const deviceOnlyData = await exportUserData();
 
   if (result.type === 'url') {
     downloadFromUrl(result.url, result.filename || `chemcheck-gdpr-export-${date}.json`);
+    // Large cloud exports stream separately; preserve unsynced device-only
+    // records in a second explicit file rather than silently omitting them.
+    downloadFile(
+      new Blob([JSON.stringify(deviceOnlyData, null, 2)], { type: 'application/json' }),
+      `chemcheck-device-only-export-${date}.json`,
+    );
   } else {
-    const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ ...result.data, deviceOnlyData }, null, 2)], { type: 'application/json' });
     downloadFile(blob, `chemcheck-gdpr-export-${date}.json`);
   }
 }
@@ -107,21 +117,23 @@ export async function deleteAllUserData(): Promise<{
   };
   success: boolean;
 }> {
-  // Get counts before deletion
+  const scope = requireActiveTenantScope();
+  // Get counts before deletion. Only the active authenticated tenant is in scope.
   const [customerCount, serviceLogCount, chemicalUsageCount, noteCount] = await Promise.all([
-    db.customers.count(),
-    db.serviceLogs.count(),
-    db.chemicalUsage.count(),
-    db.notes.count(),
+    db.customers.where('tenant_id').equals(scope.key).count(),
+    db.serviceLogs.where('tenant_id').equals(scope.key).count(),
+    db.chemicalUsage.where('tenant_id').equals(scope.key).count(),
+    db.notes.where('tenant_id').equals(scope.key).count(),
   ]);
 
-  // Delete all data in a transaction
-  await db.transaction('rw', [db.customers, db.serviceLogs, db.chemicalUsage, db.notes], async () => {
-    await db.serviceLogs.clear();
-    await db.chemicalUsage.clear();
-    await db.notes.clear();
-    await db.customers.clear();
-  });
+  // Cloud erasure first. Never claim device-only completion if the server
+  // failed to erase the account and its customer data.
+  const client = getSharedConvexClient();
+  const remote = await client.action(api.account.deleteMyAccount, {});
+  if (!remote?.success) throw new Error('Cloud account deletion was not confirmed');
+
+  await db.purgeTenant(scope.key);
+  await clearAllPhotos();
 
   // Clear localStorage data
   const keysToRemove = Object.keys(localStorage).filter(key => 
@@ -154,17 +166,30 @@ export async function deleteCustomerData(customerId: number): Promise<{
     notes: number;
   };
 }> {
+  const scope = requireActiveTenantScope();
+  const customer = await db.customers.get(customerId);
+  if (!customer || customer.tenant_id !== scope.key || customer.deleted_at) {
+    throw new Error('Customer not found or access denied');
+  }
   const [serviceLogCount, chemicalUsageCount, noteCount] = await Promise.all([
-    db.serviceLogs.where('customer_id').equals(customerId).count(),
-    db.chemicalUsage.where('customer_id').equals(customerId).count(),
-    db.notes.where('customer_id').equals(customerId).count(),
+    db.serviceLogs.where('[tenant_id+customer_id]').equals([scope.key, customerId]).count(),
+    db.chemicalUsage.where('[tenant_id+customer_id]').equals([scope.key, customerId]).count(),
+    db.notes.where('[tenant_id+customer_id]').equals([scope.key, customerId]).count(),
   ]);
 
+  const tombstone = { deleted_at: Date.now(), sync_status: 'pending' as const, sync_operation: 'delete' as const, local_updated_at: Date.now() };
   await db.transaction('rw', [db.customers, db.serviceLogs, db.chemicalUsage, db.notes], async () => {
-    await db.serviceLogs.where('customer_id').equals(customerId).delete();
-    await db.chemicalUsage.where('customer_id').equals(customerId).delete();
-    await db.notes.where('customer_id').equals(customerId).delete();
-    await db.customers.delete(customerId);
+    const [serviceLogs, chemicalUsage, notes] = await Promise.all([
+      db.serviceLogs.where('[tenant_id+customer_id]').equals([scope.key, customerId]).toArray(),
+      db.chemicalUsage.where('[tenant_id+customer_id]').equals([scope.key, customerId]).toArray(),
+      db.notes.where('[tenant_id+customer_id]').equals([scope.key, customerId]).toArray(),
+    ]);
+    await Promise.all([
+      ...serviceLogs.map((record) => db.serviceLogs.update(record.id!, tombstone)),
+      ...chemicalUsage.map((record) => db.chemicalUsage.update(record.id!, tombstone)),
+      ...notes.map((record) => db.notes.update(record.id!, tombstone)),
+    ]);
+    await db.customers.update(customerId, tombstone);
   });
 
   return {
@@ -189,10 +214,13 @@ export async function getDataRetentionSummary(): Promise<{
     newestRecord: string | null;
   }>;
 }> {
-  const customers = await db.customers.toArray();
-  const serviceLogs = await db.serviceLogs.toArray();
-  const chemicalUsage = await db.chemicalUsage.toArray();
-  const notes = await db.notes.toArray();
+  const scope = requireActiveTenantScope();
+  const [customers, serviceLogs, chemicalUsage, notes] = await Promise.all([
+    db.customers.where('tenant_id').equals(scope.key).toArray(),
+    db.serviceLogs.where('tenant_id').equals(scope.key).toArray(),
+    db.chemicalUsage.where('tenant_id').equals(scope.key).toArray(),
+    db.notes.where('tenant_id').equals(scope.key).toArray(),
+  ]);
 
   const getDateRange = (records: Array<{ createdAt?: number }>) => {
     if (records.length === 0) return { oldest: null, newest: null };

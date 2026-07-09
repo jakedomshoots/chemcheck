@@ -124,6 +124,7 @@ export class ChemCheckDB extends Dexie {
     syncOutbox!: Table<SyncOutboxItem>;
 
     private syncService: any = null;
+    private isPurgingTenant = false;
 
     constructor() {
         super('chemcheck');
@@ -230,6 +231,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.customers.hook('deleting', (primKey, obj, trans) => {
+            if (this.isPurgingTenant) return;
             this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
@@ -272,6 +274,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.serviceLogs.hook('deleting', (primKey, obj, trans) => {
+            if (this.isPurgingTenant) return;
             this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
@@ -314,6 +317,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.chemicalUsage.hook('deleting', (primKey, obj, trans) => {
+            if (this.isPurgingTenant) return;
             this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
@@ -356,6 +360,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.notes.hook('deleting', (primKey, obj, trans) => {
+            if (this.isPurgingTenant) return;
             this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
@@ -398,6 +403,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.saltCellLogs.hook('deleting', (primKey, obj, trans) => {
+            if (this.isPurgingTenant) return;
             this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
@@ -440,6 +446,26 @@ export class ChemCheckDB extends Dexie {
         ];
 
         return Object.keys(modifications).some(key => !syncFields.includes(key));
+    }
+
+    async purgeTenant(scopeKey: string): Promise<void> {
+        this.isPurgingTenant = true;
+        try {
+            await this.transaction(
+                'rw',
+                [this.customers, this.serviceLogs, this.chemicalUsage, this.notes, this.saltCellLogs, this.syncOutbox],
+                async () => {
+                    await this.customers.where('tenant_id').equals(scopeKey).delete();
+                    await this.serviceLogs.where('tenant_id').equals(scopeKey).delete();
+                    await this.chemicalUsage.where('tenant_id').equals(scopeKey).delete();
+                    await this.notes.where('tenant_id').equals(scopeKey).delete();
+                    await this.saltCellLogs.where('tenant_id').equals(scopeKey).delete();
+                    await this.syncOutbox.where('tenant_id').equals(scopeKey).delete();
+                },
+            );
+        } finally {
+            this.isPurgingTenant = false;
+        }
     }
 }
 

@@ -37,6 +37,10 @@ type CustomersCursor = {
     | "chemicalUsage"
     | "notes"
     | "saltCellLogs"
+    | "workOrders"
+    | "invoices"
+    | "quotes"
+    | "communications"
     | "deleteCustomer";
   tableCursor?: string | null;
 };
@@ -44,7 +48,9 @@ type CustomersCursor = {
 type GeneralCursor = {
   stage?:
     | "notes"
+    | "communications"
     | "subscriptions"
+    | "dataExports"
     | "team_members_owned"
     | "team_members_direct"
     | "businesses";
@@ -230,15 +236,21 @@ async function fetchNextCustomer(ctx: any, userEmail: string, state: CustomersCu
   }
 }
 
-function nextCustomerStage(stage: string): string {
+function nextCustomerStage(
+  stage: NonNullable<CustomersCursor["stage"]>
+): NonNullable<CustomersCursor["stage"]> {
   const order = [
     "serviceLogs",
     "orphanPhotos",
     "chemicalUsage",
     "notes",
     "saltCellLogs",
+    "workOrders",
+    "invoices",
+    "quotes",
+    "communications",
     "deleteCustomer",
-  ];
+  ] as const;
   const idx = order.indexOf(stage);
   return order[idx + 1] ?? "deleteCustomer";
 }
@@ -401,6 +413,34 @@ async function processCustomerStage(
     return { deleted, finished: true, state };
   }
 
+  const customerOperationalTables: Record<string, string> = {
+    workOrders: "workOrders",
+    invoices: "invoices",
+    quotes: "quotes",
+    communications: "communications",
+  };
+
+  if (customerOperationalTables[stage]) {
+    const numItems = Math.min(DEPENDENT_PAGE_SIZE, writesLeft);
+    if (numItems === 0) return { deleted, finished: false, state };
+
+    const page = await (ctx.db as any)
+      .query(customerOperationalTables[stage])
+      .withIndex("by_customer", (q: any) => q.eq("customer_id", customerId))
+      .paginate({ cursor: state.tableCursor ?? null, numItems });
+
+    for (const record of page.page) {
+      await ctx.db.delete(record._id);
+      deleted += 1;
+    }
+
+    if (!page.isDone) {
+      state.tableCursor = page.continueCursor;
+      return { deleted, finished: false, state };
+    }
+    return { deleted, finished: true, state };
+  }
+
   if (stage === "deleteCustomer") {
     if (writesLeft < 1) return { deleted, finished: false, state };
     await ctx.db.delete(customerId);
@@ -449,6 +489,28 @@ async function deleteGeneralBatch(
         break;
       }
 
+      state.stage = "communications";
+      state.tableCursor = null;
+      continue;
+    }
+
+    if (state.stage === "communications") {
+      const numItems = Math.min(batchSize, writesLeft);
+      if (numItems === 0) break;
+      const page = await ctx.db
+        .query("communications")
+        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
+        .paginate({ cursor: state.tableCursor ?? null, numItems });
+
+      for (const communication of page.page) {
+        await ctx.db.delete(communication._id);
+        deletedCount += 1;
+        writesLeft -= 1;
+      }
+      if (!page.isDone) {
+        state.tableCursor = page.continueCursor;
+        break;
+      }
       state.stage = "subscriptions";
       state.tableCursor = null;
       continue;
@@ -467,6 +529,27 @@ async function deleteGeneralBatch(
         writesLeft -= 1;
       }
 
+      state.stage = "dataExports";
+      state.tableCursor = null;
+      continue;
+    }
+
+    if (state.stage === "dataExports") {
+      const exports = await ctx.db
+        .query("dataExports")
+        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
+        .take(writesLeft);
+      for (const exportRecord of exports) {
+        try {
+          await ctx.storage.delete(exportRecord.storage_id);
+        } catch {
+          // Delete metadata even if provider storage already expired.
+        }
+        await ctx.db.delete(exportRecord._id);
+        deletedCount += 1;
+        writesLeft -= 1;
+      }
+      if (writesLeft <= 0) break;
       state.stage = "team_members_owned";
       state.tableCursor = null;
       continue;
@@ -730,7 +813,7 @@ async function collectUserExportData(
   const customers = Array.from(customerMap.values());
   const customerIds = customers.map((c) => c._id as string);
 
-  const [serviceLogs, chemicalUsage, notesByCustomer, saltCellLogs] = await Promise.all([
+  const [serviceLogs, chemicalUsage, notesByCustomer, saltCellLogs, servicePhotos, serviceReports, workOrders, invoices, quotes, customerCommunications] = await Promise.all([
     Promise.all(
       customerIds.map((id: string) =>
         ctx.db
@@ -759,6 +842,54 @@ async function collectUserExportData(
       customerIds.map((id: string) =>
         ctx.db
           .query("saltCellLogs")
+          .withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">))
+          .take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db
+          .query("servicePhotos")
+          .withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">))
+          .take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db
+          .query("serviceReports")
+          .withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">))
+          .take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db
+          .query("workOrders")
+          .withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">))
+          .take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db
+          .query("invoices")
+          .withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">))
+          .take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db
+          .query("quotes")
+          .withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">))
+          .take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db
+          .query("communications")
           .withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">))
           .take(EXPORT_BATCH_SIZE)
       )
@@ -798,7 +929,7 @@ async function collectUserExportData(
   }
   const teamMemberships = Array.from(teamMap.values());
 
-  const [subscriptions, communications] = await Promise.all([
+  const [subscriptions, communicationsByCreator] = await Promise.all([
     ctx.db
       .query("subscriptions")
       .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
@@ -808,6 +939,20 @@ async function collectUserExportData(
       .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
       .take(EXPORT_BATCH_SIZE),
   ]);
+
+  const communicationMap = new Map<string, any>();
+  for (const communication of [...communicationsByCreator, ...customerCommunications]) {
+    communicationMap.set(communication._id as string, communication);
+  }
+  const communications = Array.from(communicationMap.values());
+  const photoExport = await Promise.all(
+    servicePhotos.map(async (photo: any) => ({
+      ...stripInternalFields(photo),
+      // Temporary storage URLs let the owner retrieve the actual proof image,
+      // not merely the metadata record, during the export window.
+      download_url: await ctx.storage.getUrl(photo.storage_id),
+    })),
+  );
 
   const data = {
     userEmail,
@@ -819,6 +964,11 @@ async function collectUserExportData(
       chemicalUsage: chemicalUsage.map(stripInternalFields),
       notes: notes.map(stripInternalFields),
       saltCellLogs: saltCellLogs.map(stripInternalFields),
+      servicePhotos: photoExport,
+      serviceReports: serviceReports.map(stripInternalFields),
+      workOrders: workOrders.map(stripInternalFields),
+      invoices: invoices.map(stripInternalFields),
+      quotes: quotes.map(stripInternalFields),
       businesses: ownedBusinesses.map(stripInternalFields),
       teamMemberships: teamMemberships.map(stripInternalFields),
       subscriptions: subscriptions.map(stripInternalFields),
@@ -836,6 +986,11 @@ async function collectUserExportData(
     chemicalUsage.length +
     notes.length +
     saltCellLogs.length +
+    servicePhotos.length +
+    serviceReports.length +
+    workOrders.length +
+    invoices.length +
+    quotes.length +
     ownedBusinesses.length +
     teamMemberships.length +
     subscriptions.length +
@@ -847,6 +1002,11 @@ async function collectUserExportData(
     chemicalUsage.length >= EXPORT_BATCH_SIZE ||
     notes.length >= EXPORT_BATCH_SIZE ||
     saltCellLogs.length >= EXPORT_BATCH_SIZE ||
+    servicePhotos.length >= EXPORT_BATCH_SIZE ||
+    serviceReports.length >= EXPORT_BATCH_SIZE ||
+    workOrders.length >= EXPORT_BATCH_SIZE ||
+    invoices.length >= EXPORT_BATCH_SIZE ||
+    quotes.length >= EXPORT_BATCH_SIZE ||
     ownedBusinesses.length >= EXPORT_BATCH_SIZE ||
     teamMemberships.length >= EXPORT_BATCH_SIZE ||
     subscriptions.length >= EXPORT_BATCH_SIZE ||
@@ -865,8 +1025,9 @@ function stripInternalFields(record: any): Record<string, unknown> {
 
 async function uploadExportToStorage(
   ctx: any,
-  payload: Record<string, unknown>
-): Promise<{ url: string; filename: string }> {
+  payload: Record<string, unknown>,
+  userEmail: string,
+): Promise<{ url: string; filename: string; expiresAt: number }> {
   const uploadUrl = await ctx.storage.generateUploadUrl();
   const json = JSON.stringify(payload, null, 2);
 
@@ -887,7 +1048,14 @@ async function uploadExportToStorage(
   }
 
   const date = new Date().toISOString().split("T")[0];
-  return { url, filename: `chemcheck-gdpr-export-${date}.json` };
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+  await ctx.db.insert("dataExports", {
+    user_email: userEmail,
+    storage_id: storageId,
+    expires_at: expiresAt,
+    created_at: Date.now(),
+  });
+  return { url, filename: `chemcheck-gdpr-export-${date}.json`, expiresAt };
 }
 
 /**
@@ -915,10 +1083,30 @@ export const exportUserData = action({
     // If the dataset is large or any table hit the batch cap, stream it through
     // storage so the browser can download it without hitting action size limits.
     if (truncated || totalRecords > EXPORT_INLINE_RECORD_LIMIT) {
-      const { url, filename } = await uploadExportToStorage(ctx, data);
+      const { url, filename } = await uploadExportToStorage(ctx, data, userEmail);
       return { type: "url", url, filename, totalRecords, truncated };
     }
 
     return { type: "inline", data, totalRecords, truncated };
+  },
+});
+
+/** Deletes expired export objects and their metadata; scheduled daily. */
+export const cleanupExpiredDataExports = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const expired = await ctx.db
+      .query("dataExports")
+      .withIndex("by_expires_at", (q) => q.lt("expires_at", Date.now()))
+      .take(100);
+    for (const exportRecord of expired) {
+      try {
+        await ctx.storage.delete(exportRecord.storage_id);
+      } catch {
+        // Metadata must still be removed to avoid retrying a missing object.
+      }
+      await ctx.db.delete(exportRecord._id);
+    }
+    return { deleted: expired.length };
   },
 });

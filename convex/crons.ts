@@ -19,4 +19,10 @@ crons.daily(
   {}
 );
 
+crons.daily(
+  "delete expired account export artifacts",
+  { hourUTC: 4, minuteUTC: 20 },
+  internal.account.cleanupExpiredDataExports,
+);
+
 export default crons;
