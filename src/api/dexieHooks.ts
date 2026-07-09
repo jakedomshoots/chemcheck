@@ -398,12 +398,12 @@ export function useServiceLogs(order = '-service_date', limit?: number) {
     const data = useLiveQuery(
         async () => {
             if (!tenant) return [];
-            let collection = db.serviceLogs
+            const records = await db.serviceLogs
                 .where('tenant_id').equals(tenant.key)
                 .filter(log => !log.deleted_at)
                 .sortBy('service_date');
-            if (order === '-service_date') return limit ? collection.reverse().slice(0, limit) : collection.reverse();
-            return limit ? collection.slice(0, limit) : collection;
+            const ordered = order === '-service_date' ? [...records].reverse() : records;
+            return limit ? ordered.slice(0, limit) : ordered;
         },
         [tenant?.key, order, limit],
         []

@@ -1,18 +1,38 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
-import { useCustomerCreate } from './dexieHooks';
+import { useCustomerCreate, useServiceLogs } from './dexieHooks';
 import { clearActiveTenantScope, setActiveTenantScope } from '@/lib/tenantScope';
 
 const mockCustomersToArray = vi.hoisted(() => vi.fn());
 const mockCustomersAdd = vi.hoisted(() => vi.fn());
 const mockValidateCustomer = vi.hoisted(() => vi.fn());
 const mockCheckRateLimit = vi.hoisted(() => vi.fn());
+const mockServiceLogsSortBy = vi.hoisted(() => vi.fn());
+const mockServiceLogsFilter = vi.hoisted(() => vi.fn());
+const mockServiceLogsWhere = vi.hoisted(() => vi.fn());
+const mockServiceLogsEquals = vi.hoisted(() => vi.fn());
+
+vi.mock('dexie-react-hooks', async () => {
+  const React = await vi.importActual('react');
+  return {
+    useLiveQuery: (query, dependencies, defaultValue) => {
+      const [value, setValue] = React.useState(defaultValue);
+      React.useEffect(() => {
+        void query().then(setValue);
+      }, dependencies);
+      return value;
+    },
+  };
+});
 
 vi.mock('@/db/chemcheck-db', () => ({
   db: {
     customers: {
       toArray: mockCustomersToArray,
       add: mockCustomersAdd,
+    },
+    serviceLogs: {
+      where: mockServiceLogsWhere,
     },
   },
   getTimestamp: vi.fn(() => '2026-03-24T09:00:00.000Z'),
@@ -125,5 +145,30 @@ describe('useCustomerCreate', () => {
         sort_order: 7,
       })
     );
+  });
+});
+
+describe('useServiceLogs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setActiveTenantScope({ userEmail: 'owner@chemcheck.test', businessId: 'business_test' });
+    mockServiceLogsWhere.mockReturnValue({ equals: mockServiceLogsEquals });
+    mockServiceLogsEquals.mockReturnValue({ filter: mockServiceLogsFilter });
+    mockServiceLogsFilter.mockReturnValue({ sortBy: mockServiceLogsSortBy });
+  });
+
+  afterEach(() => clearActiveTenantScope());
+
+  it('awaits Dexie sorting before reversing and limiting service history', async () => {
+    mockServiceLogsSortBy.mockResolvedValue([
+      { id: 1, service_date: '2026-01-01' },
+      { id: 2, service_date: '2026-01-02' },
+      { id: 3, service_date: '2026-01-03' },
+    ]);
+
+    const { result } = renderHook(() => useServiceLogs('-service_date', 2));
+
+    await waitFor(() => expect(result.current.map((log) => log.id)).toEqual([3, 2]));
+    expect(mockServiceLogsSortBy).toHaveBeenCalledWith('service_date');
   });
 });
