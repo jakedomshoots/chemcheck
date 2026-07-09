@@ -1009,13 +1009,10 @@ async function sendViaSms(
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.message || "Failed to send SMS";
 
-      // Log detailed error for debugging
+      // Do not log recipient data, provider payloads, or report tokens.
       console.error("Twilio SMS Error:", {
         status: response.status,
         statusText: response.statusText,
-        errorData,
-        customerPhone: customer.phone,
-        fromNumber: twilioFromNumber
       });
 
       return {
@@ -1245,12 +1242,10 @@ async function sendViaEmail(
       // Parse error using helper function (Requirements: 1.5, 4.1, 4.2, 4.5)
       const errorMessage = parseMailersendError(response.status, errorData);
 
-      // Log detailed error for debugging (Requirement 4.5)
+      // Keep delivery diagnostics free of recipient PII and provider payloads.
       console.error("Mailersend Email Error:", {
         status: response.status,
         error_message: errorMessage,
-        customer_email: recipientEmail,
-        timestamp: new Date().toISOString()
       });
 
       return {
@@ -1262,15 +1257,7 @@ async function sendViaEmail(
     // Mailersend returns 202 Accepted on success
     // Get message ID from headers if available
     const messageId = response.headers.get('x-message-id') || 'sent';
-    console.log("Mailersend accepted report email:", {
-      to: recipientEmail,
-      from: fromEmail,
-      status: response.status,
-      message_id: messageId,
-      report_id: report._id,
-      report_token: report.report_token,
-      timestamp: new Date().toISOString(),
-    });
+    console.log("Mailersend accepted report email", { status: response.status });
 
     // Update report with sent timestamp
     await ctx.runMutation(internal.serviceReports.updateReportSent, {

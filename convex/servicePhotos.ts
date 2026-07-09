@@ -288,13 +288,10 @@ export const deletePhoto = mutation({
 
     try {
       await ctx.storage.delete(storageId);
-    } catch (storageError) {
+    } catch {
       // Log the inconsistency - storage file may be orphaned
       // This is safer than the reverse (orphaned metadata pointing to deleted file)
-      console.error(
-        `Storage deletion failed after db record deleted. Orphaned storage_id: ${storageId}`,
-        storageError
-      );
+      console.error("Storage deletion failed after photo record deletion");
       // Don't re-throw - the photo record is already deleted, which is the primary goal
     }
 

@@ -293,31 +293,24 @@ export default function CustomerDetail() {
       if (deliveryMethod === 'email' || deliveryMethod === 'sms') {
         let customerSyncProblem = null;
         try {
-          console.log(`Ensuring customer ${customerArg._id} is up-to-date in cloud before sending report...`);
           const customerSync = await syncService.syncRecord('customers', customerArg._id || customerArg.id);
           if (!customerSync.success) {
             customerSyncProblem = customerSync.error || "Customer contact info failed to sync.";
           }
-        } catch (syncError) {
-          console.error("Customer sync failed before sending report:", syncError);
+        } catch {
+          console.error("Customer sync failed before sending report");
           customerSyncProblem = "Customer info couldn't sync to cloud.";
         }
 
         if (customerSyncProblem) {
           if (deliveryMethod === 'email') {
-            console.warn("Continuing email send with recipient override after customer sync issue:", customerSyncProblem);
+            console.warn("Continuing email send after customer sync issue");
             toast.warning("Customer cloud sync is delayed. Sending with the current email anyway.");
           } else {
             return { success: false, error: `${customerSyncProblem} Please check your connection and retry.` };
           }
         }
       }
-
-      console.log("Environment check:", {
-        VITE_CONVEX_URL: import.meta.env.VITE_CONVEX_URL,
-        VITE_CLERK_PUBLISHABLE_KEY: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-        isConvexAvailable
-      });
 
       if (!isConvexAvailable) {
         return { success: false, error: `${deliveryMethod === 'sms' ? 'SMS' : 'Email'} reports require online mode with Convex. Please configure VITE_CONVEX_URL and VITE_CLERK_PUBLISHABLE_KEY environment variables.` };
@@ -327,19 +320,14 @@ export default function CustomerDetail() {
 
       if (!serviceLogId) {
         try {
-          console.log("Service log missing convex_id, attempting sync for log ID:", logArg._id || logArg.id);
           toast.info("Syncing service log to cloud...");
           const logId = logArg._id || logArg.id;
           const syncResult = await syncService.syncRecord('serviceLogs', logId);
-
-          console.log("Sync result:", syncResult);
 
           if (syncResult.success) {
             const { db } = await import('@/db/chemcheck-db');
             const updatedLog = await db.serviceLogs.get(logId);
             serviceLogId = updatedLog?.convex_id;
-
-            console.log("Service log ID after sync:", serviceLogId);
 
             if (!serviceLogId) {
               return { success: false, error: "Service log synced but ID not yet available. Please try again in a moment." };
@@ -347,11 +335,11 @@ export default function CustomerDetail() {
 
             toast.success("Service log synced successfully!");
           } else {
-            console.error("Sync failed:", syncResult);
+            console.error("Service log sync failed before report delivery");
             return { success: false, error: syncResult.error || "Failed to sync service log. Please ensure you're online and try again." };
           }
-        } catch (syncError) {
-          console.error("Sync error:", syncError);
+        } catch {
+          console.error("Service log sync error before report delivery");
           return { success: false, error: "Failed to sync service log. Please ensure you're online and try again." };
         }
       }
@@ -405,8 +393,8 @@ export default function CustomerDetail() {
             toast.success(`Synced ${photoSyncResults.length} photo${photoSyncResults.length === 1 ? '' : 's'} for this report.`);
           }
         }
-      } catch (photoSyncError) {
-        console.error("Photo sync error before report send:", photoSyncError);
+      } catch {
+        console.error("Photo sync error before report send");
         if (deliveryMethod === 'email') {
           toast.warning("Couldn't sync all photos before sending. We'll still send the report.");
         } else {
@@ -415,14 +403,6 @@ export default function CustomerDetail() {
       }
 
       const poolStatus = getPoolStatus(logArg);
-
-      console.log("Calling sendReportAction with:", {
-        service_log_id: serviceLogId,
-        delivery_method: deliveryMethod,
-        pool_status: poolStatus,
-        custom_note: customNote,
-        report_base_url: window.location.origin,
-      });
 
       const result = await sendReportAction({
         service_log_id: serviceLogId,
@@ -441,21 +421,13 @@ export default function CustomerDetail() {
           toast.success(`Report sent via ${deliveryMethod === 'sms' ? 'SMS' : 'email'} to ${destination}.`);
         }
 
-        console.log("Report send result:", {
-          deliveryMethod,
-          recipient: deliveryMethod === 'email' ? customerArg.email : customerArg.phone,
-          messageId: result.message_id,
-          wasDuplicate: result.was_duplicate,
-          reportToken: result.report_token,
-        });
-
         return { success: true, result, deliveryMethod };
       } else {
-        console.error("Send report failed:", result);
+        console.error("Send report failed");
         return { success: false, error: toFriendlySendError(result.error), rawError: result.error };
       }
     } catch (error) {
-      console.error("Failed to send report:", error);
+      console.error("Failed to send report");
       return { success: false, error: toFriendlySendError(error), rawError: error };
     }
   }, [convex, sendReportAction, getPoolStatus]);

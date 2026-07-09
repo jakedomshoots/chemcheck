@@ -316,20 +316,14 @@ export async function linkPhotosToServiceLog(
   serviceLogId: string
 ): Promise<void> {
   return withErrorHandling('link photos to service log', async () => {
-    console.log('[linkPhotosToServiceLog] Starting - customerId:', customerId, 'serviceLogId:', serviceLogId);
-    
     // Find all unlinked photos for this customer
     const unlinkedPhotos = (await getTenantPhotos())
       .filter((photo) => photo.customerId === customerId && photo.serviceLogId === null);
     
-    console.log('[linkPhotosToServiceLog] Found', unlinkedPhotos.length, 'unlinked photos');
-    
     // Update them with the service log ID
-    const updateCount = await db.photos.bulkUpdate(
+    await db.photos.bulkUpdate(
       unlinkedPhotos.map((photo) => ({ key: photo.id, changes: { serviceLogId } })),
     );
-    
-    console.log('[linkPhotosToServiceLog] Updated', updateCount, 'photos');
   });
 }
 
