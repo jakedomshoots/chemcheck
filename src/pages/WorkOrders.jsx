@@ -628,6 +628,11 @@ export default function WorkOrders() {
   const localCustomers = useCustomers();
   const currentBusiness = useQuery(api.businesses.getCurrent, {});
   const cloudEnabled = Boolean(currentBusiness);
+  const requireCloudOperations = (operation) => {
+    if (cloudEnabled) return true;
+    toast.error(`${operation} requires an active cloud business. No financial record, payment link, or customer message was created.`);
+    return false;
+  };
 
   const cloudCustomersData = useQuery(api.customers.list, cloudEnabled ? {} : "skip");
   const teamMembersData = useQuery(api.businesses.getTeamMembers, cloudEnabled ? {} : "skip");
@@ -1089,10 +1094,7 @@ export default function WorkOrders() {
   };
 
   const handleDeliverQueued = async (limit) => {
-    if (!cloudEnabled) {
-      toast.message("Local mode simulates sends. Enable cloud mode for live delivery.");
-      return null;
-    }
+    if (!requireCloudOperations("Customer delivery")) return null;
 
     setIsDeliveringCommunications(true);
     try {
@@ -1182,6 +1184,7 @@ export default function WorkOrders() {
 
   const handleDuplicateQuote = async (quote) => {
     if (!quote) return;
+    if (!requireCloudOperations("Quote creation")) return;
     setQuoteActionId(quote._id);
     try {
       const clonedLineItems = Array.isArray(quote.line_items)
@@ -1261,6 +1264,7 @@ export default function WorkOrders() {
 
   const handleDuplicateInvoice = async (invoice) => {
     if (!invoice) return;
+    if (!requireCloudOperations("Invoice creation")) return;
     setInvoiceActionId(invoice._id);
     try {
       const clonedLineItems = Array.isArray(invoice.line_items)
@@ -1320,6 +1324,7 @@ export default function WorkOrders() {
   };
 
   const handleBatchCreateInvoices = async () => {
+    if (!requireCloudOperations("Batch invoicing")) return;
     if (batchInvoiceErrors.dateRange || batchInvoiceErrors.unitPrice || batchInvoiceErrors.dueDays) {
       toast.error(batchInvoiceErrors.dateRange || batchInvoiceErrors.unitPrice || batchInvoiceErrors.dueDays);
       return;
@@ -1515,6 +1520,7 @@ export default function WorkOrders() {
 
   const handleCreate = async (event) => {
     event.preventDefault();
+    if (!requireCloudOperations("Work order creation")) return;
     if (!form.customer_id || !form.title.trim()) {
       toast.error("Choose a customer and enter a work-order title.");
       return;
@@ -1707,6 +1713,7 @@ export default function WorkOrders() {
 
   const handleCreateInvoiceDraft = async (event) => {
     event.preventDefault();
+    if (!requireCloudOperations("Invoice creation")) return;
     const firstError = Object.values(invoiceFormErrors).find(Boolean);
     if (firstError) {
       toast.error(firstError);
@@ -1820,6 +1827,7 @@ export default function WorkOrders() {
 
   const handleCreateQuoteDraft = async (event) => {
     event.preventDefault();
+    if (!requireCloudOperations("Quote creation")) return;
     const firstError = Object.values(quoteFormErrors).find(Boolean);
     if (firstError) {
       toast.error(firstError);
@@ -1928,6 +1936,7 @@ export default function WorkOrders() {
 
   const handleQuoteStatusChange = async (quote, status) => {
     if (!quote) return;
+    if (!requireCloudOperations("Quote updates")) return;
 
     const nextDepositStatus =
       status === "approved" && quote.deposit_required && quote.deposit_required > 0
@@ -1968,6 +1977,7 @@ export default function WorkOrders() {
 
   const handleMarkDepositPaid = async (quote) => {
     if (!quote) return;
+    if (!requireCloudOperations("Deposit updates")) return;
     setQuoteActionId(quote._id);
     try {
       if (cloudEnabled) {
@@ -2002,6 +2012,7 @@ export default function WorkOrders() {
 
   const handleCreateDepositLink = async (quote, destinationOverride) => {
     if (!quote) return;
+    if (!requireCloudOperations("Deposit links")) return;
     if (!quote.deposit_required || quote.deposit_required <= 0) {
       toast.error("This quote does not require a deposit.");
       return;
@@ -2091,6 +2102,7 @@ export default function WorkOrders() {
 
   const handleConvertQuote = async (quote) => {
     if (!quote) return;
+    if (!requireCloudOperations("Quote conversion")) return;
     if (quote.converted_work_order_id) {
       toast.message("Quote is already converted.");
       return;
@@ -2151,6 +2163,7 @@ export default function WorkOrders() {
 
   const handleCreateInvoiceFromQuote = async (quote) => {
     if (!quote) return;
+    if (!requireCloudOperations("Invoice creation")) return;
     if (invoicedQuoteIds.has(String(quote._id))) {
       toast.error("An invoice already exists for this quote.");
       return;
@@ -2207,6 +2220,7 @@ export default function WorkOrders() {
   };
 
   const handleQuickInvoiceFromWorkOrder = async (order) => {
+    if (!requireCloudOperations("Invoice creation")) return;
     const linkedQuote = order.source_quote_id ? quoteById.get(String(order.source_quote_id)) : undefined;
     if (linkedQuote && hasPendingDeposit(linkedQuote)) {
       toast.error("Deposit must be marked paid before invoicing this work order.");
@@ -2307,6 +2321,7 @@ export default function WorkOrders() {
   };
 
   const handleSendInvoice = async (invoiceId, destinationOverride) => {
+    if (!requireCloudOperations("Invoice delivery")) return;
     setInvoiceActionId(invoiceId);
     try {
       const invoice = allInvoices.find((item) => String(item._id) === String(invoiceId));
@@ -2406,6 +2421,7 @@ export default function WorkOrders() {
 
   const handleOpenPayLink = async (invoice) => {
     if (!invoice) return;
+    if (!requireCloudOperations("Payment links")) return;
 
     if (cloudEnabled) {
       setInvoiceActionId(invoice._id);
@@ -2458,6 +2474,7 @@ export default function WorkOrders() {
   };
 
   const handleMarkPaid = async (invoiceId) => {
+    if (!requireCloudOperations("Payment status updates")) return;
     const invoice = allInvoices.find((item) => String(item._id) === String(invoiceId));
     if (cloudEnabled && invoice?.status === "sent" && invoice?.stripe_checkout_session_id) {
       toast.error("Stripe-linked invoices are marked paid automatically after Stripe confirms payment.");
@@ -2486,6 +2503,7 @@ export default function WorkOrders() {
   };
 
   const handleQueueReminders = async (options = {}) => {
+    if (!requireCloudOperations("Payment reminders")) return;
     const silent = Boolean(options.silent);
     setIsQueueingReminders(true);
     try {
@@ -2562,6 +2580,7 @@ export default function WorkOrders() {
   queueRemindersRef.current = handleQueueReminders;
 
   const handleRetryFailedCommunications = async () => {
+    if (!requireCloudOperations("Customer delivery")) return;
     setIsRetryingFailedCommunications(true);
     try {
       if (cloudEnabled) {
@@ -3218,7 +3237,7 @@ const workOrderCreateForm = (
           </p>
         ) : (
           <p className="text-[11px] sm:text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 sm:px-3 sm:py-2">
-            Local mode active. Work orders, quotes, and invoices are saved locally on this device.
+            Cloud billing is unavailable. Existing device-only records may be visible, but ChemCheck will not create invoices, payment links, payment status changes, or customer sends until the cloud business reconnects.
           </p>
         )}
       </div>
