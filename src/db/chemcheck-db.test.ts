@@ -138,7 +138,7 @@ describe('ChemCheckDB Schema and Sync Fields', () => {
   it('should have latest database version with sync field indexes', () => {
     const db = new ChemCheckDB();
     
-    // v4 adds tenant indexes and tombstone/outbox persistence.
-    expect(db.verno).toBe(4);
+    // v5 adds durable remote pull cursors and user-resolvable conflicts.
+    expect(db.verno).toBe(5);
   });
 });

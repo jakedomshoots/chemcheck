@@ -23,4 +23,13 @@ describe('manual route planning', () => {
     expect(buildManualRouteStops(customers).map((stop) => stop.customer_name)).toEqual(['Alpha', 'Bravo']);
     expect(customers.map((customer) => customer.full_name)).toEqual(['Bravo', 'Alpha']);
   });
+
+  it('preserves a validated routing-provider order instead of re-sorting it locally', () => {
+    const stops = buildManualRouteStops([
+      { _id: 2, full_name: 'Provider second', address: '2 Main St', sort_order: 2 },
+      { _id: 1, full_name: 'Provider first', address: '1 Main St', sort_order: 1 },
+    ], { preserveOrder: true });
+
+    expect(stops.map((stop) => stop.customer_name)).toEqual(['Provider second', 'Provider first']);
+  });
 });

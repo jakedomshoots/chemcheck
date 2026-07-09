@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { enforceRateLimit } from "./rateLimit";
 import {
@@ -25,6 +25,60 @@ async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: s
 }
 
 const CUSTOMER_WRITE_ROLES = ["owner", "admin"] as const;
+const SYNC_PULL_TABLES = ["customers", "serviceLogs", "chemicalUsage", "notes", "saltCellLogs"] as const;
+
+function pullRecordsQuery(ctx: any, table: (typeof SYNC_PULL_TABLES)[number], businessId: any, updatedAfter: number) {
+  if (updatedAfter <= 0) {
+    return (ctx.db as any).query(table).withIndex("by_business", (q: any) => q.eq("business_id", businessId));
+  }
+  return (ctx.db as any)
+    .query(table)
+    .withIndex("by_business_and_updated_at", (q: any) => q.eq("business_id", businessId).gt("updated_at", updatedAfter));
+}
+
+/**
+ * Pulls a bounded, tenant-scoped change page for one local Dexie table.
+ * The client repeats this query per table and keeps a short overlap window so
+ * equal millisecond timestamps are idempotently replayed instead of skipped.
+ */
+export const pullChanges = query({
+  args: {
+    table: v.union(...SYNC_PULL_TABLES.map((table) => v.literal(table))),
+    updated_after: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    record_cursor: v.optional(v.string()),
+    tombstone_cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+    const business = await requireBusinessContext(ctx, identity.email);
+    const updatedAfter = Math.max(0, Math.floor(args.updated_after ?? 0));
+    const limit = Math.max(1, Math.min(200, Math.floor(args.limit ?? 100)));
+    const recordsPage = await pullRecordsQuery(ctx, args.table, business.businessId, updatedAfter)
+      .order("asc")
+      .paginate({ cursor: args.record_cursor ?? null, numItems: limit });
+    const tombstonesPage = await (updatedAfter <= 0
+      ? ctx.db.query("syncTombstones").withIndex("by_business", (q: any) => q.eq("business_id", business.businessId))
+      : ctx.db.query("syncTombstones").withIndex("by_business_and_deleted_at", (q: any) =>
+          q.eq("business_id", business.businessId).gt("deleted_at", updatedAfter))
+    )
+      .order("asc")
+      .paginate({ cursor: args.tombstone_cursor ?? null, numItems: limit });
+    const tombstones = tombstonesPage.page.filter((item: any) => item.entity_table === args.table);
+
+    return {
+      records: recordsPage.page,
+      tombstones,
+      server_time: Date.now(),
+      record_cursor: recordsPage.continueCursor,
+      tombstone_cursor: tombstonesPage.continueCursor,
+      records_done: recordsPage.isDone,
+      tombstones_done: tombstonesPage.isDone,
+      has_more: !recordsPage.isDone || !tombstonesPage.isDone,
+    };
+  },
+});
 
 // ============================================
 // Customer Sync
@@ -625,6 +679,22 @@ async function removeCustomerChildren(ctx: any, customerId: any): Promise<void> 
   }
 }
 
+async function recordTombstone(ctx: any, args: {
+  businessId: any;
+  table: string;
+  recordId: any;
+  deletedBy: string;
+  deletedAt: number;
+}): Promise<void> {
+  await ctx.db.insert("syncTombstones", {
+    business_id: args.businessId,
+    entity_table: args.table,
+    entity_id: String(args.recordId),
+    deleted_by: args.deletedBy,
+    deleted_at: args.deletedAt,
+  });
+}
+
 /**
  * Idempotently confirms a local tombstone with the server. The mutation only
  * accepts the five Dexie-synced tables; it derives all authorization from the
@@ -645,9 +715,17 @@ export const deleteRecord = mutation({
 
     if (args.table === "customers") {
       await requireCustomerRole(ctx, record, identity.email, CUSTOMER_WRITE_ROLES);
+      const deletedAt = Date.now();
+      await recordTombstone(ctx, {
+        businessId: record.business_id,
+        table: args.table,
+        recordId: record._id,
+        deletedBy: identity.email,
+        deletedAt,
+      });
       await removeCustomerChildren(ctx, record._id);
       await ctx.db.delete(record._id);
-      return { success: true, deleted_at: Date.now() };
+      return { success: true, deleted_at: deletedAt };
     }
 
     if (args.table === "notes" && !record.customer_id) {
@@ -661,8 +739,17 @@ export const deleteRecord = mutation({
       await ensureCustomerOwnedByUser(ctx, record.customer_id, identity.email);
     }
 
+    const deletedAt = Date.now();
+    const customer: any = record.customer_id ? await ctx.db.get(record.customer_id) : undefined;
+    await recordTombstone(ctx, {
+      businessId: record.business_id ?? customer?.business_id,
+      table: args.table,
+      recordId: record._id,
+      deletedBy: identity.email,
+      deletedAt,
+    });
     await ctx.db.delete(record._id);
-    return { success: true, deleted_at: Date.now() };
+    return { success: true, deleted_at: deletedAt };
   },
 });
 

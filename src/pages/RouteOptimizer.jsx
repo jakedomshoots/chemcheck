@@ -28,6 +28,7 @@ import {
   calculateServiceTimingSummary,
   parseClockToMinutes,
 } from "@/lib/routeTimingEstimator";
+import { getMapboxRoutingReadiness, optimizeMapboxRoute } from "@/lib/mapboxRouting";
 
 const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -98,6 +99,9 @@ export default function RouteOptimizer() {
   const [optimizing, setOptimizing] = useState(false);
   const [routeRunnerActive, setRouteRunnerActive] = useState(false);
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
+  const [useLiveOptimization, setUseLiveOptimization] = useState(false);
+  const [routePrivacyConsent, setRoutePrivacyConsent] = useState(false);
+  const mapboxReadiness = useMemo(() => getMapboxRoutingReadiness(), []);
 
   useEffect(() => {
     if (allCustomers !== undefined) {
@@ -139,12 +143,33 @@ export default function RouteOptimizer() {
     setCurrentStopIndex(0);
   }, [selectedDay]);
 
-  const buildRoutePlan = useCallback(() => {
+  const buildRoutePlan = useCallback(async () => {
     if (dayCustomers.length === 0) return;
+    if (useLiveOptimization && !mapboxReadiness.configured) {
+      toast.error(mapboxReadiness.message);
+      return;
+    }
+    if (useLiveOptimization && !routePrivacyConsent) {
+      toast.error("Confirm address sharing with Mapbox before requesting a live route.");
+      return;
+    }
     setOptimizing(true);
     try {
-      const manualStops = buildManualRouteStops(dayCustomers);
-      if (manualStops.length === 0) {
+      let orderedCustomers = dayCustomers;
+      let driveMinutes = 0;
+      let distanceMiles = 0;
+      let routeSource = 'manual';
+
+      if (useLiveOptimization) {
+        const optimized = await optimizeMapboxRoute(dayCustomers);
+        orderedCustomers = optimized.customers;
+        driveMinutes = optimized.driveMinutes;
+        distanceMiles = optimized.distanceMiles;
+        routeSource = 'mapbox';
+      }
+
+      const routeStops = buildManualRouteStops(orderedCustomers, { preserveOrder: useLiveOptimization });
+      if (routeStops.length === 0) {
         toast.info(`No route stops found for ${selectedDay}.`);
         setOptimizedRoute(null);
         return;
@@ -154,14 +179,20 @@ export default function RouteOptimizer() {
         customerMedianById: durationProfile.customerMedianById,
         fallback: 15,
       });
-      const totalMinutes = serviceSummary.totalServiceMinutes;
+      const serviceMinutes = serviceSummary.totalServiceMinutes;
+      const totalMinutes = serviceMinutes + driveMinutes;
 
       setOptimizedRoute({
-        optimized_order: manualStops,
+        optimized_order: routeStops,
         total_estimated_minutes: totalMinutes,
         total_estimated_time: formatMinutes(totalMinutes),
-        total_service_minutes: totalMinutes,
-        optimization_summary: "Saved customer order. Drive time and ETA are not calculated."
+        total_service_minutes: serviceMinutes,
+        total_drive_minutes: driveMinutes,
+        total_distance_miles: distanceMiles,
+        route_source: routeSource,
+        optimization_summary: routeSource === 'mapbox'
+          ? `Mapbox optimized ${routeStops.length} stops using live road distance.`
+          : "Saved customer order. Drive time and ETA are not calculated."
       });
       setRouteRunnerActive(false);
       setCurrentStopIndex(0);
@@ -171,7 +202,7 @@ export default function RouteOptimizer() {
     } finally {
       setOptimizing(false);
     }
-  }, [dayCustomers, selectedDay, durationProfile]);
+  }, [dayCustomers, selectedDay, durationProfile, useLiveOptimization, mapboxReadiness, routePrivacyConsent]);
 
   const availableWorkingMinutes = useMemo(() => {
     const startMinutes = parseClockToMinutes(workingHoursStart);
@@ -249,7 +280,7 @@ export default function RouteOptimizer() {
       </div>
 
       <Card className="p-6 mb-6 border-2 shadow-lg">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">Select Service Day</label>
             <Select value={selectedDay} onValueChange={setSelectedDay}>
@@ -268,6 +299,32 @@ export default function RouteOptimizer() {
               </SelectContent>
             </Select>
           </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <label className="flex items-start gap-2 text-sm font-medium text-slate-800">
+              <input
+                type="checkbox"
+                checked={useLiveOptimization}
+                onChange={(event) => setUseLiveOptimization(event.target.checked)}
+                disabled={!mapboxReadiness.configured}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-cyan-600"
+              />
+              <span>
+                Optimize drive route with Mapbox
+                <span className="mt-0.5 block text-xs font-normal text-slate-600">{mapboxReadiness.message}</span>
+              </span>
+            </label>
+            {useLiveOptimization && mapboxReadiness.configured && (
+              <label className="mt-2 flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={routePrivacyConsent}
+                  onChange={(event) => setRoutePrivacyConsent(event.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-cyan-600"
+                />
+                <span>I approve sending this day&apos;s service addresses to Mapbox for geocoding and route optimization.</span>
+              </label>
+            )}
+          </div>
           <Button
             onClick={buildRoutePlan}
             disabled={optimizing || dayCustomers.length === 0}
@@ -281,7 +338,7 @@ export default function RouteOptimizer() {
             ) : (
               <>
                 <Zap className="w-5 h-5 mr-2" />
-                Preview Saved Order
+                {useLiveOptimization ? 'Optimize Drive Route' : 'Preview Saved Order'}
               </>
             )}
           </Button>
@@ -299,18 +356,20 @@ export default function RouteOptimizer() {
       ) : !optimizedRoute ? (
         <Card className="p-8 text-center border-2 bg-gradient-to-br from-cyan-50 to-blue-50">
           <Navigation className="w-12 h-12 mx-auto mb-4 text-cyan-600" />
-          <h3 className="text-xl font-semibold text-slate-900 mb-2">Ready to Preview Your Stop Order</h3>
+          <h3 className="text-xl font-semibold text-slate-900 mb-2">Ready to Plan Your Route</h3>
           <p className="text-slate-600 mb-4">
             You have {dayCustomers.length} customer{dayCustomers.length !== 1 ? 's' : ''} scheduled for {selectedDay}
           </p>
           <p className="text-sm text-slate-500">
-            This is a manual route plan using your saved customer order. Maps provides live directions; ChemCheck does not calculate drive time or ETA.
+            Preview your saved order, or use configured Mapbox routing for live geocoding, road distance, and drive time after confirming address-sharing consent.
           </p>
         </Card>
       ) : (
         <div className="space-y-6">
           <Card className="p-6 border-2 shadow-lg bg-gradient-to-br from-emerald-50 to-teal-50">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Manual Route Summary</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">
+              {optimizedRoute.route_source === 'mapbox' ? 'Optimized Route Summary' : 'Manual Route Summary'}
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="text-center">
                 <div className="text-3xl font-bold text-emerald-600">{optimizedRoute.optimized_order.length}</div>
@@ -334,11 +393,17 @@ export default function RouteOptimizer() {
               <div className="rounded-lg bg-white/70 border border-emerald-200/40 px-3 py-2 text-slate-700">
                 Service: <span className="font-semibold text-slate-900">{formatMinutes(optimizedRoute.total_service_minutes || 0)}</span>
               </div>
+              {optimizedRoute.route_source === 'mapbox' && (
+                <div className="rounded-lg bg-white/70 border border-emerald-200/40 px-3 py-2 text-slate-700">
+                  Drive: <span className="font-semibold text-slate-900">{formatMinutes(optimizedRoute.total_drive_minutes || 0)}</span>
+                  {optimizedRoute.total_distance_miles > 0 && <span> · {optimizedRoute.total_distance_miles} mi</span>}
+                </div>
+              )}
             </div>
 
             {exceedsWorkingHours && (
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Estimated service work exceeds configured working hours. Drive time is not included; consider splitting stops or extending working hours.
+                Estimated route work exceeds configured working hours. Consider splitting stops or extending working hours.
               </div>
             )}
 

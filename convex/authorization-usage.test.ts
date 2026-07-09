@@ -14,6 +14,7 @@ const tenantModules = [
   "quotes.ts",
   "communications.ts",
   "serviceReports.ts",
+  "poolProfiles.ts",
   "sync.ts",
 ];
 

@@ -118,6 +118,28 @@ export interface SyncOutboxItem {
     updated_at: number;
 }
 
+export interface SyncConflictRecord {
+    id?: number;
+    tenant_id: string;
+    table: SyncOutboxItem['table'];
+    local_id: number;
+    convex_id: string;
+    local_data: string;
+    remote_data: string;
+    remote_updated_at: number;
+    status: 'open' | 'resolved_local' | 'resolved_remote';
+    created_at: number;
+    resolved_at?: number;
+}
+
+export interface RemoteSyncState {
+    id?: number;
+    tenant_id: string;
+    table: SyncOutboxItem['table'];
+    last_pulled_at: number;
+    updated_at: number;
+}
+
 export class ChemCheckDB extends Dexie {
     customers!: Table<Customer>;
     serviceLogs!: Table<ServiceLog>;
@@ -125,9 +147,12 @@ export class ChemCheckDB extends Dexie {
     notes!: Table<Note>;
     saltCellLogs!: Table<SaltCellLog>;
     syncOutbox!: Table<SyncOutboxItem>;
+    syncConflicts!: Table<SyncConflictRecord>;
+    remoteSyncState!: Table<RemoteSyncState>;
 
     private syncService: any = null;
     private isPurgingTenant = false;
+    private isApplyingRemoteChanges = false;
 
     constructor() {
         super('chemcheck');
@@ -191,6 +216,17 @@ export class ChemCheckDB extends Dexie {
             syncOutbox: '++id, tenant_id, item_key, [tenant_id+item_key], [tenant_id+priority], table, local_id, updated_at',
         });
 
+        this.version(5).stores({
+            customers: '++id, tenant_id, [tenant_id+created_by], [tenant_id+service_day], created_by, service_day, sort_order, sync_status, convex_id, deleted_at',
+            serviceLogs: '++id, tenant_id, [tenant_id+customer_id], [tenant_id+service_date], customer_id, service_date, [customer_id+service_date], sync_status, convex_id, convex_customer_id, deleted_at',
+            chemicalUsage: '++id, tenant_id, [tenant_id+customer_id], customer_id, created_date, sync_status, convex_id, convex_customer_id, deleted_at',
+            notes: '++id, tenant_id, [tenant_id+customer_id], customer_id, completed, created_date, category, sync_status, convex_id, convex_customer_id, deleted_at',
+            saltCellLogs: '++id, tenant_id, [tenant_id+customer_id], customer_id, cleaning_date, sync_status, convex_id, convex_customer_id, deleted_at',
+            syncOutbox: '++id, tenant_id, item_key, [tenant_id+item_key], [tenant_id+priority], table, local_id, updated_at',
+            syncConflicts: '++id, tenant_id, [tenant_id+status], [tenant_id+table], [tenant_id+table+local_id], created_at',
+            remoteSyncState: '++id, tenant_id, table, [tenant_id+table], updated_at',
+        });
+
         this.setupSyncHooks();
     }
 
@@ -198,8 +234,21 @@ export class ChemCheckDB extends Dexie {
         this.syncService = syncService;
     }
 
+    async applyRemoteChanges<T>(operation: () => Promise<T>): Promise<T> {
+        this.isApplyingRemoteChanges = true;
+        try {
+            return await operation();
+        } finally {
+            this.isApplyingRemoteChanges = false;
+        }
+    }
+
     private setupSyncHooks(): void {
         this.customers.hook('creating', (_primKey, obj, trans) => {
+            if (this.isApplyingRemoteChanges) {
+                this.attachTenant(obj);
+                return;
+            }
             this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
@@ -213,6 +262,7 @@ export class ChemCheckDB extends Dexie {
 
         this.customers.hook('updating', (modifications, primKey, obj, trans) => {
             this.assertTenant(obj);
+            if (this.isApplyingRemoteChanges) return;
             // Only trigger sync if non-sync fields are modified
             const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
             if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
@@ -244,6 +294,10 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.serviceLogs.hook('creating', (_primKey, obj, trans) => {
+            if (this.isApplyingRemoteChanges) {
+                this.attachTenant(obj);
+                return;
+            }
             this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
@@ -257,6 +311,7 @@ export class ChemCheckDB extends Dexie {
 
         this.serviceLogs.hook('updating', (modifications, primKey, obj, trans) => {
             this.assertTenant(obj);
+            if (this.isApplyingRemoteChanges) return;
             const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
             if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
@@ -287,6 +342,10 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.chemicalUsage.hook('creating', (_primKey, obj, trans) => {
+            if (this.isApplyingRemoteChanges) {
+                this.attachTenant(obj);
+                return;
+            }
             this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
@@ -300,6 +359,7 @@ export class ChemCheckDB extends Dexie {
 
         this.chemicalUsage.hook('updating', (modifications, primKey, obj, trans) => {
             this.assertTenant(obj);
+            if (this.isApplyingRemoteChanges) return;
             const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
             if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
@@ -330,6 +390,10 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.notes.hook('creating', (_primKey, obj, trans) => {
+            if (this.isApplyingRemoteChanges) {
+                this.attachTenant(obj);
+                return;
+            }
             this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
@@ -343,6 +407,7 @@ export class ChemCheckDB extends Dexie {
 
         this.notes.hook('updating', (modifications, primKey, obj, trans) => {
             this.assertTenant(obj);
+            if (this.isApplyingRemoteChanges) return;
             const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
             if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
@@ -373,6 +438,10 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.saltCellLogs.hook('creating', (_primKey, obj, trans) => {
+            if (this.isApplyingRemoteChanges) {
+                this.attachTenant(obj);
+                return;
+            }
             this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
@@ -386,6 +455,7 @@ export class ChemCheckDB extends Dexie {
 
         this.saltCellLogs.hook('updating', (modifications, primKey, obj, trans) => {
             this.assertTenant(obj);
+            if (this.isApplyingRemoteChanges) return;
             const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
             if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
@@ -456,7 +526,7 @@ export class ChemCheckDB extends Dexie {
         try {
             await this.transaction(
                 'rw',
-                [this.customers, this.serviceLogs, this.chemicalUsage, this.notes, this.saltCellLogs, this.syncOutbox],
+                [this.customers, this.serviceLogs, this.chemicalUsage, this.notes, this.saltCellLogs, this.syncOutbox, this.syncConflicts, this.remoteSyncState],
                 async () => {
                     await this.customers.where('tenant_id').equals(scopeKey).delete();
                     await this.serviceLogs.where('tenant_id').equals(scopeKey).delete();
@@ -464,6 +534,8 @@ export class ChemCheckDB extends Dexie {
                     await this.notes.where('tenant_id').equals(scopeKey).delete();
                     await this.saltCellLogs.where('tenant_id').equals(scopeKey).delete();
                     await this.syncOutbox.where('tenant_id').equals(scopeKey).delete();
+                    await this.syncConflicts.where('tenant_id').equals(scopeKey).delete();
+                    await this.remoteSyncState.where('tenant_id').equals(scopeKey).delete();
                 },
             );
         } finally {

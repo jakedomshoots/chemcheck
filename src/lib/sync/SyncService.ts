@@ -1,6 +1,6 @@
 import { ConvexReactClient } from 'convex/react';
 import { Id } from '../../../convex/_generated/dataModel';
-import { db } from '@/db/chemcheck-db';
+import { db, SyncConflictRecord } from '@/db/chemcheck-db';
 import { api } from '../../../convex/_generated/api';
 import { SyncQueue, SyncQueueItem } from './SyncQueue';
 import { ConflictResolver } from './ConflictResolver';
@@ -14,6 +14,7 @@ export interface SyncResult {
   error?: string;
   syncedCount: number;
   failedCount: number;
+  pulledCount?: number;
 }
 
 export interface RecordSyncStatus {
@@ -419,6 +420,253 @@ export class SyncService {
     };
   }
 
+  async getOpenConflicts(): Promise<SyncConflictRecord[]> {
+    const scope = getActiveTenantScope();
+    if (!scope) return [];
+    return await db.syncConflicts
+      .where('[tenant_id+status]')
+      .equals([scope.key, 'open'])
+      .reverse()
+      .sortBy('created_at');
+  }
+
+  async resolveConflict(conflictId: number, resolution: 'local' | 'remote'): Promise<void> {
+    const scope = getActiveTenantScope();
+    if (!scope) throw new Error('No authenticated tenant is active');
+    const conflict = await db.syncConflicts.get(conflictId);
+    if (!conflict || conflict.tenant_id !== scope.key || conflict.status !== 'open') {
+      throw new Error('Sync conflict is no longer available');
+    }
+
+    if (resolution === 'remote') {
+      const remote = JSON.parse(conflict.remote_data);
+      if (remote?.deleted_at) {
+        await this.applyRemoteTombstone(conflict.table, {
+          entity_id: conflict.convex_id,
+          deleted_at: Number(remote.deleted_at) || conflict.remote_updated_at,
+        }, true);
+      } else {
+        await this.applyRemoteRecord(conflict.table, remote, true);
+      }
+    } else {
+      const table = this.getLocalTable(conflict.table);
+      await table.update(conflict.local_id, {
+        sync_status: 'pending',
+        sync_error: undefined,
+        local_updated_at: Date.now(),
+      });
+      this.syncQueue.enqueue({
+        table: conflict.table,
+        localId: conflict.local_id,
+        operation: 'update',
+        data: JSON.parse(conflict.local_data),
+      });
+    }
+
+    await db.syncConflicts.update(conflictId, {
+      status: resolution === 'local' ? 'resolved_local' : 'resolved_remote',
+      resolved_at: Date.now(),
+    });
+  }
+
+  private getLocalTable(table: SyncQueueItem['table']): any {
+    switch (table) {
+      case 'customers': return db.customers;
+      case 'serviceLogs': return db.serviceLogs;
+      case 'chemicalUsage': return db.chemicalUsage;
+      case 'notes': return db.notes;
+      case 'saltCellLogs': return db.saltCellLogs;
+      default: throw new Error(`Unknown sync table: ${table}`);
+    }
+  }
+
+  private async createPullConflict(table: SyncQueueItem['table'], local: any, remote: any, remoteUpdatedAt: number): Promise<void> {
+    const scope = getActiveTenantScope();
+    if (!scope || !local?.id) return;
+    const existing = await db.syncConflicts
+      .where('[tenant_id+table+local_id]')
+      .equals([scope.key, table, local.id])
+      .first();
+    if (!existing || existing.status !== 'open') {
+      await db.syncConflicts.add({
+        tenant_id: scope.key,
+        table,
+        local_id: local.id,
+        convex_id: String(remote?._id || remote?.entity_id || local.convex_id),
+        local_data: JSON.stringify(local),
+        remote_data: JSON.stringify(remote),
+        remote_updated_at: remoteUpdatedAt,
+        status: 'open',
+        created_at: Date.now(),
+      });
+    }
+    await this.getLocalTable(table).update(local.id, {
+      sync_status: 'error',
+      sync_error: 'Cloud and device edits conflict. Choose which version to keep.',
+    });
+  }
+
+  private async getLocalCustomerForRemoteId(convexCustomerId: unknown): Promise<any | undefined> {
+    const scope = getActiveTenantScope();
+    if (!scope || !convexCustomerId) return undefined;
+    const candidates = await db.customers.where('convex_id').equals(String(convexCustomerId)).toArray();
+    return candidates.find((customer) => customer.tenant_id === scope.key && !customer.deleted_at);
+  }
+
+  private async normalizeRemoteRecord(table: SyncQueueItem['table'], remote: any): Promise<any> {
+    const scope = getActiveTenantScope();
+    if (!scope) throw new Error('No authenticated tenant is active');
+    const { _id, _creationTime, business_id, customer_id, created_at, updated_at, ...data } = remote || {};
+    const remoteUpdatedAt = Number(updated_at || created_at || Date.now());
+    const normalized: any = {
+      ...data,
+      tenant_id: scope.key,
+      convex_id: String(_id),
+      sync_status: 'synced',
+      sync_error: undefined,
+      local_updated_at: remoteUpdatedAt,
+      remote_updated_at: remoteUpdatedAt,
+      deleted_at: undefined,
+    };
+
+    if (table === 'customers') return normalized;
+
+    if (customer_id) {
+      const localCustomer = await this.getLocalCustomerForRemoteId(customer_id);
+      if (!localCustomer?.id) {
+        throw new Error(`Remote ${table} is waiting for customer ${String(customer_id)} to pull`);
+      }
+      normalized.customer_id = localCustomer.id;
+      normalized.convex_customer_id = String(customer_id);
+    }
+
+    return normalized;
+  }
+
+  private async applyRemoteRecord(table: SyncQueueItem['table'], remote: any, force = false): Promise<boolean> {
+    const scope = getActiveTenantScope();
+    if (!scope || !remote?._id) return false;
+    const localTable = this.getLocalTable(table);
+    const matches = await localTable.where('convex_id').equals(String(remote._id)).toArray();
+    const existing = matches.find((record: any) => record.tenant_id === scope.key);
+    const remoteUpdatedAt = Number(remote.updated_at || remote.created_at || Date.now());
+
+    if (existing?.remote_updated_at >= remoteUpdatedAt && existing.sync_status === 'synced') return false;
+    const hasLocalEdits = existing
+      && (existing.sync_status === 'pending' || existing.sync_status === 'error')
+      && Number(existing.local_updated_at || 0) > Number(existing.remote_updated_at || 0);
+    if (hasLocalEdits && !force) {
+      await this.createPullConflict(table, existing, remote, remoteUpdatedAt);
+      return false;
+    }
+
+    const normalized = await this.normalizeRemoteRecord(table, remote);
+    await db.applyRemoteChanges(async () => {
+      if (existing?.id) {
+        await localTable.update(existing.id, normalized);
+      } else {
+        await localTable.add(normalized);
+      }
+    });
+    return true;
+  }
+
+  private async applyRemoteTombstone(table: SyncQueueItem['table'], tombstone: any, force = false): Promise<boolean> {
+    const scope = getActiveTenantScope();
+    if (!scope || !tombstone?.entity_id) return false;
+    const localTable = this.getLocalTable(table);
+    const matches = await localTable.where('convex_id').equals(String(tombstone.entity_id)).toArray();
+    const existing = matches.find((record: any) => record.tenant_id === scope.key);
+    if (!existing?.id) return false;
+
+    const remoteUpdatedAt = Number(tombstone.deleted_at || Date.now());
+    const hasLocalEdits = (existing.sync_status === 'pending' || existing.sync_status === 'error')
+      && Number(existing.local_updated_at || 0) > Number(existing.remote_updated_at || 0);
+    if (hasLocalEdits && !force) {
+      await this.createPullConflict(table, existing, { _id: tombstone.entity_id, deleted_at: remoteUpdatedAt }, remoteUpdatedAt);
+      return false;
+    }
+
+    await db.applyRemoteChanges(async () => {
+      await localTable.update(existing.id, {
+        deleted_at: remoteUpdatedAt,
+        sync_status: 'synced',
+        sync_error: undefined,
+        local_updated_at: remoteUpdatedAt,
+        remote_updated_at: remoteUpdatedAt,
+      });
+      if (table === 'customers') {
+        for (const childTable of [db.serviceLogs, db.chemicalUsage, db.notes, db.saltCellLogs]) {
+          const children = await childTable.where('[tenant_id+customer_id]').equals([scope.key, existing.id]).toArray();
+          for (const child of children) {
+            await childTable.update(child.id, {
+              deleted_at: remoteUpdatedAt,
+              sync_status: 'synced',
+              sync_error: undefined,
+              local_updated_at: remoteUpdatedAt,
+              remote_updated_at: remoteUpdatedAt,
+            });
+          }
+        }
+      }
+    });
+    return true;
+  }
+
+  private async pullRemoteChanges(): Promise<number> {
+    if (!this.convexClient || typeof (this.convexClient as any).query !== 'function') return 0;
+    const scope = getActiveTenantScope();
+    if (!scope) return 0;
+    const tables: SyncQueueItem['table'][] = ['customers', 'serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs'];
+    let pulled = 0;
+
+    for (const table of tables) {
+      const state = await db.remoteSyncState
+        .where('[tenant_id+table]')
+        .equals([scope.key, table])
+        .first();
+      const previous = Number(state?.last_pulled_at || 0);
+      const updatedAfter = previous > 0 ? Math.max(0, previous - 5_000) : 0;
+      let newest = previous;
+      let recordCursor: string | undefined;
+      let tombstoneCursor: string | undefined;
+
+      for (let page = 0; page < 100; page += 1) {
+        const result: any = await this.convexClient.query(api.sync.pullChanges, {
+          table,
+          updated_after: updatedAfter,
+          limit: 100,
+          record_cursor: recordCursor,
+          tombstone_cursor: tombstoneCursor,
+        });
+        const records = Array.isArray(result?.records) ? result.records : [];
+        const tombstones = Array.isArray(result?.tombstones) ? result.tombstones : [];
+        for (const record of records) {
+          if (await this.applyRemoteRecord(table, record)) pulled += 1;
+          newest = Math.max(newest, Number(record.updated_at || record.created_at || 0));
+        }
+        for (const tombstone of tombstones) {
+          if (await this.applyRemoteTombstone(table, tombstone)) pulled += 1;
+          newest = Math.max(newest, Number(tombstone.deleted_at || 0));
+        }
+        if (!result?.has_more) break;
+        recordCursor = result.record_cursor || undefined;
+        tombstoneCursor = result.tombstone_cursor || undefined;
+        if (!recordCursor && !tombstoneCursor) break;
+      }
+
+      await db.remoteSyncState.put({
+        id: state?.id,
+        tenant_id: scope.key,
+        table,
+        last_pulled_at: newest,
+        updated_at: Date.now(),
+      });
+    }
+
+    return pulled;
+  }
+
   private isPendingRecord(record: any): boolean {
     if (!record) return false;
     if (record.sync_status === 'pending') return true;
@@ -503,6 +751,7 @@ export class SyncService {
 
     let syncedCount = 0;
     let failedCount = 0;
+    let pulledCount = 0;
 
     try {
       this.recordQueueDepth('before_batch', trigger);
@@ -597,22 +846,30 @@ export class SyncService {
         }
       }
 
+      // Push local mutations first, then apply changes made on another device.
+      // This ordering avoids overwriting a just-created parent record before
+      // dependent logs can resolve their customer mapping.
+      pulledCount = await this.pullRemoteChanges();
+
       const result: SyncResult = {
         success: failedCount === 0,
         syncedCount,
         failedCount,
+        pulledCount,
       };
 
       this.recordQueueDepth('after_batch', trigger, {
         success: result.success,
         syncedCount,
         failedCount,
+        pulledCount,
       });
 
       monitoring.recordMetric('sync_cycle_complete', performance.now() - this.lastSyncStartedAt, {
         trigger,
         synced: syncedCount,
         failed: failedCount,
+        pulled: pulledCount,
       });
 
       if (!result.success) {

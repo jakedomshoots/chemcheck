@@ -189,11 +189,14 @@ export const create = mutation({
         // This cannot be bypassed by attackers sending data directly to Convex
         const validatedData = validateCustomerCreate(args);
         const business = await requireBusinessContext(ctx, email);
+        const now = Date.now();
 
         const customerId = await ctx.db.insert("customers", {
             ...validatedData,
             created_by: business.ownerEmail,
             business_id: business.businessId,
+            created_at: now,
+            updated_at: now,
         });
 
         return customerId;
@@ -277,7 +280,7 @@ export const update = mutation({
             ? { ...validatedData, report_settings: mergedReportSettings }
             : validatedData;
 
-        await ctx.db.patch(id, updates);
+        await ctx.db.patch(id, { ...updates, updated_at: Date.now() });
 
         return id;
     },

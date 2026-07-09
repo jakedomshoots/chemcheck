@@ -37,6 +37,9 @@ type CustomersCursor = {
     | "chemicalUsage"
     | "notes"
     | "saltCellLogs"
+    | "equipment"
+    | "pools"
+    | "sites"
     | "workOrders"
     | "invoices"
     | "quotes"
@@ -53,6 +56,7 @@ type GeneralCursor = {
     | "dataExports"
     | "team_members_owned"
     | "team_members_direct"
+    | "syncTombstones"
     | "businesses";
   tableCursor?: string | null;
   ownedBusinessIds?: string[] | null;
@@ -245,6 +249,9 @@ function nextCustomerStage(
     "chemicalUsage",
     "notes",
     "saltCellLogs",
+    "equipment",
+    "pools",
+    "sites",
     "workOrders",
     "invoices",
     "quotes",
@@ -414,6 +421,9 @@ async function processCustomerStage(
   }
 
   const customerOperationalTables: Record<string, string> = {
+    equipment: "equipment",
+    pools: "pools",
+    sites: "sites",
     workOrders: "workOrders",
     invoices: "invoices",
     quotes: "quotes",
@@ -618,6 +628,41 @@ async function deleteGeneralBatch(
         break;
       }
 
+      state.stage = "syncTombstones";
+      state.tableCursor = null;
+      continue;
+    }
+
+    if (state.stage === "syncTombstones") {
+      if (state.ownedBusinessIds === null) {
+        const owned = await ctx.db
+          .query("businesses")
+          .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
+          .collect();
+        state.ownedBusinessIds = owned.map((business: any) => business._id as string);
+        state.businessIndex = 0;
+      }
+
+      while ((state.businessIndex ?? 0) < (state.ownedBusinessIds?.length ?? 0) && writesLeft > 0) {
+        const businessId = state.ownedBusinessIds![state.businessIndex ?? 0];
+        const page = await ctx.db
+          .query("syncTombstones")
+          .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
+          .paginate({ cursor: state.tableCursor ?? null, numItems: Math.min(batchSize, writesLeft) });
+        for (const tombstone of page.page) {
+          await ctx.db.delete(tombstone._id);
+          deletedCount += 1;
+          writesLeft -= 1;
+        }
+        if (!page.isDone) {
+          state.tableCursor = page.continueCursor;
+          break;
+        }
+        state.businessIndex = (state.businessIndex ?? 0) + 1;
+        state.tableCursor = null;
+      }
+
+      if ((state.businessIndex ?? 0) < (state.ownedBusinessIds?.length ?? 0)) break;
       state.stage = "businesses";
       state.tableCursor = null;
       continue;
@@ -813,7 +858,22 @@ async function collectUserExportData(
   const customers = Array.from(customerMap.values());
   const customerIds = customers.map((c) => c._id as string);
 
-  const [serviceLogs, chemicalUsage, notesByCustomer, saltCellLogs, servicePhotos, serviceReports, workOrders, invoices, quotes, customerCommunications] = await Promise.all([
+  const [sites, pools, equipment, serviceLogs, chemicalUsage, notesByCustomer, saltCellLogs, servicePhotos, serviceReports, workOrders, invoices, quotes, customerCommunications] = await Promise.all([
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db.query("sites").withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">)).take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db.query("pools").withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">)).take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
+    Promise.all(
+      customerIds.map((id: string) =>
+        ctx.db.query("equipment").withIndex("by_customer", (q: any) => q.eq("customer_id", id as Id<"customers">)).take(EXPORT_BATCH_SIZE)
+      )
+    ).then((pages) => pages.flat()),
     Promise.all(
       customerIds.map((id: string) =>
         ctx.db
@@ -960,6 +1020,9 @@ async function collectUserExportData(
     exportType: "gdpr_data_request",
     userData: {
       customers: customers.map(stripInternalFields),
+      sites: sites.map(stripInternalFields),
+      pools: pools.map(stripInternalFields),
+      equipment: equipment.map(stripInternalFields),
       serviceLogs: serviceLogs.map(stripInternalFields),
       chemicalUsage: chemicalUsage.map(stripInternalFields),
       notes: notes.map(stripInternalFields),
@@ -982,6 +1045,9 @@ async function collectUserExportData(
 
   const totalRecords =
     customers.length +
+    sites.length +
+    pools.length +
+    equipment.length +
     serviceLogs.length +
     chemicalUsage.length +
     notes.length +
@@ -998,6 +1064,9 @@ async function collectUserExportData(
 
   const truncated =
     customers.length >= EXPORT_BATCH_SIZE ||
+    sites.length >= EXPORT_BATCH_SIZE ||
+    pools.length >= EXPORT_BATCH_SIZE ||
+    equipment.length >= EXPORT_BATCH_SIZE ||
     serviceLogs.length >= EXPORT_BATCH_SIZE ||
     chemicalUsage.length >= EXPORT_BATCH_SIZE ||
     notes.length >= EXPORT_BATCH_SIZE ||

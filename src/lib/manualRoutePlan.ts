@@ -12,14 +12,17 @@ type RouteCustomer = {
  * has already saved. ChemCheck does not claim road distance or ETA until it
  * has a validated routing provider and real geocodes.
  */
-export function buildManualRouteStops(customers: RouteCustomer[]) {
-  return [...customers]
-    .sort((a, b) => {
+export function buildManualRouteStops(customers: RouteCustomer[], options: { preserveOrder?: boolean } = {}) {
+  const ordered = options.preserveOrder
+    ? [...customers]
+    : [...customers].sort((a, b) => {
       const leftOrder = Number.isFinite(Number(a.sort_order)) ? Number(a.sort_order) : Number.MAX_SAFE_INTEGER;
       const rightOrder = Number.isFinite(Number(b.sort_order)) ? Number(b.sort_order) : Number.MAX_SAFE_INTEGER;
       if (leftOrder !== rightOrder) return leftOrder - rightOrder;
       return String(a.full_name || '').localeCompare(String(b.full_name || ''));
-    })
+    });
+
+  return ordered
     .map((customer, index) => ({
       position: index + 1,
       customer_name: String(customer.full_name || 'Unnamed customer'),

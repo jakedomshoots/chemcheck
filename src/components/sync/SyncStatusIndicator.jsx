@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useSyncState } from '@/hooks/useSyncState';
 import { cn } from '@/lib/utils';
+import { syncService } from '@/lib/sync/SyncService';
 import { 
   getStatusText, 
   getStatusColor, 
@@ -23,6 +25,34 @@ export function SyncStatusIndicator({
 }) {
   const { status, pendingCount, lastSyncAt, error, syncNow } = useSyncState();
   const statusText = getStatusText(status, pendingCount);
+  const [conflicts, setConflicts] = useState([]);
+  const [resolvingConflictId, setResolvingConflictId] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadConflicts = async () => {
+      try {
+        const next = await syncService.getOpenConflicts();
+        if (active) {
+          setConflicts((current) => (
+            current.length === next.length && current.every((item, index) => item.id === next[index]?.id)
+              ? current
+              : next
+          ));
+        }
+      } catch {
+        if (active) setConflicts([]);
+      }
+    };
+    void loadConflicts();
+    const unsubscribe = syncService.onSyncStatusChange(() => { void loadConflicts(); });
+    const interval = window.setInterval(() => { void loadConflicts(); }, 15_000);
+    return () => {
+      active = false;
+      unsubscribe();
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -48,6 +78,18 @@ export function SyncStatusIndicator({
       await syncNow();
     } catch (err) {
       console.error('Manual sync failed:', err);
+    }
+  };
+
+  const handleResolveConflict = async (id, resolution) => {
+    setResolvingConflictId(id);
+    try {
+      await syncService.resolveConflict(id, resolution);
+      setConflicts((items) => items.filter((item) => item.id !== id));
+    } catch (err) {
+      console.error('Sync conflict resolution failed:', err);
+    } finally {
+      setResolvingConflictId(null);
     }
   };
 
@@ -95,6 +137,40 @@ export function SyncStatusIndicator({
               <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2 py-1">
                 {error}
               </p>
+            )}
+            {conflicts.length > 0 && (
+              <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-2" data-testid="sync-conflict-panel">
+                <p className="text-xs font-semibold text-amber-900">
+                  {conflicts.length} sync conflict{conflicts.length === 1 ? '' : 's'} need a decision
+                </p>
+                {conflicts.slice(0, 3).map((conflict) => (
+                  <div key={conflict.id} className="rounded border border-amber-200 bg-white p-2">
+                    <p className="text-xs text-slate-700">
+                      {conflict.table === 'serviceLogs' ? 'Service log' : conflict.table} changed on this device and in the cloud.
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[11px]"
+                        disabled={resolvingConflictId === conflict.id}
+                        onClick={() => handleResolveConflict(conflict.id, 'local')}
+                      >
+                        Keep device
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[11px]"
+                        disabled={resolvingConflictId === conflict.id}
+                        onClick={() => handleResolveConflict(conflict.id, 'remote')}
+                      >
+                        Use cloud
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
             <Button
               size="sm"

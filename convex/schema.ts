@@ -31,10 +31,83 @@ export default defineSchema({
     .index("by_service_day", ["service_day"])
     .index("by_business", ["business_id"])
     .index("by_business_and_day", ["business_id", "service_day"])
+    .index("by_business_and_updated_at", ["business_id", "updated_at"])
     .index("by_created_by_and_service_day", ["created_by", "service_day"]),
+
+  // A customer can have more than one service address. Keep location and
+  // access context on the site rather than overloading the customer record.
+  sites: defineTable({
+    customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
+    created_by: v.string(),
+    name: v.string(),
+    street_address: v.string(),
+    access_notes: v.optional(v.string()),
+    latitude: v.optional(v.number()),
+    longitude: v.optional(v.number()),
+    geocode_provider: v.optional(v.string()),
+    geocoded_at: v.optional(v.number()),
+    active: v.boolean(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_customer", ["customer_id"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_customer", ["business_id", "customer_id"]),
+
+  // Pools belong to a site. Legacy customer pool fields remain readable while
+  // profiles are migrated, but new service/equipment records target this table.
+  pools: defineTable({
+    customer_id: v.id("customers"),
+    site_id: v.id("sites"),
+    business_id: v.optional(v.id("businesses")),
+    created_by: v.string(),
+    name: v.string(),
+    volume_gallons: v.optional(v.number()),
+    sanitizer_type: v.string(),
+    surface_type: v.string(),
+    shape: v.optional(v.string()),
+    active: v.boolean(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_customer", ["customer_id"])
+    .index("by_site", ["site_id"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_customer", ["business_id", "customer_id"]),
+
+  // Individual equipment is tracked independently of free-form notes so a
+  // technician can see service due dates and ownership at a pool stop.
+  equipment: defineTable({
+    customer_id: v.id("customers"),
+    site_id: v.id("sites"),
+    pool_id: v.optional(v.id("pools")),
+    business_id: v.optional(v.id("businesses")),
+    created_by: v.string(),
+    kind: v.string(),
+    manufacturer: v.optional(v.string()),
+    model: v.optional(v.string()),
+    serial_number: v.optional(v.string()),
+    status: v.string(),
+    installed_date: v.optional(v.string()),
+    last_serviced_date: v.optional(v.string()),
+    next_service_due: v.optional(v.string()),
+    service_interval_days: v.optional(v.number()),
+    notes: v.optional(v.string()),
+    active: v.boolean(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_customer", ["customer_id"])
+    .index("by_site", ["site_id"])
+    .index("by_pool", ["pool_id"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_due", ["business_id", "next_service_due"]),
 
   serviceLogs: defineTable({
     customer_id: v.id("customers"),
+    site_id: v.optional(v.id("sites")),
+    pool_id: v.optional(v.id("pools")),
     business_id: v.optional(v.id("businesses")),
     created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     service_date: v.string(), // YYYY-MM-DD format
@@ -67,10 +140,15 @@ export default defineSchema({
     .index("by_customer_and_date", ["customer_id", "service_date"])
     .index("by_created_by_and_service_date", ["created_by", "service_date"])
     .index("by_business", ["business_id"])
-    .index("by_business_and_service_date", ["business_id", "service_date"]),
+    .index("by_business_and_service_date", ["business_id", "service_date"])
+    .index("by_business_and_updated_at", ["business_id", "updated_at"])
+    .index("by_site", ["site_id"])
+    .index("by_pool", ["pool_id"]),
 
   chemicalUsage: defineTable({
     customer_id: v.id("customers"),
+    site_id: v.optional(v.id("sites")),
+    pool_id: v.optional(v.id("pools")),
     business_id: v.optional(v.id("businesses")),
     created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     chemical_type: v.string(),
@@ -85,13 +163,19 @@ export default defineSchema({
     .index("by_created_by", ["created_by"])
     .index("by_created_by_and_created_date", ["created_by", "created_date"])
     .index("by_business", ["business_id"])
-    .index("by_business_and_created_date", ["business_id", "created_date"]),
+    .index("by_business_and_created_date", ["business_id", "created_date"])
+    .index("by_business_and_updated_at", ["business_id", "updated_at"])
+    .index("by_site", ["site_id"])
+    .index("by_pool", ["pool_id"]),
 
   notes: defineTable({
     title: v.string(),
     content: v.string(),
     category: v.string(), // General, Customer, Equipment, Reminder, Chemical, Billing
     customer_id: v.optional(v.id("customers")),
+    site_id: v.optional(v.id("sites")),
+    pool_id: v.optional(v.id("pools")),
+    equipment_id: v.optional(v.id("equipment")),
     priority: v.string(), // low, medium, high
     completed: v.optional(v.boolean()),
     created_date: v.optional(v.string()),
@@ -108,7 +192,11 @@ export default defineSchema({
     .index("by_created_by_and_customer_id", ["created_by", "customer_id"])
     .index("by_created_by_and_completed", ["created_by", "completed"])
     .index("by_business", ["business_id"])
-    .index("by_business_and_created_date", ["business_id", "created_date"]),
+    .index("by_business_and_created_date", ["business_id", "created_date"])
+    .index("by_business_and_updated_at", ["business_id", "updated_at"])
+    .index("by_site", ["site_id"])
+    .index("by_pool", ["pool_id"])
+    .index("by_equipment", ["equipment_id"]),
 
   subscriptions: defineTable({
     user_email: v.string(),
@@ -203,6 +291,8 @@ export default defineSchema({
   // Salt cell cleaning logs for salt pool maintenance tracking
   saltCellLogs: defineTable({
     customer_id: v.id("customers"),
+    site_id: v.optional(v.id("sites")),
+    pool_id: v.optional(v.id("pools")),
     business_id: v.optional(v.id("businesses")),
     cleaning_date: v.string(), // YYYY-MM-DD format
     condition: v.string(), // good, moderate, heavy - scale buildup condition
@@ -213,7 +303,10 @@ export default defineSchema({
   })
     .index("by_customer", ["customer_id"])
     .index("by_cleaning_date", ["cleaning_date"])
-    .index("by_business", ["business_id"]),
+    .index("by_business", ["business_id"])
+    .index("by_business_and_updated_at", ["business_id", "updated_at"])
+    .index("by_site", ["site_id"])
+    .index("by_pool", ["pool_id"]),
 
   // Service reports for SMS/Email notifications to customers
   serviceReports: defineTable({
@@ -237,6 +330,8 @@ export default defineSchema({
   // Month 1 roadmap: work-order operations (one-off + recurring)
   workOrders: defineTable({
     customer_id: v.id("customers"),
+    site_id: v.optional(v.id("sites")),
+    pool_id: v.optional(v.id("pools")),
     business_id: v.optional(v.id("businesses")),
     created_by: v.string(),
     title: v.string(),
@@ -258,11 +353,15 @@ export default defineSchema({
     .index("by_created_by_and_scheduled_date", ["created_by", "scheduled_date"])
     .index("by_assignee_email", ["assignee_email"])
     .index("by_business", ["business_id"])
-    .index("by_business_and_scheduled_date", ["business_id", "scheduled_date", "created_at"]),
+    .index("by_business_and_scheduled_date", ["business_id", "scheduled_date", "created_at"])
+    .index("by_site", ["site_id"])
+    .index("by_pool", ["pool_id"]),
 
   // Month 1 roadmap: invoice drafts for completed work
   invoices: defineTable({
     customer_id: v.id("customers"),
+    site_id: v.optional(v.id("sites")),
+    pool_id: v.optional(v.id("pools")),
     business_id: v.optional(v.id("businesses")),
     work_order_id: v.optional(v.id("workOrders")),
     source_quote_id: v.optional(v.id("quotes")),
@@ -298,7 +397,9 @@ export default defineSchema({
     .index("by_created_by_and_status", ["created_by", "status", "created_at"])
     .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"])
     .index("by_business", ["business_id"])
-    .index("by_business_and_status", ["business_id", "status", "created_at"]),
+    .index("by_business_and_status", ["business_id", "status", "created_at"])
+    .index("by_site", ["site_id"])
+    .index("by_pool", ["pool_id"]),
 
   // Phase 2 roadmap: quote/deposit workflow
   quotes: defineTable({
@@ -371,6 +472,18 @@ export default defineSchema({
     .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"])
     .index("by_business", ["business_id"])
     .index("by_business_and_status", ["business_id", "status", "created_at"]),
+
+  // Server tombstones make deletes visible to other devices during pull sync.
+  // They contain identifiers only, never a copy of customer data.
+  syncTombstones: defineTable({
+    business_id: v.optional(v.id("businesses")),
+    entity_table: v.string(),
+    entity_id: v.string(),
+    deleted_by: v.string(),
+    deleted_at: v.number(),
+  })
+    .index("by_business", ["business_id"])
+    .index("by_business_and_deleted_at", ["business_id", "deleted_at"]),
 
   // Stripe webhook idempotency and delivery diagnostics
   stripeWebhookEvents: defineTable({

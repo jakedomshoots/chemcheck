@@ -10,6 +10,7 @@ import ServiceLogCard from "../components/servicelog/ServiceLogCard";
 import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
 import { SendReportDialog } from "@/components/service-reports";
 import { ReportSettingsPanel } from "@/components/service-reports/ReportSettingsPanel";
+import { PoolProfileSection } from "@/components/customers/PoolProfileSection";
 import { formatSmsMessage, buildReportUrl } from "@/lib/smsReport";
 import { syncPhotosForServiceLog, getPhotos } from "@/lib/proof-of-service";
 import {
@@ -768,6 +769,8 @@ export default function CustomerDetail() {
           )}
         </div>
       </Card>
+
+      <PoolProfileSection customer={customer} cloudEnabled={isConvexAvailable} />
 
       {lastWeekLog && (lastWeekLog.notes || lastWeekLog.ph || lastWeekLog.chlorine) && (
         <Card className="p-4 mb-3 border-2 shadow-lg bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200">
