@@ -19,6 +19,7 @@ import {
   offlinePhotoDb,
 } from './offlinePhotoStorage';
 import type { CapturedPhoto, GeoLocation, OfflinePhotoRecord } from './types';
+import { clearActiveTenantScope, setActiveTenantScope } from '@/lib/tenantScope';
 
 // ============================================================================
 // Generators for Property-Based Testing
@@ -106,11 +107,13 @@ const modificationArb = fc.record({
 // ============================================================================
 
 beforeEach(async () => {
+  setActiveTenantScope({ userEmail: 'owner@chemcheck.test', businessId: 'business_test' });
   await clearAllPhotos();
 });
 
 afterEach(async () => {
   await clearAllPhotos();
+  clearActiveTenantScope();
 });
 
 // ============================================================================

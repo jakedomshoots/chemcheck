@@ -89,12 +89,12 @@ vi.mock('@/lib/monitoring', () => ({
 }));
 
 describe('SyncService pending count legacy handling', () => {
-  it('counts legacy rows when Dexie rejects equals(undefined)', async () => {
+  it('does not sync unscoped legacy rows when Dexie rejects equals(undefined)', async () => {
     const service = new SyncService();
 
     const pendingCount = await service.getPendingCount();
 
-    expect(pendingCount).toBe(5);
+    expect(pendingCount).toBe(0);
     service.destroy();
   });
 });

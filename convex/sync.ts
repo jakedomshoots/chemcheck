@@ -666,6 +666,82 @@ export const syncSaltCellLog = mutation({
 });
 
 // ============================================
+// Delete Sync (tombstone acknowledgement)
+// ============================================
+
+const SYNC_DELETE_TABLES = ["customers", "serviceLogs", "chemicalUsage", "notes", "saltCellLogs"] as const;
+
+async function removeCustomerChildren(ctx: any, customerId: any): Promise<void> {
+  const tableIndexes: Array<[string, string]> = [
+    ["serviceLogs", "by_customer"],
+    ["chemicalUsage", "by_customer"],
+    ["notes", "by_customer"],
+    ["saltCellLogs", "by_customer"],
+    ["servicePhotos", "by_customer"],
+    ["serviceReports", "by_customer"],
+    ["workOrders", "by_customer"],
+    ["invoices", "by_customer"],
+    ["quotes", "by_customer"],
+    ["communications", "by_customer"],
+  ];
+
+  for (const [table, index] of tableIndexes) {
+    const records = await (ctx.db as any)
+      .query(table)
+      .withIndex(index, (q: any) => q.eq("customer_id", customerId))
+      .collect();
+    for (const record of records) {
+      if (table === "servicePhotos") {
+        try {
+          await ctx.storage.delete(record.storage_id);
+        } catch {
+          // Delete metadata even if provider storage was already removed.
+        }
+      }
+      await ctx.db.delete(record._id);
+    }
+  }
+}
+
+/**
+ * Idempotently confirms a local tombstone with the server. The mutation only
+ * accepts the five Dexie-synced tables; it derives all authorization from the
+ * linked customer rather than trusting a client owner field.
+ */
+export const deleteRecord = mutation({
+  args: {
+    table: v.union(...SYNC_DELETE_TABLES.map((table) => v.literal(table))),
+    convex_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+    await enforceRateLimit(ctx, identity.email, "sync.delete");
+
+    const record: any = await ctx.db.get(args.convex_id as any);
+    if (!record) return { success: true, already_deleted: true };
+
+    if (args.table === "customers") {
+      if (!(await canAccessCustomer(ctx, record, identity.email))) throw new Error("Access denied");
+      await removeCustomerChildren(ctx, record._id);
+      await ctx.db.delete(record._id);
+      return { success: true, deleted_at: Date.now() };
+    }
+
+    if (args.table === "notes" && !record.customer_id) {
+      if (normalizeEmail(record.created_by) !== normalizeEmail(identity.email)) {
+        throw new Error("Access denied");
+      }
+    } else {
+      await ensureCustomerOwnedByUser(ctx, record.customer_id, identity.email);
+    }
+
+    await ctx.db.delete(record._id);
+    return { success: true, deleted_at: Date.now() };
+  },
+});
+
+// ============================================
 // Batch Sync for Initial Migration
 // ============================================
 

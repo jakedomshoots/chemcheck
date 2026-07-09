@@ -322,13 +322,17 @@ class MigrationManager {
 
       const orphanedLogs = await db.serviceLogs.where('customer_id').noneOf(customerIds).toArray();
       for (const log of orphanedLogs) {
-        await db.serviceLogs.delete(log.id!);
+        await db.serviceLogs.update(log.id!, {
+          deleted_at: Date.now(), sync_status: 'pending', sync_operation: 'delete', local_updated_at: Date.now(),
+        });
         result.cleaned.serviceLogs++;
       }
 
       const orphanedUsage = await db.chemicalUsage.where('customer_id').noneOf(customerIds).toArray();
       for (const usage of orphanedUsage) {
-        await db.chemicalUsage.delete(usage.id!);
+        await db.chemicalUsage.update(usage.id!, {
+          deleted_at: Date.now(), sync_status: 'pending', sync_operation: 'delete', local_updated_at: Date.now(),
+        });
         result.cleaned.chemicalUsage++;
       }
 

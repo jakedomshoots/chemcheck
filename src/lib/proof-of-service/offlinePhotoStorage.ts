@@ -6,6 +6,7 @@
 
 import Dexie, { Table } from 'dexie';
 import { OfflinePhotoRecord, CapturedPhoto, SyncStatus } from './types';
+import { requireActiveTenantScope } from '@/lib/tenantScope';
 
 const MAX_PHOTOS_PER_CATEGORY_PER_SERVICE_LOG = 5;
 const MAX_TOTAL_STORAGE_BYTES = 100 * 1024 * 1024; // 100MB
@@ -39,11 +40,28 @@ class OfflinePhotoDatabase extends Dexie {
     this.version(1).stores({
       photos: 'id, customerId, serviceLogId, syncStatus, createdAt, category, [customerId+serviceLogId], [customerId+category]',
     });
+
+    this.version(2).stores({
+      photos: 'id, tenantId, customerId, serviceLogId, syncStatus, createdAt, category, [tenantId+customerId], [tenantId+serviceLogId], [tenantId+syncStatus]',
+    });
   }
 }
 
 // Singleton database instance
 const db = new OfflinePhotoDatabase();
+
+function getTenantId(): string {
+  return requireActiveTenantScope().key;
+}
+
+async function getTenantPhotos(): Promise<OfflinePhotoRecord[]> {
+  return db.photos.where('tenantId').equals(getTenantId()).toArray();
+}
+
+async function getTenantPhoto(photoId: string): Promise<OfflinePhotoRecord | undefined> {
+  const photo = await db.photos.get(photoId);
+  return photo?.tenantId === getTenantId() ? photo : undefined;
+}
 
 // ============================================
 // Helper Functions
@@ -57,7 +75,7 @@ function getDataUrlSizeBytes(dataUrl: string): number {
 }
 
 async function getTotalPhotoSizeBytesInternal(): Promise<number> {
-  const photos = await db.photos.toArray();
+  const photos = await getTenantPhotos();
   return photos.reduce((sum, photo) => {
     return sum + (photo.sizeBytes ?? getDataUrlSizeBytes(photo.dataUrl));
   }, 0);
@@ -66,16 +84,16 @@ async function getTotalPhotoSizeBytesInternal(): Promise<number> {
 async function enforceStorageLimitsInternal(): Promise<void> {
   // Retention cleanup first
   const cutoff = Date.now() - MAX_PHOTO_AGE_MS;
-  await db.photos.where('createdAt').below(cutoff).delete();
+  const expired = (await getTenantPhotos()).filter((photo) => photo.createdAt < cutoff);
+  await db.photos.bulkDelete(expired.map((photo) => photo.id));
 
   let totalSize = await getTotalPhotoSizeBytesInternal();
   if (totalSize <= MAX_TOTAL_STORAGE_BYTES) return;
 
   // Trim oldest synced photos first when above cap
-  const syncedPhotos = await db.photos
-    .where('syncStatus')
-    .equals('synced')
-    .sortBy('createdAt');
+  const syncedPhotos = (await getTenantPhotos())
+    .filter((photo) => photo.syncStatus === 'synced')
+    .sort((a, b) => a.createdAt - b.createdAt);
 
   for (const photo of syncedPhotos) {
     await db.photos.delete(photo.id);
@@ -176,17 +194,11 @@ export async function savePhoto(
   serviceLogId: string | null = null
 ): Promise<string> {
   return withErrorHandling('save photo', async () => {
+    const tenantId = getTenantId();
+    const existing = await getTenantPhotos();
     const sameCategoryCount = serviceLogId
-      ? await db.photos
-          .where('serviceLogId')
-          .equals(serviceLogId)
-          .and((existing) => existing.category === photo.category)
-          .count()
-      : await db.photos
-          .where('customerId')
-          .equals(customerId)
-          .and((existing) => existing.serviceLogId === null && existing.category === photo.category)
-          .count();
+      ? existing.filter((item) => item.serviceLogId === serviceLogId && item.category === photo.category).length
+      : existing.filter((item) => item.customerId === customerId && item.serviceLogId === null && item.category === photo.category).length;
 
     if (sameCategoryCount >= MAX_PHOTOS_PER_CATEGORY_PER_SERVICE_LOG) {
       throw new PhotoStorageError(
@@ -197,6 +209,7 @@ export async function savePhoto(
 
     const record: OfflinePhotoRecord = {
       id: photo.id || generateUUID(),
+      tenantId,
       customerId,
       serviceLogId,
       category: photo.category,
@@ -224,7 +237,7 @@ export async function savePhoto(
  */
 export async function getPhotos(customerId: string): Promise<OfflinePhotoRecord[]> {
   return withErrorHandling('get photos', async () => {
-    return db.photos.where('customerId').equals(customerId).toArray();
+    return (await getTenantPhotos()).filter((photo) => photo.customerId === customerId);
   });
 }
 
@@ -236,7 +249,7 @@ export async function getPhotos(customerId: string): Promise<OfflinePhotoRecord[
  */
 export async function getPhotosByServiceLog(serviceLogId: string): Promise<OfflinePhotoRecord[]> {
   return withErrorHandling('get photos by service log', async () => {
-    return db.photos.where('serviceLogId').equals(serviceLogId).toArray();
+    return (await getTenantPhotos()).filter((photo) => photo.serviceLogId === serviceLogId);
   });
 }
 
@@ -248,7 +261,7 @@ export async function getPhotosByServiceLog(serviceLogId: string): Promise<Offli
  */
 export async function getPhotoById(photoId: string): Promise<OfflinePhotoRecord | undefined> {
   return withErrorHandling('get photo by ID', async () => {
-    return db.photos.get(photoId);
+    return getTenantPhoto(photoId);
   });
 }
 
@@ -259,6 +272,8 @@ export async function getPhotoById(photoId: string): Promise<OfflinePhotoRecord 
  */
 export async function deletePhoto(photoId: string): Promise<void> {
   return withErrorHandling('delete photo', async () => {
+    const photo = await getTenantPhoto(photoId);
+    if (!photo) throw new PhotoStorageError('Photo not found or access denied', 'delete photo');
     await db.photos.delete(photoId);
   });
 }
@@ -271,11 +286,10 @@ export async function deletePhoto(photoId: string): Promise<void> {
  */
 export async function deleteUnlinkedPhotos(customerId: string): Promise<void> {
   return withErrorHandling('delete unlinked photos', async () => {
-    await db.photos
-      .where('customerId')
-      .equals(customerId)
-      .and((photo) => photo.serviceLogId === null)
-      .delete();
+    const ids = (await getTenantPhotos())
+      .filter((photo) => photo.customerId === customerId && photo.serviceLogId === null)
+      .map((photo) => photo.id);
+    await db.photos.bulkDelete(ids);
   });
 }
 
@@ -286,7 +300,8 @@ export async function deleteUnlinkedPhotos(customerId: string): Promise<void> {
  */
 export async function deletePhotosByCustomer(customerId: string): Promise<void> {
   return withErrorHandling('delete photos by customer', async () => {
-    await db.photos.where('customerId').equals(customerId).delete();
+    const ids = (await getTenantPhotos()).filter((photo) => photo.customerId === customerId).map((photo) => photo.id);
+    await db.photos.bulkDelete(ids);
   });
 }
 
@@ -304,20 +319,15 @@ export async function linkPhotosToServiceLog(
     console.log('[linkPhotosToServiceLog] Starting - customerId:', customerId, 'serviceLogId:', serviceLogId);
     
     // Find all unlinked photos for this customer
-    const unlinkedPhotos = await db.photos
-      .where('customerId')
-      .equals(customerId)
-      .and((photo) => photo.serviceLogId === null)
-      .toArray();
+    const unlinkedPhotos = (await getTenantPhotos())
+      .filter((photo) => photo.customerId === customerId && photo.serviceLogId === null);
     
     console.log('[linkPhotosToServiceLog] Found', unlinkedPhotos.length, 'unlinked photos');
     
     // Update them with the service log ID
-    const updateCount = await db.photos
-      .where('customerId')
-      .equals(customerId)
-      .and((photo) => photo.serviceLogId === null)
-      .modify({ serviceLogId });
+    const updateCount = await db.photos.bulkUpdate(
+      unlinkedPhotos.map((photo) => ({ key: photo.id, changes: { serviceLogId } })),
+    );
     
     console.log('[linkPhotosToServiceLog] Updated', updateCount, 'photos');
   });
@@ -345,6 +355,8 @@ export async function updateSyncStatus(
     } else {
       update.syncError = undefined;
     }
+    const photo = await getTenantPhoto(photoId);
+    if (!photo) throw new PhotoStorageError('Photo not found or access denied', 'update sync status');
     await db.photos.update(photoId, update);
   });
 }
@@ -356,7 +368,7 @@ export async function updateSyncStatus(
  */
 export async function getPendingPhotos(): Promise<OfflinePhotoRecord[]> {
   return withErrorHandling('get pending photos', async () => {
-    return db.photos.where('syncStatus').equals('pending').toArray();
+    return (await getTenantPhotos()).filter((photo) => photo.syncStatus === 'pending');
   });
 }
 
@@ -372,16 +384,9 @@ export async function getPhotoCounts(
 ): Promise<{ before: number; after: number }> {
   return withErrorHandling('get photo counts', async () => {
     // Use compound index for efficient counting without loading data
-    const [beforeCount, afterCount] = await Promise.all([
-      db.photos
-        .where('[customerId+category]')
-        .equals([customerId, 'before'])
-        .count(),
-      db.photos
-        .where('[customerId+category]')
-        .equals([customerId, 'after'])
-        .count(),
-    ]);
+    const photos = (await getTenantPhotos()).filter((photo) => photo.customerId === customerId);
+    const beforeCount = photos.filter((photo) => photo.category === 'before').length;
+    const afterCount = photos.filter((photo) => photo.category === 'after').length;
 
     return {
       before: beforeCount,
@@ -398,7 +403,7 @@ export async function getPhotoCounts(
  */
 export async function getTotalPhotoCount(customerId: string): Promise<number> {
   return withErrorHandling('get total photo count', async () => {
-    return db.photos.where('customerId').equals(customerId).count();
+    return (await getTenantPhotos()).filter((photo) => photo.customerId === customerId).length;
   });
 }
 
@@ -430,7 +435,7 @@ export function recordToCapturedPhoto(record: OfflinePhotoRecord): CapturedPhoto
  */
 export async function clearAllPhotos(): Promise<void> {
   return withErrorHandling('clear all photos', async () => {
-    await db.photos.clear();
+    await db.photos.bulkDelete((await getTenantPhotos()).map((photo) => photo.id));
   });
 }
 
@@ -439,8 +444,8 @@ export async function clearAllPhotos(): Promise<void> {
  */
 export async function clearSyncedPhotos(): Promise<number> {
   return withErrorHandling('clear synced photos', async () => {
-    const syncedPhotos = await db.photos.where('syncStatus').equals('synced').toArray();
-    await db.photos.where('syncStatus').equals('synced').delete();
+    const syncedPhotos = (await getTenantPhotos()).filter((photo) => photo.syncStatus === 'synced');
+    await db.photos.bulkDelete(syncedPhotos.map((photo) => photo.id));
     return syncedPhotos.length;
   });
 }
@@ -474,7 +479,7 @@ export async function getPhotoStorageStats(): Promise<{
 }> {
   return withErrorHandling('get photo storage stats', async () => {
     const [count, totalSizeBytes] = await Promise.all([
-      db.photos.count(),
+      getTenantPhotos().then((photos) => photos.length),
       getTotalPhotoSizeBytesInternal(),
     ]);
     const usagePercent = Math.min(100, Math.round((totalSizeBytes / MAX_TOTAL_STORAGE_BYTES) * 100));

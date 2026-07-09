@@ -48,7 +48,8 @@ export default function ChemicalUsagePage() {
   const user = useCurrentUser();
 
   // Only pass created_by once we actually have a user, so we don't briefly
-  // query under DEFAULT_USER and then refetch under the real user's data (flicker).
+  // The tenant-scoped cache stays empty until the authenticated scope is ready,
+  // avoiding a cross-user placeholder query and refetch flicker.
   const customers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
   const usageRecords = useChemicalUsage("-created_date");
   const deleteChemicalUsage = useChemicalUsageDelete();

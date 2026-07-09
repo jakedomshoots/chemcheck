@@ -1,6 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { useCustomerCreate } from './dexieHooks';
+import { clearActiveTenantScope, setActiveTenantScope } from '@/lib/tenantScope';
 
 const mockCustomersToArray = vi.hoisted(() => vi.fn());
 const mockCustomersAdd = vi.hoisted(() => vi.fn());
@@ -15,7 +16,6 @@ vi.mock('@/db/chemcheck-db', () => ({
     },
   },
   getTimestamp: vi.fn(() => '2026-03-24T09:00:00.000Z'),
-  DEFAULT_USER: 'local',
   getTodayDate: vi.fn(() => '2026-03-24'),
 }));
 
@@ -43,14 +43,17 @@ describe('useCustomerCreate', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    setActiveTenantScope({ userEmail: 'owner@chemcheck.test', businessId: 'business_test' });
     mockCheckRateLimit.mockReturnValue({ allowed: true });
     mockValidateCustomer.mockImplementation((data) => ({ success: true, data }));
   });
 
+  afterEach(() => clearActiveTenantScope());
+
   it('assigns a default sort_order when omitted, based on the current service day count', async () => {
     mockCustomersToArray.mockResolvedValue([
-      { id: 1, created_by: 'local', service_day: 'Monday', sort_order: 0 },
-      { id: 2, created_by: 'local', service_day: 'Tuesday', sort_order: 0 },
+      { id: 1, tenant_id: 'business_test:owner@chemcheck.test', created_by: 'owner@chemcheck.test', service_day: 'Monday', sort_order: 0 },
+      { id: 2, tenant_id: 'business_test:owner@chemcheck.test', created_by: 'owner@chemcheck.test', service_day: 'Tuesday', sort_order: 0 },
       { id: 3, created_by: 'other', service_day: 'Monday', sort_order: 0 },
     ]);
     mockCustomersAdd.mockResolvedValue(15);
@@ -67,7 +70,8 @@ describe('useCustomerCreate', () => {
       expect.objectContaining({
         ...baseCustomer,
         sort_order: 1,
-        created_by: 'local',
+        tenant_id: 'business_test:owner@chemcheck.test',
+        created_by: 'owner@chemcheck.test',
         createdAt: '2026-03-24T09:00:00.000Z',
         updatedAt: '2026-03-24T09:00:00.000Z',
         sync_status: 'pending',
@@ -77,8 +81,8 @@ describe('useCustomerCreate', () => {
 
   it('assigns the next position for subsequent customers on the same service day', async () => {
     mockCustomersToArray.mockResolvedValue([
-      { id: 1, created_by: 'local', service_day: 'Monday', sort_order: 0 },
-      { id: 2, created_by: 'local', service_day: 'Monday', sort_order: 2 },
+      { id: 1, tenant_id: 'business_test:owner@chemcheck.test', created_by: 'owner@chemcheck.test', service_day: 'Monday', sort_order: 0 },
+      { id: 2, tenant_id: 'business_test:owner@chemcheck.test', created_by: 'owner@chemcheck.test', service_day: 'Monday', sort_order: 2 },
       { id: 3, created_by: 'other', service_day: 'Monday', sort_order: 5 },
       { id: 4, created_by: 'local', service_day: 'Tuesday', sort_order: 0 },
     ]);

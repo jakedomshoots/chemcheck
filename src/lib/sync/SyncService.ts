@@ -5,6 +5,7 @@ import { api } from '../../../convex/_generated/api';
 import { SyncQueue, SyncQueueItem } from './SyncQueue';
 import { ConflictResolver } from './ConflictResolver';
 import { monitoring } from '@/lib/monitoring';
+import { getActiveTenantScope } from '@/lib/tenantScope';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
@@ -437,7 +438,10 @@ export class SyncService {
       return [];
     }
 
-    const pending = await table.where('sync_status').equals('pending').toArray();
+    const scope = getActiveTenantScope();
+    if (!scope) return [];
+    const pending = (await table.where('sync_status').equals('pending').toArray())
+      .filter((record: any) => record?.tenant_id === scope.key);
 
     // Legacy records may have no sync_status set yet.
     // Avoid querying equals(undefined), which Dexie rejects with "Invalid key provided".
@@ -447,6 +451,7 @@ export class SyncService {
         const allRecords = await table.toCollection().toArray();
         legacyPending = allRecords.filter(
           (record: any) =>
+            record?.tenant_id === scope.key &&
             typeof record?.sync_status === 'undefined' && this.isPendingRecord(record)
         );
       }
@@ -523,7 +528,7 @@ export class SyncService {
           this.syncQueue.enqueue({
             table: 'customers',
             localId: customer.id!,
-            operation: customer.convex_id ? 'update' : 'create',
+            operation: customer.deleted_at ? 'delete' : customer.convex_id ? 'update' : 'create',
             data: customer,
           });
         }
@@ -532,7 +537,7 @@ export class SyncService {
           this.syncQueue.enqueue({
             table: 'serviceLogs',
             localId: serviceLog.id!,
-            operation: serviceLog.convex_id ? 'update' : 'create',
+            operation: serviceLog.deleted_at ? 'delete' : serviceLog.convex_id ? 'update' : 'create',
             data: serviceLog,
           });
         }
@@ -541,7 +546,7 @@ export class SyncService {
           this.syncQueue.enqueue({
             table: 'chemicalUsage',
             localId: chemicalUsage.id!,
-            operation: chemicalUsage.convex_id ? 'update' : 'create',
+            operation: chemicalUsage.deleted_at ? 'delete' : chemicalUsage.convex_id ? 'update' : 'create',
             data: chemicalUsage,
           });
         }
@@ -550,7 +555,7 @@ export class SyncService {
           this.syncQueue.enqueue({
             table: 'notes',
             localId: note.id!,
-            operation: note.convex_id ? 'update' : 'create',
+            operation: note.deleted_at ? 'delete' : note.convex_id ? 'update' : 'create',
             data: note,
           });
         }
@@ -559,7 +564,7 @@ export class SyncService {
           this.syncQueue.enqueue({
             table: 'saltCellLogs',
             localId: saltCellLog.id!,
-            operation: saltCellLog.convex_id ? 'update' : 'create',
+            operation: saltCellLog.deleted_at ? 'delete' : saltCellLog.convex_id ? 'update' : 'create',
             data: saltCellLog,
           });
         }
@@ -666,9 +671,13 @@ export class SyncService {
       }
 
       if (!record) {
-        // Record was deleted, remove from queue
-        this.syncQueue.markSynced(item.table, item.localId);
-        return true;
+        // A legacy physical delete removed the only delete payload. Do not
+        // report success; keep a recoverable error for the operator.
+        throw new Error(`Deleted record payload is unavailable: ${item.table}[${item.localId}]`);
+      }
+
+      if (item.operation === 'delete' || record.deleted_at) {
+        return await this.syncDeletedRecord(item.table, record);
       }
 
       // Use existing sync logic
@@ -692,6 +701,7 @@ export class SyncService {
 
   private async syncSingleRecord(table: string, record: any, conflictRetryCount = 0): Promise<boolean> {
     if (!this.convexClient) return false;
+    if (record?.deleted_at) return this.syncDeletedRecord(table, record);
 
     let retryCount = 0;
     const maxRetries = this.MAX_RETRIES;
@@ -1166,6 +1176,36 @@ export class SyncService {
     }
 
     return false;
+  }
+
+  private async syncDeletedRecord(table: string, record: any): Promise<boolean> {
+    if (!this.convexClient) return false;
+
+    if (record?.convex_id) {
+      const result: any = await this.convexClient.mutation(api.sync.deleteRecord, {
+        table,
+        convex_id: record.convex_id,
+      });
+      if (!result?.success) throw new Error(result?.error || 'Remote delete failed');
+    }
+
+    // Keep the local tombstone (not visible in UI) until the retention sweep.
+    // This is the acknowledgement that allows the queue entry to be cleared.
+    const update = {
+      sync_status: 'synced' as const,
+      sync_error: undefined,
+      sync_operation: undefined,
+      remote_updated_at: Date.now(),
+    };
+    switch (table) {
+      case 'customers': await db.customers.update(record.id, update); break;
+      case 'serviceLogs': await db.serviceLogs.update(record.id, update); break;
+      case 'chemicalUsage': await db.chemicalUsage.update(record.id, update); break;
+      case 'notes': await db.notes.update(record.id, update); break;
+      case 'saltCellLogs': await db.saltCellLogs.update(record.id, update); break;
+      default: throw new Error(`Unknown table: ${table}`);
+    }
+    return true;
   }
 
   private async markRecordAuthError(table: string, record: any, error: unknown): Promise<void> {

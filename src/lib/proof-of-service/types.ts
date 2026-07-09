@@ -53,6 +53,7 @@ export const DEFAULT_COMPRESSION_OPTIONS: ImageCompressionOptions = {
 
 export interface OfflinePhotoRecord {
   id: string;                    // UUID
+  tenantId: string;
   customerId: string;
   serviceLogId: string | null;   // null until service log created
   category: 'before' | 'after';

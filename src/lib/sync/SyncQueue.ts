@@ -1,7 +1,11 @@
 /**
  * SyncQueue manages the queue of records pending synchronization
- * and keeps the queue persisted safely in localStorage.
+ * and persists only tenant-scoped metadata in Dexie. Record payloads never
+ * enter localStorage; sync re-reads the authoritative local row by ID.
  */
+
+import { db, type SyncOutboxItem } from '@/db/chemcheck-db';
+import { getActiveTenantScope, subscribeTenantScope } from '@/lib/tenantScope';
 
 export interface SyncQueueItem {
   table: 'customers' | 'serviceLogs' | 'chemicalUsage' | 'notes' | 'saltCellLogs';
@@ -14,21 +18,30 @@ export interface SyncQueueItem {
   priority: number; // Lower number = higher priority
 }
 
-const STORAGE_KEY = 'chemcheck_sync_queue';
 const MAX_RETRIES = 3;
-const MAX_QUEUE_SIZE = 500; // Prevent unbounded growth
+const MAX_QUEUE_SIZE = 500;
 const QUEUE_WARNING_THRESHOLD = Math.floor(MAX_QUEUE_SIZE * 0.8);
 const BATCH_SIZE = 20; // Process this many items per sync cycle
-const PERSIST_ERROR_THROTTLE_MS = 15_000;
 
 export class SyncQueue {
   private queue: SyncQueueItem[] = [];
   private highWatermarkWarned = false;
-  private lastPersistErrorAt = 0;
   private isPersisting = false;
+  private activeTenantKey: string | null = null;
+  private scopeUnsubscribe: (() => void) | null = null;
 
   constructor() {
-    this.loadFromStorage();
+    // Remove legacy plaintext queue data immediately. It may contain names,
+    // gate codes, notes, and other customer content from previous releases.
+    try {
+      localStorage.removeItem('chemcheck_sync_queue');
+    } catch {
+      // Local storage may be unavailable in private browsing/test environments.
+    }
+    this.scopeUnsubscribe = subscribeTenantScope(() => {
+      void this.reloadForActiveTenant();
+    });
+    void this.reloadForActiveTenant();
   }
 
   /**
@@ -61,12 +74,11 @@ export class SyncQueue {
 
     this.queue = this.sanitizeQueue(nextQueue);
 
-    // Enforce queue size limit - remove lowest priority items if exceeded
+    // Never discard field work. Surface an explicit warning instead of removing
+    // low-priority entries once the operating threshold is exceeded.
     if (this.queue.length > MAX_QUEUE_SIZE) {
-      const overflow = this.queue.length - MAX_QUEUE_SIZE;
-      this.queue.splice(-overflow, overflow);
       console.warn(
-        `Sync queue overflow: removed ${overflow} low-priority items to maintain limit of ${MAX_QUEUE_SIZE}`
+        `Sync queue exceeds ${MAX_QUEUE_SIZE} records. Keep the device online until it drains.`
       );
     }
 
@@ -117,6 +129,7 @@ export class SyncQueue {
     const now = Date.now();
 
     const retryable = this.queue.filter((item) => {
+      if (item.retryCount >= MAX_RETRIES) return false;
       if (item.retryCount === 0) return true; // Never attempted
       if (!item.lastAttempt) return true; // No last attempt recorded
 
@@ -198,15 +211,9 @@ export class SyncQueue {
     item.lastAttempt = Date.now();
     item.error = error;
 
-    if (item.retryCount >= MAX_RETRIES) {
-      // Remove from queue after max retries
-      this.queue.splice(itemIndex, 1);
-      console.log(`Removed ${table}[${localId}] from queue after ${MAX_RETRIES} failed attempts`);
-    }
-    else {
-      // Keep in queue for retry with exponential backoff
-      console.log(`Marked ${table}[${localId}] as failed (attempt ${item.retryCount}/${MAX_RETRIES})`);
-    }
+    // Keep exhausted items for user-visible recovery. Deleting an outbox entry
+    // after retries silently loses field work.
+    console.log(`Marked ${table}[${localId}] as failed (attempt ${item.retryCount}/${MAX_RETRIES})`);
 
     this.queue = this.sanitizeQueue(this.queue);
     this.updateHighWatermarkState();
@@ -243,6 +250,16 @@ export class SyncQueue {
     return this.queue.filter(item => item.table === table);
   }
 
+  retryBlocked(table: SyncQueueItem['table'], localId: number): boolean {
+    const item = this.findItem(table, localId);
+    if (!item || item.retryCount < MAX_RETRIES) return false;
+    item.retryCount = 0;
+    item.lastAttempt = undefined;
+    item.error = undefined;
+    this.persistQueueState('retryBlocked');
+    return true;
+  }
+
   // ============================================
   // Private Methods
   // ============================================
@@ -267,33 +284,6 @@ export class SyncQueue {
 
     return (tablePriority[table as keyof typeof tablePriority] || 3) * 10 +
       (operationPriority[operation as keyof typeof operationPriority] || 3);
-  }
-
-  private loadFromStorage(): void {
-    if (!this.isStorageAvailable()) return;
-
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (!stored) {
-        return;
-      }
-
-      const parsed = JSON.parse(stored);
-      this.queue = this.sanitizeQueue(parsed, false);
-      this.updateHighWatermarkState();
-      console.log(`Loaded ${this.queue.length} items from sync queue storage`);
-    } catch (error) {
-      console.error('Failed to load sync queue from storage:', error);
-      this.queue = [];
-    }
-  }
-
-  private isStorageAvailable(): boolean {
-    try {
-      return typeof window !== 'undefined' && !!window.localStorage;
-    } catch {
-      return false;
-    }
   }
 
   private sanitizeQueue(items: unknown, log = true): SyncQueueItem[] {
@@ -328,13 +318,6 @@ export class SyncQueue {
       console.warn(`Sync queue stored with duplicate/invalid records. Loaded ${sorted.length}/${valid.length} unique items.`);
     }
 
-    if (sorted.length > MAX_QUEUE_SIZE) {
-      sorted.splice(MAX_QUEUE_SIZE);
-      if (log) {
-        console.warn(`Sync queue contains more than ${MAX_QUEUE_SIZE} items. Truncated oldest entries.`);
-      }
-    }
-
     return sorted;
   }
 
@@ -361,35 +344,69 @@ export class SyncQueue {
     }
   }
 
-  private saveToStorage(): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.queue));
-  }
-
-  private shouldThrottlePersistError(now: number): boolean {
-    if (this.lastPersistErrorAt && (now - this.lastPersistErrorAt) < PERSIST_ERROR_THROTTLE_MS) {
-      return true;
-    }
-
-    this.lastPersistErrorAt = now;
-    return false;
-  }
-
   private persistQueueState(action: string): void {
-    if (!this.isStorageAvailable()) return;
-
     if (this.isPersisting) return;
     this.isPersisting = true;
+    const scope = getActiveTenantScope();
+    const tenantKey = scope?.key;
+    const snapshot = this.queue.map((item) => ({ ...item }));
+
+    void (async () => {
+      try {
+        if (!tenantKey) return;
+        const now = Date.now();
+        const current = await db.syncOutbox.where('tenant_id').equals(tenantKey).toArray();
+        await db.transaction('rw', db.syncOutbox, async () => {
+          await db.syncOutbox.bulkDelete(current.map((entry) => entry.id!).filter(Boolean));
+          const entries: SyncOutboxItem[] = snapshot.map((item) => ({
+            tenant_id: tenantKey,
+            item_key: `${item.table}:${item.localId}`,
+            table: item.table,
+            local_id: item.localId,
+            operation: item.operation,
+            retry_count: item.retryCount,
+            last_attempt: item.lastAttempt,
+            error: item.error,
+            priority: item.priority,
+            created_at: now,
+            updated_at: now,
+          }));
+          if (entries.length) await db.syncOutbox.bulkAdd(entries);
+        });
+      } catch (error) {
+        console.error(`Sync outbox persist failed during ${action}:`, error);
+      } finally {
+        this.isPersisting = false;
+      }
+    })();
+  }
+
+  private async reloadForActiveTenant(): Promise<void> {
+    const scope = getActiveTenantScope();
+    this.activeTenantKey = scope?.key ?? null;
+    if (!scope) {
+      this.queue = [];
+      this.highWatermarkWarned = false;
+      return;
+    }
 
     try {
-      this.saveToStorage();
+      const entries = await db.syncOutbox.where('tenant_id').equals(scope.key).toArray();
+      if (this.activeTenantKey !== scope.key) return;
+      this.queue = this.sanitizeQueue(entries.map((entry) => ({
+        table: entry.table,
+        localId: entry.local_id,
+        operation: entry.operation,
+        data: {},
+        retryCount: entry.retry_count,
+        lastAttempt: entry.last_attempt,
+        error: entry.error,
+        priority: entry.priority,
+      })), false);
+      this.updateHighWatermarkState();
     } catch (error) {
-      const now = Date.now();
-      if (!this.shouldThrottlePersistError(now)) {
-        console.error(`Sync queue persist failed during ${action}:`, error);
-      }
-      // Keep queue in memory and continue operation
-    } finally {
-      this.isPersisting = false;
+      console.error('Failed to load tenant sync outbox:', error);
+      this.queue = [];
     }
   }
 

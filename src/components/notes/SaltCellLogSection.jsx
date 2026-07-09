@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { db, getTodayDate } from "@/db/chemcheck-db";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useTenantScope } from "@/api/dexieHooks";
 import {
   Zap,
   Plus,
@@ -47,6 +48,7 @@ const conditionConfig = {
 };
 
 export function SaltCellLogSection({ customers }) {
+  const tenant = useTenantScope();
   const [showForm, setShowForm] = useState(false);
   const [deleteLog, setDeleteLog] = useState(null);
   const [expandedCustomers, setExpandedCustomers] = useState(new Set());
@@ -60,8 +62,10 @@ export function SaltCellLogSection({ customers }) {
 
   // Get salt cell logs from Dexie
   const saltCellLogs = useLiveQuery(
-    () => db.saltCellLogs.orderBy('cleaning_date').reverse().toArray(),
-    []
+    async () => !tenant ? [] : (await db.saltCellLogs.where('tenant_id').equals(tenant.key).toArray())
+      .filter((log) => !log.deleted_at)
+      .sort((a, b) => String(b.cleaning_date).localeCompare(String(a.cleaning_date))),
+    [tenant?.key]
   );
 
   // Filter to only salt pool customers
@@ -87,11 +91,16 @@ export function SaltCellLogSection({ customers }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!tenant) {
+      toast.error("Your secure workspace is still loading. Try again in a moment.");
+      return;
+    }
 
     // Store customer_id as string for consistency
     const customerId = formData.customer_id;
 
     await db.saltCellLogs.add({
+      tenant_id: tenant.key,
       customer_id: customerId,
       cleaning_date: formData.cleaning_date,
       condition: formData.condition,
@@ -116,7 +125,12 @@ export function SaltCellLogSection({ customers }) {
 
   const handleDelete = async () => {
     if (deleteLog) {
-      await db.saltCellLogs.delete(deleteLog.id);
+      await db.saltCellLogs.update(deleteLog.id, {
+        deleted_at: Date.now(),
+        sync_status: "pending",
+        sync_operation: "delete",
+        local_updated_at: Date.now(),
+      });
       setDeleteLog(null);
       toast.success("Log deleted");
     }

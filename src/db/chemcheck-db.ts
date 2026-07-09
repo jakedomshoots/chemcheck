@@ -1,12 +1,16 @@
 import Dexie, { Table } from 'dexie';
+import { getActiveTenantScope, requireActiveTenantScope } from '@/lib/tenantScope';
 
 export interface SyncableRecord {
+    tenant_id: string;
     convex_id?: string;
     sync_status: 'synced' | 'pending' | 'error';
     sync_error?: string;
     local_updated_at: number;
     remote_updated_at?: number;
     conflict_backup?: string;
+    deleted_at?: number;
+    sync_operation?: 'create' | 'update' | 'delete';
 }
 
 export interface Customer extends SyncableRecord {
@@ -96,12 +100,28 @@ export interface SaltCellLog extends SyncableRecord {
     updatedAt?: string;
 }
 
+export interface SyncOutboxItem {
+    id?: number;
+    tenant_id: string;
+    item_key: string;
+    table: 'customers' | 'serviceLogs' | 'chemicalUsage' | 'notes' | 'saltCellLogs';
+    local_id: number;
+    operation: 'create' | 'update' | 'delete';
+    retry_count: number;
+    last_attempt?: number;
+    error?: string;
+    priority: number;
+    created_at: number;
+    updated_at: number;
+}
+
 export class ChemCheckDB extends Dexie {
     customers!: Table<Customer>;
     serviceLogs!: Table<ServiceLog>;
     chemicalUsage!: Table<ChemicalUsage>;
     notes!: Table<Note>;
     saltCellLogs!: Table<SaltCellLog>;
+    syncOutbox!: Table<SyncOutboxItem>;
 
     private syncService: any = null;
 
@@ -155,6 +175,18 @@ export class ChemCheckDB extends Dexie {
             saltCellLogs: '++id, customer_id, cleaning_date, sync_status, convex_id, convex_customer_id',
         });
 
+        // Legacy rows are intentionally left without a tenant_id and are not
+        // visible to signed-in users. An explicit migration can claim only
+        // verified legacy data; automatic claim would reintroduce data leaks.
+        this.version(4).stores({
+            customers: '++id, tenant_id, [tenant_id+created_by], [tenant_id+service_day], created_by, service_day, sort_order, sync_status, convex_id, deleted_at',
+            serviceLogs: '++id, tenant_id, [tenant_id+customer_id], [tenant_id+service_date], customer_id, service_date, [customer_id+service_date], sync_status, convex_id, convex_customer_id, deleted_at',
+            chemicalUsage: '++id, tenant_id, [tenant_id+customer_id], customer_id, created_date, sync_status, convex_id, convex_customer_id, deleted_at',
+            notes: '++id, tenant_id, [tenant_id+customer_id], customer_id, completed, created_date, category, sync_status, convex_id, convex_customer_id, deleted_at',
+            saltCellLogs: '++id, tenant_id, [tenant_id+customer_id], customer_id, cleaning_date, sync_status, convex_id, convex_customer_id, deleted_at',
+            syncOutbox: '++id, tenant_id, item_key, [tenant_id+item_key], [tenant_id+priority], table, local_id, updated_at',
+        });
+
         this.setupSyncHooks();
     }
 
@@ -164,6 +196,7 @@ export class ChemCheckDB extends Dexie {
 
     private setupSyncHooks(): void {
         this.customers.hook('creating', (_primKey, obj, trans) => {
+            this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -175,8 +208,10 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.customers.hook('updating', (modifications, primKey, obj, trans) => {
+            this.assertTenant(obj);
             // Only trigger sync if non-sync fields are modified
-            if (this.hasNonSyncFieldChanges(modifications)) {
+            const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
+            if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
@@ -188,13 +223,14 @@ export class ChemCheckDB extends Dexie {
 
                 trans.on('complete', () => {
                     if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('customers', primKey, 'update', updatedRecord);
+                        this.syncService.enqueueRecord('customers', primKey, isTombstone ? 'delete' : 'update', updatedRecord);
                     }
                 });
             }
         });
 
         this.customers.hook('deleting', (primKey, obj, trans) => {
+            this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('customers', primKey, 'delete', obj);
@@ -203,6 +239,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.serviceLogs.hook('creating', (_primKey, obj, trans) => {
+            this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -214,7 +251,9 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.serviceLogs.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.hasNonSyncFieldChanges(modifications)) {
+            this.assertTenant(obj);
+            const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
+            if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
@@ -226,13 +265,14 @@ export class ChemCheckDB extends Dexie {
 
                 trans.on('complete', () => {
                     if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('serviceLogs', primKey, 'update', updatedRecord);
+                        this.syncService.enqueueRecord('serviceLogs', primKey, isTombstone ? 'delete' : 'update', updatedRecord);
                     }
                 });
             }
         });
 
         this.serviceLogs.hook('deleting', (primKey, obj, trans) => {
+            this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('serviceLogs', primKey, 'delete', obj);
@@ -241,6 +281,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.chemicalUsage.hook('creating', (_primKey, obj, trans) => {
+            this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -252,7 +293,9 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.chemicalUsage.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.hasNonSyncFieldChanges(modifications)) {
+            this.assertTenant(obj);
+            const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
+            if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
@@ -264,13 +307,14 @@ export class ChemCheckDB extends Dexie {
 
                 trans.on('complete', () => {
                     if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('chemicalUsage', primKey, 'update', updatedRecord);
+                        this.syncService.enqueueRecord('chemicalUsage', primKey, isTombstone ? 'delete' : 'update', updatedRecord);
                     }
                 });
             }
         });
 
         this.chemicalUsage.hook('deleting', (primKey, obj, trans) => {
+            this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('chemicalUsage', primKey, 'delete', obj);
@@ -279,6 +323,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.notes.hook('creating', (_primKey, obj, trans) => {
+            this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -290,7 +335,9 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.notes.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.hasNonSyncFieldChanges(modifications)) {
+            this.assertTenant(obj);
+            const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
+            if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
@@ -302,13 +349,14 @@ export class ChemCheckDB extends Dexie {
 
                 trans.on('complete', () => {
                     if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('notes', primKey, 'update', updatedRecord);
+                        this.syncService.enqueueRecord('notes', primKey, isTombstone ? 'delete' : 'update', updatedRecord);
                     }
                 });
             }
         });
 
         this.notes.hook('deleting', (primKey, obj, trans) => {
+            this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('notes', primKey, 'delete', obj);
@@ -317,6 +365,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.saltCellLogs.hook('creating', (_primKey, obj, trans) => {
+            this.attachTenant(obj);
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -328,7 +377,9 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.saltCellLogs.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.hasNonSyncFieldChanges(modifications)) {
+            this.assertTenant(obj);
+            const isTombstone = Boolean(modifications.deleted_at && !obj.deleted_at);
+            if (isTombstone || this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
@@ -340,19 +391,35 @@ export class ChemCheckDB extends Dexie {
 
                 trans.on('complete', () => {
                     if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('saltCellLogs', primKey, 'update', updatedRecord);
+                        this.syncService.enqueueRecord('saltCellLogs', primKey, isTombstone ? 'delete' : 'update', updatedRecord);
                     }
                 });
             }
         });
 
         this.saltCellLogs.hook('deleting', (primKey, obj, trans) => {
+            this.assertTenant(obj);
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('saltCellLogs', primKey, 'delete', obj);
                 }
             });
         });
+    }
+
+    private attachTenant(record: { tenant_id?: string }): void {
+        const scope = requireActiveTenantScope();
+        if (record.tenant_id && record.tenant_id !== scope.key) {
+            throw new Error('Cross-tenant local write blocked');
+        }
+        record.tenant_id = scope.key;
+    }
+
+    private assertTenant(record: { tenant_id?: string } | undefined): void {
+        const scope = getActiveTenantScope();
+        if (!scope || !record?.tenant_id || record.tenant_id !== scope.key) {
+            throw new Error('Cross-tenant local access blocked');
+        }
     }
 
     /**
@@ -366,7 +433,10 @@ export class ChemCheckDB extends Dexie {
             'local_updated_at',
             'remote_updated_at',
             'conflict_backup',
-            'convex_customer_id'
+            'convex_customer_id',
+            'tenant_id',
+            'deleted_at',
+            'sync_operation',
         ];
 
         return Object.keys(modifications).some(key => !syncFields.includes(key));
@@ -382,53 +452,4 @@ export function getTodayDate(): string {
 
 export function getTimestamp(): string {
     return new Date().toISOString();
-}
-
-/**
- * @deprecated SECURITY WARNING: Using DEFAULT_USER bypasses multi-tenant isolation!
- * 
- * This constant should NEVER be used in production with real user data.
- * It exists only for:
- * 1. Local development/demo purposes
- * 2. Backwards compatibility with legacy local-only data
- * 
- * In production, ALWAYS use the authenticated user's email from:
- * - Clerk: useUser().user?.emailAddresses[0].emailAddress
- * - Or your auth provider's equivalent
- * 
- * Multi-tenant isolation is critical for:
- * - Customer data privacy
- * - GDPR/CCPA compliance  
- * - Preventing data leaks between users
- */
-export const DEFAULT_USER = 'local';
-
-/**
- * Get the current user context for database operations.
- * 
- * @param authEmail - Email from authenticated user (e.g., from Clerk)
- * @returns The user identifier to use for database queries
- * 
- * @example
- * // In a component with Clerk authentication:
- * const { user } = useUser();
- * const userEmail = getUserContext(user?.emailAddresses[0]?.emailAddress);
- * 
- * // Use userEmail for database queries:
- * db.customers.where('created_by').equals(userEmail)
- */
-export function getUserContext(authEmail?: string | null): string {
-    if (authEmail) {
-        return authEmail;
-    }
-
-    // SECURITY: Log warning in development when falling back to DEFAULT_USER
-    if (process.env.NODE_ENV === 'development') {
-        console.warn(
-            '[SECURITY] getUserContext falling back to DEFAULT_USER. ' +
-            'Pass authenticated user email for proper tenant isolation.'
-        );
-    }
-
-    return 'local';
 }

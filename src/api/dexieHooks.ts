@@ -1,7 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useCallback, useMemo } from 'react';
-import { db, getTodayDate, getTimestamp, DEFAULT_USER } from '@/db/chemcheck-db';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { db, getTodayDate, getTimestamp } from '@/db/chemcheck-db';
 import type { Customer, ServiceLog, ChemicalUsage, Note, SyncableRecord } from '@/db/chemcheck-db';
+import { getActiveTenantScope, subscribeTenantScope } from '@/lib/tenantScope';
 import {
     validateCustomer,
     validateServiceLog,
@@ -190,12 +191,26 @@ function addIdAliasToArray<T extends { id?: number }>(records: T[]): (T & { _id:
     return records.map(addIdAlias);
 }
 
+export function useTenantScope() {
+    return useSyncExternalStore(
+        subscribeTenantScope,
+        getActiveTenantScope,
+        () => null,
+    );
+}
+
+function isVisibleToTenant<T extends { tenant_id?: string; deleted_at?: number }>(record: T | undefined, tenantId: string): record is T {
+    return Boolean(record && record.tenant_id === tenantId && !record.deleted_at);
+}
+
 export function useCustomers() {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
-        () => measureDatabaseOperation('customers_list', () =>
-            db.customers.where('created_by').equals(DEFAULT_USER).toArray()
+        () => !tenant ? [] : measureDatabaseOperation('customers_list', async () =>
+            (await db.customers.where('[tenant_id+created_by]').equals([tenant.key, tenant.userEmail]).toArray())
+                .filter(customer => !customer.deleted_at)
         ),
-        [],
+        [tenant?.key, tenant?.userEmail],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
@@ -205,18 +220,20 @@ export function usePaginatedCustomers(options?: {
     page?: number;
     pageSize?: number;
 }) {
+    const tenant = useTenantScope();
     const page = options?.page ?? 0;
     const pageSize = options?.pageSize ?? 50;
 
     const data = useLiveQuery(
-        () => measureDatabaseOperation('customers_paginated', () =>
+        () => !tenant ? [] : measureDatabaseOperation('customers_paginated', () =>
             db.customers
-                .where('created_by').equals(DEFAULT_USER)
+                .where('[tenant_id+created_by]').equals([tenant.key, tenant.userEmail])
+                .filter(customer => !customer.deleted_at)
                 .offset(page * pageSize)
                 .limit(pageSize)
                 .toArray()
         ),
-        [page, pageSize],
+        [tenant?.key, tenant?.userEmail, page, pageSize],
         []
     );
 
@@ -224,43 +241,56 @@ export function usePaginatedCustomers(options?: {
 }
 
 export function useCustomerCount() {
+    const tenant = useTenantScope();
     return useLiveQuery(
-        () => measureDatabaseOperation('customers_count', () =>
-            db.customers.where('created_by').equals(DEFAULT_USER).count()
+        () => !tenant ? 0 : measureDatabaseOperation('customers_count', async () =>
+            (await db.customers.where('[tenant_id+created_by]').equals([tenant.key, tenant.userEmail]).toArray())
+                .filter(customer => !customer.deleted_at).length
         ),
-        [],
+        [tenant?.key, tenant?.userEmail],
         0
     );
 }
 
 export function useCustomersFilter(filters?: { created_by?: string; service_day?: string }) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
         async () => {
-            let query = db.customers.where('created_by').equals(filters?.created_by || DEFAULT_USER);
+            if (!tenant) return [];
+            const requestedEmail = filters?.created_by?.trim().toLowerCase();
+            if (requestedEmail && requestedEmail !== tenant.userEmail) return [];
+            let query = db.customers.where('[tenant_id+created_by]').equals([tenant.key, tenant.userEmail]);
             const customers = await query.toArray();
 
             if (filters?.service_day) {
                 return customers.filter(c => c.service_day === filters.service_day);
             }
-            return customers;
+            return customers.filter(customer => !customer.deleted_at);
         },
-        [filters?.created_by, filters?.service_day],
+        [tenant?.key, tenant?.userEmail, filters?.created_by, filters?.service_day],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useCustomer(id: number | undefined) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
-        () => (id ? db.customers.get(id) : undefined),
-        [id],
+        async () => {
+            if (!id || !tenant) return undefined;
+            const customer = await db.customers.get(id);
+            return isVisibleToTenant(customer, tenant.key) ? customer : undefined;
+        },
+        [tenant?.key, id],
         undefined
     );
     return useMemo(() => data ? addIdAlias(data) : undefined, [data]);
 }
 
 export function useCustomerCreate() {
+    const tenant = useTenantScope();
     return useCallback(async (data: Omit<Customer, 'id' | 'created_by' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
+        if (!tenant) throw new Error('No authenticated tenant is active');
         const rateCheck = checkRateLimit('customers');
         if (!rateCheck.allowed) {
             throw new Error(rateCheck.reason);
@@ -274,7 +304,9 @@ export function useCustomerCreate() {
         const existingCustomers = await db.customers.toArray();
         const sameDayCount = existingCustomers.filter(
             (customer) =>
-                customer.created_by === DEFAULT_USER &&
+                customer.tenant_id === tenant.key &&
+                customer.created_by === tenant.userEmail &&
+                !customer.deleted_at &&
                 customer.service_day === validation.data.service_day
         ).length;
 
@@ -285,14 +317,15 @@ export function useCustomerCreate() {
         const id = await db.customers.add({
             ...validation.data,
             sort_order: sortOrder,
-            created_by: DEFAULT_USER,
+            tenant_id: tenant.key,
+            created_by: tenant.userEmail,
             createdAt: now,
             updatedAt: now,
             sync_status: 'pending',
             local_updated_at: nowMs,
         });
         return id;
-    }, []);
+    }, [tenant]);
 }
 
 export function useCustomerUpdate() {
@@ -340,51 +373,69 @@ export function useCustomerUpdate() {
 }
 
 export function useCustomerDelete() {
+    const tenant = useTenantScope();
     return useCallback(async (idOrObj: number | { id?: number; _id?: number }) => {
         const id = typeof idOrObj === 'number' ? idOrObj : (idOrObj.id ?? idOrObj._id);
         if (!id) throw new Error('Customer id required');
-        await db.customers.delete(id);
-    }, []);
+        if (!tenant) throw new Error('No authenticated tenant is active');
+        const customer = await db.customers.get(id);
+        if (!isVisibleToTenant(customer, tenant.key)) throw new Error('Customer not found or access denied');
+        await db.customers.update(id, {
+            deleted_at: Date.now(),
+            sync_status: 'pending',
+            sync_operation: 'delete',
+            local_updated_at: Date.now(),
+        });
+    }, [tenant]);
 }
 
 export function useServiceLogs(order = '-service_date', limit?: number) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
         async () => {
-            let collection = db.serviceLogs.orderBy('service_date');
-            if (order === '-service_date') {
-                collection = collection.reverse();
-            }
-            return limit ? collection.limit(limit).toArray() : collection.toArray();
+            if (!tenant) return [];
+            let collection = db.serviceLogs
+                .where('tenant_id').equals(tenant.key)
+                .filter(log => !log.deleted_at)
+                .sortBy('service_date');
+            if (order === '-service_date') return limit ? collection.reverse().slice(0, limit) : collection.reverse();
+            return limit ? collection.slice(0, limit) : collection;
         },
-        [order, limit],
+        [tenant?.key, order, limit],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useServiceLogsFilter(filters?: { customer_id?: number; service_date?: string }) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
         async () => {
+            if (!tenant) return [];
             if (filters?.customer_id) {
-                return db.serviceLogs.where('customer_id').equals(filters.customer_id).toArray();
+                return (await db.serviceLogs.where('[tenant_id+customer_id]').equals([tenant.key, filters.customer_id]).toArray())
+                    .filter(log => !log.deleted_at);
             }
             if (filters?.service_date) {
-                return db.serviceLogs.where('service_date').equals(filters.service_date).toArray();
+                return (await db.serviceLogs.where('[tenant_id+service_date]').equals([tenant.key, filters.service_date]).toArray())
+                    .filter(log => !log.deleted_at);
             }
-            return db.serviceLogs.toArray();
+            return (await db.serviceLogs.where('tenant_id').equals(tenant.key).toArray()).filter(log => !log.deleted_at);
         },
-        [filters?.customer_id, filters?.service_date],
+        [tenant?.key, filters?.customer_id, filters?.service_date],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useServiceLogsByCustomer(customerId: number | undefined) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
-        () => customerId
-            ? db.serviceLogs.where('customer_id').equals(customerId).reverse().toArray()
+        async () => tenant && customerId
+            ? (await db.serviceLogs.where('[tenant_id+customer_id]').equals([tenant.key, customerId]).toArray())
+                .filter(log => !log.deleted_at).reverse()
             : [],
-        [customerId],
+        [tenant?.key, customerId],
         []
     );
 
@@ -392,7 +443,9 @@ export function useServiceLogsByCustomer(customerId: number | undefined) {
 }
 
 export function useServiceLogCreate() {
+    const tenant = useTenantScope();
     return useCallback(async (data: Omit<ServiceLog, 'id' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
+        if (!tenant) throw new Error('No authenticated tenant is active');
         const rateCheck = checkRateLimit('serviceLogs');
         if (!rateCheck.allowed) {
             throw new Error(rateCheck.reason);
@@ -407,13 +460,14 @@ export function useServiceLogCreate() {
         const nowMs = Date.now();
         const id = await db.serviceLogs.add({
             ...validation.data,
+            tenant_id: tenant.key,
             createdAt: now,
             updatedAt: now,
             sync_status: 'pending',
             local_updated_at: nowMs,
         });
         return id;
-    }, []);
+    }, [tenant]);
 }
 
 export function useServiceLogUpdate() {
@@ -433,44 +487,56 @@ export function useServiceLogUpdate() {
 }
 
 export function useServiceLogDelete() {
+    const tenant = useTenantScope();
     return useCallback(async (idOrObj: number | { id?: number; _id?: number }) => {
         const id = typeof idOrObj === 'number' ? idOrObj : (idOrObj.id ?? idOrObj._id);
         if (!id) throw new Error('ServiceLog id required');
-        await db.serviceLogs.delete(id);
-    }, []);
+        if (!tenant) throw new Error('No authenticated tenant is active');
+        const record = await db.serviceLogs.get(id);
+        if (!isVisibleToTenant(record, tenant.key)) throw new Error('Service log not found or access denied');
+        await db.serviceLogs.update(id, {
+            deleted_at: Date.now(), sync_status: 'pending', sync_operation: 'delete', local_updated_at: Date.now(),
+        });
+    }, [tenant]);
 }
 
 export function useChemicalUsage(order = '-created_date', limit = 100) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
         async () => {
-            let collection = db.chemicalUsage.orderBy('created_date');
-            if (order === '-created_date') {
-                collection = collection.reverse();
-            }
-            return collection.limit(limit).toArray();
+            if (!tenant) return [];
+            const records = (await db.chemicalUsage.where('tenant_id').equals(tenant.key).toArray())
+                .filter(record => !record.deleted_at)
+                .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')));
+            return (order === '-created_date' ? records.reverse() : records).slice(0, limit);
         },
-        [order, limit],
+        [tenant?.key, order, limit],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useChemicalUsageFilter(filters?: { customer_id?: number }) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
         async () => {
+            if (!tenant) return [];
             if (filters?.customer_id) {
-                return db.chemicalUsage.where('customer_id').equals(filters.customer_id).toArray();
+                return (await db.chemicalUsage.where('[tenant_id+customer_id]').equals([tenant.key, filters.customer_id]).toArray())
+                    .filter(record => !record.deleted_at);
             }
-            return db.chemicalUsage.toArray();
+            return (await db.chemicalUsage.where('tenant_id').equals(tenant.key).toArray()).filter(record => !record.deleted_at);
         },
-        [filters?.customer_id],
+        [tenant?.key, filters?.customer_id],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useChemicalUsageCreate() {
+    const tenant = useTenantScope();
     return useCallback(async (data: Omit<ChemicalUsage, 'id' | 'created_date' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
+        if (!tenant) throw new Error('No authenticated tenant is active');
         const rateCheck = checkRateLimit('chemicalUsage');
         if (!rateCheck.allowed) {
             throw new Error(rateCheck.reason);
@@ -488,13 +554,14 @@ export function useChemicalUsageCreate() {
         const nowMs = Date.now();
         const id = await db.chemicalUsage.add({
             ...validation.data,
+            tenant_id: tenant.key,
             createdAt: now,
             updatedAt: now,
             sync_status: 'pending',
             local_updated_at: nowMs,
         });
         return id;
-    }, []);
+    }, [tenant]);
 }
 
 export function useChemicalUsageUpdate() {
@@ -514,54 +581,67 @@ export function useChemicalUsageUpdate() {
 }
 
 export function useChemicalUsageDelete() {
+    const tenant = useTenantScope();
     return useCallback(async (idOrObj: number | { id?: number; _id?: number }) => {
         const id = typeof idOrObj === 'number' ? idOrObj : (idOrObj.id ?? idOrObj._id);
         if (!id) throw new Error('ChemicalUsage id required');
-        await db.chemicalUsage.delete(id);
-    }, []);
+        if (!tenant) throw new Error('No authenticated tenant is active');
+        const record = await db.chemicalUsage.get(id);
+        if (!isVisibleToTenant(record, tenant.key)) throw new Error('Chemical usage not found or access denied');
+        await db.chemicalUsage.update(id, {
+            deleted_at: Date.now(), sync_status: 'pending', sync_operation: 'delete', local_updated_at: Date.now(),
+        });
+    }, [tenant]);
 }
 
 export function useNotes(order = '-created_date') {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
         async () => {
-            let collection = db.notes.orderBy('created_date');
-            if (order === '-created_date') {
-                collection = collection.reverse();
-            }
-            return collection.toArray();
+            if (!tenant) return [];
+            const records = (await db.notes.where('tenant_id').equals(tenant.key).toArray())
+                .filter(note => !note.deleted_at)
+                .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')));
+            return order === '-created_date' ? records.reverse() : records;
         },
-        [order],
+        [tenant?.key, order],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useNotesFilter(filters?: { customer_id?: number; completed?: boolean; category?: string }) {
+    const tenant = useTenantScope();
     const data = useLiveQuery(
         async () => {
+            if (!tenant) return [];
             let notes: Note[] = [];
 
             if (filters?.customer_id !== undefined) {
-                notes = await db.notes.where('customer_id').equals(filters.customer_id).toArray();
+                notes = await db.notes.where('[tenant_id+customer_id]').equals([tenant.key, filters.customer_id]).toArray();
             } else if (filters?.completed !== undefined) {
-                notes = (await db.notes.toArray()).filter(n => n.completed === filters.completed);
+                notes = (await db.notes.where('tenant_id').equals(tenant.key).toArray()).filter(n => n.completed === filters.completed);
             } else {
-                notes = await db.notes.toArray();
+                notes = await db.notes.where('tenant_id').equals(tenant.key).toArray();
             }
+
+            notes = notes.filter(note => !note.deleted_at);
 
             if (filters?.category) {
                 return notes.filter(n => n.category === filters.category);
             }
             return notes;
         },
-        [filters?.customer_id, filters?.completed, filters?.category],
+        [tenant?.key, filters?.customer_id, filters?.completed, filters?.category],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useNoteCreate() {
+    const tenant = useTenantScope();
     return useCallback(async (data: Omit<Note, 'id' | 'completed' | 'created_date' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
+        if (!tenant) throw new Error('No authenticated tenant is active');
         const rateCheck = checkRateLimit('notes');
         if (!rateCheck.allowed) {
             throw new Error(rateCheck.reason);
@@ -580,13 +660,14 @@ export function useNoteCreate() {
         const nowMs = Date.now();
         const id = await db.notes.add({
             ...validation.data,
+            tenant_id: tenant.key,
             createdAt: now,
             updatedAt: now,
             sync_status: 'pending',
             local_updated_at: nowMs,
         });
         return id;
-    }, []);
+    }, [tenant]);
 }
 
 export function useNoteUpdate() {
@@ -606,49 +687,24 @@ export function useNoteUpdate() {
 }
 
 export function useNoteDelete() {
+    const tenant = useTenantScope();
     return useCallback(async (idOrObj: number | { id?: number; _id?: number }) => {
         const id = typeof idOrObj === 'number' ? idOrObj : (idOrObj.id ?? idOrObj._id);
         if (!id) throw new Error('Note id required');
-        await db.notes.delete(id);
-    }, []);
+        if (!tenant) throw new Error('No authenticated tenant is active');
+        const record = await db.notes.get(id);
+        if (!isVisibleToTenant(record, tenant.key)) throw new Error('Note not found or access denied');
+        await db.notes.update(id, {
+            deleted_at: Date.now(), sync_status: 'pending', sync_operation: 'delete', local_updated_at: Date.now(),
+        });
+    }, [tenant]);
 }
 
-/**
- * SECURITY NOTE: This hook provides offline-first user context.
- * In production with proper authentication:
- * - Use Clerk/Auth0 for actual user identity
- * - DEFAULT_USER should NEVER be used for production data access
- * - User email from auth provider should be used for multi-tenant isolation
- * 
- * The DEFAULT_USER constant is DEPRECATED and only kept for backwards
- * compatibility with existing local-only data.
- */
+/** Clerk-authenticated tenant identity for legacy callers that need display data. */
 export function useCurrentUser() {
-    return useMemo(() => {
-        try {
-            let userData = sessionStorage.getItem('chemcheck_current_user');
-            if (!userData) {
-                userData = localStorage.getItem('chemcheck_current_user');
-            }
-
-            if (userData) {
-                const user = JSON.parse(userData);
-                if (process.env.NODE_ENV === 'development') {
-                    console.debug(
-                        '[SECURITY] Using DEFAULT_USER for data queries. ' +
-                        'In production, use authenticated user email for proper tenant isolation.'
-                    );
-                }
-                return {
-                    email: DEFAULT_USER,
-                    name: user.name || 'Local User'
-                };
-            }
-        } catch (e) {
-        }
-        return {
-            email: DEFAULT_USER,
-            name: 'Local User'
-        };
-    }, []);
+    const tenant = useTenantScope();
+    return useMemo(() => ({
+        email: tenant?.userEmail || '',
+        name: tenant?.userEmail || 'Unauthenticated user',
+    }), [tenant?.userEmail]);
 }

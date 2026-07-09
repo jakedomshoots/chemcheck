@@ -54,13 +54,13 @@ export const run = mutation({
     let skipped = 0;
     for (const rawRecord of page.page as any[]) {
       const record: any = rawRecord;
-      if (record.business_id) {
+      if ((record as any).business_id) {
         skipped += 1;
         continue;
       }
 
       const customerId = args.table === "customers" ? record._id : record.customer_id;
-      const customer = customerId ? await ctx.db.get(customerId) : null;
+      const customer: any = customerId ? await ctx.db.get(customerId) : null;
       const belongsToBusiness = args.table === "customers"
         ? record.created_by === business.ownerEmail
         : customer && String(customer.business_id || "") === String(business.businessId);

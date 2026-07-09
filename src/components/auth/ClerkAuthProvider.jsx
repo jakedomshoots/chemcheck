@@ -4,6 +4,7 @@ import { logLogin, logLogout } from '@/lib/auditLog';
 import { setUserContext, clearUserContext } from '@/lib/sentry';
 import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
 import { normalizeConvexUrl } from '@/lib/convexUrl';
+import { clearActiveTenantScope, setActiveTenantScope } from '@/lib/tenantScope';
 import {
   getAuthBypassReason,
   shouldUseIosSimulatorAuthBypass,
@@ -27,6 +28,18 @@ export function useAuthContext() {
     throw new Error('useAuthContext must be used within ClerkAuthProvider');
   }
   return context;
+}
+
+function AuthBypassTenantScope({ children }) {
+  useEffect(() => {
+    setActiveTenantScope({
+      userEmail: 'simulator-bypass@chemcheck.local',
+      businessId: 'simulator-bypass',
+    });
+    return () => clearActiveTenantScope();
+  }, []);
+
+  return children;
 }
 
 let userManagerModulePromise = null;
@@ -87,6 +100,11 @@ function AuthContextProvider({ children }) {
     }
 
     setLocalUser(existingUser);
+    if (existingUser?.businessId) {
+      setActiveTenantScope({ userEmail: email, businessId: existingUser.businessId });
+    } else {
+      clearActiveTenantScope();
+    }
     return existingUser;
   };
 
@@ -141,6 +159,10 @@ function AuthContextProvider({ children }) {
 
           // Only log successful login and set context if we have a valid user
           if (existingUser) {
+            if (!existingUser.businessId) {
+              throw new Error('Authenticated user does not have an active business');
+            }
+            setActiveTenantScope({ userEmail: email, businessId: existingUser.businessId });
             logLogin(true);
 
             // Set Sentry user context
@@ -149,12 +171,15 @@ function AuthContextProvider({ children }) {
               email: email,
               username: name
             });
+          } else {
+            clearActiveTenantScope();
           }
 
           setAuthError(null);
-        } else {
-          // User signed out - clear local state
-          setLocalUser(null);
+          } else {
+            clearActiveTenantScope();
+            // User signed out - clear local state
+            setLocalUser(null);
           clearUserContext();
         }
       } catch (error) {
@@ -172,6 +197,7 @@ function AuthContextProvider({ children }) {
     try {
       logLogout();
       const userManager = await getUserManager();
+      clearActiveTenantScope();
       userManager.logoutUser();
       setLocalUser(null);
       clearUserContext();
@@ -228,7 +254,7 @@ export function ClerkAuthProvider({ children }) {
 
     return (
       <AuthContext.Provider value={bypassValue}>
-        {children}
+        <AuthBypassTenantScope>{children}</AuthBypassTenantScope>
       </AuthContext.Provider>
     );
   }

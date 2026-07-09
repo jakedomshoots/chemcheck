@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach } from 'vitest';
 import { SyncQueue } from './SyncQueue';
+import { clearActiveTenantScope, setActiveTenantScope } from '@/lib/tenantScope';
 
 describe('SyncQueue', () => {
   beforeEach(() => {
     localStorage.clear();
+    setActiveTenantScope({ userEmail: 'owner@chemcheck.test', businessId: 'business_test' });
   });
+
+  afterEach(() => clearActiveTenantScope());
 
   it('deduplicates items by table and localId with latest operation winning', () => {
     const queue = new SyncQueue();
@@ -40,7 +44,7 @@ describe('SyncQueue', () => {
     expect(queue.getPendingCount()).toBe(0);
   });
 
-  it('drops item after max failed attempts', () => {
+  it('retains an exhausted item for explicit recovery instead of silently dropping field work', () => {
     const queue = new SyncQueue();
 
     queue.enqueue({ table: 'chemicalUsage', localId: 7, operation: 'create', data: { id: 7 } });
@@ -48,10 +52,13 @@ describe('SyncQueue', () => {
     queue.markFailed('chemicalUsage', 7, 'temporary issue');
     queue.markFailed('chemicalUsage', 7, 'temporary issue');
 
-    expect(queue.getPendingCount()).toBe(0);
+    expect(queue.getPendingCount()).toBe(1);
+    expect(queue.getRetryableItems()).toHaveLength(0);
+    expect(queue.retryBlocked('chemicalUsage', 7)).toBe(true);
+    expect(queue.getRetryableItems()).toHaveLength(1);
   });
 
-  it('loads valid queue payload from localStorage on startup', () => {
+  it('purges legacy plaintext queue payloads instead of loading customer data from localStorage', () => {
     localStorage.setItem('chemcheck_sync_queue', JSON.stringify([
       {
         table: 'notes',
@@ -66,15 +73,15 @@ describe('SyncQueue', () => {
 
     const queue = new SyncQueue();
 
-    expect(queue.getPendingCount()).toBe(1);
-    expect(queue.getPending()[0].table).toBe('notes');
-    expect(queue.getPending()[0].localId).toBe(3);
+    expect(queue.getPendingCount()).toBe(0);
+    expect(localStorage.getItem('chemcheck_sync_queue')).toBeNull();
   });
 
-  it('recovers gracefully from invalid storage by starting empty', () => {
+  it('does not write queue payloads back to localStorage', () => {
     localStorage.setItem('chemcheck_sync_queue', '{ invalid-json');
     const queue = new SyncQueue();
+    queue.enqueue({ table: 'notes', localId: 3, operation: 'update', data: { title: 'private note' } });
 
-    expect(queue.getPendingCount()).toBe(0);
+    expect(localStorage.getItem('chemcheck_sync_queue')).toBeNull();
   });
 });

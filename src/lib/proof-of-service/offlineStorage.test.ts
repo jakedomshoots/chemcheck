@@ -21,6 +21,7 @@ import {
   recordToCapturedPhoto,
 } from './offlinePhotoStorage';
 import type { CapturedPhoto, GeoLocation } from './types';
+import { clearActiveTenantScope, setActiveTenantScope } from '@/lib/tenantScope';
 
 // ============================================================================
 // Generators for Property-Based Testing
@@ -104,6 +105,7 @@ const capturedPhotoArb: fc.Arbitrary<CapturedPhoto> = fc.record({
 // ============================================================================
 
 beforeEach(async () => {
+  setActiveTenantScope({ userEmail: 'owner@chemcheck.test', businessId: 'business_test' });
   // Clear the database before each test
   await clearAllPhotos();
 });
@@ -111,6 +113,7 @@ beforeEach(async () => {
 afterEach(async () => {
   // Clean up after each test
   await clearAllPhotos();
+  clearActiveTenantScope();
 });
 
 // ============================================================================
@@ -127,6 +130,21 @@ describe('Offline Photo Storage', () => {
    * **Validates: Requirements 1.5, 6.1**
    */
   describe('Property 3: Photo Persistence Round-Trip', () => {
+    it('does not expose a previous signed-in tenant photo cache', async () => {
+      const photo: CapturedPhoto = {
+        id: crypto.randomUUID(),
+        dataUrl: 'data:image/jpeg;base64,dGVzdA==',
+        timestamp: new Date().toISOString(),
+        category: 'before',
+        location: null,
+      };
+      await savePhoto(photo, 'customer_shared_id');
+
+      setActiveTenantScope({ userEmail: 'other@chemcheck.test', businessId: 'business_other' });
+      expect(await getPhotos('customer_shared_id')).toEqual([]);
+      expect(await getPhotoById(photo.id)).toBeUndefined();
+    });
+
     it('saving and retrieving a photo preserves all metadata', async () => {
       await fc.assert(
         fc.asyncProperty(
