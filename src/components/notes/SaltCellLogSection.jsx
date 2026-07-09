@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
+import { differenceInCalendarDays, format, parseISO } from "date-fns";
 
 const conditionConfig = {
   good: {
@@ -47,6 +47,31 @@ const conditionConfig = {
   },
 };
 
+export function getSaltCellDueStatus(nextCleaningDue, today = getTodayDate()) {
+  if (!nextCleaningDue || !/^\d{4}-\d{2}-\d{2}$/.test(nextCleaningDue)) return null;
+
+  const dueDate = parseISO(nextCleaningDue);
+  const todayDate = parseISO(today);
+  if (Number.isNaN(dueDate.getTime()) || Number.isNaN(todayDate.getTime())) return null;
+
+  const daysUntilDue = differenceInCalendarDays(dueDate, todayDate);
+  if (daysUntilDue < 0) {
+    return { label: `${Math.abs(daysUntilDue)}d overdue`, className: "bg-red-100 text-red-700" };
+  }
+  if (daysUntilDue === 0) {
+    return { label: "Due today", className: "bg-red-100 text-red-700" };
+  }
+  if (daysUntilDue <= 14) {
+    return { label: `Due in ${daysUntilDue}d`, className: "bg-amber-100 text-amber-700" };
+  }
+  return { label: `Due ${format(dueDate, "MMM d")}`, className: "bg-cyan-100 text-cyan-700" };
+}
+
+function formatMaintenanceDate(value) {
+  const date = parseISO(value);
+  return Number.isNaN(date.getTime()) ? value : format(date, "MMM dd, yyyy");
+}
+
 export function SaltCellLogSection({ customers }) {
   const tenant = useTenantScope();
   const [showForm, setShowForm] = useState(false);
@@ -58,6 +83,7 @@ export function SaltCellLogSection({ customers }) {
     cleaning_date: getTodayDate(),
     condition: "good",
     notes: "",
+    next_cleaning_due: "",
   });
 
   // Get salt cell logs from Dexie
@@ -105,6 +131,7 @@ export function SaltCellLogSection({ customers }) {
       cleaning_date: formData.cleaning_date,
       condition: formData.condition,
       notes: formData.notes || undefined,
+      next_cleaning_due: formData.next_cleaning_due || undefined,
       sync_status: 'pending',
       local_updated_at: Date.now(),
       createdAt: new Date().toISOString(),
@@ -119,6 +146,7 @@ export function SaltCellLogSection({ customers }) {
       cleaning_date: getTodayDate(),
       condition: "good",
       notes: "",
+      next_cleaning_due: "",
     });
     toast.success("Salt cell cleaning logged");
   };
@@ -271,6 +299,18 @@ export function SaltCellLogSection({ customers }) {
               />
             </div>
 
+            <div>
+              <Label htmlFor="salt-next-due">Next Cleaning Due (optional)</Label>
+              <Input
+                id="salt-next-due"
+                type="date"
+                value={formData.next_cleaning_due}
+                onChange={(e) => setFormData({ ...formData, next_cleaning_due: e.target.value })}
+                className="mt-1 border-2 focus:border-cyan-500 rounded-xl"
+              />
+              <p className="mt-1 text-xs text-slate-600">Set this only when the service plan or observed scale calls for a follow-up.</p>
+            </div>
+
             <Button
               type="submit"
               disabled={!formData.customer_id}
@@ -294,6 +334,8 @@ export function SaltCellLogSection({ customers }) {
             const customerLogs = logsByCustomer[customerId] || [];
             const isExpanded = expandedCustomers.has(customerId);
             const logCount = customerLogs.length;
+            const latestDueDate = customerLogs.find((log) => log.next_cleaning_due)?.next_cleaning_due;
+            const dueStatus = getSaltCellDueStatus(latestDueDate);
 
             return (
               <Card key={customerId} className="overflow-hidden border shadow-sm">
@@ -314,6 +356,11 @@ export function SaltCellLogSection({ customers }) {
                           ? "No cleanings logged"
                           : `${logCount} cleaning${logCount !== 1 ? 's' : ''} logged`}
                       </p>
+                      {dueStatus && (
+                        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${dueStatus.className}`}>
+                          {dueStatus.label}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -352,6 +399,11 @@ export function SaltCellLogSection({ customers }) {
                                   </div>
                                   {log.notes && (
                                     <p className="text-xs text-slate-600 mt-1">{log.notes}</p>
+                                  )}
+                                  {log.next_cleaning_due && (
+                                    <p className="text-xs font-medium text-slate-600 mt-1">
+                                      Next cleaning: {formatMaintenanceDate(log.next_cleaning_due)}
+                                    </p>
                                   )}
                                 </div>
                               </div>
