@@ -84,10 +84,10 @@ export const serviceLogSchema = z.object({
       message: 'Notes must be less than 2000 characters'
     }),
 
-  ph: z.enum(['good', 'low', 'high']),
-  chlorine: z.enum(['good', 'low', 'high']),
-  alkalinity: z.enum(['good', 'low', 'high']),
-  stabilizer: z.enum(['good', 'low', 'high']),
+  ph: z.enum(['good', 'low', 'high', 'critical']),
+  chlorine: z.enum(['good', 'low', 'high', 'critical']),
+  alkalinity: z.enum(['good', 'low', 'high', 'critical']),
+  stabilizer: z.enum(['good', 'low', 'high', 'critical']),
 
   ph_value: z.number()
     .min(0, 'pH value must be positive')

@@ -60,6 +60,7 @@ export const list = query({
 export const filter = query({
     args: {
         customer_id: v.optional(v.id("customers")),
+        pool_id: v.optional(v.id("pools")),
         completed: v.optional(v.boolean()),
         category: v.optional(v.string()),
         limit: v.optional(v.number()),
@@ -75,6 +76,11 @@ export const filter = query({
             if (!customer || customer.created_by !== identity.email) {
                 throw new Error("Customer not found or access denied");
             }
+        }
+
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || (args.customer_id && pool.customer_id !== args.customer_id)) throw new Error("Pool not found or does not belong to customer");
         }
 
         let noteQuery = ctx.db
@@ -133,6 +139,7 @@ export const create = mutation({
         content: v.string(),
         category: v.string(),
         customer_id: v.optional(v.id("customers")),
+        pool_id: v.optional(v.id("pools")),
         priority: v.string(),
     },
     handler: async (ctx, args) => {
@@ -152,6 +159,11 @@ export const create = mutation({
             if (!customer || customer.created_by !== identity.email) {
                 throw new Error("Customer not found or access denied");
             }
+        }
+
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || (args.customer_id && pool.customer_id !== args.customer_id)) throw new Error("Pool not found or does not belong to customer");
         }
 
         const now = new Date();
@@ -176,6 +188,7 @@ export const update = mutation({
         content: v.optional(v.string()),
         category: v.optional(v.string()),
         customer_id: v.optional(v.id("customers")),
+        pool_id: v.optional(v.id("pools")),
         priority: v.optional(v.string()),
         completed: v.optional(v.boolean()),
     },

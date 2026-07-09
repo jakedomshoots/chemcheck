@@ -19,4 +19,11 @@ crons.daily(
   {}
 );
 
+crons.daily(
+  "cleanup-sync-receipts",
+  { hourUTC: 3, minuteUTC: 15 },
+  internal.sync.cleanupSyncOperations,
+  {}
+);
+
 export default crons;

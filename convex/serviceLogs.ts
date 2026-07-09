@@ -141,6 +141,7 @@ export const filter = query({
 export const getByCustomer = query({
     args: {
         customer_id: v.id("customers"),
+        pool_id: v.optional(v.id("pools")),
         limit: v.optional(v.number()),
         cursor: v.optional(v.string()),
     },
@@ -154,12 +155,22 @@ export const getByCustomer = query({
             throw new Error("Customer not found or access denied");
         }
 
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || pool.customer_id !== args.customer_id || !pool.active) {
+                throw new Error("Pool not found or does not belong to customer");
+            }
+        }
+
         const numItems = clampLimit(args.limit);
-        return await ctx.db
+        const result = await ctx.db
             .query("serviceLogs")
             .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id))
             .order("desc")
             .paginate({ cursor: args.cursor ?? null, numItems });
+        return args.pool_id
+            ? { ...result, page: result.page.filter((log: any) => log.pool_id === args.pool_id) }
+            : result;
     },
 });
 
@@ -188,6 +199,7 @@ export const getByDate = query({
 export const create = mutation({
     args: {
         customer_id: v.id("customers"),
+        pool_id: v.optional(v.id("pools")),
         service_date: v.string(),
         status: v.string(),
         service_type: v.optional(v.string()),
@@ -222,6 +234,13 @@ export const create = mutation({
             throw new Error("Customer not found or access denied");
         }
 
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || pool.customer_id !== args.customer_id || !pool.active) {
+                throw new Error("Pool not found or does not belong to customer");
+            }
+        }
+
         // Calculate duration with validation (throws if dates are invalid)
         const duration_ms = calculateDuration(args.start_time, args.end_time);
 
@@ -230,6 +249,7 @@ export const create = mutation({
 
         const logData = {
             customer_id: args.customer_id,
+            pool_id: args.pool_id,
             created_by: customer.created_by,
             service_date: args.service_date,
             status: args.status,
@@ -262,6 +282,7 @@ export const create = mutation({
 export const update = mutation({
     args: {
         id: v.id("serviceLogs"),
+        pool_id: v.optional(v.id("pools")),
         customer_id: v.optional(v.id("customers")),
         service_date: v.optional(v.string()),
         status: v.optional(v.string()),
@@ -295,6 +316,13 @@ export const update = mutation({
         const customer = await ctx.db.get(log.customer_id);
         if (!customer || customer.created_by !== identity.email) {
             throw new Error("Access denied");
+        }
+
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || pool.customer_id !== log.customer_id || !pool.active) {
+                throw new Error("Pool not found or does not belong to customer");
+            }
         }
 
         const { id, ...updates } = args;

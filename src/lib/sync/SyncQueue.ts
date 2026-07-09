@@ -4,7 +4,7 @@
  */
 
 export interface SyncQueueItem {
-  table: 'customers' | 'serviceLogs' | 'chemicalUsage' | 'notes' | 'saltCellLogs';
+  table: 'customers' | 'pools' | 'equipment' | 'serviceLogs' | 'chemicalUsage' | 'notes' | 'saltCellLogs';
   localId: number;
   operation: 'create' | 'update' | 'delete';
   data: Record<string, any>;
@@ -253,10 +253,12 @@ export class SyncQueue {
 
     const tablePriority = {
       customers: 1,
-      serviceLogs: 2,
-      chemicalUsage: 2,
-      notes: 2,
-      saltCellLogs: 2,
+      pools: 2,
+      equipment: 3,
+      serviceLogs: 4,
+      chemicalUsage: 4,
+      notes: 4,
+      saltCellLogs: 4,
     };
 
     const operationPriority = {

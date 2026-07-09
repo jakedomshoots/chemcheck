@@ -6,7 +6,7 @@ import { syncService } from '@/lib/sync/SyncService';
  * Hook to initialize the sync service with Convex client
  * Should be called once when the app starts and user is authenticated
  */
-export function useSyncInitialization(isSignedIn: boolean, isOfflineMode: boolean = false) {
+export function useSyncInitialization(isSignedIn: boolean, isOfflineMode: boolean = false, userScope?: string) {
   const convex = useConvex();
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export function useSyncInitialization(isSignedIn: boolean, isOfflineMode: boolea
     if (isSignedIn && convex) {
       try {
         // Initialize sync service with Convex client
-        syncService.initialize(convex);
+        syncService.initialize(convex, userScope);
         syncService.startAutoSync();
         
         console.log('Sync service initialized and auto-sync started');
@@ -47,5 +47,5 @@ export function useSyncInitialization(isSignedIn: boolean, isOfflineMode: boolea
         console.error('Error stopping sync service:', error);
       }
     }
-  }, [isSignedIn, convex, isOfflineMode]);
+  }, [isSignedIn, convex, isOfflineMode, userScope]);
 }

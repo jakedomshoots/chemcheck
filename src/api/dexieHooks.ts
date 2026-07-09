@@ -291,6 +291,25 @@ export function useCustomerCreate() {
             sync_status: 'pending',
             local_updated_at: nowMs,
         });
+
+        // Canonical normalized model: every new customer starts with one
+        // primary pool while legacy customer.pool_* fields remain available
+        // during the migration window.
+        if (db.pools?.add) await db.pools.add({
+            customer_id: id,
+            name: 'Primary Pool',
+            address: validation.data.address,
+            service_day: validation.data.service_day,
+            pool_gallons: validation.data.pool_gallons,
+            pool_type: validation.data.pool_type,
+            surface_type: validation.data.surface_type,
+            sort_order: 0,
+            active: true,
+            createdAt: now,
+            updatedAt: now,
+            sync_status: 'pending',
+            local_updated_at: nowMs,
+        });
         return id;
     }, []);
 }

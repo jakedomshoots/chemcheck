@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
 import { validateEmail, validatePhone } from "./validation";
+import { fetchProvider, requireStripeConfig } from "./providerConfig";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const FALLBACK_APP_BASE_URL = "https://app.chemcheck.app";
@@ -97,7 +98,7 @@ async function createStripeCheckoutSession(args: {
     form.set("custom_text[submit][message]", args.customMessage);
   }
 
-  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
+  const response = await fetchProvider(`${STRIPE_API_BASE}/checkout/sessions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${args.stripeSecretKey}`,
@@ -125,7 +126,7 @@ async function getStripeCheckoutSession(args: {
   stripeSecretKey: string;
   sessionId: string;
 }): Promise<any> {
-  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(args.sessionId)}`, {
+  const response = await fetchProvider(`${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(args.sessionId)}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${args.stripeSecretKey}`,
@@ -202,10 +203,7 @@ export const sendInvoiceWithStripe = action({
     let stripeCheckoutSessionId: string | undefined;
 
     if (amountCents > 0) {
-      const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
-      if (!stripeSecretKey) {
-        throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY to send invoice payment links.");
-      }
+      const { secretKey: stripeSecretKey } = requireStripeConfig();
 
       const session = await createStripeCheckoutSession({
         stripeSecretKey,
@@ -250,10 +248,7 @@ export const syncCheckoutSessionStatus = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
-    if (!stripeSecretKey) {
-      throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY to sync checkout sessions.");
-    }
+    const { secretKey: stripeSecretKey } = requireStripeConfig();
 
     const session = await getStripeCheckoutSession({
       stripeSecretKey,
@@ -386,10 +381,7 @@ export const createDepositPaymentLink = action({
       };
     }
 
-    const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
-    if (!stripeSecretKey) {
-      throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY to send deposit payment links.");
-    }
+    const { secretKey: stripeSecretKey } = requireStripeConfig();
 
     const amountCents = toUsdCents(quote.deposit_required);
     if (amountCents <= 0) {

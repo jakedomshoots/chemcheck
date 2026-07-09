@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
+import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
 
 const VALID_STATUSES = ["queued", "sent", "delivered", "failed"] as const;
 
@@ -42,20 +43,13 @@ function buildEmailSubject(item: {
 
 async function sendSmsViaTwilio(recipient: string, message: string): Promise<DeliveryResult> {
   try {
-    const twilioAccountSid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
-    const twilioAuthToken = (process.env.TWILIO_AUTH_TOKEN || "").trim();
-    const twilioFromNumber = (process.env.TWILIO_FROM_NUMBER || "").trim();
+    const {
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    } = requireTwilioConfig();
 
-    if (!twilioAccountSid || !twilioAuthToken || !twilioFromNumber) {
-      return {
-        success: false,
-        status: "failed",
-        provider: "twilio",
-        error: "SMS service is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER.",
-      };
-    }
-
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`, {
+    const response = await fetchProvider(`https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -106,17 +100,7 @@ async function sendEmailViaMailersend(args: {
   fromName: string;
 }): Promise<DeliveryResult> {
   try {
-    const apiKey = (process.env.MAILERSEND_API_KEY || "").trim();
-    const fromEmail = (process.env.FROM_EMAIL || "").trim();
-
-    if (!apiKey || !fromEmail) {
-      return {
-        success: false,
-        status: "failed",
-        provider: "mailersend",
-        error: "Email service is not configured. Set MAILERSEND_API_KEY and FROM_EMAIL.",
-      };
-    }
+    const { apiKey, fromEmail } = requireMailersendConfig();
 
     const textBody = args.message;
     const htmlBody = `
@@ -126,7 +110,7 @@ async function sendEmailViaMailersend(args: {
       </div>
     `;
 
-    const response = await fetch("https://api.mailersend.com/v1/email", {
+    const response = await fetchProvider("https://api.mailersend.com/v1/email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -13,6 +13,26 @@ export interface SyncResult {
   error?: string;
   syncedCount: number;
   failedCount: number;
+  pulledCount?: number;
+  conflictCount?: number;
+}
+
+interface PullState {
+  since: number;
+  cursor?: string | null;
+}
+
+interface RemotePullPage {
+  customers?: any[];
+  serviceLogs?: any[];
+  chemicalUsage?: any[];
+  notes?: any[];
+  saltCellLogs?: any[];
+  pools?: any[];
+  equipment?: any[];
+  cursor?: string | null;
+  hasMore?: boolean;
+  watermark?: number;
 }
 
 export interface RecordSyncStatus {
@@ -42,6 +62,11 @@ export class SyncService {
   private readonly MAX_RETRIES = 3;
   private readonly MAX_CONFLICT_RETRIES = 2;
   private readonly AUTO_SYNC_INTERVAL_MS = 30_000;
+  private readonly PULL_PAGE_SIZE = 100;
+  private readonly PULL_STATE_KEY = 'chemcheck_sync_pull_state_v1';
+  private pullScope = 'anonymous';
+  private lastPullCount = 0;
+  private lastConflictCount = 0;
 
   constructor() {
     this.syncQueue = new SyncQueue();
@@ -54,8 +79,9 @@ export class SyncService {
   /**
    * Initialize the sync service with Convex client (idempotent)
    */
-  initialize(convexClient: ConvexReactClient): void {
-    if (this.isInitialized && this.convexClient === convexClient) {
+  initialize(convexClient: ConvexReactClient, userScope?: string): void {
+    const nextScope = String(userScope || 'anonymous').trim().toLowerCase() || 'anonymous';
+    if (this.isInitialized && this.convexClient === convexClient && this.pullScope === nextScope) {
       console.log('SyncService already initialized with same client');
       return;
     }
@@ -66,6 +92,7 @@ export class SyncService {
     }
 
     this.convexClient = convexClient;
+    this.pullScope = nextScope;
     this.isInitialized = true;
     this.setStatus('idle');
     this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -182,6 +209,229 @@ export class SyncService {
     return this.syncPendingRecords('manual');
   }
 
+  /**
+   * Pull all remote changes newer than the persisted watermark. Pulls are
+   * cursor based and resumable: if the app is killed halfway through a large
+   * account, the opaque cursor is retained and resumed on the next cycle.
+   */
+  async pullRemoteChanges(): Promise<{ pulledCount: number; conflictCount: number; hasMore: boolean }> {
+    const client: any = this.convexClient as any;
+    const pullRef = (api as any)?.sync?.pull;
+    if (!client || typeof client.query !== 'function' || !pullRef) {
+      return { pulledCount: 0, conflictCount: 0, hasMore: false };
+    }
+
+    const persisted = this.readPullState();
+    let cursor = persisted.cursor || undefined;
+    const since = persisted.since || 0;
+    let pulledCount = 0;
+    let conflictCount = 0;
+    let watermark = persisted.since || 0;
+
+    try {
+      do {
+        if (!this.isOnline) throw new Error('Cannot pull while offline');
+        const page: RemotePullPage = await client.query(pullRef, {
+          cursor,
+          since: cursor ? undefined : since,
+          limit: this.PULL_PAGE_SIZE,
+        });
+        const counts = await this.applyRemotePullPage(page);
+        pulledCount += counts.pulledCount;
+        conflictCount += counts.conflictCount;
+        watermark = Math.max(watermark, Number(page.watermark) || 0);
+        cursor = page.hasMore && page.cursor ? page.cursor : undefined;
+
+        if (cursor) {
+          this.writePullState({ since: since || watermark, cursor });
+        }
+      } while (cursor);
+
+      // Advance the watermark only after every table cursor has been applied.
+      if (watermark > 0) this.writePullState({ since: watermark, cursor: null });
+      monitoring.recordMetric('sync_pull_complete', pulledCount, { conflictCount, watermark });
+      this.lastPullCount = pulledCount;
+      this.lastConflictCount = conflictCount;
+      return { pulledCount, conflictCount, hasMore: false };
+    } catch (error) {
+      monitoring.recordMetric('sync_pull_failed', 1, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        pulledCount,
+        conflictCount,
+      });
+      // Keep the cursor so a later cycle can continue from the last committed
+      // page instead of replaying the entire account.
+      if (cursor) this.writePullState({ since: since || watermark, cursor });
+      throw error;
+    }
+  }
+
+  private readPullState(): PullState {
+    if (typeof localStorage === 'undefined') return { since: 0, cursor: null };
+    try {
+      const scopedKey = `${this.PULL_STATE_KEY}:${this.pullScope}`;
+      const raw = localStorage.getItem(scopedKey) || (
+        this.pullScope === 'anonymous' ? localStorage.getItem(this.PULL_STATE_KEY) : null
+      );
+      if (!raw) return { since: 0, cursor: null };
+      const state = JSON.parse(raw);
+      return {
+        since: Number.isFinite(Number(state?.since)) ? Number(state.since) : 0,
+        cursor: typeof state?.cursor === 'string' ? state.cursor : null,
+      };
+    } catch {
+      return { since: 0, cursor: null };
+    }
+  }
+
+  private writePullState(state: PullState): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(`${this.PULL_STATE_KEY}:${this.pullScope}`, JSON.stringify(state));
+      // Keep the pre-scope key readable for local/demo callers that do not
+      // provide an authenticated user scope.
+      if (this.pullScope === 'anonymous') localStorage.setItem(this.PULL_STATE_KEY, JSON.stringify(state));
+    } catch {
+      // Storage can be unavailable in private browsing; pull remains correct
+      // for the current process and will simply restart next launch.
+    }
+  }
+
+  private getTable(table: string): any {
+    return (db as any)[table];
+  }
+
+  private async findLocalByConvexId(table: string, convexId: string): Promise<any | undefined> {
+    const localTable = this.getTable(table);
+    if (!localTable) return undefined;
+    try {
+      if (typeof localTable.where === 'function') {
+        const indexed = await localTable.where('convex_id').equals(convexId).first();
+        if (indexed) return indexed;
+      }
+    } catch {
+      // Older databases may not have the index yet; fall back to a scan.
+    }
+    if (typeof localTable.toCollection === 'function') {
+      const records = await localTable.toCollection().toArray();
+      return records.find((record: any) => record.convex_id === convexId);
+    }
+    return undefined;
+  }
+
+  private async findLocalCustomerByConvexId(convexId: string): Promise<any | undefined> {
+    return this.findLocalByConvexId('customers', convexId);
+  }
+
+  private async findLocalPoolByConvexId(convexId: string): Promise<any | undefined> {
+    return this.findLocalByConvexId('pools', convexId);
+  }
+
+  private async applyRemotePullPage(page: RemotePullPage): Promise<{ pulledCount: number; conflictCount: number }> {
+    let pulledCount = 0;
+    let conflictCount = 0;
+    const merge = async (table: string, remote: any): Promise<void> => {
+      const convexId = String(remote?._id || remote?.convex_id || '');
+      if (!convexId) return;
+      const localTable = this.getTable(table);
+      if (!localTable) return;
+      const remoteUpdatedAt = Number(remote.updated_at || remote.created_at || 0);
+      const local = await this.findLocalByConvexId(table, convexId);
+
+      // Translate remote foreign keys to local numeric keys while preserving
+      // the Convex IDs for subsequent pushes.
+      const mapped: any = { ...remote };
+      delete mapped._id;
+      delete mapped._creationTime;
+      mapped.convex_id = convexId;
+      mapped.remote_updated_at = remoteUpdatedAt;
+      mapped.local_updated_at = remoteUpdatedAt || Date.now();
+      mapped.sync_status = 'synced';
+      mapped.sync_error = undefined;
+
+      if (mapped.customer_id && typeof mapped.customer_id === 'string') {
+        const customer = await this.findLocalCustomerByConvexId(mapped.customer_id);
+        mapped.convex_customer_id = mapped.customer_id;
+        if (customer?.id !== undefined) mapped.customer_id = customer.id;
+      }
+      if (mapped.pool_id && typeof mapped.pool_id === 'string') {
+        const pool = await this.findLocalPoolByConvexId(mapped.pool_id);
+        mapped.convex_pool_id = mapped.pool_id;
+        if (pool?.id !== undefined) mapped.pool_id = pool.id;
+      }
+
+      if (!local) {
+        // Child records cannot be safely materialized until their local parent
+        // exists. The server pull is parent-first, so this indicates a corrupt
+        // or partially migrated dataset; fail the page rather than advancing
+        // the cursor and silently losing the record.
+        if ((mapped.customer_id && typeof mapped.customer_id === 'string') ||
+          (mapped.pool_id && typeof mapped.pool_id === 'string')) {
+          throw new Error(`Remote ${table} ${convexId} references a parent that has not been pulled`);
+        }
+        await this.withoutSyncHooks(async () => {
+          await localTable.add(mapped);
+        });
+        pulledCount += 1;
+        return;
+      }
+
+      const localChanged = local.sync_status === 'pending' ||
+        Number(local.local_updated_at || 0) > Number(local.remote_updated_at || 0);
+      const localTimestamp = Number(local.local_updated_at || 0);
+      if (localChanged && localTimestamp > remoteUpdatedAt) {
+        // Local wins; leave the pending record in the queue. We still count a
+        // conflict so the UI/telemetry can surface that it needs attention.
+        conflictCount += 1;
+        monitoring.recordMetric('sync_pull_conflict_local_wins', 1, { table, localId: local.id });
+        return;
+      }
+
+      if (localChanged) {
+        conflictCount += 1;
+        try {
+          this.conflictResolver.createBackup(local);
+        } catch {
+          // A backup is best effort; never block accepting the authoritative
+          // remote version because local data remains in the audit trail.
+        }
+      }
+
+      const merged = {
+        ...local,
+        ...mapped,
+        id: local.id,
+        convex_id: convexId,
+        sync_status: 'synced' as const,
+        sync_error: undefined,
+        local_updated_at: remoteUpdatedAt || local.local_updated_at,
+        remote_updated_at: remoteUpdatedAt || local.remote_updated_at,
+      };
+      await this.withoutSyncHooks(async () => {
+        await localTable.update(local.id, merged);
+      });
+      pulledCount += 1;
+      monitoring.recordMetric('sync_pull_record_applied', 1, { table });
+    };
+
+    // Parent-first order ensures foreign-key translation works for records in
+    // the same cursor page.
+    for (const record of page.customers || []) await merge('customers', record);
+    for (const record of page.pools || []) await merge('pools', record);
+    for (const record of page.equipment || []) await merge('equipment', record);
+    for (const record of page.serviceLogs || []) await merge('serviceLogs', record);
+    for (const record of page.chemicalUsage || []) await merge('chemicalUsage', record);
+    for (const record of page.notes || []) await merge('notes', record);
+    for (const record of page.saltCellLogs || []) await merge('saltCellLogs', record);
+    return { pulledCount, conflictCount };
+  }
+
+  private async withoutSyncHooks<T>(operation: () => Promise<T>): Promise<T> {
+    const scopedDb: any = db as any;
+    if (typeof scopedDb.withoutSyncHooks === 'function') return scopedDb.withoutSyncHooks(operation);
+    return operation();
+  }
+
   private recordQueueDepth(phase: 'cycle_start' | 'before_batch' | 'after_batch', trigger: 'manual' | 'auto', extra?: Record<string, unknown>): void {
     const queueStatus = this.getQueueStatus();
     monitoring.recordMetric('sync_queue_depth', queueStatus.pending, {
@@ -212,6 +462,12 @@ export class SyncService {
       switch (table) {
         case 'customers':
           record = await db.customers.get(localId);
+          break;
+        case 'pools':
+          record = db.pools?.get ? await db.pools.get(localId) : undefined;
+          break;
+        case 'equipment':
+          record = db.equipment?.get ? await db.equipment.get(localId) : undefined;
           break;
         case 'serviceLogs':
           record = await db.serviceLogs.get(localId);
@@ -289,6 +545,12 @@ export class SyncService {
         case 'customers':
           record = await db.customers.get(localId);
           break;
+        case 'pools':
+          record = db.pools?.get ? await db.pools.get(localId) : undefined;
+          break;
+        case 'equipment':
+          record = db.equipment?.get ? await db.equipment.get(localId) : undefined;
+          break;
         case 'serviceLogs':
           record = await db.serviceLogs.get(localId);
           break;
@@ -322,6 +584,12 @@ export class SyncService {
       switch (table) {
         case 'customers':
           record = await db.customers.get(localId);
+          break;
+        case 'pools':
+          record = db.pools?.get ? await db.pools.get(localId) : undefined;
+          break;
+        case 'equipment':
+          record = db.equipment?.get ? await db.equipment.get(localId) : undefined;
           break;
         case 'serviceLogs':
           record = await db.serviceLogs.get(localId);
@@ -361,15 +629,17 @@ export class SyncService {
    */
   async getPendingCount(): Promise<number> {
     try {
-      const [customers, serviceLogs, chemicalUsage, notes, saltCellLogs] = await Promise.all([
+      const [customers, pools, equipment, serviceLogs, chemicalUsage, notes, saltCellLogs] = await Promise.all([
         this.getPendingRecords(db.customers),
+        this.getPendingRecords(db.pools),
+        this.getPendingRecords(db.equipment),
         this.getPendingRecords(db.serviceLogs),
         this.getPendingRecords(db.chemicalUsage),
         this.getPendingRecords(db.notes),
         this.getPendingRecords(db.saltCellLogs),
       ]);
 
-      return customers.length + serviceLogs.length + chemicalUsage.length + notes.length + saltCellLogs.length;
+      return customers.length + pools.length + equipment.length + serviceLogs.length + chemicalUsage.length + notes.length + saltCellLogs.length;
     } catch (error) {
       console.error('Error getting pending count:', error);
       return 0;
@@ -381,7 +651,7 @@ export class SyncService {
    */
   enqueueRecord(table: string, localId: number, operation: 'create' | 'update' | 'delete', data: Record<string, any>): void {
     // Validate table parameter
-    const validTables = ['customers', 'serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs'];
+    const validTables = ['customers', 'pools', 'equipment', 'serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs'];
     if (!validTables.includes(table)) {
       throw new Error(`Invalid table: ${table}`);
     }
@@ -431,6 +701,7 @@ export class SyncService {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : Date.now();
   }
+
 
   private async getPendingRecords(table: any): Promise<any[]> {
     if (!table || typeof table.where !== 'function') {
@@ -509,8 +780,10 @@ export class SyncService {
       if (retryableItems.length === 0) {
         // No items ready for retry, check database for new pending records
         // Note: SyncQueue.enqueue() automatically deduplicates by table+localId
-        const [pendingCustomers, pendingServiceLogs, pendingChemicalUsage, pendingNotes, pendingSaltCellLogs] = await Promise.all([
+        const [pendingCustomers, pendingPools, pendingEquipment, pendingServiceLogs, pendingChemicalUsage, pendingNotes, pendingSaltCellLogs] = await Promise.all([
           this.getPendingRecords(db.customers),
+          this.getPendingRecords(db.pools),
+          this.getPendingRecords(db.equipment),
           this.getPendingRecords(db.serviceLogs),
           this.getPendingRecords(db.chemicalUsage),
           this.getPendingRecords(db.notes),
@@ -525,6 +798,24 @@ export class SyncService {
             localId: customer.id!,
             operation: customer.convex_id ? 'update' : 'create',
             data: customer,
+          });
+        }
+
+        for (const pool of pendingPools) {
+          this.syncQueue.enqueue({
+            table: 'pools',
+            localId: pool.id!,
+            operation: pool.convex_id ? 'update' : 'create',
+            data: pool,
+          });
+        }
+
+        for (const equipment of pendingEquipment) {
+          this.syncQueue.enqueue({
+            table: 'equipment',
+            localId: equipment.id!,
+            operation: equipment.convex_id ? 'update' : 'create',
+            data: equipment,
           });
         }
 
@@ -592,10 +883,25 @@ export class SyncService {
         }
       }
 
+      // Push local writes first, then pull the authoritative remote snapshot.
+      // This ordering means a newly-created customer is available before its
+      // dependent logs are merged and keeps the watermark monotonic.
+      let pullResult = { pulledCount: 0, conflictCount: 0, hasMore: false };
+      if (failedCount === 0) {
+        try {
+          pullResult = await this.pullRemoteChanges();
+        } catch (pullError) {
+          failedCount += 1;
+          console.error('Remote pull failed after push batch:', pullError);
+        }
+      }
+
       const result: SyncResult = {
         success: failedCount === 0,
         syncedCount,
         failedCount,
+        pulledCount: pullResult.pulledCount,
+        conflictCount: pullResult.conflictCount,
       };
 
       this.recordQueueDepth('after_batch', trigger, {
@@ -649,6 +955,12 @@ export class SyncService {
         case 'customers':
           record = await db.customers.get(item.localId);
           break;
+        case 'pools':
+          record = db.pools?.get ? await db.pools.get(item.localId) : undefined;
+          break;
+        case 'equipment':
+          record = db.equipment?.get ? await db.equipment.get(item.localId) : undefined;
+          break;
         case 'serviceLogs':
           record = await db.serviceLogs.get(item.localId);
           break;
@@ -690,16 +1002,33 @@ export class SyncService {
     }
   }
 
+  private async resolveConvexPoolId(record: any): Promise<string | undefined> {
+    if (!record?.pool_id) return record?.convex_pool_id;
+    const pool = db.pools?.get ? await db.pools.get(record.pool_id) : undefined;
+    if (!pool) throw new Error(`Pool ${record.pool_id} not found`);
+    if (!pool.convex_id || pool.sync_status === 'pending') {
+      if (!(await this.syncSingleRecord('pools', pool))) throw new Error(`Failed to sync pool ${record.pool_id}`);
+    }
+    const refreshed = await db.pools.get(record.pool_id);
+    return refreshed?.convex_id || record.convex_pool_id;
+  }
+
   private async syncSingleRecord(table: string, record: any, conflictRetryCount = 0): Promise<boolean> {
     if (!this.convexClient) return false;
 
     let retryCount = 0;
     const maxRetries = this.MAX_RETRIES;
     const maxConflictRetries = this.MAX_CONFLICT_RETRIES;
+    // Keep this key stable across network retries, but rotate it when a
+    // conflict is explicitly retried after resolving a newer remote version.
+    const idempotencyKey = `sync:${table}:${record.id}:${this.normalizeLocalUpdatedAt(record.local_updated_at)}:${conflictRetryCount}`;
 
     while (retryCount < maxRetries) {
       try {
         const localUpdatedAt = this.normalizeLocalUpdatedAt(record.local_updated_at);
+        const convexPoolId = ['serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs'].includes(table)
+          ? await this.resolveConvexPoolId(record)
+          : undefined;
         let result: any;
 
         switch (table) {
@@ -722,8 +1051,68 @@ export class SyncService {
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"customers"> | undefined,
+              idempotency_key: idempotencyKey,
             });
             break;
+
+          case 'pools': {
+            const poolCustomer = await db.customers.get(record.customer_id);
+            if (!poolCustomer) throw new Error(`Pool ${record.id} references missing customer ${record.customer_id}`);
+            if (!poolCustomer.convex_id || poolCustomer.sync_status === 'pending') {
+              if (!(await this.syncSingleRecord('customers', poolCustomer))) throw new Error('Failed to sync pool customer');
+            }
+            const finalPoolCustomer = await db.customers.get(record.customer_id);
+            if (!finalPoolCustomer?.convex_id) throw new Error('Pool customer missing convex_id');
+            result = await this.convexClient.mutation((api as any).sync.syncPool, {
+              local_id: record.id,
+              convex_customer_id: finalPoolCustomer.convex_id as Id<"customers">,
+              data: {
+                name: record.name,
+                address: record.address,
+                service_day: record.service_day,
+                pool_gallons: record.pool_gallons,
+                pool_type: record.pool_type,
+                surface_type: record.surface_type,
+                sort_order: record.sort_order,
+                notes: record.notes,
+                active: record.active,
+              },
+              local_updated_at: localUpdatedAt,
+              convex_id: record.convex_id as Id<"pools"> | undefined,
+              idempotency_key: idempotencyKey,
+            });
+            break;
+          }
+
+          case 'equipment': {
+            const equipmentPool = db.pools?.get ? await db.pools.get(record.pool_id) : undefined;
+            if (!equipmentPool) throw new Error(`Equipment ${record.id} references missing pool ${record.pool_id}`);
+            if (!equipmentPool.convex_id || equipmentPool.sync_status === 'pending') {
+              if (!(await this.syncSingleRecord('pools', equipmentPool))) throw new Error('Failed to sync equipment pool');
+            }
+            const finalEquipmentPool = await db.pools.get(record.pool_id);
+            if (!finalEquipmentPool?.convex_id) throw new Error('Equipment pool missing convex_id');
+            result = await this.convexClient.mutation((api as any).sync.syncEquipment, {
+              local_id: record.id,
+              convex_pool_id: finalEquipmentPool.convex_id as Id<"pools">,
+              data: {
+                equipment_type: record.equipment_type,
+                name: record.name,
+                brand: record.brand,
+                model: record.model,
+                serial_number: record.serial_number,
+                install_date: record.install_date,
+                status: record.status,
+                last_service_date: record.last_service_date,
+                next_service_due: record.next_service_due,
+                notes: record.notes,
+              },
+              local_updated_at: localUpdatedAt,
+              convex_id: record.convex_id as Id<"equipment"> | undefined,
+              idempotency_key: idempotencyKey,
+            });
+            break;
+          }
 
           case 'serviceLogs':
             // Need to get convex_customer_id first - auto-sync customer if needed
@@ -764,6 +1153,7 @@ export class SyncService {
               data: {
                 service_date: record.service_date,
                 status: record.status,
+                service_type: record.service_type,
                 notes: record.notes,
                 ph: record.ph,
                 chlorine: record.chlorine,
@@ -777,9 +1167,11 @@ export class SyncService {
                 start_time: record.start_time,
                 end_time: record.end_time,
                 duration_ms: record.duration_ms,
+                pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"serviceLogs"> | undefined,
+              idempotency_key: idempotencyKey,
             });
             break;
 
@@ -817,9 +1209,11 @@ export class SyncService {
                 quantity: record.quantity,
                 notes: record.notes,
                 created_date: record.created_date,
+                pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"chemicalUsage"> | undefined,
+              idempotency_key: idempotencyKey,
             });
             break;
 
@@ -851,9 +1245,11 @@ export class SyncService {
                 priority: record.priority,
                 completed: record.completed,
                 created_date: record.created_date,
+                pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"notes"> | undefined,
+              idempotency_key: idempotencyKey,
             });
             break;
 
@@ -891,9 +1287,11 @@ export class SyncService {
                 condition: record.condition,
                 notes: record.notes,
                 next_cleaning_due: record.next_cleaning_due,
+                pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
               convex_id: record.convex_id as Id<"saltCellLogs"> | undefined,
+              idempotency_key: idempotencyKey,
             });
             break;
 
@@ -914,6 +1312,12 @@ export class SyncService {
             switch (table) {
               case 'customers':
                 await db.customers.update(record.id, updateData);
+                break;
+              case 'pools':
+                await db.pools.update(record.id, updateData);
+                break;
+              case 'equipment':
+                await db.equipment.update(record.id, updateData);
                 break;
               case 'serviceLogs':
                 await db.serviceLogs.update(record.id, {
@@ -1006,6 +1410,12 @@ export class SyncService {
                   case 'customers':
                     await db.customers.update(record.id, errorData);
                     break;
+                  case 'pools':
+                    await db.pools.update(record.id, errorData);
+                    break;
+                  case 'equipment':
+                    await db.equipment.update(record.id, errorData);
+                    break;
                   case 'serviceLogs':
                     await db.serviceLogs.update(record.id, errorData);
                     break;
@@ -1032,6 +1442,12 @@ export class SyncService {
               switch (table) {
                 case 'customers':
                   await db.customers.update(record.id, resolvedData);
+                  break;
+                case 'pools':
+                  await db.pools.update(record.id, resolvedData);
+                  break;
+                case 'equipment':
+                  await db.equipment.update(record.id, resolvedData);
                   break;
                 case 'serviceLogs':
                   await db.serviceLogs.update(record.id, resolvedData);
@@ -1075,6 +1491,12 @@ export class SyncService {
               switch (table) {
                 case 'customers':
                   await db.customers.update(record.id, resolvedData);
+                  break;
+                case 'pools':
+                  await db.pools.update(record.id, resolvedData);
+                  break;
+                case 'equipment':
+                  await db.equipment.update(record.id, resolvedData);
                   break;
                 case 'serviceLogs':
                   await db.serviceLogs.update(record.id, resolvedData);
@@ -1144,6 +1566,12 @@ export class SyncService {
             case 'customers':
               await db.customers.update(record.id, errorData);
               break;
+            case 'pools':
+              await db.pools.update(record.id, errorData);
+              break;
+            case 'equipment':
+              await db.equipment.update(record.id, errorData);
+              break;
             case 'serviceLogs':
               await db.serviceLogs.update(record.id, errorData);
               break;
@@ -1179,6 +1607,12 @@ export class SyncService {
       switch (table) {
         case 'customers':
           await db.customers.update(record.id, errorData);
+          break;
+        case 'pools':
+          await db.pools.update(record.id, errorData);
+          break;
+        case 'equipment':
+          await db.equipment.update(record.id, errorData);
           break;
         case 'serviceLogs':
           await db.serviceLogs.update(record.id, errorData);

@@ -89,7 +89,11 @@ export default function ProtectedAppRoutes() {
   const location = useLocation();
   const auth = useAuthContext();
   const currentPage = getCurrentPage(location.pathname);
-  useSyncInitialization(Boolean(auth?.isSignedIn));
+  useSyncInitialization(
+    Boolean(auth?.isSignedIn),
+    false,
+    auth?.clerkUser?.primaryEmailAddress?.emailAddress,
+  );
 
   return (
     <Layout currentPageName={currentPage}>

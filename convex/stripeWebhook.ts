@@ -337,8 +337,8 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
   }
 
   // Get webhook secret from environment
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
+  const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+  if (!/^whsec_[A-Za-z0-9]+$/.test(webhookSecret)) {
     logWebhookError('SECRET_NOT_CONFIGURED', {});
     // Don't reveal this is a configuration issue to attackers
     return new Response("Service unavailable", { status: 503 });

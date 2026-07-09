@@ -289,6 +289,24 @@ export const create = mutation({
             business_id: businessId,
         });
 
+        // Keep the normalized pool model in lockstep with the legacy customer
+        // shape. Existing customers are handled by migrations.backfillPoolsBatch.
+        const now = Date.now();
+        await ctx.db.insert("pools", {
+            customer_id: customerId,
+            business_id: businessId,
+            name: "Primary Pool",
+            address: validatedData.address,
+            service_day: validatedData.service_day,
+            pool_gallons: validatedData.pool_gallons,
+            pool_type: validatedData.pool_type,
+            surface_type: validatedData.surface_type,
+            sort_order: 0,
+            active: true,
+            created_at: now,
+            updated_at: now,
+        });
+
         return customerId;
     },
 });

@@ -33,8 +33,55 @@ export default defineSchema({
     .index("by_business_and_day", ["business_id", "service_day"])
     .index("by_created_by_and_service_day", ["created_by", "service_day"]),
 
+  // A customer may own more than one pool. Legacy pool_* fields on customers
+  // remain during the migration window; new writes should target this table.
+  pools: defineTable({
+    customer_id: v.id("customers"),
+    business_id: v.optional(v.string()),
+    name: v.string(),
+    address: v.optional(v.string()),
+    service_day: v.string(),
+    pool_gallons: v.optional(v.number()),
+    pool_type: v.string(),
+    surface_type: v.string(),
+    sort_order: v.optional(v.number()),
+    notes: v.optional(v.string()),
+    active: v.boolean(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_customer", ["customer_id"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_day", ["business_id", "service_day"])
+    .index("by_customer_and_active", ["customer_id", "active"]),
+
+  // Equipment is attached to a pool, not a customer, so multi-pool accounts
+  // can track independent pumps, filters, heaters, salt cells, and controllers.
+  equipment: defineTable({
+    customer_id: v.id("customers"),
+    pool_id: v.id("pools"),
+    business_id: v.optional(v.string()),
+    equipment_type: v.string(),
+    name: v.string(),
+    brand: v.optional(v.string()),
+    model: v.optional(v.string()),
+    serial_number: v.optional(v.string()),
+    install_date: v.optional(v.string()),
+    status: v.string(), // active, needs_service, retired
+    last_service_date: v.optional(v.string()),
+    next_service_due: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_pool", ["pool_id"])
+    .index("by_customer", ["customer_id"])
+    .index("by_business", ["business_id"])
+    .index("by_pool_and_status", ["pool_id", "status"]),
+
   serviceLogs: defineTable({
     customer_id: v.id("customers"),
+    pool_id: v.optional(v.id("pools")),
     created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     service_date: v.string(), // YYYY-MM-DD format
     status: v.string(), // completed, pending, etc.
@@ -68,6 +115,7 @@ export default defineSchema({
 
   chemicalUsage: defineTable({
     customer_id: v.id("customers"),
+    pool_id: v.optional(v.id("pools")),
     created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     chemical_type: v.string(),
     quantity: v.string(),
@@ -86,6 +134,7 @@ export default defineSchema({
     content: v.string(),
     category: v.string(), // General, Customer, Equipment, Reminder, Chemical, Billing
     customer_id: v.optional(v.id("customers")),
+    pool_id: v.optional(v.id("pools")),
     priority: v.string(), // low, medium, high
     completed: v.optional(v.boolean()),
     created_date: v.optional(v.string()),
@@ -192,6 +241,7 @@ export default defineSchema({
   // Salt cell cleaning logs for salt pool maintenance tracking
   saltCellLogs: defineTable({
     customer_id: v.id("customers"),
+    pool_id: v.optional(v.id("pools")),
     cleaning_date: v.string(), // YYYY-MM-DD format
     condition: v.string(), // good, moderate, heavy - scale buildup condition
     notes: v.optional(v.string()),
@@ -201,6 +251,22 @@ export default defineSchema({
   })
     .index("by_customer", ["customer_id"])
     .index("by_cleaning_date", ["cleaning_date"]),
+
+  // Client mutation receipts used by offline sync.  Keeping receipts in a
+  // dedicated table makes create retries safe when the response is lost after
+  // Convex has committed the mutation (for example, when a technician leaves
+  // a low-signal area).  Receipts are tenant scoped and expire via the
+  // `expires_at` field; cleanup is handled by the sync maintenance job.
+  syncOperations: defineTable({
+    key: v.string(),
+    user_email: v.string(),
+    table: v.string(),
+    response: v.any(),
+    created_at: v.number(),
+    expires_at: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_expires_at", ["expires_at"]),
 
   // Service reports for SMS/Email notifications to customers
   serviceReports: defineTable({
@@ -397,4 +463,5 @@ export default defineSchema({
   })
     .index("by_key", ["key"])
     .index("by_expires_at", ["expires_at"]),
+
 });

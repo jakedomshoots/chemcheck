@@ -34,9 +34,47 @@ export interface Customer extends SyncableRecord {
     };
 }
 
+export interface Pool extends SyncableRecord {
+    id?: number;
+    customer_id: number;
+    convex_customer_id?: string;
+    name: string;
+    address?: string;
+    service_day: string;
+    pool_gallons?: number;
+    pool_type: string;
+    surface_type: string;
+    sort_order?: number;
+    notes?: string;
+    active: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface Equipment extends SyncableRecord {
+    id?: number;
+    customer_id: number;
+    pool_id: number;
+    convex_customer_id?: string;
+    convex_pool_id?: string;
+    equipment_type: string;
+    name: string;
+    brand?: string;
+    model?: string;
+    serial_number?: string;
+    install_date?: string;
+    status: string;
+    last_service_date?: string;
+    next_service_due?: string;
+    notes?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
 export interface ServiceLog extends SyncableRecord {
     id?: number;
     customer_id: number;
+    pool_id?: number;
     convex_customer_id?: string;
     service_date: string;
     status: string;
@@ -61,6 +99,7 @@ export interface ServiceLog extends SyncableRecord {
 export interface ChemicalUsage extends SyncableRecord {
     id?: number;
     customer_id: number;
+    pool_id?: number;
     convex_customer_id?: string;
     chemical_type: string;
     quantity: string;
@@ -76,6 +115,7 @@ export interface Note extends SyncableRecord {
     content: string;
     category: string;
     customer_id?: number;
+    pool_id?: number;
     convex_customer_id?: string;
     priority: string;
     completed?: boolean;
@@ -87,6 +127,7 @@ export interface Note extends SyncableRecord {
 export interface SaltCellLog extends SyncableRecord {
     id?: number;
     customer_id: number;
+    pool_id?: number;
     convex_customer_id?: string;
     cleaning_date: string;
     condition: string;
@@ -98,12 +139,15 @@ export interface SaltCellLog extends SyncableRecord {
 
 export class ChemCheckDB extends Dexie {
     customers!: Table<Customer>;
+    pools!: Table<Pool>;
+    equipment!: Table<Equipment>;
     serviceLogs!: Table<ServiceLog>;
     chemicalUsage!: Table<ChemicalUsage>;
     notes!: Table<Note>;
     saltCellLogs!: Table<SaltCellLog>;
 
     private syncService: any = null;
+    private syncHooksSuppressed = 0;
 
     constructor() {
         super('chemcheck');
@@ -155,6 +199,39 @@ export class ChemCheckDB extends Dexie {
             saltCellLogs: '++id, customer_id, cleaning_date, sync_status, convex_id, convex_customer_id',
         });
 
+        this.version(4).stores({
+            customers: '++id, created_by, service_day, sort_order, sync_status, convex_id, [created_by+service_day]',
+            pools: '++id, customer_id, service_day, active, sync_status, convex_id, convex_customer_id, [customer_id+active]',
+            equipment: '++id, customer_id, pool_id, status, next_service_due, sync_status, convex_id, convex_pool_id, [pool_id+status]',
+            serviceLogs: '++id, customer_id, pool_id, service_date, [customer_id+service_date], [pool_id+service_date], sync_status, convex_id, convex_customer_id',
+            chemicalUsage: '++id, customer_id, pool_id, created_date, sync_status, convex_id, convex_customer_id',
+            notes: '++id, customer_id, pool_id, completed, created_date, category, sync_status, convex_id, convex_customer_id',
+            saltCellLogs: '++id, customer_id, pool_id, cleaning_date, sync_status, convex_id, convex_customer_id',
+        }).upgrade(async (trans) => {
+            const customers = await trans.table('customers').toArray();
+            const pools = trans.table('pools');
+            const now = Date.now();
+            for (const customer of customers as any[]) {
+                const existing = await pools.where('customer_id').equals(customer.id).first();
+                if (existing) continue;
+                await pools.add({
+                    customer_id: customer.id,
+                    name: 'Primary Pool',
+                    address: customer.address,
+                    service_day: customer.service_day,
+                    pool_gallons: customer.pool_gallons,
+                    pool_type: customer.pool_type,
+                    surface_type: customer.surface_type,
+                    sort_order: customer.sort_order,
+                    active: true,
+                    createdAt: customer.createdAt,
+                    updatedAt: customer.updatedAt,
+                    sync_status: 'pending',
+                    local_updated_at: now,
+                });
+            }
+        });
+
         this.setupSyncHooks();
     }
 
@@ -162,8 +239,34 @@ export class ChemCheckDB extends Dexie {
         this.syncService = syncService;
     }
 
+    /** Apply a remote pull without turning the pulled rows back into outbound work. */
+    async withoutSync<T>(operation: () => Promise<T>): Promise<T> {
+        const previous = this.syncService;
+        this.syncService = null;
+        try {
+            return await operation();
+        } finally {
+            this.syncService = previous;
+        }
+    }
+
+    /**
+     * Apply a server snapshot without enqueueing it as a new local write.
+     * Remote merges otherwise trigger the normal Dexie hooks, which would
+     * immediately push the just-applied server version back to Convex.
+     */
+    async withoutSyncHooks<T>(operation: () => Promise<T>): Promise<T> {
+        this.syncHooksSuppressed += 1;
+        try {
+            return await operation();
+        } finally {
+            this.syncHooksSuppressed = Math.max(0, this.syncHooksSuppressed - 1);
+        }
+    }
+
     private setupSyncHooks(): void {
         this.customers.hook('creating', (_primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -175,6 +278,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.customers.hook('updating', (modifications, primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             // Only trigger sync if non-sync fields are modified
             if (this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
@@ -195,6 +299,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.customers.hook('deleting', (primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('customers', primKey, 'delete', obj);
@@ -202,7 +307,66 @@ export class ChemCheckDB extends Dexie {
             });
         });
 
+        this.pools.hook('creating', (_primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
+            obj.local_updated_at = Date.now();
+            obj.sync_status = 'pending';
+            trans.on('complete', () => {
+                if (this.syncService && obj.id) this.syncService.enqueueRecord('pools', obj.id, 'create', obj);
+            });
+        });
+
+        this.pools.hook('updating', (modifications, primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
+            if (this.hasNonSyncFieldChanges(modifications)) {
+                const updatedRecord = { ...obj, ...modifications };
+                updatedRecord.local_updated_at = Date.now();
+                updatedRecord.sync_status = 'pending';
+                Object.assign(modifications, { local_updated_at: updatedRecord.local_updated_at, sync_status: 'pending' });
+                trans.on('complete', () => {
+                    if (this.syncService && primKey) this.syncService.enqueueRecord('pools', primKey, 'update', updatedRecord);
+                });
+            }
+        });
+
+        this.pools.hook('deleting', (primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
+            trans.on('complete', () => {
+                if (this.syncService && primKey) this.syncService.enqueueRecord('pools', primKey, 'delete', obj);
+            });
+        });
+
+        this.equipment.hook('creating', (_primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
+            obj.local_updated_at = Date.now();
+            obj.sync_status = 'pending';
+            trans.on('complete', () => {
+                if (this.syncService && obj.id) this.syncService.enqueueRecord('equipment', obj.id, 'create', obj);
+            });
+        });
+
+        this.equipment.hook('updating', (modifications, primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
+            if (this.hasNonSyncFieldChanges(modifications)) {
+                const updatedRecord = { ...obj, ...modifications };
+                updatedRecord.local_updated_at = Date.now();
+                updatedRecord.sync_status = 'pending';
+                Object.assign(modifications, { local_updated_at: updatedRecord.local_updated_at, sync_status: 'pending' });
+                trans.on('complete', () => {
+                    if (this.syncService && primKey) this.syncService.enqueueRecord('equipment', primKey, 'update', updatedRecord);
+                });
+            }
+        });
+
+        this.equipment.hook('deleting', (primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
+            trans.on('complete', () => {
+                if (this.syncService && primKey) this.syncService.enqueueRecord('equipment', primKey, 'delete', obj);
+            });
+        });
+
         this.serviceLogs.hook('creating', (_primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -214,6 +378,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.serviceLogs.hook('updating', (modifications, primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             if (this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
@@ -233,6 +398,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.serviceLogs.hook('deleting', (primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('serviceLogs', primKey, 'delete', obj);
@@ -241,6 +407,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.chemicalUsage.hook('creating', (_primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -252,6 +419,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.chemicalUsage.hook('updating', (modifications, primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             if (this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
@@ -271,6 +439,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.chemicalUsage.hook('deleting', (primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('chemicalUsage', primKey, 'delete', obj);
@@ -279,6 +448,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.notes.hook('creating', (_primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -290,6 +460,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.notes.hook('updating', (modifications, primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             if (this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
@@ -309,6 +480,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.notes.hook('deleting', (primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('notes', primKey, 'delete', obj);
@@ -317,6 +489,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.saltCellLogs.hook('creating', (_primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             obj.local_updated_at = Date.now();
             obj.sync_status = 'pending';
 
@@ -328,6 +501,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.saltCellLogs.hook('updating', (modifications, primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             if (this.hasNonSyncFieldChanges(modifications)) {
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
@@ -347,6 +521,7 @@ export class ChemCheckDB extends Dexie {
         });
 
         this.saltCellLogs.hook('deleting', (primKey, obj, trans) => {
+            if (this.syncHooksSuppressed > 0) return;
             trans.on('complete', () => {
                 if (this.syncService && primKey) {
                     this.syncService.enqueueRecord('saltCellLogs', primKey, 'delete', obj);
@@ -366,7 +541,8 @@ export class ChemCheckDB extends Dexie {
             'local_updated_at',
             'remote_updated_at',
             'conflict_backup',
-            'convex_customer_id'
+            'convex_customer_id',
+            'convex_pool_id'
         ];
 
         return Object.keys(modifications).some(key => !syncFields.includes(key));

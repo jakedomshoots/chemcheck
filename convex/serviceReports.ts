@@ -14,6 +14,7 @@ import { query, mutation, action, internalMutation, internalQuery } from "./_gen
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
+import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
 
 /**
  * Helper: Verify service log ownership
@@ -286,7 +287,7 @@ export const cleanupExpiredReportsAndLogs = internalMutation({
  * 1. Validates the customer has the required contact method
  * 2. Gets or creates the report record
  * 3. Formats the message
- * 4. Sends via Telnyx (SMS) or email service
+ * 4. Sends via Twilio (SMS) or Mailersend (email)
  * 5. Updates the report with sent timestamp
  * 
  * Requirements: 2.5, 2.6, 2.7, 2.8
@@ -959,16 +960,11 @@ async function sendViaSms(
   const message = formatSmsMessage(businessName, serviceDate, overallStatus, reportLink);
 
   try {
-    const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-    const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-    const twilioFromNumber = process.env.TWILIO_FROM_NUMBER;
-
-    if (!twilioAccountSid || !twilioAuthToken || !twilioFromNumber) {
-      return {
-        success: false,
-        error: "SMS service not configured. Please contact support.",
-      };
-    }
+    const {
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    } = requireTwilioConfig();
 
     // Twilio API endpoint
     const url = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
@@ -976,7 +972,7 @@ async function sendViaSms(
     // Create Basic Auth header
     const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
 
-    const response = await fetch(url, {
+    const response = await fetchProvider(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -998,8 +994,6 @@ async function sendViaSms(
         status: response.status,
         statusText: response.statusText,
         errorData,
-        customerPhone: customer.phone,
-        fromNumber: twilioFromNumber
       });
 
       return {
@@ -1174,24 +1168,7 @@ async function sendViaEmail(
 
   try {
     // Using Mailersend API - allows sending to any email address
-    const mailersendApiKey = process.env.MAILERSEND_API_KEY;
-    const fromEmail = process.env.FROM_EMAIL;
-
-    if (!mailersendApiKey) {
-      console.error("MAILERSEND_API_KEY is missing from environment variables");
-      return {
-        success: false,
-        error: "Email service API key not configured. Please check Convex environment variables.",
-      };
-    }
-
-    if (!fromEmail) {
-      console.error("FROM_EMAIL is missing from environment variables");
-      return {
-        success: false,
-        error: "Sender email address not configured. Please check Convex environment variables.",
-      };
-    }
+    const { apiKey: mailersendApiKey, fromEmail } = requireMailersendConfig();
 
     if (!recipientEmail) {
       return {
@@ -1207,7 +1184,7 @@ async function sendViaEmail(
       };
     }
 
-    const response = await fetch("https://api.mailersend.com/v1/email", {
+    const response = await fetchProvider("https://api.mailersend.com/v1/email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1233,7 +1210,6 @@ async function sendViaEmail(
       console.error("Mailersend Email Error:", {
         status: response.status,
         error_message: errorMessage,
-        customer_email: recipientEmail,
         timestamp: new Date().toISOString()
       });
 
@@ -1247,12 +1223,8 @@ async function sendViaEmail(
     // Get message ID from headers if available
     const messageId = response.headers.get('x-message-id') || 'sent';
     console.log("Mailersend accepted report email:", {
-      to: recipientEmail,
-      from: fromEmail,
       status: response.status,
       message_id: messageId,
-      report_id: report._id,
-      report_token: report.report_token,
       timestamp: new Date().toISOString(),
     });
 

@@ -8,6 +8,8 @@ describe('ChemCheckDB Schema and Sync Fields', () => {
     
     // Test that all tables are defined in the schema
     expect(db.customers).toBeDefined();
+    expect(db.pools).toBeDefined();
+    expect(db.equipment).toBeDefined();
     expect(db.serviceLogs).toBeDefined();
     expect(db.chemicalUsage).toBeDefined();
     expect(db.notes).toBeDefined();
@@ -138,7 +140,7 @@ describe('ChemCheckDB Schema and Sync Fields', () => {
   it('should have latest database version with sync field indexes', () => {
     const db = new ChemCheckDB();
     
-    // Schema currently includes v3 (salt cell logs + composite customer index)
-    expect(db.verno).toBe(3);
+    // Schema includes v4 normalized pools/equipment tables.
+    expect(db.verno).toBe(4);
   });
 });

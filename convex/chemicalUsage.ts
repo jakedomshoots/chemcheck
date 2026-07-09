@@ -42,6 +42,7 @@ export const list = query({
 export const filter = query({
     args: {
         customer_id: v.optional(v.id("customers")),
+        pool_id: v.optional(v.id("pools")),
         limit: v.optional(v.number()),
         cursor: v.optional(v.string()),
     },
@@ -57,12 +58,20 @@ export const filter = query({
             }
         }
 
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || (args.customer_id && pool.customer_id !== args.customer_id)) throw new Error("Pool not found or does not belong to customer");
+        }
+
         let usageQuery = ctx.db
             .query("chemicalUsage")
             .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!));
 
         if (args.customer_id) {
             usageQuery = usageQuery.filter((q) => q.eq(q.field("customer_id"), args.customer_id!));
+        }
+        if (args.pool_id) {
+            usageQuery = usageQuery.filter((q) => q.eq(q.field("pool_id"), args.pool_id!));
         }
 
         return await usageQuery.paginate({
@@ -76,6 +85,7 @@ export const filter = query({
 export const getByCustomer = query({
     args: {
         customer_id: v.id("customers"),
+        pool_id: v.optional(v.id("pools")),
         limit: v.optional(v.number()),
         cursor: v.optional(v.string()),
     },
@@ -87,6 +97,11 @@ export const getByCustomer = query({
         const customer = await ctx.db.get(args.customer_id);
         if (!customer || customer.created_by !== identity.email) {
             throw new Error("Customer not found or access denied");
+        }
+
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || pool.customer_id !== args.customer_id || !pool.active) throw new Error("Pool not found or does not belong to customer");
         }
 
         return await ctx.db
@@ -104,6 +119,7 @@ export const getByCustomer = query({
 export const create = mutation({
     args: {
         customer_id: v.id("customers"),
+        pool_id: v.optional(v.id("pools")),
         chemical_type: v.string(),
         quantity: v.string(),
         notes: v.optional(v.string()),
@@ -119,6 +135,11 @@ export const create = mutation({
         const customer = await ctx.db.get(args.customer_id);
         if (!customer || customer.created_by !== identity.email) {
             throw new Error("Customer not found or access denied");
+        }
+
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || pool.customer_id !== args.customer_id || !pool.active) throw new Error("Pool not found or does not belong to customer");
         }
 
         const now = new Date();
@@ -139,6 +160,7 @@ export const update = mutation({
     args: {
         id: v.id("chemicalUsage"),
         customer_id: v.optional(v.id("customers")),
+        pool_id: v.optional(v.id("pools")),
         chemical_type: v.optional(v.string()),
         quantity: v.optional(v.string()),
         notes: v.optional(v.string()),
@@ -157,6 +179,11 @@ export const update = mutation({
         const customer = await ctx.db.get(record.customer_id);
         if (!customer || customer.created_by !== identity.email) {
             throw new Error("Access denied");
+        }
+
+        if (args.pool_id) {
+            const pool = await ctx.db.get(args.pool_id);
+            if (!pool || pool.customer_id !== record.customer_id || !pool.active) throw new Error("Pool not found or does not belong to customer");
         }
 
         const { id, ...updates } = args;

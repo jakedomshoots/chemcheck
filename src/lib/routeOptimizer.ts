@@ -2,11 +2,15 @@
 // Optimizes service routes using GPS coordinates and various algorithms
 
 import { monitoring } from './monitoring';
+import { deterministicGeocode, routeProvider, type LocationSource, type ProviderLocation, type RouteProvider } from './routeProvider';
 
 export interface Location {
   latitude: number;
   longitude: number;
   address: string;
+  source?: LocationSource;
+  provider?: string;
+  precision?: string;
 }
 
 export interface Customer {
@@ -45,6 +49,10 @@ export interface OptimizedRoute {
   endLocation?: Location;
   optimizationMethod: string;
   createdAt: string;
+  provider?: string;
+  geocoding?: { requested: number; remote: number; cached: number; fallback: number };
+  routing?: { remote: number; fallback: number };
+  warnings?: string[];
 }
 
 export interface RouteOptimizationOptions {
@@ -64,6 +72,31 @@ type CustomerPriority = Customer['priority'];
 class RouteOptimizer {
   private geocodeCache = new Map<string, Location>();
   private distanceCache = new Map<string, { distance: number; duration: number }>();
+  private provider: RouteProvider = routeProvider;
+  private diagnostics = this.createDiagnostics();
+
+  /** Inject a business-owned proxy or deterministic provider in tests. */
+  setRouteProvider(provider: RouteProvider): void {
+    this.provider = provider;
+    this.distanceCache.clear();
+    this.geocodeCache.clear();
+  }
+
+  getRouteProvider(): RouteProvider {
+    return this.provider;
+  }
+
+  private createDiagnostics() {
+    return {
+      requested: 0,
+      remote: 0,
+      cached: 0,
+      fallback: 0,
+      routingRemote: 0,
+      routingFallback: 0,
+      warnings: [] as string[],
+    };
+  }
 
   // ============================================
   // Main Optimization Function
@@ -75,6 +108,7 @@ class RouteOptimizer {
     options: RouteOptimizationOptions = {}
   ): Promise<OptimizedRoute> {
     const startTime = performance.now();
+    this.diagnostics = this.createDiagnostics();
     const normalizedCustomers = customers
       .map((customer) => this.normalizeCustomer(customer))
       .filter((customer): customer is Customer => customer !== null);
@@ -93,6 +127,11 @@ class RouteOptimizer {
       if (dayCustomers.length === 0) {
         return this.createEmptyRoute(this.toDateString(date), options);
       }
+
+      // Ask the routing provider for one matrix request instead of issuing a
+      // network request for every nearest-neighbor comparison. Providers that
+      // do not support matrices simply continue with pairwise estimates.
+      await this.prefetchTravelMatrix(dayCustomers, options);
 
       // Choose optimization algorithm
       const algorithm = options.algorithm || 'nearest-neighbor';
@@ -153,7 +192,7 @@ class RouteOptimizer {
     
     // If we have a start location, find the nearest customer to start with
     if (options.startLocation) {
-      const nearest = this.findNearestCustomer(currentLocation, unvisited);
+      const nearest = await this.findNearestCustomer(currentLocation, unvisited);
       route.push(nearest);
       unvisited.splice(unvisited.indexOf(nearest), 1);
       currentLocation = nearest.location!;
@@ -161,7 +200,7 @@ class RouteOptimizer {
 
     // Continue with nearest neighbor
     while (unvisited.length > 0) {
-      const nearest = this.findNearestCustomer(currentLocation, unvisited);
+      const nearest = await this.findNearestCustomer(currentLocation, unvisited);
       route.push(nearest);
       unvisited.splice(unvisited.indexOf(nearest), 1);
       currentLocation = nearest.location!;
@@ -268,12 +307,12 @@ class RouteOptimizer {
   // Helper Functions for Algorithms
   // ============================================
 
-  private findNearestCustomer(location: Location, customers: Customer[]): Customer {
+  private async findNearestCustomer(location: Location, customers: Customer[]): Promise<Customer> {
     let nearest = customers[0];
-    let minDistance = this.calculateDistance(location, nearest.location!);
+    let minDistance = (await this.getDistanceAndDuration(location, nearest.location!)).duration;
 
     for (const customer of customers.slice(1)) {
-      const distance = this.calculateDistance(location, customer.location!);
+      const distance = (await this.getDistanceAndDuration(location, customer.location!)).duration;
       if (distance < minDistance) {
         minDistance = distance;
         nearest = customer;
@@ -489,7 +528,16 @@ class RouteOptimizer {
       startLocation: options.startLocation,
       endLocation: options.endLocation,
       optimizationMethod: options.algorithm || 'nearest-neighbor',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      provider: this.provider.name,
+      geocoding: {
+        requested: this.diagnostics.requested,
+        remote: this.diagnostics.remote,
+        cached: this.diagnostics.cached,
+        fallback: this.diagnostics.fallback,
+      },
+      routing: { remote: this.diagnostics.routingRemote, fallback: this.diagnostics.routingFallback },
+      warnings: [...new Set(this.diagnostics.warnings)],
     };
   }
 
@@ -513,56 +561,31 @@ class RouteOptimizer {
     return customersWithLocations;
   }
 
-  private async geocodeAddress(address: string): Promise<Location> {
+  /** Resolve an address through the configured provider; never blocks offline use. */
+  async geocodeAddress(address: string): Promise<Location> {
     const normalizedAddress = (address || '').trim().toLowerCase();
+    this.diagnostics.requested += 1;
 
     // Check cache first
     if (this.geocodeCache.has(normalizedAddress)) {
-      return this.geocodeCache.get(normalizedAddress)!;
+      const cached = this.geocodeCache.get(normalizedAddress)!;
+      this.diagnostics.cached += 1;
+      return { ...cached, source: cached.source || 'cache' };
     }
 
     try {
-      const { zipCode, localityKey, streetName, houseNumber } = this.parseAddressComponents(normalizedAddress);
-      const localitySeed = zipCode || localityKey || 'default-locality';
-      const localityHash = this.hashString(localitySeed);
-      const baseLatOffset = (((localityHash % 10000) / 10000) - 0.5) * 0.16;
-      const baseLngOffset = ((((Math.floor(localityHash / 10000)) % 10000) / 10000) - 0.5) * 0.16;
-
-      const streetSeed = `${localitySeed}|${streetName || 'unknown-street'}`;
-      const streetHash = this.hashString(streetSeed);
-      const streetAngleRadians = ((streetHash % 360) * Math.PI) / 180;
-      const streetRadius = ((((Math.floor(streetHash / 360)) % 1000) / 1000) - 0.5) * 0.02;
-
-      const baseLatitude = 34.0522 + baseLatOffset;
-      const baseLongitude = -118.2437 + baseLngOffset;
-      const streetLatitude = baseLatitude + Math.cos(streetAngleRadians) * streetRadius;
-      const streetLongitude = baseLongitude + Math.sin(streetAngleRadians) * streetRadius;
-
-      const normalizedHouse = Number.isFinite(houseNumber as number) && houseNumber !== null
-        ? (((houseNumber as number) % 2000) - 1000) / 1000
-        : 0;
-      const alongStreetStep = 0.0035; // ~0.2-0.3 miles per 1000-number range
-
-      // Deterministic, address-aware fallback location.
-      const location: Location = {
-        latitude: streetLatitude + Math.cos(streetAngleRadians) * normalizedHouse * alongStreetStep,
-        longitude: streetLongitude + Math.sin(streetAngleRadians) * normalizedHouse * alongStreetStep,
-        address
-      };
-
+      const location = await this.provider.geocode(address);
+      if (location.source === 'remote') this.diagnostics.remote += 1;
+      else if (location.source === 'cache') this.diagnostics.cached += 1;
+      else this.diagnostics.fallback += 1;
       this.geocodeCache.set(normalizedAddress, location);
       return location;
     } catch (error) {
-      console.error('Geocoding failed for address:', address, error);
-      
-      // Return default location
-      const defaultLocation: Location = {
-        latitude: 34.0522,
-        longitude: -118.2437,
-        address
-      };
-      
-      return defaultLocation;
+      const fallback = deterministicGeocode(address);
+      this.diagnostics.fallback += 1;
+      this.diagnostics.warnings.push(`Geocoding unavailable for ${address || 'an address'}; using an estimated location.`);
+      this.geocodeCache.set(normalizedAddress, fallback);
+      return fallback;
     }
   }
 
@@ -583,22 +606,54 @@ class RouteOptimizer {
     from: Location,
     to: Location
   ): Promise<{ distance: number; duration: number }> {
-    const cacheKey = `${from.latitude},${from.longitude}-${to.latitude},${to.longitude}`;
+    const cacheKey = this.routeCacheKey(from, to);
     
     if (this.distanceCache.has(cacheKey)) {
       return this.distanceCache.get(cacheKey)!;
     }
 
-    // Calculate straight-line distance
-    const distance = this.calculateDistance(from, to);
-    
-    // Estimate duration (assuming 30 mph average with traffic)
-    const duration = distance <= 0 ? 0 : Math.max(2, (distance / 30) * 60); // Convert to minutes with a realistic minimum
-    
-    const result = { distance, duration };
+    const estimate = await this.provider.estimateTravel(from as ProviderLocation, to as ProviderLocation);
+    if (estimate.source === 'remote') this.diagnostics.routingRemote += 1;
+    else this.diagnostics.routingFallback += 1;
+    const result = { distance: estimate.distance, duration: estimate.duration };
     this.distanceCache.set(cacheKey, result);
     
     return result;
+  }
+
+  private routeCacheKey(from: Location, to: Location): string {
+    return `${from.latitude},${from.longitude}-${to.latitude},${to.longitude}`;
+  }
+
+  private async prefetchTravelMatrix(customers: Customer[], options: RouteOptimizationOptions): Promise<void> {
+    const estimateMatrix = this.provider.estimateTravelMatrix;
+    if (!estimateMatrix) return;
+    const locations = [
+      ...(options.startLocation ? [options.startLocation] : []),
+      ...customers.map((customer) => customer.location!).filter(Boolean),
+      ...(options.endLocation ? [options.endLocation] : []),
+    ] as Location[];
+    if (locations.length < 2) return;
+
+    try {
+      const matrix = await estimateMatrix.call(this.provider, locations as ProviderLocation[]);
+      matrix.forEach((row, fromIndex) => row.forEach((estimate, toIndex) => {
+        if (!estimate || fromIndex === toIndex) return;
+        this.distanceCache.set(this.routeCacheKey(locations[fromIndex], locations[toIndex]), {
+          distance: estimate.distance,
+          duration: estimate.duration,
+        });
+      }));
+      const source = matrix[0]?.[1]?.source;
+      if (source === 'remote') this.diagnostics.routingRemote += 1;
+      else this.diagnostics.routingFallback += 1;
+      if (source === 'fallback') {
+        this.diagnostics.warnings.push('Live routing is unavailable; using straight-line travel estimates.');
+      }
+    } catch {
+      // Pairwise calls remain available if a provider matrix is unavailable.
+      this.diagnostics.warnings.push('Live route matrix unavailable; using pairwise estimates.');
+    }
   }
 
   // ============================================
@@ -835,7 +890,16 @@ class RouteOptimizer {
       startLocation: options.startLocation,
       endLocation: options.endLocation,
       optimizationMethod: options.algorithm || 'nearest-neighbor',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      provider: this.provider.name,
+      geocoding: {
+        requested: this.diagnostics.requested,
+        remote: this.diagnostics.remote,
+        cached: this.diagnostics.cached,
+        fallback: this.diagnostics.fallback,
+      },
+      routing: { remote: this.diagnostics.routingRemote, fallback: this.diagnostics.routingFallback },
+      warnings: [...new Set(this.diagnostics.warnings)],
     };
   }
 

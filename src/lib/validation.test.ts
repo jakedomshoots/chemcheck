@@ -183,6 +183,16 @@ describe('Service Log Validation', () => {
     expect(result.success).toBe(false);
   });
 
+  it('should accept critical chemical readings from the service log form', () => {
+    const criticalLog = { ...validServiceLog, chlorine: 'critical' as const };
+
+    const result = validateServiceLog(criticalLog);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.chlorine).toBe('critical');
+    }
+  });
+
   it('should sanitize notes', () => {
     const logWithHtml = {
       ...validServiceLog,

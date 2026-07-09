@@ -27,3 +27,13 @@ export {
 
     useCurrentUser,
 } from './dexieHooks';
+
+export {
+  usePoolsByCustomer,
+  usePool,
+  usePoolCreate,
+  usePoolUpdate,
+  useEquipmentByPool,
+  useEquipmentCreate,
+  useEquipmentUpdate,
+} from './normalizedHooks';

@@ -107,72 +107,6 @@ const getReferenceDateForDay = (dayName) => {
   return targetDate;
 };
 
-// Deterministic, address-aware geocoding fallback that mirrors the route
-// optimizer's internal heuristic. Used to turn a business address into a
-// start location without requiring a network geocoding service.
-function hashString(value) {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash << 5) - hash + value.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function geocodeAddressHeuristic(address) {
-  const normalizedAddress = (address || "").trim().toLowerCase();
-  if (!normalizedAddress) {
-    return { latitude: 34.0522, longitude: -118.2437, address };
-  }
-
-  const parts = normalizedAddress.split(",").map((part) => part.trim()).filter(Boolean);
-  const streetPart = parts[0] || normalizedAddress;
-  const localityKey = parts.slice(1).join(",") || "";
-  const zipMatch = normalizedAddress.match(/\b\d{5}(?:-\d{4})?\b/);
-  const zipCode = zipMatch ? zipMatch[0].slice(0, 5) : null;
-
-  const houseMatch = streetPart.match(/\b\d{1,6}\b/);
-  const parsedHouse = houseMatch ? Number(houseMatch[0]) : NaN;
-  const houseNumber = Number.isFinite(parsedHouse) ? parsedHouse : null;
-
-  const streetName = streetPart
-    .replace(/\b\d{1,6}\b/g, " ")
-    .replace(/\b(apt|apartment|unit|ste|suite|#)\s*[a-z0-9-]+\b/gi, " ")
-    .replace(/\b(off|near|at|by)\b/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim() || "unknown-street";
-
-  const localitySeed = zipCode || localityKey || "default-locality";
-  const localityHash = hashString(localitySeed);
-  const baseLatOffset = (((localityHash % 10000) / 10000) - 0.5) * 0.16;
-  const baseLngOffset = ((((Math.floor(localityHash / 10000)) % 10000) / 10000) - 0.5) * 0.16;
-
-  const streetSeed = `${localitySeed}|${streetName}`;
-  const streetHash = hashString(streetSeed);
-  const streetAngleRadians = ((streetHash % 360) * Math.PI) / 180;
-  const streetRadius = ((((Math.floor(streetHash / 360)) % 1000) / 1000) - 0.5) * 0.02;
-
-  const baseLatitude = 34.0522 + baseLatOffset;
-  const baseLongitude = -118.2437 + baseLngOffset;
-  const streetLatitude = baseLatitude + Math.cos(streetAngleRadians) * streetRadius;
-  const streetLongitude = baseLongitude + Math.sin(streetAngleRadians) * streetRadius;
-
-  const normalizedHouse = houseNumber !== null ? ((houseNumber % 2000) - 1000) / 1000 : 0;
-  const alongStreetStep = 0.0035;
-
-  return {
-    latitude: streetLatitude + Math.cos(streetAngleRadians) * normalizedHouse * alongStreetStep,
-    longitude: streetLongitude + Math.sin(streetAngleRadians) * normalizedHouse * alongStreetStep,
-    address,
-  };
-}
-
-function buildBusinessStartLocation(businessAddress) {
-  if (!businessAddress || typeof businessAddress !== "string") return undefined;
-  return geocodeAddressHeuristic(businessAddress);
-}
-
 export default function RouteOptimizer() {
   const user = useCurrentUser();
   const allCustomers = useCustomersFilter({ created_by: user?.email });
@@ -201,6 +135,7 @@ export default function RouteOptimizer() {
   const [optimizing, setOptimizing] = useState(false);
   const [routeRunnerActive, setRouteRunnerActive] = useState(false);
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
+  const [routeWarnings, setRouteWarnings] = useState([]);
 
   useEffect(() => {
     if (allCustomers !== undefined) {
@@ -238,6 +173,7 @@ export default function RouteOptimizer() {
 
   useEffect(() => {
     setOptimizedRoute(null);
+    setRouteWarnings([]);
     setRouteRunnerActive(false);
     setCurrentStopIndex(0);
   }, [selectedDay]);
@@ -261,7 +197,9 @@ export default function RouteOptimizer() {
         return { ...customer, estimatedDuration };
       });
 
-      const startLocation = buildBusinessStartLocation(businessAddress);
+      const startLocation = businessAddress
+        ? await routeOptimizer.geocodeAddress(businessAddress)
+        : undefined;
 
       const route = await routeOptimizer.optimizeRoute(customersForOptimization, targetDate, {
         startTime: workingHoursStart,
@@ -290,6 +228,7 @@ export default function RouteOptimizer() {
           estimated_travel_time_from_previous: travelLabel,
           raw_travel_time_minutes: Math.round(stop.travelTime),
           notes: gateCodeText,
+          customer_location: stop.customer.location,
           customer: originalCustomer || stop.customer,
         };
       });
@@ -298,7 +237,7 @@ export default function RouteOptimizer() {
         customerMedianById: durationProfile.customerMedianById,
         fallback: 15,
       });
-      const totalMinutes = serviceSummary.totalServiceMinutes;
+      const totalMinutes = Math.round(route.totalTime || serviceSummary.totalServiceMinutes);
 
       setOptimizedRoute({
         optimized_order: optimizedStops,
@@ -308,10 +247,12 @@ export default function RouteOptimizer() {
         origin_address: startLocation ? businessAddress : null,
         optimization_summary: `Route optimized with ${route.optimizationMethod} for ${selectedDay}.`
       });
+      setRouteWarnings(route.warnings || []);
       setRouteRunnerActive(false);
       setCurrentStopIndex(0);
     } catch (error) {
       console.error("[RouteOptimizer] Failed to generate route:", error);
+      setRouteWarnings(["Route provider unavailable. Estimated distances may be less accurate."]);
       toast.error("Could not generate route plan. Please try again.");
     } finally {
       setOptimizing(false);
@@ -355,12 +296,12 @@ export default function RouteOptimizer() {
     setCurrentStopIndex((prev) => Math.max(prev - 1, 0));
   }, []);
 
-  const handleNavigateToStop = useCallback((address) => {
+  const handleNavigateToStop = useCallback((address, location) => {
     if (!address || address === "No address on file") {
       toast.error("No address available for navigation.");
       return;
     }
-    openNavigation(address);
+    openNavigation(location ? { address, latitude: location.latitude, longitude: location.longitude } : address);
   }, []);
 
   if (loading) {
@@ -504,6 +445,15 @@ export default function RouteOptimizer() {
               </div>
             )}
 
+            {routeWarnings.length > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+                <div className="font-medium">Estimated map data</div>
+                <ul className="mt-1 list-disc pl-5">
+                  {routeWarnings.slice(0, 2).map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
+              </div>
+            )}
+
             {!routeRunnerActive && (
               <div className="mt-4 flex flex-col sm:flex-row gap-3">
                 <Button
@@ -581,7 +531,7 @@ export default function RouteOptimizer() {
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <Button
                           size="sm"
-                          onClick={() => handleNavigateToStop(stop.customer_address)}
+                          onClick={() => handleNavigateToStop(stop.customer_address, stop.customer_location)}
                           className="h-9 rounded-full bg-cyan-600 px-4 text-xs font-semibold text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
                         >
                           <Navigation className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -715,7 +665,7 @@ function RouteRunnerView({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             <Button
               size="lg"
-              onClick={() => onNavigate(currentStop.customer_address)}
+              onClick={() => onNavigate(currentStop.customer_address, currentStop.customer_location)}
               className="rounded-full bg-cyan-600 text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
             >
               <Navigation className="w-5 h-5 mr-2" />

@@ -28,7 +28,11 @@ import {
   BarChart3,
   LogOut,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  PlugZap,
+  CheckCircle2,
+  XCircle,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -281,6 +285,40 @@ function AccountSection({ userData, setUserData }) {
   );
 }
 
+function ProviderStatusCard({ name, description, status, onTest, testing, result }) {
+  const ready = Boolean(status?.ready);
+  const configured = Boolean(status?.configured);
+  return (
+    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-slate-900">{name}</p>
+          <p className="text-xs text-slate-600 mt-1">{description}</p>
+        </div>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${ready ? 'bg-emerald-100 text-emerald-700' : configured ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+          {ready ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+          {ready ? 'Ready' : configured ? 'Needs setup' : 'Not configured'}
+        </span>
+      </div>
+      {status?.mode && status.mode !== 'unknown' && (
+        <p className="text-xs text-slate-500">Mode: {status.mode}</p>
+      )}
+      {!ready && status?.missing?.length > 0 && (
+        <p className="text-xs text-amber-700">Missing: {status.missing.join(', ')}</p>
+      )}
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-xs ${result?.ok ? 'text-emerald-700' : result ? 'text-red-700' : 'text-slate-500'}`}>
+          {result?.message || status?.message}
+        </p>
+        <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testing}>
+          {testing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
+          {testing ? 'Testing...' : 'Test connection'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState('business');
@@ -300,8 +338,12 @@ export default function Settings() {
   const [isDeleteAllDataDialogOpen, setIsDeleteAllDataDialogOpen] = useState(false);
   const [deleteAllDataConfirmText, setDeleteAllDataConfirmText] = useState('');
   const [isDeletingAllData, setIsDeletingAllData] = useState(false);
+  const [testingProvider, setTestingProvider] = useState('');
+  const [providerTestResults, setProviderTestResults] = useState({});
 
   const convexBusiness = useQuery(api.businesses.getCurrent);
+  const providerStatus = useQuery(api.providerConfig.getStatus);
+  const testProvider = useAction(api.providerConfig.test);
   const updateBusiness = useMutation(api.businesses.update);
   const updateBusinessSettings = useMutation(api.businesses.updateSettings);
 
@@ -649,6 +691,21 @@ export default function Settings() {
     }
   };
 
+  const handleTestProvider = async (provider) => {
+    setTestingProvider(provider);
+    try {
+      const result = await testProvider({ provider });
+      setProviderTestResults((previous) => ({ ...previous, [provider]: result }));
+    } catch (error) {
+      setProviderTestResults((previous) => ({
+        ...previous,
+        [provider]: { ok: false, message: error instanceof Error ? error.message : 'Provider test failed' },
+      }));
+    } finally {
+      setTestingProvider('');
+    }
+  };
+
   const sections = [
     { id: 'business', label: 'Business Info', icon: Building2 },
     { id: 'account', label: 'Account', icon: User },
@@ -656,6 +713,7 @@ export default function Settings() {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'schedule', label: 'Schedule', icon: Calendar },
     { id: 'services', label: 'Service Types', icon: Beaker },
+    { id: 'integrations', label: 'Integrations', icon: PlugZap },
     { id: 'backup', label: 'Data Backup', icon: HardDrive },
     { id: 'privacy', label: 'Privacy & Data', icon: Eye },
     { id: 'support', label: 'Help & Support', icon: HelpCircle }
@@ -1182,6 +1240,55 @@ export default function Settings() {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeSection === 'integrations' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Live Integrations</h2>
+                  <p className="text-sm text-slate-600">
+                    Billing and customer messages use server-side Convex environment variables. Secrets are never stored in ChemCheck or sent to this device.
+                  </p>
+                </div>
+
+                {!providerStatus ? (
+                  <div className="rounded-lg border border-slate-200 p-4 text-sm text-slate-600">Loading provider status...</div>
+                ) : (
+                  <div className="space-y-3">
+                    <ProviderStatusCard
+                      name="Stripe billing"
+                      description="Invoice and quote payment links plus subscription billing."
+                      status={providerStatus.stripe}
+                      onTest={() => handleTestProvider('stripe')}
+                      testing={testingProvider === 'stripe'}
+                      result={providerTestResults.stripe}
+                    />
+                    <ProviderStatusCard
+                      name="Mailersend email"
+                      description="Customer service reports, invoices, and payment notifications."
+                      status={providerStatus.mailersend}
+                      onTest={() => handleTestProvider('mailersend')}
+                      testing={testingProvider === 'mailersend'}
+                      result={providerTestResults.mailersend}
+                    />
+                    <ProviderStatusCard
+                      name="Twilio SMS"
+                      description="Service-complete texts and queued customer messages."
+                      status={providerStatus.twilio}
+                      onTest={() => handleTestProvider('twilio')}
+                      testing={testingProvider === 'twilio'}
+                      result={providerTestResults.twilio}
+                    />
+                  </div>
+                )}
+
+                <div className="rounded-lg bg-slate-50 p-4 text-xs text-slate-600 space-y-1">
+                  <p className="font-medium text-slate-800">Deployment checklist</p>
+                  <p>Set provider secrets with <code>npx convex env set</code> (or the production deployment secret manager), never in Vite or source control.</p>
+                  <p>Use live Stripe keys and a registered <code>/stripe-webhook</code> endpoint for production billing.</p>
+                  <p>Verify your Mailersend sending domain and Twilio sender before sending customer data.</p>
                 </div>
               </div>
             )}
