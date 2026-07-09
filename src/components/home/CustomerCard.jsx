@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useEffect, useState, memo } from "react";
 import {
   Phone,
   Mail,
@@ -11,6 +11,8 @@ import {
   MapPin,
   ShieldCheck,
   Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +51,21 @@ function getChemicalReadings(log) {
     .filter(Boolean);
 }
 
+function GateCodeControl({ visible, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex items-center gap-1 bg-amber-50/70 border border-amber-200 rounded-md px-1.5 py-0.5 text-amber-800 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+      aria-label={visible ? "Hide gate code" : "Reveal gate code"}
+    >
+      <Lock className="w-3 h-3 text-amber-700" />
+      <span className="text-[10px] font-semibold">Gate: {visible ? "Visible" : "Hidden"}</span>
+      {visible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+    </button>
+  );
+}
+
 const CustomerCard = memo(function CustomerCard({
   customer,
   isCompleted,
@@ -63,6 +80,7 @@ const CustomerCard = memo(function CustomerCard({
   serviceConfidence,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [gateCodeVisible, setGateCodeVisible] = useState(false);
   const cardState = isCompleted ? "done" : isSkipped ? "skipped" : "pending";
   const statusBadgeClassName = cardState === "done"
     ? "bg-emerald-100/80 text-emerald-700"
@@ -89,6 +107,17 @@ const CustomerCard = memo(function CustomerCard({
   const startLabel = isSkipped ? "Resume" : "Start";
   const skipLabel = isSkipped ? "Unskip" : "Skip";
   const chemicalReadings = getChemicalReadings(lastWeekLog);
+
+  useEffect(() => {
+    if (!gateCodeVisible) return undefined;
+    const timeoutId = window.setTimeout(() => setGateCodeVisible(false), 15_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [gateCodeVisible]);
+
+  const handleGateCodeToggle = (event) => {
+    event.stopPropagation();
+    setGateCodeVisible((visible) => !visible);
+  };
 
   const handleHeaderClick = () => {
     if (isCompleted) {
@@ -133,8 +162,8 @@ const CustomerCard = memo(function CustomerCard({
             </div>
             {customer.gate_code && (
               <div className="mt-1.5 inline-flex items-center gap-1 bg-amber-50/70 border border-amber-200 rounded-md px-1.5 py-0.5">
-                <Lock className="w-3 h-3 text-amber-700" />
-                <span className="text-[10px] font-semibold text-amber-800">Gate: {customer.gate_code}</span>
+                <GateCodeControl visible={gateCodeVisible} onToggle={handleGateCodeToggle} />
+                {gateCodeVisible && <span className="text-[10px] font-semibold text-amber-800">{customer.gate_code}</span>}
               </div>
             )}
           </div>
@@ -245,8 +274,8 @@ const CustomerCard = memo(function CustomerCard({
 
             {customer.gate_code && (
               <div className="flex items-center gap-2 bg-amber-50/60 border border-amber-200 rounded-lg p-2">
-                <Lock className="w-3 h-3 text-amber-700" />
-                <span className="text-xs font-semibold text-amber-800">Gate: {customer.gate_code}</span>
+                <GateCodeControl visible={gateCodeVisible} onToggle={handleGateCodeToggle} />
+                {gateCodeVisible && <span className="text-xs font-semibold text-amber-800">{customer.gate_code}</span>}
               </div>
             )}
 

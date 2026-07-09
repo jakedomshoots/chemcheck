@@ -1238,7 +1238,7 @@ export default function Settings() {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900 mb-1">Privacy & Data</h2>
-                  <p className="text-sm text-slate-600">Manage your data and privacy settings (GDPR compliant)</p>
+                  <p className="text-sm text-slate-600">Manage exports, deletion, local storage, and optional analytics.</p>
                 </div>
 
                 <div className="space-y-4">
@@ -1281,7 +1281,7 @@ export default function Settings() {
                         <div>
                           <Label htmlFor="usage-analytics" className="font-medium text-slate-900">Usage Analytics</Label>
                           <p className="text-sm text-slate-600">
-                            Help improve ChemCheck by sharing anonymous usage data
+                            Disabled until you choose to share anonymous usage data
                           </p>
                         </div>
                       </div>

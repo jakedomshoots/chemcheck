@@ -15,6 +15,7 @@ declare global {
 }
 
 const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
+const ANALYTICS_CONSENT_KEY = 'chemcheck_analytics_consent';
 
 export function initAnalytics(): void {
   if (!GA_MEASUREMENT_ID) {
@@ -24,6 +25,11 @@ export function initAnalytics(): void {
 
   if (import.meta.env.DEV) {
     console.log('[Analytics] Development mode, skipping initialization');
+    return;
+  }
+
+  if (hasOptedOut()) {
+    console.log('[Analytics] No analytics consent, skipping initialization');
     return;
   }
 
@@ -103,7 +109,7 @@ export function setUserProperties(properties: {
 }
 
 export function optOutAnalytics(): void {
-  localStorage.setItem('analytics_opt_out', 'true');
+  localStorage.setItem(ANALYTICS_CONSENT_KEY, 'denied');
 
   if (GA_MEASUREMENT_ID) {
     (window as unknown as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`] = true;
@@ -111,11 +117,11 @@ export function optOutAnalytics(): void {
 }
 
 export function hasOptedOut(): boolean {
-  return localStorage.getItem('analytics_opt_out') === 'true';
+  return localStorage.getItem(ANALYTICS_CONSENT_KEY) !== 'granted';
 }
 
 export function optInAnalytics(): void {
-  localStorage.removeItem('analytics_opt_out');
+  localStorage.setItem(ANALYTICS_CONSENT_KEY, 'granted');
 
   if (GA_MEASUREMENT_ID) {
     delete (window as unknown as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`];

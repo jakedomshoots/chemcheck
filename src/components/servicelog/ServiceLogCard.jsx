@@ -350,7 +350,7 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
               {log.gate_code && (
                 <div className="flex items-start gap-1.5 p-2.5 bg-purple-50/60 rounded-lg border border-purple-200">
                   <Lock className="w-3.5 h-3.5 text-purple-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-slate-700 leading-relaxed">Gate Code: <span className="font-semibold text-purple-700">{log.gate_code}</span></p>
+                  <p className="text-xs text-slate-700 leading-relaxed">Access code is stored on the customer profile and is hidden from service history.</p>
                 </div>
               )}
 

@@ -59,6 +59,22 @@ describe("CustomerCard", () => {
     expect(screen.queryByText("good")).not.toBeInTheDocument();
   });
 
+  it("masks a gate code until the technician explicitly reveals it", () => {
+    render(
+      <CustomerCard
+        customer={{ ...customer, gate_code: "1234" }}
+        isCompleted={false}
+        isSkipped={false}
+      />
+    );
+
+    expect(screen.queryByText("1234")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reveal gate code" }));
+    expect(screen.getByText("1234")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide gate code" }));
+    expect(screen.queryByText("1234")).not.toBeInTheDocument();
+  });
+
   it("surfaces start and skip as compact direct actions", () => {
     const onStart = vi.fn();
     const onMap = vi.fn();
