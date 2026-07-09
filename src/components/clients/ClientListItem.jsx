@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ChevronDown, MapPin, Phone, Mail, Lock, Droplets, Trash2, Edit, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -15,6 +15,14 @@ export default function ClientListItem({
   isMoving
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [gateCodeVisible, setGateCodeVisible] = useState(false);
+
+  useEffect(() => {
+    if (!gateCodeVisible) return undefined;
+
+    const timeoutId = window.setTimeout(() => setGateCodeVisible(false), 15_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [gateCodeVisible]);
 
   const handleCardClick = () => {
     if (!reorderMode) {
@@ -96,7 +104,19 @@ export default function ClientListItem({
             {customer.gate_code && (
               <div className="flex items-center gap-2 text-slate-500">
                 <Lock className="w-3 h-3 text-slate-500" />
-                <span className="text-xs font-medium text-slate-500">Gate: {customer.gate_code}</span>
+                <span className="text-xs font-medium text-slate-500">Gate code</span>
+                <button
+                  type="button"
+                  aria-label={gateCodeVisible ? "Hide gate code" : "Reveal gate code"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setGateCodeVisible((visible) => !visible);
+                  }}
+                  className="text-xs font-semibold text-cyan-700 underline underline-offset-2"
+                >
+                  {gateCodeVisible ? "Hide" : "Reveal"}
+                </button>
+                {gateCodeVisible && <span className="text-xs font-semibold text-slate-700">{customer.gate_code}</span>}
               </div>
             )}
 

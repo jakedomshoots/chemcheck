@@ -260,7 +260,7 @@ function LogEntry({ log, onDelete }) {
           {log.gate_code && (
             <div className="flex items-center gap-2 p-2 bg-purple-50/60 rounded-lg border border-purple-200 mb-2">
               <Lock className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
-              <p className="text-xs text-slate-700">Gate: <span className="font-semibold text-purple-700">{log.gate_code}</span></p>
+              <p className="text-xs text-slate-700">Access code is stored on the customer profile and is hidden from service history.</p>
             </div>
           )}
 

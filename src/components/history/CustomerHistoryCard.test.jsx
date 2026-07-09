@@ -34,4 +34,32 @@ describe('CustomerHistoryCard', () => {
     fireEvent.click(screen.getByText(/Alice Smith/i));
     expect(screen.getByText(/No service logs match this filter/i)).toBeInTheDocument();
   });
+
+  it('never repeats a gate code inside historical service logs', async () => {
+    render(
+      <CustomerHistoryCard
+        customer={{ full_name: 'Alice Smith', address: '123 Main St' }}
+        logs={[{
+          _id: 'log-1',
+          service_date: '2026-07-09',
+          status: 'completed',
+          ph: 'good',
+          chlorine: 'good',
+          alkalinity: 'good',
+          stabilizer: 'good',
+          gate_code: '1234',
+        }]}
+        totalLogCount={1}
+        lastServiceDate={'2026-07-09'}
+        onDeleteLog={vi.fn()}
+        onClick={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByText(/Alice Smith/i));
+    fireEvent.click(screen.getByText('Jul 9, 2026'));
+
+    expect(screen.queryByText('1234')).not.toBeInTheDocument();
+    expect(await screen.findByText(/hidden from service history/i)).toBeInTheDocument();
+  });
 });
