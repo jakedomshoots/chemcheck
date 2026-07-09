@@ -250,7 +250,7 @@ export default function CustomerDetail() {
   }, []);
 
   const getPoolStatus = useCallback((log) => {
-    if (!log) return 'good';
+    if (!log) return 'not_tested';
 
     const readings = [
       log.ph,
@@ -259,7 +259,10 @@ export default function CustomerDetail() {
       log.stabilizer
     ];
 
-    const hasIssue = readings.some(r =>
+    const testedReadings = readings.filter((reading) => reading && reading !== 'not_tested');
+    if (testedReadings.length === 0) return 'not_tested';
+
+    const hasIssue = testedReadings.some(r =>
       r === "low" || r === "high" || r === "critical"
     );
 

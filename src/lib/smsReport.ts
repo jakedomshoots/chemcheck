@@ -10,7 +10,7 @@
 /**
  * Pool status indicator for SMS messages
  */
-export type PoolStatus = 'good' | 'needs_attention';
+export type PoolStatus = 'good' | 'needs_attention' | 'not_tested';
 
 /**
  * Formats an SMS message for a service report
@@ -46,9 +46,11 @@ export function formatSmsMessage(
 
   // Use ASCII characters only to ensure GSM-7 encoding (160 char limit)
   // Emoji characters would trigger UCS-2 encoding (70 char limit per segment)
-  const statusText = overallStatus === 'good' 
-    ? 'OK' 
-    : 'Needs Attention';
+  const statusText = overallStatus === 'good'
+    ? 'OK'
+    : overallStatus === 'not_tested'
+      ? 'Water Test Not Recorded'
+      : 'Needs Attention';
 
   const baseMessage = `${truncatedBusinessName} - Service completed ${serviceDate}\nPool Status: ${statusText}`;
   const message = reportLink

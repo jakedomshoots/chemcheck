@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { ChevronDown, ChevronRight, MapPin, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, Trash2, Calendar as CalendarIcon, Lock, BarChart3, Camera, ClipboardList } from "lucide-react";
+import { ChevronDown, ChevronRight, MapPin, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, Trash2, Calendar as CalendarIcon, Lock, BarChart3, Camera, ClipboardList, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
 import { format, parseISO } from "date-fns";
@@ -40,16 +40,18 @@ const levelConfig = {
   low: { icon: AlertTriangle, color: "text-yellow-600", bg: "bg-yellow-50/80", border: "border-yellow-200", label: "Low" },
   good: { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50/80", border: "border-emerald-200", label: "Good" },
   high: { icon: AlertCircle, color: "text-orange-600", bg: "bg-orange-50/80", border: "border-orange-200", label: "High" },
-  critical: { icon: XCircle, color: "text-red-600", bg: "bg-red-50/80", border: "border-red-200", label: "Critical" }
+  critical: { icon: XCircle, color: "text-red-600", bg: "bg-red-50/80", border: "border-red-200", label: "Critical" },
+  not_tested: { icon: Minus, color: "text-slate-500", bg: "bg-slate-50", border: "border-slate-200", label: "Not tested" }
 };
 
 // Get overall status for a log entry
 function getLogStatus(log) {
-  const levels = [log.ph, log.chlorine, log.alkalinity, log.stabilizer].filter(Boolean);
+  const levels = [log.ph, log.chlorine, log.alkalinity, log.stabilizer]
+    .filter((level) => level && level !== 'not_tested');
   if (levels.includes('critical')) return 'critical';
   if (levels.includes('high')) return 'high';
   if (levels.includes('low')) return 'low';
-  return 'good';
+  return levels.includes('good') ? 'good' : 'not_tested';
 }
 
 // Collapsible Log Entry Component
@@ -187,7 +189,7 @@ function LogEntry({ log, onDelete }) {
             {/* Chemical Status Dots */}
             {readings.slice(0, 3).map((reading) => {
               if (reading.type === "number") return null;
-              const config = levelConfig[reading.value] || levelConfig.good;
+              const config = levelConfig[reading.value] || levelConfig.not_tested;
               return (
                 <div key={reading.label} className={`w-2 h-2 rounded-full ${config.color.replace('text-', 'bg-')}`} title={`${reading.label}: ${reading.value}`} />
               );
@@ -229,7 +231,7 @@ function LogEntry({ log, onDelete }) {
                   );
                 }
 
-                const config = levelConfig[reading.value] || levelConfig.good;
+                const config = levelConfig[reading.value] || levelConfig.not_tested;
                 const Icon = config.icon;
                 return (
                   <div key={reading.label} className={`${config.bg} ${config.border} border rounded-lg p-2`}>

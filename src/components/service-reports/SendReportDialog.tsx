@@ -25,7 +25,7 @@ import { EmailPreview } from './EmailPreview';
 import { getEmailDeliveryValidationError } from '@/lib/emailValidation';
 
 export type DeliveryMethod = 'sms' | 'email';
-export type PoolStatus = 'good' | 'needs_attention';
+export type PoolStatus = 'good' | 'needs_attention' | 'not_tested';
 
 /** Maximum character limit for custom notes */
 export const CUSTOM_NOTE_MAX_LENGTH = 500;
@@ -276,9 +276,11 @@ export function SendReportDialog({
           {poolStatus && (
             <div 
               className={`flex items-center gap-2 p-3 rounded-lg border ${
-                poolStatus === 'good' 
-                  ? 'bg-green-50 border-green-200' 
-                  : 'bg-amber-50 border-amber-200'
+                poolStatus === 'good'
+                  ? 'bg-green-50 border-green-200'
+                  : poolStatus === 'not_tested'
+                    ? 'bg-slate-50 border-slate-200'
+                    : 'bg-amber-50 border-amber-200'
               }`}
               data-testid="pool-status-indicator"
             >
@@ -286,6 +288,11 @@ export function SendReportDialog({
                 <>
                   <div className="w-2 h-2 rounded-full bg-green-500" />
                   <span className="text-sm text-green-700 font-medium">Pool Status: Everything is Perfect ✓</span>
+                </>
+              ) : poolStatus === 'not_tested' ? (
+                <>
+                  <AlertCircle className="w-4 h-4 text-slate-600" />
+                  <span className="text-sm text-slate-700 font-medium">Pool Status: Water Test Not Recorded</span>
                 </>
               ) : (
                 <>

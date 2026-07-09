@@ -42,7 +42,7 @@ const serviceDateArb = fc.tuple(
 /**
  * Generator for pool status
  */
-const poolStatusArb: fc.Arbitrary<PoolStatus> = fc.constantFrom('good', 'needs_attention');
+const poolStatusArb: fc.Arbitrary<PoolStatus> = fc.constantFrom('good', 'needs_attention', 'not_tested');
 
 /**
  * Generator for base URLs
@@ -137,6 +137,8 @@ describe('SMS Report Utilities', () => {
             // Uses ASCII characters for GSM-7 encoding compatibility
             if (status === 'good') {
               expect(message).toContain('OK');
+            } else if (status === 'not_tested') {
+              expect(message).toContain('Water Test Not Recorded');
             } else {
               expect(message).toContain('Needs Attention');
             }
@@ -185,7 +187,8 @@ describe('SMS Report Utilities', () => {
             // Status indicator must be present (ASCII for GSM-7 encoding)
             const hasGoodStatus = message.includes('OK');
             const hasNeedsAttention = message.includes('Needs Attention');
-            expect(hasGoodStatus || hasNeedsAttention).toBe(true);
+            const hasUntestedStatus = message.includes('Water Test Not Recorded');
+            expect(hasGoodStatus || hasNeedsAttention || hasUntestedStatus).toBe(true);
           }
         ),
         { numRuns: 20 }

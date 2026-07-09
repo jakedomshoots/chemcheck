@@ -85,10 +85,29 @@ export default function SimplifiedChemicalInput({
           >
             Numeric
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              onModeChange?.("not_tested");
+              onChange?.("not_tested");
+            }}
+            aria-pressed={mode === "not_tested"}
+            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+              mode === "not_tested"
+                ? "bg-white shadow-sm text-slate-900"
+                : "text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            Not tested
+          </button>
         </div>
       </div>
 
-      {mode === "numeric" ? (
+      {mode === "not_tested" ? (
+        <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+          Not tested is recorded for this visit. Choose Quick or Numeric only when you test this chemical.
+        </p>
+      ) : mode === "numeric" ? (
         <div className="space-y-2">
           <div className="relative">
             <Input

@@ -10,6 +10,10 @@ import {
     validateNote,
     checkRateLimit
 } from '@/lib/validation';
+import {
+    toLegacyServiceLogValidationInput,
+    validateServiceStop,
+} from '@/lib/serviceLogIntegrity';
 import { measureDatabaseOperation } from '@/lib/monitoring';
 
 interface CacheEntry<T> {
@@ -451,7 +455,12 @@ export function useServiceLogCreate() {
             throw new Error(rateCheck.reason);
         }
 
-        const validation = validateServiceLog(data);
+        const stopValidation = validateServiceStop(data);
+        if (!stopValidation.valid) {
+            throw new Error(stopValidation.error);
+        }
+
+        const validation = validateServiceLog(toLegacyServiceLogValidationInput(data));
         if (!validation.success) {
             throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
         }
@@ -460,6 +469,14 @@ export function useServiceLogCreate() {
         const nowMs = Date.now();
         const id = await db.serviceLogs.add({
             ...validation.data,
+            status: data.status,
+            ph: data.ph,
+            chlorine: data.chlorine,
+            alkalinity: data.alkalinity,
+            stabilizer: data.stabilizer,
+            photo_count: data.photo_count,
+            has_before_photos: data.has_before_photos,
+            has_after_photos: data.has_after_photos,
             tenant_id: tenant.key,
             createdAt: now,
             updatedAt: now,

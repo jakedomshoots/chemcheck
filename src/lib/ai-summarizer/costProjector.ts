@@ -7,6 +7,7 @@ import {
   type ChemicalReading,
   isValidCostRange,
 } from './types';
+import { isValidReading } from './validation';
 
 const CHEMICAL_COSTS: Record<string, Record<string, number>> = {
   ph: {
@@ -138,7 +139,7 @@ export function analyzeChemicalUsage(
   for (const log of logs) {
     for (const chemical of chemicals) {
       const reading = log[chemical];
-      if (reading && reading !== 'good') {
+      if (isValidReading(reading) && reading !== 'good') {
         const data = usage.get(chemical)!;
         data.count++;
         data.readings.push(reading);
@@ -196,8 +197,8 @@ export function detectUsagePatternChanges(
   const chemicals = ['ph', 'chlorine', 'alkalinity', 'stabilizer'] as const;
 
   for (const chemical of chemicals) {
-    const recentIssues = recentLogs.filter(log => log[chemical] !== 'good').length;
-    const previousIssues = previousLogs.filter(log => log[chemical] !== 'good').length;
+    const recentIssues = recentLogs.filter(log => isValidReading(log[chemical]) && log[chemical] !== 'good').length;
+    const previousIssues = previousLogs.filter(log => isValidReading(log[chemical]) && log[chemical] !== 'good').length;
     
     const recentRate = recentIssues / recentLogs.length;
     const previousRate = previousIssues / previousLogs.length;

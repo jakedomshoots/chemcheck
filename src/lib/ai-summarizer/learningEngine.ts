@@ -17,6 +17,7 @@ import {
   type ChemicalReading,
   type InterventionSource,
 } from './types';
+import { isValidReading } from './validation';
 
 const MIN_PATTERN_SAMPLE_SIZE = 3;
 
@@ -121,13 +122,13 @@ function getChemicalReading(
 ): ChemicalReading | undefined {
   switch (chemical) {
     case 'ph':
-      return log.ph;
+      return isValidReading(log.ph) ? log.ph : undefined;
     case 'chlorine':
-      return log.chlorine;
+      return isValidReading(log.chlorine) ? log.chlorine : undefined;
     case 'alkalinity':
-      return log.alkalinity;
+      return isValidReading(log.alkalinity) ? log.alkalinity : undefined;
     case 'stabilizer':
-      return log.stabilizer;
+      return isValidReading(log.stabilizer) ? log.stabilizer : undefined;
     default:
       return undefined;
   }

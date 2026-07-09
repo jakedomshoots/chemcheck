@@ -13,7 +13,7 @@
 export interface EmailContentParams {
   customerName: string;
   serviceDate: string;
-  poolStatus: 'good' | 'needs_attention';
+  poolStatus: 'good' | 'needs_attention' | 'not_tested';
   customNote?: string;
   businessName?: string;
   reportLink?: string;
@@ -153,9 +153,13 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const subject = `Pool Service Completed - ${sanitizedServiceDate}`;
   
   // Generate status-specific content
-  const statusIcon = poolStatus === 'good' ? '✓' : '⚠';
-  const statusText = poolStatus === 'good' ? 'Everything is Perfect' : 'Needs Attention';
-  const statusColor = poolStatus === 'good' ? '#10b981' : '#f59e0b';
+  const statusIcon = poolStatus === 'good' ? '✓' : poolStatus === 'not_tested' ? 'i' : '⚠';
+  const statusText = poolStatus === 'good'
+    ? 'Everything is Perfect'
+    : poolStatus === 'not_tested'
+      ? 'Water Test Not Recorded'
+      : 'Needs Attention';
+  const statusColor = poolStatus === 'good' ? '#10b981' : poolStatus === 'not_tested' ? '#475569' : '#f59e0b';
   
   // Generate the message body based on status
   let messageContent: string;
@@ -166,6 +170,9 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   if (poolStatus === 'good') {
     messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Your pool is in excellent condition and ready for use.</p>`;
     textMessageContent = 'Your pool is in excellent condition and ready for use.';
+  } else if (poolStatus === 'not_tested') {
+    messageContent = `<div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #64748b;"><p style="margin: 0; font-size: 16px; color: #334155;">Your service visit was completed. Water testing was not recorded for this visit.</p></div>`;
+    textMessageContent = 'Your service visit was completed. Water testing was not recorded for this visit.';
   } else {
     // Needs attention - include custom note or generic message
     const noteText = safeCustomNote || 'Your pool requires some attention. Please contact us if you have any questions.';

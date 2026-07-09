@@ -47,6 +47,8 @@ function getReadingStatus(value) {
       return { color: 'text-amber-700', bgColor: 'bg-amber-100', label: 'High', icon: 'warning' };
     case 'critical':
       return { color: 'text-red-700', bgColor: 'bg-red-100', label: 'Critical', icon: 'critical' };
+    case 'not_tested':
+      return { color: 'text-slate-600', bgColor: 'bg-slate-100', label: 'Not tested', icon: 'unknown' };
     default:
       return { color: 'text-slate-700', bgColor: 'bg-slate-100', label: value, icon: 'unknown' };
   }
@@ -266,8 +268,8 @@ export default function ReportPage() {
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-md border border-slate-200 bg-white p-2">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500">Overall</p>
-                <p className={`text-sm font-semibold ${report.overallStatus === 'good' ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {report.overallStatus === 'good' ? 'All Good' : 'Needs Attention'}
+                <p className={`text-sm font-semibold ${report.overallStatus === 'good' ? 'text-emerald-700' : report.overallStatus === 'not_tested' ? 'text-slate-600' : 'text-amber-700'}`}>
+                  {report.overallStatus === 'good' ? 'All Good' : report.overallStatus === 'not_tested' ? 'Water test not recorded' : 'Needs Attention'}
                 </p>
               </div>
               <div className="rounded-md border border-slate-200 bg-white p-2">
@@ -297,13 +299,20 @@ export default function ReportPage() {
                   className={
                     report.overallStatus === 'good'
                       ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                      : 'bg-amber-100 text-amber-700 hover:bg-amber-100'
+                      : report.overallStatus === 'not_tested'
+                        ? 'bg-slate-100 text-slate-700 hover:bg-slate-100'
+                        : 'bg-amber-100 text-amber-700 hover:bg-amber-100'
                   }
                 >
                   {report.overallStatus === 'good' ? (
                     <>
                       <CheckCircle2 className="w-3 h-3 mr-1" />
                       All Good
+                    </>
+                  ) : report.overallStatus === 'not_tested' ? (
+                    <>
+                      <Minus className="w-3 h-3 mr-1" />
+                      Water Test Not Recorded
                     </>
                   ) : (
                     <>

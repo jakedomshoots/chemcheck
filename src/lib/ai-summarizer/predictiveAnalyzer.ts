@@ -16,6 +16,7 @@ import {
   type TrendDirection,
   isValidConfidence,
 } from './types';
+import { isValidReading } from './validation';
 
 const MINIMUM_LOGS_FOR_PREDICTION = 5;
 const LOW_CONFIDENCE_THRESHOLD = 60;
@@ -63,7 +64,7 @@ function extractReadings(
   chemical: 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'
 ): ChemicalReading[] {
   return logs
-    .filter(log => log[chemical] !== undefined)
+    .filter(log => isValidReading(log[chemical]))
     .map(log => log[chemical] as ChemicalReading);
 }
 
@@ -221,6 +222,17 @@ export function generateChemicalPrediction(
   hasSeasonalData: boolean = false
 ): Prediction {
   const readings = extractReadings(logs, chemical);
+  if (readings.length === 0) {
+    return {
+      chemical,
+      currentLevel: 'not_tested',
+      predictedLevel: 'not_tested',
+      daysUntilCritical: null,
+      confidence: 0,
+      factors: ['No measured readings are available for this chemical.'],
+      recommendedAction: null,
+    };
+  }
   const currentLevel = readings.length > 0 ? readings[readings.length - 1] : 'good';
   const trend = calculateTrend(readings);
   const variance = calculateVariance(readings);
@@ -251,7 +263,7 @@ function determineOverallOutlook(
     return 'intervention-required';
   }
   const hasIssues = predictions.some(
-    p => p.predictedLevel !== 'good' || (p.daysUntilCritical !== null && p.daysUntilCritical < 14)
+    p => (p.predictedLevel !== 'good' && p.predictedLevel !== 'not_tested') || (p.daysUntilCritical !== null && p.daysUntilCritical < 14)
   );
   
   if (hasIssues) {

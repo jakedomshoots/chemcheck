@@ -40,6 +40,25 @@ describe("CustomerCard", () => {
     expect(screen.getByText("123 main")).toBeInTheDocument();
   });
 
+  it("labels untested chemistry clearly instead of presenting a passing result", () => {
+    render(
+      <CustomerCard
+        customer={customer}
+        isCompleted
+        isSkipped={false}
+        lastWeekLog={{
+          ph: "not_tested",
+          chlorine: "not_tested",
+          alkalinity: "not_tested",
+          stabilizer: "not_tested",
+        }}
+      />
+    );
+
+    expect(screen.getAllByText("Not tested")).toHaveLength(4);
+    expect(screen.queryByText("good")).not.toBeInTheDocument();
+  });
+
   it("surfaces start and skip as compact direct actions", () => {
     const onStart = vi.fn();
     const onMap = vi.fn();

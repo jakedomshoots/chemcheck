@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, ChevronDown, Trash2, Lock, Camera, Send, CheckCheck, Loader2, RefreshCw } from "lucide-react";
+import { Calendar, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, ChevronDown, Trash2, Lock, Camera, Send, CheckCheck, Loader2, RefreshCw, Minus } from "lucide-react";
 import { formatServiceDateFull } from "@/utils";
 import {
   AlertDialog,
@@ -22,7 +22,8 @@ const levelConfig = {
   low: { icon: AlertTriangle, color: "text-yellow-600", bg: "bg-yellow-50/80", border: "border-yellow-200" },
   good: { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50/80", border: "border-emerald-200" },
   high: { icon: AlertCircle, color: "text-orange-600", bg: "bg-orange-50/80", border: "border-orange-200" },
-  critical: { icon: XCircle, color: "text-red-600", bg: "bg-red-50/80", border: "border-red-200" }
+  critical: { icon: XCircle, color: "text-red-600", bg: "bg-red-50/80", border: "border-red-200" },
+  not_tested: { icon: Minus, color: "text-slate-500", bg: "bg-slate-50", border: "border-slate-200" }
 };
 
 /**
@@ -176,11 +177,13 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
   ].filter(r => r.value);
 
   const getWorstStatus = () => {
-    const levelStatuses = readings.filter(r => r.type === "level").map(r => r.value);
+    const levelStatuses = readings
+      .filter(r => r.type === "level" && r.value !== "not_tested")
+      .map(r => r.value);
     if (levelStatuses.includes('critical')) return 'critical';
     if (levelStatuses.includes('high')) return 'high';
     if (levelStatuses.includes('low')) return 'low';
-    return 'good';
+    return levelStatuses.includes('good') ? 'good' : 'not_tested';
   };
 
   const worstStatus = getWorstStatus();
@@ -321,7 +324,7 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
                     );
                   }
 
-                  const config = levelConfig[reading.value] || levelConfig.good;
+                  const config = levelConfig[reading.value] || levelConfig.not_tested;
                   const Icon = config.icon;
                   return (
                     <div key={reading.label} className={`${config.bg} ${config.border} border rounded-lg p-2`}>

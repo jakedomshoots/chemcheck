@@ -48,7 +48,7 @@ const serviceDateArb = fc.date({
 /**
  * Generator for pool status
  */
-const poolStatusArb = fc.constantFrom<'good' | 'needs_attention'>('good', 'needs_attention');
+const poolStatusArb = fc.constantFrom<'good' | 'needs_attention' | 'not_tested'>('good', 'needs_attention', 'not_tested');
 
 /**
  * Generator for custom notes (optional)

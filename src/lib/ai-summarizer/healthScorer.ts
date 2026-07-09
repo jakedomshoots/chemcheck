@@ -18,6 +18,7 @@ import {
   type DataQuality,
   scoreToGrade,
 } from './types';
+import { isValidReading } from './validation';
 
 export const DEFAULT_HEALTH_SCORER_CONFIG: PoolHealthScorerConfig = {
   weights: {
@@ -111,7 +112,7 @@ export function extractChemicalReadings(
   chemical: keyof Pick<ServiceLog, 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'>
 ): ChemicalReading[] {
   return logs
-    .filter(log => log[chemical] !== undefined)
+    .filter(log => isValidReading(log[chemical]))
     .map(log => log[chemical] as ChemicalReading);
 }
 

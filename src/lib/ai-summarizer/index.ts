@@ -29,6 +29,7 @@ import { generateCostAnalysis } from './costProjector';
 import { analyzeFleet, type PoolData } from './fleetAnalyzer';
 import { analyzeLearning } from './learningEngine';
 import { analyzeWeatherImpact } from './weatherAnalyzer';
+import { isValidReading } from './validation';
 
 export interface PoolAnalysisInput {
   customerId: string;
@@ -85,7 +86,7 @@ function extractChemicalTrends(logs: ServiceLog[]): ChemicalTrend[] {
 
   return chemicals.map(chemical => {
     const history = sortedLogs
-      .filter(log => log[chemical] !== undefined)
+      .filter(log => isValidReading(log[chemical]))
       .map(log => log[chemical] as ChemicalReading);
 
     const currentStatus = history.length > 0 ? history[history.length - 1] : 'good';
@@ -151,7 +152,7 @@ function extractProblems(
 
     for (const log of sortedLogs) {
       const reading = log[chemical];
-      if (reading && reading !== 'good') {
+      if (isValidReading(reading) && reading !== 'good') {
         issueOccurrences.push({ date: log.service_date, reading });
       }
     }

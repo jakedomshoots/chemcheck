@@ -16,6 +16,8 @@ import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
 import { requireCustomerAccess, requireUserEmail } from "./authorization";
 
+type PoolStatus = "good" | "needs_attention" | "not_tested";
+
 /**
  * Helper: Verify service log ownership
  */
@@ -313,7 +315,7 @@ export const sendReport = action({
 
     const deliveryMethod = args.delivery_method || 'sms';
     const customNote = args.custom_note;
-    const poolStatusOverride = args.pool_status as "good" | "needs_attention" | undefined;
+    const poolStatusOverride = args.pool_status as PoolStatus | undefined;
     const recipientEmailOverride = args.recipient_email?.trim();
 
     await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email);
@@ -625,7 +627,7 @@ export function sanitizeForSubject(text: string | null | undefined): string {
 export interface EmailContentParams {
   customerName: string;
   serviceDate: string;
-  poolStatus: 'good' | 'needs_attention';
+  poolStatus: PoolStatus;
   customNote?: string;
   businessName?: string;
   reportLink?: string;
@@ -692,9 +694,13 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const subject = `Pool Service Completed - ${sanitizedServiceDate}`;
 
   // Generate status-specific content
-  const statusIcon = poolStatus === 'good' ? '✓' : '⚠';
-  const statusText = poolStatus === 'good' ? 'Everything is Perfect' : 'Needs Attention';
-  const statusColor = poolStatus === 'good' ? '#10b981' : '#f59e0b';
+  const statusIcon = poolStatus === 'good' ? '✓' : poolStatus === 'not_tested' ? 'i' : '⚠';
+  const statusText = poolStatus === 'good'
+    ? 'Everything is Perfect'
+    : poolStatus === 'not_tested'
+      ? 'Water Test Not Recorded'
+      : 'Needs Attention';
+  const statusColor = poolStatus === 'good' ? '#10b981' : poolStatus === 'not_tested' ? '#475569' : '#f59e0b';
 
   // Generate the message body based on status
   let messageContent: string;
@@ -705,6 +711,9 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   if (poolStatus === 'good') {
     messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Your pool is in excellent condition and ready for use.</p>`;
     textMessageContent = 'Your pool is in excellent condition and ready for use.';
+  } else if (poolStatus === 'not_tested') {
+    messageContent = `<div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #64748b;"><p style="margin: 0; font-size: 16px; color: #334155;">Your service visit was completed. Water testing was not recorded for this visit.</p></div>`;
+    textMessageContent = 'Your service visit was completed. Water testing was not recorded for this visit.';
   } else {
     // Needs attention - include custom note or generic message
     const noteText = safeCustomNote || 'Your pool requires some attention. Please contact us if you have any questions.';
@@ -858,7 +867,7 @@ This is a service notification, not a marketing email.
  * doesn't trigger a "needs_attention" status (missing data is not the same
  * as bad data - the technician may not have tested that parameter).
  */
-function determinePoolStatus(serviceLog: any): "good" | "needs_attention" {
+function determinePoolStatus(serviceLog: any): PoolStatus {
   const readings = [
     serviceLog.ph,
     serviceLog.chlorine,
@@ -866,11 +875,15 @@ function determinePoolStatus(serviceLog: any): "good" | "needs_attention" {
     serviceLog.stabilizer
   ];
 
-  // Check for any reading that explicitly indicates an issue
-  // null/undefined readings are not considered issues (just missing data)
-  const hasIssue = readings.some((reading) =>
-    reading !== null &&
-    reading !== undefined &&
+  const measuredReadings = readings.filter((reading) =>
+    reading !== null && reading !== undefined && reading !== "not_tested"
+  );
+
+  if (measuredReadings.length === 0) {
+    return "not_tested";
+  }
+
+  const hasIssue = measuredReadings.some((reading) =>
     (reading === "low" || reading === "high" || reading === "critical")
   );
 
@@ -919,7 +932,7 @@ function formatServiceDate(dateString: string): string {
 function formatSmsMessage(
   businessName: string,
   serviceDate: string,
-  overallStatus: "good" | "needs_attention",
+  overallStatus: PoolStatus,
   reportLink: string
 ): string {
   // Truncate business name if too long
@@ -931,7 +944,9 @@ function formatSmsMessage(
   // Use ASCII characters only for GSM-7 encoding compatibility
   const statusText = overallStatus === "good"
     ? "OK"
-    : "Needs Attention";
+    : overallStatus === "not_tested"
+      ? "Water Test Not Recorded"
+      : "Needs Attention";
 
   return `${truncatedBusinessName} - Service completed ${serviceDate}\nPool Status: ${statusText}\nView report: ${reportLink}`;
 }
@@ -946,7 +961,7 @@ async function sendViaSms(
     customer: any;
     businessName: string;
     serviceDate: string;
-    overallStatus: "good" | "needs_attention";
+    overallStatus: PoolStatus;
     reportLink: string;
   }
 ): Promise<{
@@ -1144,7 +1159,7 @@ async function sendViaEmail(
     recipientEmail?: string;
     businessName: string;
     serviceDate: string;
-    overallStatus: "good" | "needs_attention";
+    overallStatus: PoolStatus;
     reportLink: string;
     customNote?: string;
   }
@@ -1446,7 +1461,7 @@ export const getReportByToken = action({
         salt: number | null;
       };
       notes: string | null;
-      overallStatus: "good" | "needs_attention";
+      overallStatus: PoolStatus;
       photos: {
         before: Array<{ id: string; category: string; timestamp: string; url: string | null }>;
         after: Array<{ id: string; category: string; timestamp: string; url: string | null }>;

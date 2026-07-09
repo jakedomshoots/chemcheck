@@ -29,6 +29,7 @@ const chemicalToneClassByStatus = {
   low: "border-amber-200 bg-amber-50 text-amber-700",
   high: "border-orange-200 bg-orange-50 text-orange-700",
   critical: "border-red-200 bg-red-50 text-red-700",
+  not_tested: "border-slate-200 bg-slate-50 text-slate-600",
 };
 
 function getChemicalReadings(log) {
@@ -41,7 +42,7 @@ function getChemicalReadings(log) {
       return {
         key,
         label,
-        value: `${value}${suffix}`,
+        value: value === "not_tested" ? "Not tested" : `${value}${suffix}`,
         toneClassName: chemicalToneClassByStatus[String(value).toLowerCase()] || "border-slate-200 bg-white/70 text-slate-700",
       };
     })

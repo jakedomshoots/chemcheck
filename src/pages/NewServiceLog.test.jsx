@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import NewServiceLog from './NewServiceLog';
 import { BrowserRouter } from 'react-router-dom';
@@ -27,7 +27,7 @@ vi.mock('sonner', () => ({
 
 // Mock child components
 vi.mock('../components/servicelog/SimplifiedChemicalInput', () => ({
-    default: ({ label }) => <div>{label} Input</div>
+    default: ({ label, value }) => <div>{label} Input: {value}</div>
 }));
 
 // Mock business settings hook
@@ -85,6 +85,24 @@ describe('New Service Log Page', () => {
 
         expect(screen.getByText(/pH Balance Input/i)).toBeInTheDocument();
         expect(screen.getByText(/Chlorine Level Input/i)).toBeInTheDocument();
+    });
+
+    it('does not record unmeasured water as good by default', async () => {
+        window.history.pushState({}, 'Test Page', '/?customerId=1');
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        expect(screen.getByText('pH Balance Input: not_tested')).toBeInTheDocument();
+        expect(screen.getByText('Chlorine Level Input: not_tested')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Service' }));
+
+        await waitFor(() => expect(mockCreateServiceLog).toHaveBeenCalledWith(expect.objectContaining({
+            status: 'completed',
+            ph: 'not_tested',
+            chlorine: 'not_tested',
+            alkalinity: 'not_tested',
+            stabilizer: 'not_tested',
+        })));
     });
 
     it('labels the service type selector', () => {

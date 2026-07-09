@@ -33,6 +33,10 @@ import {
   updateEndTime,
   clearTimeState,
 } from "@/lib/proof-of-service/timeTrackingStorage";
+import {
+  createInitialChemicalReadings,
+  validateServiceStop,
+} from "@/lib/serviceLogIntegrity";
 
 function usePrefersReducedMotion() {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
@@ -112,6 +116,21 @@ const CHEMICAL_CONFIGS = {
   },
 };
 
+const STOP_OUTCOMES = [
+  { value: "completed", label: "Service completed" },
+  { value: "skipped", label: "Skipped" },
+  { value: "no_access", label: "No access" },
+  { value: "weather", label: "Weather delay" },
+  { value: "green_pool", label: "Green pool / recovery needed" },
+  { value: "equipment_issue", label: "Equipment issue found" },
+  { value: "rescheduled", label: "Rescheduled" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const EXCEPTION_OUTCOMES = new Set(STOP_OUTCOMES
+  .map(({ value }) => value)
+  .filter((value) => value !== "completed"));
+
 function formatDuration(ms) {
   if (!ms || ms < 0) return "00:00:00";
   const totalSeconds = Math.floor(ms / 1000);
@@ -156,22 +175,26 @@ export default function NewServiceLog() {
   const [saving, setSaving] = useState(false);
   const existingLog = location.state?.serviceLog;
 
-  const [formData, setFormData] = useState({
-    service_type: existingLog?.service_type || "",
-    ph: existingLog?.ph || "good",
-    ph_mode: existingLog?.ph_value !== undefined ? "numeric" : "quick",
-    ph_value: existingLog?.ph_value ?? "",
-    chlorine: existingLog?.chlorine || "good",
-    chlorine_mode: existingLog?.chlorine_value !== undefined ? "numeric" : "quick",
-    chlorine_value: existingLog?.chlorine_value ?? "",
-    alkalinity: existingLog?.alkalinity || "good",
-    alkalinity_mode: existingLog?.alkalinity_value !== undefined ? "numeric" : "quick",
-    alkalinity_value: existingLog?.alkalinity_value ?? "",
-    stabilizer: existingLog?.stabilizer || "good",
-    stabilizer_mode: existingLog?.stabilizer_value !== undefined ? "numeric" : "quick",
-    stabilizer_value: existingLog?.stabilizer_value ?? "",
-    salt: existingLog?.salt ?? "",
-    notes: existingLog?.notes || ""
+  const [formData, setFormData] = useState(() => {
+    const readings = createInitialChemicalReadings(existingLog);
+    return {
+      service_type: existingLog?.service_type || "",
+      status: existingLog?.status || "completed",
+      ph: readings.ph,
+      ph_mode: existingLog?.ph_value !== undefined ? "numeric" : readings.ph === "not_tested" ? "not_tested" : "quick",
+      ph_value: existingLog?.ph_value ?? "",
+      chlorine: readings.chlorine,
+      chlorine_mode: existingLog?.chlorine_value !== undefined ? "numeric" : readings.chlorine === "not_tested" ? "not_tested" : "quick",
+      chlorine_value: existingLog?.chlorine_value ?? "",
+      alkalinity: readings.alkalinity,
+      alkalinity_mode: existingLog?.alkalinity_value !== undefined ? "numeric" : readings.alkalinity === "not_tested" ? "not_tested" : "quick",
+      alkalinity_value: existingLog?.alkalinity_value ?? "",
+      stabilizer: readings.stabilizer,
+      stabilizer_mode: existingLog?.stabilizer_value !== undefined ? "numeric" : readings.stabilizer === "not_tested" ? "not_tested" : "quick",
+      stabilizer_value: existingLog?.stabilizer_value ?? "",
+      salt: existingLog?.salt ?? "",
+      notes: existingLog?.notes || ""
+    };
   });
   const [draftSavedAt, setDraftSavedAt] = useState(null);
   const draftStorageKey = useMemo(() => (
@@ -338,10 +361,18 @@ export default function NewServiceLog() {
       return;
     }
 
-    const validationResult = validateServiceCompletion(proofOfServiceSettings, {
-      beforePhotoCount: beforePhotos.length,
-      afterPhotoCount: afterPhotos.length,
-    });
+    const stopValidation = validateServiceStop(formData);
+    if (!stopValidation.valid) {
+      setValidationError(stopValidation.error);
+      return;
+    }
+
+    const validationResult = formData.status === "completed"
+      ? validateServiceCompletion(proofOfServiceSettings, {
+        beforePhotoCount: beforePhotos.length,
+        afterPhotoCount: afterPhotos.length,
+      })
+      : { isValid: true, errors: [] };
 
     if (!validationResult.isValid) {
       const errorMessage = getValidationErrorMessage(validationResult);
@@ -377,7 +408,7 @@ export default function NewServiceLog() {
     const logData = {
       customer_id: customerId,
       service_date: localDate,
-      status: "completed",
+      status: formData.status,
       service_type: formData.service_type || undefined,
       notes: formData.notes,
       ph: formData.ph,
@@ -417,7 +448,7 @@ export default function NewServiceLog() {
         }
       }
 
-      if (!prefersReducedMotion) {
+      if (formData.status === "completed" && !prefersReducedMotion) {
         confetti({
           particleCount: 100,
           spread: 70,
@@ -547,6 +578,34 @@ export default function NewServiceLog() {
         </Card>
 
         <Card className="p-6 mb-6 border-2 shadow-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <ClipboardList className="w-5 h-5 text-cyan-600 stroke-[1.75]" />
+            <h3 className="text-lg font-bold tracking-tight text-slate-900">Stop Outcome</h3>
+          </div>
+          <Select
+            value={formData.status}
+            onValueChange={(value) => setFormData({ ...formData, status: value })}
+          >
+            <SelectTrigger
+              aria-label="Stop Outcome"
+              className="bg-white text-slate-900 border-2 border-slate-200 focus:border-cyan-500 rounded-xl h-11"
+            >
+              <SelectValue placeholder="Choose an outcome" />
+            </SelectTrigger>
+            <SelectContent>
+              {STOP_OUTCOMES.map(({ value, label }) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {formData.status !== "completed" && (
+            <p className="mt-3 text-sm font-medium text-amber-800">
+              Record what happened so the office and customer have a clear follow-up trail.
+            </p>
+          )}
+        </Card>
+
+        <Card className="p-6 mb-6 border-2 shadow-lg">
           <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-2 flex items-center gap-2">
             <TestTube className="w-5 h-5 text-cyan-600 stroke-[1.75]" />
             Chemical Readings
@@ -628,13 +687,16 @@ export default function NewServiceLog() {
         <Card className="p-6 mb-6 border-2 shadow-lg">
           <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-4">Service Notes</h3>
           <Label htmlFor="notes" className="text-slate-700 font-semibold mb-2 block">
-            Notes (optional)
+            {EXCEPTION_OUTCOMES.has(formData.status) ? "What happened?" : "Notes (optional)"}
+            {EXCEPTION_OUTCOMES.has(formData.status) && <span aria-hidden="true"> *</span>}
           </Label>
           <Textarea
             id="notes"
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            placeholder="Dog was in yard, filter pressure high, added 2 gallons of liquid chlorine..."
+            placeholder={EXCEPTION_OUTCOMES.has(formData.status)
+              ? "Example: Gate was locked; called customer and moved the stop to Friday."
+              : "Dog was in yard, filter pressure high, added 2 gallons of liquid chlorine..."}
             rows={4}
             className="border-2 focus:border-cyan-500 rounded-xl"
           />
@@ -659,7 +721,7 @@ export default function NewServiceLog() {
           </Alert>
         )}
 
-        {!settingsLoading && hasAnyRequirements(proofOfServiceSettings) && (
+        {formData.status === "completed" && !settingsLoading && hasAnyRequirements(proofOfServiceSettings) && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
             <p className="text-sm font-medium text-amber-800">
               Required for completion: {getRequirementsSummary(proofOfServiceSettings).join(', ')}
@@ -687,7 +749,7 @@ export default function NewServiceLog() {
             ) : (
               <>
                 <Save className="w-4 h-4 mr-2 stroke-[1.75]" />
-                Complete Service
+                {formData.status === "completed" ? "Complete Service" : "Save Stop Outcome"}
               </>
             )}
           </Button>

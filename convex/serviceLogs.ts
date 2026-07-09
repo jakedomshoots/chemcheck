@@ -53,14 +53,46 @@ function calculateDuration(startTime: string | undefined, endTime: string | unde
 }
 
 // Valid status values for service logs
-const VALID_STATUS_VALUES = ['completed', 'pending', 'scheduled', 'in_progress', 'cancelled'] as const;
+const VALID_STATUS_VALUES = [
+    'completed',
+    'pending',
+    'scheduled',
+    'in_progress',
+    'cancelled',
+    'rescheduled',
+    'skipped',
+    'no_access',
+    'weather',
+    'green_pool',
+    'equipment_issue',
+] as const;
 type ServiceLogStatus = typeof VALID_STATUS_VALUES[number];
+const VALID_READING_STATUS_VALUES = ['not_tested', 'low', 'good', 'high', 'critical'] as const;
+type ReadingStatus = typeof VALID_READING_STATUS_VALUES[number];
 const SERVICE_LOG_WRITE_ROLES = ["owner", "admin", "technician"] as const;
 
 function validateStatus(status: string): void {
     if (!VALID_STATUS_VALUES.includes(status as ServiceLogStatus)) {
         throw new Error(`Invalid status: "${status}". Must be one of: ${VALID_STATUS_VALUES.join(', ')}`);
     }
+}
+
+function validateReadingStatus(field: string, value: string): void {
+    if (!VALID_READING_STATUS_VALUES.includes(value as ReadingStatus)) {
+        throw new Error(`Invalid ${field} reading: "${value}". Must be one of: ${VALID_READING_STATUS_VALUES.join(', ')}`);
+    }
+}
+
+function validateReadings(readings: Pick<{
+    ph: string;
+    chlorine: string;
+    alkalinity: string;
+    stabilizer: string;
+}, 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'>): void {
+    validateReadingStatus('pH', readings.ph);
+    validateReadingStatus('chlorine', readings.chlorine);
+    validateReadingStatus('alkalinity', readings.alkalinity);
+    validateReadingStatus('stabilizer', readings.stabilizer);
 }
 
 function clampLimit(limit: number | undefined): number {
@@ -244,6 +276,7 @@ export const create = mutation({
 
         // Validate status value
         validateStatus(args.status);
+        validateReadings(args);
 
         const logData = {
             customer_id: args.customer_id,
@@ -326,6 +359,10 @@ export const update = mutation({
 
         const { id, ...updates } = args;
         if (updates.status !== undefined) validateStatus(updates.status);
+        if (updates.ph !== undefined) validateReadingStatus('pH', updates.ph);
+        if (updates.chlorine !== undefined) validateReadingStatus('chlorine', updates.chlorine);
+        if (updates.alkalinity !== undefined) validateReadingStatus('alkalinity', updates.alkalinity);
+        if (updates.stabilizer !== undefined) validateReadingStatus('stabilizer', updates.stabilizer);
 
         // Calculate duration if both start_time and end_time are available
         // Use provided values or fall back to existing log values

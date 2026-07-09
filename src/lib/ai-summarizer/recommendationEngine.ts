@@ -305,7 +305,8 @@ function getMostRecentReading(
     (a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime()
   );
 
-  return sortedLogs[0][chemical] || 'good';
+  const measuredLog = sortedLogs.find((log) => isValidReading(log[chemical]));
+  return measuredLog ? measuredLog[chemical] as ChemicalReading : 'good';
 }
 
 /**

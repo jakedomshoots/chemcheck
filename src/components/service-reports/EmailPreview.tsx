@@ -17,7 +17,7 @@ export interface EmailPreviewProps {
   /** Service date in MM/DD/YYYY format */
   serviceDate: string;
   /** Pool status */
-  poolStatus: 'good' | 'needs_attention';
+  poolStatus: 'good' | 'needs_attention' | 'not_tested';
   /** Optional custom message included in the outgoing email */
   customNote?: string;
   /** Whether to show the full HTML preview or simplified text preview */

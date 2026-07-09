@@ -58,6 +58,9 @@ export interface ServiceLog extends SyncableRecord {
     end_time?: string;
     duration_ms?: number;
     service_type?: string;
+    photo_count?: number;
+    has_before_photos?: boolean;
+    has_after_photos?: boolean;
     createdAt?: string;
     updatedAt?: string;
 }
