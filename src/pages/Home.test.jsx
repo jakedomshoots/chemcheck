@@ -133,7 +133,7 @@ describe('Home Page - Comprehensive Tests', () => {
   describe('Basic Rendering', () => {
     it('renders today\'s route title with correct date', () => {
       renderWithProviders(<Home />);
-      expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: "Today's Route", exact: true })).toBeInTheDocument();
       expect(screen.getByText(format(new Date(), 'EEEE, MMM dd, yyyy'))).toBeInTheDocument();
     });
 
@@ -252,7 +252,7 @@ describe('Home Page - Comprehensive Tests', () => {
       
       renderWithProviders(<Home />);
       
-      expect(screen.getByRole('heading', { name: /No Customers Scheduled/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /No Stops on Today/i })).toBeInTheDocument();
     });
 
     it('handles API errors gracefully', () => {
@@ -279,7 +279,7 @@ describe('Home Page - Comprehensive Tests', () => {
       renderWithProviders(<Home />);
       
       // Should not crash and show appropriate fallbacks
-      expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: "Today's Route", exact: true })).toBeInTheDocument();
     });
   });
 

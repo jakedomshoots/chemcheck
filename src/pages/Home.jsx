@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { trackUxEvent } from "@/lib/uxAnalytics";
 import { getEffectiveWorkingDays } from "@/lib/workingDays";
 import { buildDurationProfile, calculateServiceTimingSummary } from "@/lib/routeTimingEstimator";
+import { getActiveTenantScope, subscribeTenantScope } from "@/lib/tenantScope";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -23,14 +24,25 @@ function normalizeSkippedCustomerIds(customerIds) {
   return [...new Set(customerIds.filter((id) => id !== null && id !== undefined))];
 }
 
-function getWeekKey() {
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  return `skipped_services_${format(weekStart, 'yyyy-MM-dd')}`;
+function hashScope(scopeKey) {
+  let hash = 2166136261;
+  for (let index = 0; index < scopeKey.length; index += 1) {
+    hash ^= scopeKey.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
-function getSkippedCustomers() {
+export function getWeekKey(tenantKey) {
+  if (!tenantKey) return null;
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  return `skipped_services_v2_${hashScope(tenantKey)}_${format(weekStart, 'yyyy-MM-dd')}`;
+}
+
+export function getSkippedCustomers(tenantKey) {
   try {
-    const key = getWeekKey();
+    const key = getWeekKey(tenantKey);
+    if (!key) return [];
     const stored = localStorage.getItem(key);
     return stored ? normalizeSkippedCustomerIds(JSON.parse(stored)) : [];
   } catch {
@@ -38,20 +50,22 @@ function getSkippedCustomers() {
   }
 }
 
-function saveSkippedCustomers(customerIds) {
+export function saveSkippedCustomers(tenantKey, customerIds) {
   try {
-    const key = getWeekKey();
+    const key = getWeekKey(tenantKey);
+    if (!key) return;
     const normalizedIds = normalizeSkippedCustomerIds(customerIds);
     localStorage.setItem(key, JSON.stringify(normalizedIds));
 
-    const lastCleanup = localStorage.getItem('skipped_services_last_cleanup');
+    const cleanupKey = `skipped_services_v2_cleanup_${hashScope(tenantKey)}`;
+    const lastCleanup = localStorage.getItem(cleanupKey);
     if (!lastCleanup || lastCleanup !== key) {
       Object.keys(localStorage).forEach(k => {
-        if (k.startsWith('skipped_services_') && k !== key && k !== 'skipped_services_last_cleanup') {
+        if (k.startsWith(`skipped_services_v2_${hashScope(tenantKey)}_`) && k !== key) {
           localStorage.removeItem(k);
         }
       });
-      localStorage.setItem('skipped_services_last_cleanup', key);
+      localStorage.setItem(cleanupKey, key);
     }
   } catch (e) {
     console.error('Failed to save skipped customers:', e);
@@ -73,6 +87,7 @@ function formatRouteDuration(totalMinutes) {
 export default function Home() {
   const navigate = useNavigate();
   const user = useCurrentUser();
+  const [tenantKey, setTenantKey] = useState(() => getActiveTenantScope()?.key || null);
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
   const allCustomersData = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
@@ -84,12 +99,20 @@ export default function Home() {
   const [lastWeekLogs, setLastWeekLogs] = useState([]);
   const [allThisWeekLogs, setAllThisWeekLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [skippedCustomers, setSkippedCustomers] = useState(() => getSkippedCustomers());
+  const [skippedCustomers, setSkippedCustomers] = useState(() => getSkippedCustomers(tenantKey));
   const [hasCheckedDefaultView, setHasCheckedDefaultView] = useState(false);
   const [missedExpanded, setMissedExpanded] = useState(false);
   const [offDayPickerOpen, setOffDayPickerOpen] = useState(false);
   const [offDaySearchQuery, setOffDaySearchQuery] = useState("");
   const [selectedOffDay, setSelectedOffDay] = useState(null);
+
+  useEffect(() => subscribeTenantScope(() => {
+    setTenantKey(getActiveTenantScope()?.key || null);
+  }), []);
+
+  useEffect(() => {
+    setSkippedCustomers(getSkippedCustomers(tenantKey));
+  }, [tenantKey]);
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const dayOfWeek = useMemo(() => format(new Date(), "EEEE"), []);
@@ -249,8 +272,8 @@ export default function Home() {
     );
     if (cleanedSkipped.length === skippedCustomers.length) return;
     setSkippedCustomers(cleanedSkipped);
-    saveSkippedCustomers(cleanedSkipped);
-  }, [skippedCustomers, servicedCustomerIdsThisWeek]);
+    saveSkippedCustomers(tenantKey, cleanedSkipped);
+  }, [skippedCustomers, servicedCustomerIdsThisWeek, tenantKey]);
 
   const skippedCustomerIds = useMemo(
     () => new Set(skippedCustomers),
@@ -264,7 +287,7 @@ export default function Home() {
     if (!customerId || isCompleted(customerId) || isSkipped(customerId)) return;
     const newSkipped = normalizeSkippedCustomerIds([...skippedCustomers, customerId]);
     setSkippedCustomers(newSkipped);
-    saveSkippedCustomers(newSkipped);
+    saveSkippedCustomers(tenantKey, newSkipped);
     toast.success(`Skipped ${customer.full_name || 'Customer'} for this week`);
   };
 
@@ -274,7 +297,7 @@ export default function Home() {
     if (!customerId || !isSkipped(customerId)) return;
     const newSkipped = skippedCustomers.filter((id) => id !== customerId);
     setSkippedCustomers(newSkipped);
-    saveSkippedCustomers(newSkipped);
+    saveSkippedCustomers(tenantKey, newSkipped);
     if (!silent) {
       toast.success(`Moved ${customer.full_name || 'Customer'} back to pending`);
     }
@@ -532,15 +555,16 @@ export default function Home() {
                 key={customer._id}
                 className="px-4 py-2.5 flex items-center justify-between gap-3"
               >
-                <div
-                  className="flex-1 min-w-0 cursor-pointer"
+                <button
+                  type="button"
+                  className="flex-1 min-w-0 text-left"
                   onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
                 >
                   <p className="text-sm font-medium text-slate-800 truncate">{customer.full_name || 'Customer'}</p>
                   <p className="text-xs text-slate-400 truncate">
                     {customer.scheduledDay} · {customer.address}
                   </p>
-                </div>
+                </button>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors px-2 py-1"
@@ -601,10 +625,12 @@ export default function Home() {
             <Calendar className="w-8 h-8 text-slate-400 stroke-[1.75]" />
           </div>
           <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-2">
-            No Customers Scheduled
+            No Stops on Today&apos;s Route
           </h3>
           <p className="text-sm font-medium text-slate-600 mb-4">
-            You have no customers scheduled for {dayOfWeek}
+            {missedServices.length > 0
+              ? "Earlier route exceptions are listed above. You can service another day or add a client."
+              : `You have no customers scheduled for ${dayOfWeek}`}
           </p>
           <Button
             onClick={() => navigate(createPageUrl("Clients"))}

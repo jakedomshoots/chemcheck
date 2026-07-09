@@ -139,7 +139,8 @@ export async function deleteAllUserData(): Promise<{
   const keysToRemove = Object.keys(localStorage).filter(key => 
     key.startsWith('chemcheck_') || 
     key.startsWith('business_') ||
-    key.startsWith('user_')
+    key.startsWith('user_') ||
+    key.startsWith('skipped_services_')
   );
   keysToRemove.forEach(key => localStorage.removeItem(key));
 
