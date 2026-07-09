@@ -40,6 +40,7 @@ interface CameraError {
 
 type FlashMode = 'off' | 'on' | 'auto';
 type FacingMode = 'environment' | 'user';
+type LocationStatus = 'not_requested' | 'pending' | 'success' | 'failed';
 
 // ============================================
 // Component
@@ -57,7 +58,8 @@ export function PhotoCapture({
   const [cameraError, setCameraError] = useState<CameraError | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [locationStatus, setLocationStatus] = useState<'pending' | 'success' | 'failed'>('pending');
+  const [includeLocation, setIncludeLocation] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('not_requested');
   const [compressionStats, setCompressionStats] = useState<{ original: number; compressed: number } | null>(null);
 
   // Camera control state
@@ -73,6 +75,23 @@ export function PhotoCapture({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const captureLocation = useCallback(async (): Promise<GeoLocation | null> => {
+    if (!includeLocation) {
+      setLocationStatus('not_requested');
+      return null;
+    }
+
+    setLocationStatus('pending');
+    const locationResult = await getCurrentLocation({ timeout: 5000 });
+    if (locationResult.success && locationResult.location) {
+      setLocationStatus('success');
+      return locationResult.location;
+    }
+
+    setLocationStatus('failed');
+    return null;
+  }, [includeLocation]);
 
   // Cleanup stream on unmount
   useEffect(() => {
@@ -183,7 +202,7 @@ export function PhotoCapture({
     // Native path: use Capacitor camera plugin directly
     if (isNativeCameraAvailable()) {
       setIsCapturing(true);
-      setLocationStatus('pending');
+      setLocationStatus(includeLocation ? 'pending' : 'not_requested');
 
       try {
         const nativeResult = await takeNativePhoto(
@@ -204,15 +223,7 @@ export function PhotoCapture({
           compressed: compressionResult.compressedSize,
         });
 
-        // Get location
-        let location: GeoLocation | null = null;
-        const locationResult = await getCurrentLocation({ timeout: 5000 });
-        if (locationResult.success && locationResult.location) {
-          location = locationResult.location;
-          setLocationStatus('success');
-        } else {
-          setLocationStatus('failed');
-        }
+        const location = await captureLocation();
 
         // Create photo, save, and notify parent
         const photo = createCapturedPhoto(dataUrl, category, location);
@@ -238,7 +249,7 @@ export function PhotoCapture({
 
     // Web fallback: open the web camera stream
     startCamera();
-  }, [startCamera, disabled, facingMode, category, customerId, serviceLogId, onPhotoCapture]);
+  }, [startCamera, disabled, facingMode, category, customerId, serviceLogId, onPhotoCapture, includeLocation, captureLocation]);
 
   /**
    * Toggle flash/torch
@@ -342,7 +353,7 @@ export function PhotoCapture({
     if (!videoRef.current || !canvasRef.current || cameraState !== 'active') return;
 
     setIsCapturing(true);
-    setLocationStatus('pending');
+    setLocationStatus(includeLocation ? 'pending' : 'not_requested');
 
     try {
       const video = videoRef.current;
@@ -374,16 +385,7 @@ export function PhotoCapture({
         compressed: compressionResult.compressedSize,
       });
 
-      // Request geolocation (non-blocking)
-      let location: GeoLocation | null = null;
-      const locationResult = await getCurrentLocation({ timeout: 5000 });
-
-      if (locationResult.success && locationResult.location) {
-        location = locationResult.location;
-        setLocationStatus('success');
-      } else {
-        setLocationStatus('failed');
-      }
+      const location = await captureLocation();
 
       // Create captured photo with metadata
       const photo = createCapturedPhoto(dataUrl, category, location);
@@ -409,7 +411,7 @@ export function PhotoCapture({
     } finally {
       setIsCapturing(false);
     }
-  }, [cameraState, category, customerId, serviceLogId, onPhotoCapture, stopCamera]);
+  }, [cameraState, category, customerId, serviceLogId, onPhotoCapture, stopCamera, includeLocation, captureLocation]);
 
   /**
    * Retake photo - clear preview and restart camera
@@ -441,6 +443,18 @@ export function PhotoCapture({
             <p className="text-sm text-slate-500">Tap to open camera</p>
           </div>
         </button>
+        <label className="mt-4 flex items-start gap-3 rounded-lg bg-slate-50 p-3 text-left text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={includeLocation}
+            onChange={(event) => setIncludeLocation(event.target.checked)}
+            className="mt-0.5 h-5 w-5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+          />
+          <span>
+            <span className="block font-medium text-slate-800">Add location to this proof photo (optional)</span>
+            <span className="block text-xs leading-relaxed text-slate-500">Records this photo&apos;s GPS location to document the visit. Leave off to save the photo without location data.</span>
+          </span>
+        </label>
       </Card>
     );
   }
@@ -506,7 +520,11 @@ export function PhotoCapture({
                 }`}
             >
               <MapPin className="w-3 h-3" />
-              {locationStatus === 'success' ? 'Location saved' : 'No location'}
+              {locationStatus === 'success'
+                ? 'Location saved'
+                : locationStatus === 'failed'
+                  ? 'Location unavailable'
+                  : 'No location added'}
             </span>
           </div>
         </div>

@@ -57,8 +57,6 @@
 	<string>ChemCheck saves service photos to your photo library when you choose to download them.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>When you choose to add location to a proof-of-service photo, ChemCheck records the photo location to document that visit.</string>
-	<key>NSFaceIDUsageDescription</key>
-	<string>ChemCheck can use Face ID to keep your account secure.</string>
 
 	<!-- App-Bound Domains required by limitsNavigationsToAppBoundDomains -->
 	<key>WKAppBoundDomains</key>
