@@ -303,7 +303,8 @@ export default function Home() {
     const log = todayLogsMap.get(customerId);
     if (!log) return null;
 
-    const hasCoreReadings = Boolean(log.ph && log.chlorine && log.alkalinity && log.stabilizer);
+    const hasCoreReadings = [log.ph, log.chlorine, log.alkalinity, log.stabilizer]
+      .every((reading) => reading && reading !== 'not_tested');
     const hasRequiredPhotos = Boolean(log.has_before_photos && log.has_after_photos);
     const hasNotes = Boolean(log.notes && String(log.notes).trim().length > 0);
 

@@ -12,6 +12,7 @@ import { StoredTimeState, TimeTrackerState } from './types';
 
 const STORAGE_KEY_PREFIX = 'timeTracker_';
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const MAX_ACTIVE_TRACKING_MS = 12 * 60 * 60 * 1000; // A forgotten check-in must never become a multi-day visit.
 
 // ============================================
 // SSR Guard
@@ -99,6 +100,18 @@ export function getTimeState(customerId: string): StoredTimeState | null {
     
     // Validate the parsed state has required fields
     if (!state.customerId || !state.startTime || typeof state.lastUpdated !== 'number') {
+      clearTimeState(customerId);
+      return null;
+    }
+
+    const startMs = new Date(state.startTime).getTime();
+    if (!Number.isFinite(startMs) || (state.endTime && !Number.isFinite(new Date(state.endTime).getTime()))) {
+      clearTimeState(customerId);
+      return null;
+    }
+
+    if (!state.endTime && (Date.now() - startMs > MAX_ACTIVE_TRACKING_MS || startMs > Date.now())) {
+      clearTimeState(customerId);
       return null;
     }
 
@@ -267,4 +280,4 @@ export function updateEndTime(customerId: string, endTime: string): void {
 }
 
 // Export constants for testing
-export { STORAGE_KEY_PREFIX, STALE_THRESHOLD_MS };
+export { STORAGE_KEY_PREFIX, STALE_THRESHOLD_MS, MAX_ACTIVE_TRACKING_MS };
