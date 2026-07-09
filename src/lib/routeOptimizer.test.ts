@@ -30,6 +30,8 @@ describe("routeOptimizer", () => {
 
     expect(route.stops).toHaveLength(2);
     expect(route.stops.map((stop) => stop.customer.name).sort()).toEqual(["Alpha Pool", "Bravo Pool"]);
+    expect(route.optimizationMethod).toBe("manual-saved-order");
+    expect(route.totalTravelTime).toBe(0);
   });
 
   it("treats YYYY-MM-DD as a local calendar date for day matching", async () => {
@@ -70,6 +72,7 @@ describe("routeOptimizer", () => {
     expect(routeOne.totalDistance).toBe(routeTwo.totalDistance);
     expect(routeOne.stops.map((stop) => stop.customer.id)).toEqual(routeTwo.stops.map((stop) => stop.customer.id));
     expect(routeOne.totalTime).toBeGreaterThanOrEqual(75);
+    expect(routeOne.totalTravelTime).toBe(0);
   });
 
   it("uses a conservative default duration when none is provided", async () => {

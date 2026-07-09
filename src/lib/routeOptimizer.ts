@@ -1,5 +1,8 @@
-// Advanced Route Optimization
-// Optimizes service routes using GPS coordinates and various algorithms
+// Manual route planning
+//
+// ChemCheck deliberately does not invent geocodes, road distance, or ETA. A
+// future routing provider may supply those facts; until then this module only
+// returns the saved service order and service-duration estimate.
 
 import { monitoring } from './monitoring';
 
@@ -22,6 +25,7 @@ export interface Customer {
     end: string;   // HH:MM
   };
   notes?: string;
+  sortOrder?: number;
 }
 
 export interface RouteStop {
@@ -80,41 +84,15 @@ class RouteOptimizer {
       .filter((customer): customer is Customer => customer !== null);
     
     try {
-      // Ensure all customers have locations
-      const customersWithLocations = await this.ensureLocations(normalizedCustomers);
-
       const targetDay = this.getDayOfWeek(date);
-      
-      // Filter customers for the specific day
-      const dayCustomers = customersWithLocations.filter(
+      const dayCustomers = normalizedCustomers.filter(
         (customer) => this.normalizeDayName(customer.serviceDay) === targetDay
       );
-      
-      if (dayCustomers.length === 0) {
-        return this.createEmptyRoute(this.toDateString(date), options);
-      }
-
-      // Choose optimization algorithm
-      const algorithm = options.algorithm || 'nearest-neighbor';
-      let optimizedOrder: Customer[];
-
-      switch (algorithm) {
-        case 'genetic':
-          optimizedOrder = await this.geneticAlgorithm(dayCustomers, options);
-          break;
-        case 'simulated-annealing':
-          optimizedOrder = await this.simulatedAnnealing(dayCustomers, options);
-          break;
-        default:
-          optimizedOrder = await this.nearestNeighbor(dayCustomers, options);
-      }
-
-      // Calculate route details
-      const route = await this.calculateRouteDetails(optimizedOrder, this.toDateString(date), options);
+      const route = this.createManualRoute(dayCustomers, this.toDateString(date), options);
       
       const duration = performance.now() - startTime;
       monitoring.recordMetric('route_optimization', duration, {
-        algorithm,
+        algorithm: 'manual-saved-order',
         customerCount: dayCustomers.length,
         totalDistance: route.totalDistance,
         totalTime: route.totalTime
@@ -133,6 +111,48 @@ class RouteOptimizer {
       });
       throw error;
     }
+  }
+
+  private createManualRoute(
+    customers: Customer[],
+    date: string,
+    options: RouteOptimizationOptions,
+  ): OptimizedRoute {
+    const ordered = [...customers].sort((a, b) => {
+      const left = Number.isFinite(a.sortOrder) ? a.sortOrder! : Number.MAX_SAFE_INTEGER;
+      const right = Number.isFinite(b.sortOrder) ? b.sortOrder! : Number.MAX_SAFE_INTEGER;
+      if (left !== right) return left - right;
+      return a.name.localeCompare(b.name);
+    });
+
+    let currentMinutes = this.parseTime(options.startTime || '08:00');
+    const stops = ordered.map((customer) => {
+      const arrivalTime = this.formatTime(currentMinutes);
+      currentMinutes += customer.estimatedDuration;
+      return {
+        customer,
+        arrivalTime,
+        departureTime: this.formatTime(currentMinutes),
+        travelTime: 0,
+        distance: 0,
+      };
+    });
+
+    const totalServiceTime = ordered.reduce((sum, customer) => sum + customer.estimatedDuration, 0);
+    return {
+      id: `route_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      date,
+      stops,
+      totalDistance: 0,
+      totalTime: totalServiceTime,
+      totalTravelTime: 0,
+      totalServiceTime,
+      totalWaitTime: 0,
+      startLocation: options.startLocation,
+      endLocation: options.endLocation,
+      optimizationMethod: 'manual-saved-order',
+      createdAt: new Date().toISOString(),
+    };
   }
 
   // ============================================
@@ -730,6 +750,9 @@ class RouteOptimizer {
         (customerRecord.time_window as Record<string, unknown> | undefined)
       ),
       notes: typeof customerRecord.notes === 'string' ? customerRecord.notes : undefined,
+      sortOrder: Number.isFinite(Number(customerRecord.sort_order ?? customerRecord.sortOrder))
+        ? Number(customerRecord.sort_order ?? customerRecord.sortOrder)
+        : undefined,
     };
   }
 
