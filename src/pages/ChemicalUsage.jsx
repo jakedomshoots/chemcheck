@@ -1,10 +1,7 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useChemicalUsage, useCustomersFilter, useCurrentUser, useChemicalUsageDelete, useChemicalUsageUpdate } from "@/api/convexHooks";
-import { useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import { Plus, TestTube, ChevronDown, Trash2, Edit2, Save, X, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
@@ -18,10 +15,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Drawer,
-  DrawerClose,
   DrawerContent,
   DrawerDescription,
-  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
@@ -44,10 +39,7 @@ function downloadHtmlReport(filename, html) {
 }
 
 export default function ChemicalUsagePage() {
-  const navigate = useNavigate();
   const user = useCurrentUser();
-
-  // Only pass created_by once we actually have a user, so we don't briefly
   // query under DEFAULT_USER and then refetch under the real user's data (flicker).
   const customers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
   const usageRecords = useChemicalUsage("-created_date");
@@ -55,7 +47,7 @@ export default function ChemicalUsagePage() {
   const updateChemicalUsage = useChemicalUsageUpdate();
 
   // Dexie's useLiveQuery returns undefined until the first read completes;
-  // undefined is the real "still loading" signal — no mirror state needed.
+  // undefined is the real "still loading" signal; no mirror state needed.
   const loading = !customers || !usageRecords;
 
   const [expandedCustomers, setExpandedCustomers] = useState(new Set());
@@ -345,164 +337,179 @@ export default function ChemicalUsagePage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 font-sans">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Chemical Usage</h2>
-            <p className="text-sm font-medium text-slate-600">Track extra chemicals for billing</p>
+    <main className="relative mx-auto max-w-7xl px-3 pb-32 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Chemical Usage">
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Chemistry log</p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              Chemical Usage
+            </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              Track extra chemicals for billing
+            </p>
           </div>
-        </div>
 
-        <Drawer open={isAddSheetOpen} onOpenChange={setIsAddSheetOpen}>
-          <DrawerTrigger asChild>
-            <Button
-              className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white shadow-lg font-semibold"
-            >
-              <Plus className="w-5 h-5 mr-2 stroke-[1.75]" />
-              Add Chemical Usage
-            </Button>
-          </DrawerTrigger>
-          <DrawerContent className="max-h-[92dvh] overflow-hidden">
-            <div className="mx-auto flex max-h-[92dvh] w-full max-w-lg flex-col">
-              <DrawerHeader>
-                <DrawerTitle>Add Chemical Usage</DrawerTitle>
-                <DrawerDescription>Record extra chemicals used for billing purposes.</DrawerDescription>
-              </DrawerHeader>
-              <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
-                <AddChemicalForm
-                  onSuccess={() => setIsAddSheetOpen(false)}
-                  onCancel={() => setIsAddSheetOpen(false)}
-                />
-              </div>
-            </div>
-          </DrawerContent>
-        </Drawer>
-      </div>
-
-      <div className="space-y-3 mb-6">
-        <Card className="p-4 border-2 shadow-sm">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected Month</p>
-              <p className="text-lg font-bold tracking-tight text-slate-900">{selectedMonthLabel}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => setMonthOffset(monthOffset - 1)}
-                variant="outline"
-                size="sm"
-                className="border-2 rounded-xl font-medium"
-              >
-                <ChevronLeft className="w-4 h-4 mr-1 stroke-[1.75]" />
-                Previous
-              </Button>
-              {!isCurrentMonth && (
-                <Button
-                  onClick={() => setMonthOffset(0)}
-                  variant="outline"
-                  size="sm"
-                  className="border-2 rounded-xl border-purple-500 text-purple-600 font-medium"
-                >
-                  Current Month
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0">
+            <Drawer open={isAddSheetOpen} onOpenChange={setIsAddSheetOpen}>
+              <DrawerTrigger asChild>
+                <Button className="h-12 w-full rounded-[1.15rem] bg-cyan-600 px-4 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto">
+                  <Plus className="mr-2 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+                  Add Chemical Usage
                 </Button>
-              )}
-              <Button
-                onClick={() => setMonthOffset(monthOffset + 1)}
-                variant="outline"
-                size="sm"
-                className="border-2 rounded-xl font-medium"
-                disabled={isCurrentMonth}
-              >
-                Next
-                <ChevronRight className="w-4 h-4 ml-1 stroke-[1.75]" />
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        <Button
-          onClick={generateChemicalPDF}
-          disabled={generating || !hasMonthlyRecords}
-          className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg text-sm h-10 font-semibold"
-        >
-          <Download className="w-4 h-4 mr-2 stroke-[1.75]" />
-          {generating ? "Generating..." : "Download Monthly Chemical Log"}
-        </Button>
-      </div>
-
-      <Card className="p-6 mb-6 border-2 shadow-lg bg-gradient-to-br from-purple-50 to-pink-50">
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <TestTube className="w-6 h-6 text-purple-600 stroke-[1.75]" />
-            <span className="text-lg font-semibold text-slate-700">Monthly Chemical Records</span>
-          </div>
-          <div className="text-4xl font-bold tracking-tight text-purple-600">
-            {monthlyRecords.length}
-          </div>
-          <div className="text-sm font-medium text-slate-600 mt-1">
-            {customersWithUsage.length} customer{customersWithUsage.length !== 1 ? 's' : ''}
+              </DrawerTrigger>
+              <DrawerContent className="max-h-[92dvh] overflow-hidden">
+                <div className="mx-auto flex max-h-[92dvh] w-full max-w-lg flex-col">
+                  <DrawerHeader>
+                    <DrawerTitle>Add Chemical Usage</DrawerTitle>
+                    <DrawerDescription>Record extra chemicals used for billing purposes.</DrawerDescription>
+                  </DrawerHeader>
+                  <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+                    <AddChemicalForm
+                      onSuccess={() => setIsAddSheetOpen(false)}
+                      onCancel={() => setIsAddSheetOpen(false)}
+                    />
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
           </div>
         </div>
-      </Card>
+      </div>
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-[1.35rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Selected Month</p>
+          <p className="mt-1 text-lg font-semibold tracking-[-0.025em] text-slate-950 tabular-nums">{selectedMonthLabel}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              onClick={() => setMonthOffset(monthOffset - 1)}
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-full border border-slate-200 bg-white/85 px-3 text-xs font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+            >
+              <ChevronLeft className="mr-1 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+              Previous
+            </Button>
+            {!isCurrentMonth && (
+              <Button
+                onClick={() => setMonthOffset(0)}
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-full border border-cyan-200 bg-cyan-50/70 px-3 text-xs font-semibold text-cyan-800 shadow-sm hover:bg-cyan-100"
+              >
+                Current Month
+              </Button>
+            )}
+            <Button
+              onClick={() => setMonthOffset(monthOffset + 1)}
+              variant="outline"
+              size="sm"
+              disabled={isCurrentMonth}
+              className="h-9 rounded-full border border-slate-200 bg-white/85 px-3 text-xs font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              Next
+              <ChevronRight className="ml-1 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-between rounded-[1.35rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
+              <TestTube className="h-5 w-5 stroke-[1.75]" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Monthly Chemical Records</p>
+              <p className="mt-0.5 text-sm font-medium text-slate-500">
+                Across {customersWithUsage.length} customer{customersWithUsage.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <p className="ml-auto text-2xl font-semibold tabular-nums text-slate-950">{monthlyRecords.length}</p>
+          </div>
+          <Button
+            onClick={generateChemicalPDF}
+            disabled={generating || !hasMonthlyRecords}
+            className="mt-3 h-10 w-full rounded-[1rem] bg-slate-950 px-3 text-sm font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
+          >
+            <Download className="mr-2 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+            {generating ? "Generating..." : "Download Monthly Chemical Log"}
+          </Button>
+        </div>
+      </div>
 
       {customersWithUsage.length === 0 ? (
-        <Card className="p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200">
-          <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-            <TestTube className="w-8 h-8 text-slate-400 stroke-[1.75]" />
+        <div className="rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50/80 px-5 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-inner">
+            <TestTube className="h-7 w-7 stroke-[1.75]" aria-hidden="true" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+          <h3 className="mb-1 text-lg font-semibold tracking-[-0.025em] text-slate-950">
             No Chemical Usage Records This Month
           </h3>
-          <p className="text-slate-600 mb-4 font-medium">Switch months or add usage entries to build a reportable log.</p>
+          <p className="mx-auto mb-5 max-w-sm text-sm font-medium text-slate-500">
+            Switch months or add usage entries to build a reportable log.
+          </p>
           <Button
             onClick={() => setIsAddSheetOpen(true)}
-            className="bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-semibold"
+            className="h-11 rounded-[1.15rem] bg-slate-950 px-4 text-sm font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700"
           >
-            <Plus className="w-4 h-4 mr-2 stroke-[1.75]" />
+            <Plus className="mr-2 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
             Add Chemical Usage
           </Button>
-        </Card>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {customersWithUsage.map((customerId) => {
             const customerRecords = recordsByCustomer[customerId] || [];
             const isExpanded = expandedCustomers.has(customerId);
             const customerName = getCustomerName(customerId);
 
             return (
-              <Card key={customerId} className="overflow-hidden border-2 shadow-sm">
-                <div
+              <div
+                key={customerId}
+                className="overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur"
+              >
+                <button
+                  type="button"
                   onClick={() => toggleCustomer(customerId)}
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 active:bg-slate-100"
+                  aria-expanded={isExpanded}
+                  className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-cyan-50/40 active:bg-cyan-50/60"
                 >
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <h3 className="font-bold text-slate-900 tracking-tight">{customerName}</h3>
-                      <p className="text-sm font-medium text-slate-600">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold tracking-[-0.02em] text-slate-950">
+                        {customerName}
+                      </h3>
+                      <p className="text-xs font-medium text-slate-500">
                         {customerRecords.length} record{customerRecords.length !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>
-                  <ChevronDown className={`w-5 h-5 text-slate-400 stroke-[1.75] transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                </div>
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 text-slate-400 stroke-[1.75] transition-transform ${isExpanded ? 'rotate-180 text-cyan-700' : ''}`}
+                    aria-hidden="true"
+                  />
+                </button>
 
                 {isExpanded && (
-                  <div className="border-t border-slate-200 bg-slate-50">
-                    <div className="p-4 space-y-2">
+                  <div className="border-t border-slate-200/70 bg-slate-50/60">
+                    <div className="space-y-2 p-3">
                       {customerRecords.map((record) => (
-                        <Card key={record._id} className="p-3 bg-white border">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-semibold text-slate-900">
+                        <div
+                          key={record._id}
+                          className="rounded-2xl border border-slate-200/70 bg-white/95 p-3 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-950">
                                   {record.chemical_type}
                                 </span>
-                                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-medium">
+                                <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800">
                                   {record.quantity}
                                 </span>
                               </div>
-                              <div className="text-xs text-slate-600 mb-1">
+                              <div className="mt-0.5 text-xs font-medium text-slate-500">
                                 {formatUsageDate(record.created_date)}
                               </div>
 
@@ -519,20 +526,20 @@ export default function ChemicalUsagePage() {
                                       }}
                                       placeholder="Add notes..."
                                       rows={2}
-                                      className="text-xs border-2 focus:border-purple-500 rounded-lg"
+                                      className="rounded-xl border border-slate-200 bg-white text-xs focus:border-cyan-500 focus-visible:ring-cyan-500"
                                     />
                                     <div className="flex gap-2">
                                       <Button
                                         size="sm"
                                         onClick={() => handleSaveNote(record._id)}
                                         disabled={savingNoteId === record._id}
-                                        className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white font-semibold"
+                                        className="h-8 rounded-full bg-slate-950 px-3 text-xs font-semibold text-white hover:bg-cyan-700"
                                       >
                                         {savingNoteId === record._id ? (
                                           <>Saving...</>
                                         ) : (
                                           <>
-                                            <Save className="w-3 h-3 mr-1 stroke-[1.75]" />
+                                            <Save className="mr-1 h-3 w-3 stroke-[1.75]" aria-hidden="true" />
                                             Save
                                           </>
                                         )}
@@ -542,9 +549,9 @@ export default function ChemicalUsagePage() {
                                         variant="outline"
                                         onClick={handleCancelEdit}
                                         disabled={savingNoteId === record._id}
-                                        className="h-7 text-xs font-medium"
+                                        className="h-8 rounded-full border border-slate-200 bg-white/85 px-3 text-xs font-semibold text-slate-800 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
                                       >
-                                        <X className="w-3 h-3 mr-1 stroke-[1.75]" />
+                                        <X className="mr-1 h-3 w-3 stroke-[1.75]" aria-hidden="true" />
                                         Cancel
                                       </Button>
                                     </div>
@@ -552,17 +559,18 @@ export default function ChemicalUsagePage() {
                                 ) : (
                                   <div className="flex items-start justify-between gap-2">
                                     {record.notes ? (
-                                      <p className="text-xs text-slate-600 flex-1">{record.notes}</p>
+                                      <p className="flex-1 text-xs leading-relaxed text-slate-600">{record.notes}</p>
                                     ) : (
-                                      <p className="text-xs text-slate-400 italic flex-1">No notes</p>
+                                      <p className="flex-1 text-xs italic text-slate-400">No notes</p>
                                     )}
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       onClick={() => handleEditNote(record)}
-                                      className="h-6 w-6 p-0 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                      aria-label={`Edit notes for ${record.chemical_type} ${record.quantity}`}
+                                      className="h-7 w-7 shrink-0 rounded-full p-0 text-cyan-700 hover:bg-cyan-50 hover:text-cyan-800"
                                     >
-                                      <Edit2 className="w-3 h-3 stroke-[1.75]" />
+                                      <Edit2 className="h-3.5 w-3.5 stroke-[1.75]" aria-hidden="true" />
                                     </Button>
                                   </div>
                                 )}
@@ -575,17 +583,18 @@ export default function ChemicalUsagePage() {
                                 e.stopPropagation();
                                 setDeleteRecord(record);
                               }}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8"
+                              aria-label={`Delete ${record.chemical_type} ${record.quantity} record`}
+                              className="h-8 w-8 shrink-0 rounded-full p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
                             >
-                              <Trash2 className="w-3.5 h-3.5 stroke-[1.75]" />
+                              <Trash2 className="h-4 w-4 stroke-[1.75]" aria-hidden="true" />
                             </Button>
                           </div>
-                        </Card>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
-              </Card>
+              </div>
             );
           })}
         </div>
@@ -603,13 +612,13 @@ export default function ChemicalUsagePage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700 text-white font-semibold"
+              className="bg-red-600 font-semibold text-white hover:bg-red-700"
             >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </main>
   );
 }

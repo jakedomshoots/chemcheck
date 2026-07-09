@@ -884,27 +884,27 @@ const iconMap = {
 
 function WarningBox({ children }) {
   return (
-    <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-red-500/10 to-rose-500/10 border border-red-300/50 rounded-xl my-4 backdrop-blur-sm">
-      <div className="p-1.5 bg-red-500 rounded-lg shadow-lg shadow-red-500/30">
-        <AlertCircle className="w-4 h-4 text-white" />
+    <div className="my-4 flex items-start gap-3 rounded-2xl border border-red-200/70 bg-red-50/80 p-4">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700 shadow-inner">
+        <AlertCircle className="h-4 w-4 stroke-[1.75]" aria-hidden="true" />
       </div>
-      <p className="text-sm text-red-800 font-medium leading-relaxed">{children}</p>
+      <p className="text-sm font-medium leading-relaxed text-red-800">{children}</p>
     </div>
   );
 }
 
 function FloridaNote({ children }) {
   return (
-    <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-yellow-500/10 border border-amber-300/50 rounded-xl my-4 backdrop-blur-sm">
-      <div className="p-1.5 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg shadow-lg shadow-amber-500/30">
-        <ThermometerSun className="w-4 h-4 text-white" />
+    <div className="my-4 flex items-start gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/80 p-4">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 shadow-inner">
+        <ThermometerSun className="h-4 w-4 stroke-[1.75]" aria-hidden="true" />
       </div>
       <div className="flex-1">
-        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 uppercase tracking-wide">
-          <Sparkles className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+          <Sparkles className="h-3 w-3" aria-hidden="true" />
           Florida Factor
         </span>
-        <p className="text-sm text-amber-800 mt-1 leading-relaxed">{children}</p>
+        <p className="mt-1 text-sm font-medium leading-relaxed text-amber-900">{children}</p>
       </div>
     </div>
   );
@@ -912,16 +912,16 @@ function FloridaNote({ children }) {
 
 function StepList({ steps }) {
   return (
-    <ul className="space-y-2.5 mt-3">
+    <ul className="mt-3 space-y-2">
       {steps.map((step, idx) => (
-        <li key={idx} className="flex items-start gap-3 text-sm text-slate-700 group">
-          <div className="mt-0.5 p-0.5 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 shadow-sm group-hover:shadow-emerald-500/30 transition-shadow">
-            <CheckCircle className="w-3.5 h-3.5 text-white" />
+        <li key={idx} className="group flex items-start gap-3 text-sm text-slate-700">
+          <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-cyan-700 shadow-inner">
+            <CheckCircle className="h-3.5 w-3.5 stroke-[1.75]" aria-hidden="true" />
           </div>
           <span
             className="leading-relaxed"
             dangerouslySetInnerHTML={{
-              __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>')
+              __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-slate-950">$1</strong>')
             }}
           />
         </li>
@@ -933,22 +933,19 @@ function StepList({ steps }) {
 function TopicCard({ topic, isExpanded, onToggle }) {
   const severityConfig = {
     high: {
-      border: 'border-red-400/50',
-      bg: 'bg-gradient-to-br from-red-50/80 to-rose-50/80',
-      badge: 'bg-red-500 text-white',
-      glow: 'hover:shadow-red-200/50'
+      border: 'border-red-200/70',
+      accent: 'text-red-700',
+      chip: 'bg-red-100 text-red-700',
     },
     medium: {
-      border: 'border-amber-400/50',
-      bg: 'bg-gradient-to-br from-amber-50/80 to-yellow-50/80',
-      badge: 'bg-amber-500 text-white',
-      glow: 'hover:shadow-amber-200/50'
+      border: 'border-amber-200/70',
+      accent: 'text-amber-700',
+      chip: 'bg-amber-100 text-amber-700',
     },
     low: {
-      border: 'border-emerald-400/50',
-      bg: 'bg-gradient-to-br from-emerald-50/80 to-teal-50/80',
-      badge: 'bg-emerald-500 text-white',
-      glow: 'hover:shadow-emerald-200/50'
+      border: 'border-emerald-200/70',
+      accent: 'text-emerald-700',
+      chip: 'bg-emerald-100 text-emerald-700',
     }
   };
 
@@ -956,53 +953,47 @@ function TopicCard({ topic, isExpanded, onToggle }) {
 
   return (
     <div
-      className={`
-        rounded-2xl border-2 ${config.border} ${config.bg} 
-        backdrop-blur-sm overflow-hidden 
-        transition-all duration-300 ease-out
-        hover:shadow-xl ${config.glow}
-        ${isExpanded ? 'shadow-lg' : 'shadow-sm'}
-      `}
+      className={`overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur ${isExpanded ? config.border : ''}`}
     >
       <button
+        type="button"
         onClick={onToggle}
-        className="w-full p-4 sm:p-5 flex items-center justify-between text-left transition-colors touch-manipulation"
+        aria-expanded={isExpanded}
+        className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-cyan-50/40 active:bg-cyan-50/60 touch-manipulation sm:p-5"
       >
-        <div className="flex-1 min-w-0 pr-3">
-          <div className="flex items-center gap-2 mb-1.5">
-            <h3 className="font-bold text-slate-900 text-base sm:text-lg">{topic.title}</h3>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold tracking-[-0.02em] text-slate-950 sm:text-lg">
+              {topic.title}
+            </h3>
             {topic.severity !== 'low' && (
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${config.badge}`}>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] ${config.chip}`}>
                 {topic.severity}
               </span>
             )}
           </div>
-          <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">{topic.content.summary}</p>
+          <p className="line-clamp-1 text-sm font-medium leading-relaxed text-slate-500 sm:line-clamp-2">{topic.content.summary}</p>
         </div>
-        <div className={`
-          flex-shrink-0 w-10 h-10 flex items-center justify-center 
-          rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200/50
-          shadow-sm transition-all duration-300
-          ${isExpanded ? 'rotate-180 bg-slate-100' : ''}
-        `}>
-          <ChevronDown className="w-5 h-5 text-slate-500" />
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/80 text-slate-500 shadow-sm transition-transform sm:h-10 sm:w-10 ${isExpanded ? 'rotate-180 bg-cyan-50 text-cyan-700' : ''}`}
+        >
+          <ChevronDown className="h-5 w-5 stroke-[1.75]" aria-hidden="true" />
         </div>
       </button>
 
-      <div className={`
-        overflow-hidden transition-all duration-300 ease-out
-        ${isExpanded ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}
-      `}>
-        <div className="px-4 sm:px-5 pb-5 border-t border-slate-200/50 pt-4">
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-out ${isExpanded ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}`}
+      >
+        <div className="border-t border-slate-200/70 p-4 sm:p-5">
           {topic.content.floridaNote && (
             <FloridaNote>{topic.content.floridaNote}</FloridaNote>
           )}
 
-          <div className="space-y-5">
+          <div className="space-y-3">
             {topic.content.sections.map((section, idx) => (
-              <div key={idx} className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-slate-200/50">
-                <h4 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500" />
+              <div key={idx} className="rounded-2xl border border-slate-200/70 bg-white/90 p-4">
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" aria-hidden="true" />
                   {section.title}
                 </h4>
                 {section.warning && <WarningBox>{section.warning}</WarningBox>}
@@ -1015,6 +1006,7 @@ function TopicCard({ topic, isExpanded, onToggle }) {
     </div>
   );
 }
+
 
 function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, isActiveCategory }) {
   const IconComponent = iconMap[category.icon] || AlertTriangle;
@@ -1033,20 +1025,22 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, i
 
   return (
     <div className={`transition-all duration-500 ${isActiveCategory ? 'opacity-100' : 'opacity-0 absolute pointer-events-none'}`}>
-      <div className="flex items-center gap-4 mb-6">
-        <div className={`p-3 bg-gradient-to-br ${category.gradient} rounded-2xl shadow-lg`}>
-          <IconComponent className="w-6 h-6 text-white" />
+      <div className="mb-5 flex items-center gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
+          <IconComponent className="h-6 w-6 stroke-[1.75]" aria-hidden="true" />
         </div>
-        <div className="flex-1">
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900">{category.title}</h2>
-          <p className="text-sm text-slate-600">{category.description}</p>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl font-semibold tracking-[-0.025em] text-slate-950 sm:text-2xl">
+            {category.title}
+          </h2>
+          <p className="text-sm font-medium text-slate-500">{category.description}</p>
         </div>
-        <span className="px-3 py-1.5 bg-slate-100 rounded-full text-sm font-medium text-slate-600">
+        <span className="rounded-full border border-slate-200/70 bg-white/85 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
           {filteredTopics.length} {filteredTopics.length === 1 ? 'topic' : 'topics'}
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-2">
         {filteredTopics.map(topic => (
           <TopicCard
             key={topic.id}
@@ -1116,160 +1110,156 @@ export default function PoolSchool() {
   const showAllCategories = searchQuery.length > 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50/30 to-blue-50/30">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-28">
-
-        <div className="relative mb-8">
-          <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-teal-500/20 rounded-3xl blur-3xl" />
-          <div className="relative bg-white/70 backdrop-blur-xl rounded-3xl border border-white/50 shadow-xl p-6 sm:p-8">
-            <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
-                Pool School
-              </h1>
-              <p className="text-slate-600 mt-1 text-sm sm:text-base">
-                Florida pool tech's complete field guide
-              </p>
-              <div className="flex items-center gap-3 mt-3">
-                <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
-                  {totalTopics} Topics
-                </span>
-                <span className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
-                  {POOL_SCHOOL_DATA.categories.length} Categories
-                </span>
-              </div>
-            </div>
+    <main className="relative mx-auto max-w-5xl px-3 pb-32 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Pool School">
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field reference</p>
+            <h1 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              Pool School
+            </h1>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              Florida pool tech's complete field guide
+            </p>
+          </div>
+          <div className="flex items-center gap-2 sm:shrink-0">
+            <span className="rounded-full border border-cyan-200/70 bg-cyan-50/70 px-3 py-1 text-xs font-semibold text-cyan-800 shadow-sm">
+              {totalTopics} Topics
+            </span>
+            <span className="rounded-full border border-slate-200/70 bg-white/85 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
+              {POOL_SCHOOL_DATA.categories.length} Categories
+            </span>
           </div>
         </div>
+      </div>
 
-        <div className="sticky top-2 z-20 mb-6">
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/50 shadow-lg p-2">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search problems, equipment, brands..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-12 py-3.5 bg-slate-50/80 border-0 rounded-xl text-base text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 focus:bg-white transition-all"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {!searchQuery && (
-              <div className="flex items-center justify-between mt-2 px-2">
-                <span className="text-xs text-slate-500">
-                  {filteredCount} topics available
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={expandAll}
-                    className="text-xs text-cyan-600 hover:text-cyan-700 font-medium px-3 py-1.5 hover:bg-cyan-50 rounded-lg transition-colors"
-                  >
-                    Expand All
-                  </button>
-                  <button
-                    onClick={collapseAll}
-                    className="text-xs text-slate-500 hover:text-slate-700 font-medium px-3 py-1.5 hover:bg-slate-50 rounded-lg transition-colors"
-                  >
-                    Collapse
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {searchQuery && (
-              <div className="mt-2 px-2">
-                <span className="text-xs text-slate-500">
-                  Found {filteredCount} {filteredCount === 1 ? 'topic' : 'topics'} matching "{searchQuery}"
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {!searchQuery && (
-          <div className="mb-8 -mx-4 px-4">
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {POOL_SCHOOL_DATA.categories.map(cat => {
-                const IconComponent = iconMap[cat.icon] || AlertTriangle;
-                const isActive = activeCategory === cat.id;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setActiveCategory(cat.id)}
-                    className={`
-                      flex-shrink-0 flex items-center gap-2.5 px-4 py-3 rounded-xl
-                      font-medium text-sm transition-all duration-300
-                      ${isActive
-                        ? `bg-gradient-to-r ${cat.gradient} text-white shadow-lg`
-                        : 'bg-white/80 text-slate-700 hover:bg-white hover:shadow-md border border-slate-200/50'
-                      }
-                    `}
-                  >
-                    <IconComponent className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                    <span className="whitespace-nowrap">{cat.title}</span>
-                    <span className={`
-                      px-1.5 py-0.5 rounded-md text-xs font-bold
-                      ${isActive ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}
-                    `}>
-                      {cat.topics.length}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="relative min-h-[400px]">
-          {showAllCategories ? (
-            <div className="space-y-10">
-              {POOL_SCHOOL_DATA.categories.map(category => (
-                <div key={category.id}>
-                  <CategorySection
-                    category={category}
-                    searchQuery={searchQuery}
-                    expandedTopics={expandedTopics}
-                    toggleTopic={toggleTopic}
-                    isActiveCategory={true}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
-            POOL_SCHOOL_DATA.categories.map(category => (
-              <CategorySection
-                key={category.id}
-                category={category}
-                searchQuery={searchQuery}
-                expandedTopics={expandedTopics}
-                toggleTopic={toggleTopic}
-                isActiveCategory={activeCategory === category.id}
-              />
-            ))
+      <div className="sticky top-2 z-20 mb-4 rounded-[1.35rem] border border-white/80 bg-white/85 p-2 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+          <input
+            type="text"
+            placeholder="Search problems, equipment, brands..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search topics"
+            className="w-full rounded-xl border border-transparent bg-slate-50/80 py-3 pl-12 pr-12 text-base text-slate-900 placeholder:text-slate-400 focus:border-cyan-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
           )}
         </div>
 
-        {filteredCount === 0 && (
-          <div className="text-center py-16">
-            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-slate-100 to-slate-200 rounded-3xl flex items-center justify-center">
-              <Search className="w-10 h-10 text-slate-400" />
+        {!searchQuery && (
+          <div className="mt-2 flex items-center justify-between px-2">
+            <span className="text-xs font-medium text-slate-500">
+              {filteredCount} topics available
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={expandAll}
+                className="rounded-full px-3 py-1.5 text-xs font-semibold text-cyan-700 transition-colors hover:bg-cyan-50"
+              >
+                Expand All
+              </button>
+              <button
+                type="button"
+                onClick={collapseAll}
+                className="rounded-full px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                Collapse
+              </button>
             </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">No topics found</h3>
-            <p className="text-slate-600 max-w-md mx-auto">
-              Try different keywords like "pump", "algae", or brand names like "Pentair" or "Hayward".
-            </p>
           </div>
         )}
 
+        {searchQuery && (
+          <div className="mt-2 px-2">
+            <span className="text-xs font-medium text-slate-500">
+              Found {filteredCount} {filteredCount === 1 ? 'topic' : 'topics'} matching "{searchQuery}"
+            </span>
+          </div>
+        )}
       </div>
-    </div>
+
+      {!searchQuery && (
+        <div className="mb-6">
+          <div className="grid grid-cols-3 gap-2">
+            {POOL_SCHOOL_DATA.categories.map(cat => {
+              const IconComponent = iconMap[cat.icon] || AlertTriangle;
+              const isActive = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setActiveCategory(cat.id)}
+                  aria-pressed={isActive}
+                  className={`flex min-w-0 items-center gap-1.5 rounded-full px-2.5 py-2 text-left text-[11px] font-semibold transition-all sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm ${
+                    isActive
+                      ? 'bg-slate-950 text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)]'
+                      : 'border border-slate-200/70 bg-white/85 text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800'
+                  }`}
+                >
+                  <IconComponent className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">{cat.title}</span>
+                  <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs font-bold ${isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {cat.topics.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="relative min-h-[400px]">
+        {showAllCategories ? (
+          <div className="space-y-8">
+            {POOL_SCHOOL_DATA.categories.map(category => (
+              <div key={category.id}>
+                <CategorySection
+                  category={category}
+                  searchQuery={searchQuery}
+                  expandedTopics={expandedTopics}
+                  toggleTopic={toggleTopic}
+                  isActiveCategory={true}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          POOL_SCHOOL_DATA.categories.map(category => (
+            <CategorySection
+              key={category.id}
+              category={category}
+              searchQuery={searchQuery}
+              expandedTopics={expandedTopics}
+              toggleTopic={toggleTopic}
+              isActiveCategory={activeCategory === category.id}
+            />
+          ))
+        )}
+      </div>
+
+      {filteredCount === 0 && (
+        <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50/80 px-5 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-inner">
+            <Search className="h-7 w-7 stroke-[1.75]" aria-hidden="true" />
+          </div>
+          <h3 className="mb-1 text-lg font-semibold tracking-[-0.025em] text-slate-950">No topics found</h3>
+          <p className="mx-auto max-w-md text-sm font-medium text-slate-500">
+            Try different keywords like "pump", "algae", or brand names like "Pentair" or "Hayward".
+          </p>
+        </div>
+      )}
+
+    </main>
   );
 }

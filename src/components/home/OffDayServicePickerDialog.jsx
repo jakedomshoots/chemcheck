@@ -18,29 +18,31 @@ export default function OffDayServicePickerDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-3 border-b border-slate-100">
-          <DialogTitle className="flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-cyan-600" />
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-xl overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 p-0 shadow-[0_24px_80px_-44px_rgba(8,47,73,0.85)] backdrop-blur">
+        <DialogHeader className="border-b border-slate-200/70 bg-gradient-to-br from-white via-cyan-50/60 to-white px-5 pb-4 pt-5 pr-12 text-left">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
+            <CalendarDays className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <DialogTitle className="text-2xl font-semibold leading-tight tracking-[-0.04em] text-slate-950">
             Service Another Day
           </DialogTitle>
-          <DialogDescription>
-            Pick a non-{todayDay} client to service now. This is a one-off visit and does not change recurring schedule.
+          <DialogDescription className="text-sm font-medium leading-6 text-slate-600">
+            Pick a non-{todayDay} client to service now. This one-off visit will not change the recurring schedule.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="px-6 py-4 space-y-4">
+        <div className="space-y-4 px-5 py-4">
           {availableDays.length > 0 ? (
             <>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {availableDays.map((day) => (
                   <Button
                     key={day}
                     type="button"
-                    variant={selectedDay === day ? "default" : "outline"}
+                    variant="outline"
                     className={selectedDay === day
-                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white"
-                      : "border-slate-200 text-slate-700"}
+                      ? "h-10 rounded-full border-cyan-600 bg-cyan-600 px-4 text-sm font-semibold text-white shadow-[0_14px_32px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+                      : "h-10 rounded-full border border-slate-200 bg-white/85 px-4 text-sm font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"}
                     onClick={() => onSelectedDayChange(day)}
                   >
                     {day}
@@ -49,19 +51,19 @@ export default function OffDayServicePickerDialog({
               </div>
 
               <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => onSearchQueryChange(e.target.value)}
                   placeholder={`Search ${selectedDay || "selected day"} clients...`}
-                  className="pl-9 border-slate-200 focus:border-cyan-500"
+                  className="h-11 rounded-[1.15rem] border border-white/80 bg-slate-50/80 pl-10 text-sm font-medium text-slate-700 shadow-inner focus:border-cyan-400 focus:bg-white"
                 />
               </div>
 
-              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+              <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
                 {clients.length > 0 ? (
                   clients.map((client) => (
-                    <Card key={client._id} className="p-3 border border-slate-200">
+                    <Card key={client._id} className="rounded-[1.25rem] border border-white/80 bg-white/85 p-3 shadow-[0_18px_60px_-54px_rgba(8,47,73,0.75)]">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-slate-900 truncate">{client.full_name}</p>
@@ -70,7 +72,7 @@ export default function OffDayServicePickerDialog({
                         <Button
                           type="button"
                           size="sm"
-                          className="shrink-0 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                          className="shrink-0 rounded-full bg-cyan-600 text-white shadow-[0_14px_32px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
                           onClick={() => onStartClient(client)}
                         >
                           <UserRoundCheck className="w-3.5 h-3.5 mr-1.5" />
@@ -80,11 +82,11 @@ export default function OffDayServicePickerDialog({
                     </Card>
                   ))
                 ) : (
-                  <Card className="p-6 border border-dashed border-slate-200 bg-slate-50">
-                    <p className="text-sm font-medium text-slate-700 text-center">
+                  <Card className="rounded-[1.25rem] border border-dashed border-cyan-200/80 bg-cyan-50/50 p-6">
+                    <p className="text-center text-sm font-semibold text-slate-800">
                       No pending clients found for {selectedDay || "this day"}.
                     </p>
-                    <p className="text-xs text-slate-500 text-center mt-1">
+                    <p className="mt-1 text-center text-xs font-medium text-slate-500">
                       Clients already serviced today are hidden to avoid duplicates.
                     </p>
                   </Card>
@@ -92,11 +94,11 @@ export default function OffDayServicePickerDialog({
               </div>
             </>
           ) : (
-            <Card className="p-6 border border-dashed border-slate-200 bg-slate-50">
-              <p className="text-sm font-medium text-slate-700 text-center">
+            <Card className="rounded-[1.25rem] border border-dashed border-cyan-200/80 bg-cyan-50/50 p-6">
+              <p className="text-center text-sm font-semibold text-slate-800">
                 No alternate working days are configured.
               </p>
-              <p className="text-xs text-slate-500 text-center mt-1">
+              <p className="mt-1 text-center text-xs font-medium text-slate-500">
                 Add more days in Settings to use this flow.
               </p>
             </Card>

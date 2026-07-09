@@ -667,45 +667,40 @@ export default function Settings() {
 
   return (
     <>
-      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24">
-      <div className="mb-4 sm:mb-6">
-        <div className="mb-2">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Settings</h1>
-            <p className="text-xs sm:text-sm text-slate-600">Manage your business and account</p>
-          </div>
+      <div className="relative mx-auto max-w-6xl px-3 pb-28 pt-4 font-sans sm:px-4 lg:px-6">
+        <div className="mb-5 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Control room</p>
+          <h1 className="text-3xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-4xl">Settings</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">Manage your business and account</p>
         </div>
-      </div>
 
-      <div className="lg:hidden mb-4 -mx-3 px-3 overflow-x-auto">
-        <div className="flex gap-2 pb-2 min-w-max">
+      <div className="lg:hidden mb-4">
+        <label htmlFor="settings-section" className="sr-only">Settings section</label>
+        <select
+          id="settings-section"
+          value={activeSection}
+          onChange={(event) => setActiveSection(event.target.value)}
+          className="h-11 w-full rounded-[1.15rem] border border-white/80 bg-white/90 px-4 text-sm font-semibold text-slate-800 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25"
+        >
           {sections.map((section) => (
-            <button
-              key={section.id}
-              onClick={() => setActiveSection(section.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${activeSection === section.id
-                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
-                : 'bg-white text-slate-700 border border-slate-200'
-                }`}
-            >
-              <section.icon className="w-4 h-4" />
-              <span>{section.label}</span>
-            </button>
+            <option key={section.id} value={section.id}>
+              {section.label}
+            </option>
           ))}
-        </div>
+        </select>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         <div className="hidden lg:block lg:col-span-1">
-          <Card className="p-2">
+          <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-2 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
             <nav className="space-y-1">
               {sections.map((section) => (
                 <button
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${activeSection === section.id
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
-                    : 'text-slate-700 hover:bg-slate-100'
+                  className={`flex w-full items-center gap-3 rounded-[1.1rem] px-3 py-2.5 text-left transition-all ${activeSection === section.id
+                    ? 'bg-cyan-600 text-white shadow-[0_14px_32px_-24px_rgba(8,145,178,0.95)]'
+                    : 'text-slate-700 hover:bg-cyan-50/70 hover:text-slate-950'
                     }`}
                 >
                   <section.icon className="w-5 h-5" />
@@ -718,7 +713,7 @@ export default function Settings() {
         </div>
 
         <div className="lg:col-span-3">
-          <Card className="p-4 sm:p-6">
+          <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
             {activeSection === 'business' && (
               <div className="space-y-6">
                 <div>
@@ -757,7 +752,7 @@ export default function Settings() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
                     <div>
                       <Label htmlFor="business-phone" className="block text-sm font-medium text-slate-700 mb-2">
                         <Phone className="w-4 h-4 inline mr-2" />
@@ -1201,11 +1196,11 @@ export default function Settings() {
                 <div className="space-y-3">
                   <button
                     onClick={() => setShowBackupManager(true)}
-                    className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg hover:from-blue-100 hover:to-cyan-100 transition-all"
+                    className="flex w-full items-center justify-between rounded-[1.25rem] border border-cyan-100 bg-cyan-50/70 p-4 text-left transition-all hover:border-cyan-200 hover:bg-cyan-50"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-600 rounded-lg">
-                        <HardDrive className="w-5 h-5 text-white" />
+                      <div className="rounded-2xl bg-cyan-600 p-2 text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)]">
+                        <HardDrive className="h-5 w-5" />
                       </div>
                       <div className="text-left">
                         <p className="font-medium text-slate-900">Backup Manager</p>
@@ -1438,7 +1433,7 @@ export default function Settings() {
               </div>
             )}
 
-            <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:justify-between">
+            <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-3 sm:mt-8 sm:flex-row sm:items-center sm:justify-between sm:pt-6">
               {saveMessage && (
                 <p className={`text-sm text-center sm:text-left ${saveMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
                   {saveMessage}
@@ -1447,7 +1442,7 @@ export default function Settings() {
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="w-full sm:w-auto sm:ml-auto bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white py-3 sm:py-2"
+                className="w-full rounded-full bg-cyan-600 py-3 text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:ml-auto sm:w-auto sm:py-2"
               >
                 {isSaving ? (
                   <>

@@ -3203,30 +3203,35 @@ const workOrderCreateForm = (
   const hideOverviewPanelsOnMobile = activeSection !== "dispatch";
 
   return (
-    <div className={`w-full px-3 sm:px-6 lg:px-8 py-3 sm:py-6 ${isCompactView ? "space-y-3 sm:space-y-4" : "space-y-4 sm:space-y-6"}`}>
-      <div className="flex flex-col gap-1.5 sm:gap-2">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-600" />
-          Work Orders & Dispatch
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-600">
-          Build dispatch, quotes, and invoicing in one flow for solo operators and small teams.
-        </p>
-        {cloudEnabled ? (
-          <p className="text-[11px] sm:text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2.5 py-1.5 sm:px-3 sm:py-2">
-            Cloud mode active. Work orders, quotes, and invoices save to Convex.
-          </p>
-        ) : (
-          <p className="text-[11px] sm:text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 sm:px-3 sm:py-2">
-            Local mode active. Work orders, quotes, and invoices are saved locally on this device.
-          </p>
-        )}
+    <div className={`relative mx-auto w-full max-w-7xl px-3 pb-28 pt-4 font-sans sm:px-6 lg:px-8 ${isCompactView ? "space-y-3 sm:space-y-4" : "space-y-4 sm:space-y-6"}`}>
+      <div className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Dispatch board</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              <ClipboardList className="h-7 w-7 text-cyan-700" aria-hidden="true" />
+              Work Orders & Dispatch
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">
+              Build dispatch, quotes, and invoicing in one flow for solo operators and small teams.
+            </p>
+          </div>
+          {cloudEnabled ? (
+            <p className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+              Cloud mode active
+            </p>
+          ) : (
+            <p className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+              Local mode active
+            </p>
+          )}
+        </div>
       </div>
 
-      <Card className="p-2.5 sm:p-4">
+      <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-2.5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur sm:p-4">
         <div className="flex flex-col gap-2.5 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
           {workOrdersSplitEnabled ? (
-            <div className="inline-flex w-full lg:w-auto rounded-xl border border-slate-200 bg-slate-50 p-1 overflow-x-auto">
+            <div className="inline-flex w-full overflow-x-auto rounded-full border border-slate-200 bg-white/80 p-1 lg:w-auto">
               {[
                 { id: "dispatch", label: "Dispatch" },
                 { id: "quotes", label: "Quotes" },
@@ -3237,10 +3242,10 @@ const workOrderCreateForm = (
                   key={section.id}
                   type="button"
                   onClick={() => handleSectionChange(section.id)}
-                  className={`flex-1 shrink-0 lg:flex-none px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-all ${
+                  className={`flex-1 shrink-0 rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all sm:px-3 sm:text-sm lg:flex-none ${
                     activeSection === section.id
-                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-cyan-600 text-white shadow-[0_14px_32px_-24px_rgba(8,145,178,0.95)]"
+                      : "text-slate-600 hover:bg-cyan-50 hover:text-slate-950"
                   }`}
                 >
                   {section.label}
@@ -3276,7 +3281,7 @@ const workOrderCreateForm = (
       </Card>
 
       {activeSection === "dispatch" && (
-      <Card className="p-3 sm:p-6">
+      <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-3 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
         <div className="flex flex-col md:flex-row md:items-end gap-3 sm:gap-4">
           <div>
             <Label htmlFor="dispatch-date" className="text-xs sm:text-sm">Dispatch Date</Label>
@@ -3378,7 +3383,7 @@ const workOrderCreateForm = (
           {!mobileBillingExpanded ? (
             <p className="text-xs text-slate-600">
               {billingHealth.totalIssues > 0
-                ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"} — tap to expand`
+                ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"} - tap to expand`
                 : "All billing health checks are clear."}
             </p>
           ) : (
@@ -4297,11 +4302,11 @@ const workOrderCreateForm = (
       </Card>
       )}
 
-      {activeSection !== "comms" && (
+      {activeSection !== "comms" && !(activeSection === "dispatch" && workOrders.length === 0) && (
         <button
           type="button"
           onClick={() => setMobileCreateDrawerOpen(true)}
-          className="fixed bottom-6 right-6 z-40 lg:hidden h-14 w-14 rounded-full bg-cyan-600 text-white shadow-lg hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 flex items-center justify-center"
+          className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-6 z-40 lg:hidden h-14 w-14 rounded-full bg-cyan-600 text-white shadow-[0_18px_44px_-18px_rgba(8,145,178,0.95)] hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 flex items-center justify-center"
           aria-label={mobileCreateDrawerTitle}
         >
           <Plus className="w-6 h-6" />

@@ -4,14 +4,13 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { createPageUrl } from "@/utils";
-import { Save, Droplets, TestTube, Waves, Activity, AlertCircle, ClipboardList } from "lucide-react";
+import { Save, Droplets, TestTube, Waves, Activity, AlertCircle, Camera, Home as HomeIcon, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import SimplifiedChemicalInput from "../components/servicelog/SimplifiedChemicalInput";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
@@ -59,7 +58,7 @@ const CHEMICAL_CONFIGS = {
     max: 8.2,
     step: 0.1,
     unit: "",
-    hint: "Ideal range: 6.8–8.2",
+    hint: "Ideal range: 6.8-8.2",
     ranges: [
       { status: "critical", min: -Infinity, max: 6.8 },
       { status: "low", min: 6.8, max: 7.2 },
@@ -73,7 +72,7 @@ const CHEMICAL_CONFIGS = {
     max: 10,
     step: 0.5,
     unit: "ppm",
-    hint: "Ideal range: 1–3 ppm (max 10 ppm)",
+    hint: "Ideal range: 1-3 ppm (max 10 ppm)",
     ranges: [
       { status: "critical", min: -Infinity, max: 0.5 },
       { status: "low", min: 0.5, max: 1 },
@@ -87,7 +86,7 @@ const CHEMICAL_CONFIGS = {
     max: 120,
     step: 1,
     unit: "ppm",
-    hint: "Ideal range: 80–120 ppm",
+    hint: "Ideal range: 80-120 ppm",
     ranges: [
       { status: "critical", min: -Infinity, max: 80 },
       { status: "low", min: 80, max: 100 },
@@ -101,7 +100,7 @@ const CHEMICAL_CONFIGS = {
     max: 100,
     step: 1,
     unit: "ppm",
-    hint: "Ideal range: 30–50 ppm (max 100 ppm)",
+    hint: "Ideal range: 30-50 ppm (max 100 ppm)",
     ranges: [
       { status: "critical", min: -Infinity, max: 10 },
       { status: "low", min: 10, max: 30 },
@@ -455,105 +454,142 @@ export default function NewServiceLog() {
     }
   };
 
-  if (!customer) {
+  const customerLookupPending = Boolean(customerIdParam) && !customers;
+
+  if (!customer && customerLookupPending) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <ChemicalBeakerLoader />
-      </div>
+      <main className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8" aria-label="Service Log">
+        <div className="flex min-h-[60vh] items-center justify-center rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <ChemicalBeakerLoader />
+        </div>
+      </main>
+    );
+  }
+
+  if (!customer) {
+    const missingTitle = customerIdParam ? "Client not found" : "Choose a client first";
+    const missingMessage = customerIdParam
+      ? "We couldn't find that client. Pick a client from your route or client list before logging service."
+      : "A service log needs a client so photos, chemistry, notes, and billing stay attached to the right pool.";
+
+    return (
+      <main className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8" aria-label="Service Log">
+        <section className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 text-center shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
+            <UserPlus className="h-7 w-7" aria-hidden="true" />
+          </div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field service</p>
+          <h2 className="text-3xl font-semibold tracking-[-0.045em] text-slate-950">{missingTitle}</h2>
+          <p className="mx-auto mt-2 max-w-sm text-sm font-medium leading-6 text-slate-600">{missingMessage}</p>
+          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              onClick={() => navigate(createPageUrl("Clients"))}
+              className="h-11 rounded-full bg-cyan-600 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+            >
+              <UserPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+              Go to Clients
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate(createPageUrl("Home"))}
+              className="h-11 rounded-full border border-slate-200 bg-white/90 font-semibold text-slate-700 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+            >
+              <HomeIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+              Back to Home
+            </Button>
+          </div>
+        </section>
+      </main>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 font-sans">
-      <div className="mb-6">
+    <div className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8">
+      <div className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
         <BackButton
           fallback={createPageUrl("Home")}
           label={backToRouteLabel}
           className="mb-4"
         />
 
-        <div className="flex items-center justify-between">
-          <div>
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900">Service Log</h2>
-              <p className="text-sm font-medium text-slate-600">{customer.full_name}</p>
-              {formattedDraftTime && (
-                <p className="text-xs font-medium text-slate-500 mt-1">Draft saved at {formattedDraftTime}</p>
-              )}
-            </div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field service</p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">Service Log</h2>
+            <p className="mt-1 truncate text-sm font-medium text-slate-500">{customer.full_name}</p>
+            {formattedDraftTime && (
+              <p className="mt-2 text-xs font-medium text-slate-500">Draft saved at {formattedDraftTime}</p>
+            )}
           </div>
         </div>
       </div>
 
       <form onSubmit={handleSubmit}>
         {startTime && (
-          <div className="sticky top-0 z-50 mb-6 p-4 bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-200 rounded-xl shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-cyan-700 uppercase tracking-wide">
-                  Checked in
-                </p>
-                <p className="text-sm font-medium text-cyan-900">
-                  {new Date(startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs font-semibold text-cyan-700 uppercase tracking-wide">
-                  Elapsed
-                </p>
-                <p className="text-2xl font-bold text-cyan-900 tabular-nums">
-                  {formatDuration(elapsedMs)}
-                </p>
-              </div>
+          <div
+            className="sticky top-2 z-30 mb-4 rounded-full border border-slate-200/70 bg-white/80 px-3 py-2 shadow-[0_10px_32px_-28px_rgba(8,47,73,0.65)] backdrop-blur"
+            aria-label={`Checked in at ${new Date(startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. Elapsed ${formatDuration(elapsedMs)}.`}
+          >
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+              <span className="truncate">
+                <span className="text-slate-400">In</span>{" "}
+                <span className="text-slate-700">{new Date(startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+              </span>
+              <span className="tabular-nums text-slate-900">{formatDuration(elapsedMs)}</span>
             </div>
           </div>
         )}
 
-        <div className="mb-6">
-          <PhotoCaptureSection
-            serviceLogId={null}
-            customerId={customerIdParam || ""}
-            category="before"
-            title="Before Photos"
-            description="Capture photos of the pool before service"
-            disabled={saving}
-            onPhotosChange={handleBeforePhotosChange}
-          />
-        </div>
-
-        <Card className="p-6 mb-6 border-2 shadow-lg">
-          <div className="flex items-center gap-2 mb-4">
-            <ClipboardList className="w-5 h-5 text-cyan-600 stroke-[1.75]" />
-            <h3 className="text-lg font-bold tracking-tight text-slate-900">Service Type</h3>
+        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-slate-950">
+                <Camera className="h-5 w-5 text-cyan-700" aria-hidden="true" />
+                Service Photos
+              </h3>
+              <p className="mt-1 text-sm font-medium text-slate-600">
+                Capture before and after proof in one place.
+              </p>
+            </div>
           </div>
-          <Select
-            value={formData.service_type}
-            onValueChange={(value) => setFormData({ ...formData, service_type: value })}
-          >
-            <SelectTrigger
-              aria-label="Service Type"
-              className="bg-white text-slate-900 border-2 border-slate-200 focus:border-cyan-500 rounded-xl h-11"
-            >
-              <SelectValue placeholder="Select service type" />
-            </SelectTrigger>
-            <SelectContent>
-              {serviceTypes.map(type => (
-                <SelectItem key={type} value={type}>
-                  {type}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="overflow-hidden rounded-[1.35rem] border border-slate-200/70 bg-gradient-to-br from-white via-cyan-50/50 to-white shadow-sm">
+            <div className="divide-y divide-slate-200/70">
+              <PhotoCaptureSection
+                serviceLogId={null}
+                customerId={customerIdParam || ""}
+                category="before"
+                title="Before Photos"
+                description="Before service"
+                disabled={saving}
+                embedded
+                streamlined
+                onPhotosChange={handleBeforePhotosChange}
+              />
+              <PhotoCaptureSection
+                serviceLogId={null}
+                customerId={customerIdParam || ""}
+                category="after"
+                title="After Photos"
+                description="After service"
+                disabled={saving}
+                embedded
+                streamlined
+                onPhotosChange={handleAfterPhotosChange}
+              />
+            </div>
+          </div>
         </Card>
 
-        <Card className="p-6 mb-6 border-2 shadow-lg">
-          <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-2 flex items-center gap-2">
-            <TestTube className="w-5 h-5 text-cyan-600 stroke-[1.75]" />
+        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-slate-950">
+            <TestTube className="h-5 w-5 text-cyan-700" aria-hidden="true" />
             Chemical Readings
           </h3>
-          <p className="text-sm font-medium text-slate-600 mb-6">Select the level for each chemical test</p>
+          <p className="mb-4 text-sm font-medium text-slate-600">Select the level for each chemical test</p>
 
-          <div className="space-y-6">
+          <div className="space-y-3">
             <SimplifiedChemicalInput
               label="pH Balance"
               value={formData.ph}
@@ -607,27 +643,27 @@ export default function NewServiceLog() {
             />
 
             {customer.pool_type === "Salt" && (
-              <div className="space-y-3">
+              <div className="rounded-[1.25rem] border border-slate-200/70 bg-white/80 p-3">
                 <div className="flex items-center gap-2">
-                  <Waves className="w-4 h-4 text-cyan-600 stroke-[1.75]" />
-                  <Label className="text-sm font-semibold text-slate-700">Salt Level (PPM)</Label>
+                  <Waves className="h-4 w-4 text-cyan-700" aria-hidden="true" />
+                  <Label className="text-sm font-semibold text-slate-800">Salt Level (PPM)</Label>
                 </div>
                 <Input
                   type="number"
                   value={formData.salt}
                   onChange={(e) => setFormData({ ...formData, salt: e.target.value })}
                   placeholder="3200"
-                  className="border-2 focus:border-cyan-500 rounded-xl"
+                  className="mt-3 h-12 rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
                 />
-                <p className="text-xs font-medium text-slate-500">Ideal range: 2700-3400 PPM</p>
+                <p className="mt-2 text-xs font-medium text-slate-500">Ideal range: 2700-3400 PPM</p>
               </div>
             )}
           </div>
         </Card>
 
-        <Card className="p-6 mb-6 border-2 shadow-lg">
-          <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-4">Service Notes</h3>
-          <Label htmlFor="notes" className="text-slate-700 font-semibold mb-2 block">
+        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <h3 className="mb-4 text-lg font-semibold tracking-[-0.025em] text-slate-950">Service Notes</h3>
+          <Label htmlFor="notes" className="mb-2 block text-sm font-semibold text-slate-800">
             Notes (optional)
           </Label>
           <Textarea
@@ -636,21 +672,10 @@ export default function NewServiceLog() {
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             placeholder="Dog was in yard, filter pressure high, added 2 gallons of liquid chlorine..."
             rows={4}
-            className="border-2 focus:border-cyan-500 rounded-xl"
+            className="rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
           />
         </Card>
 
-        <div className="mb-6">
-          <PhotoCaptureSection
-            serviceLogId={null}
-            customerId={customerIdParam || ""}
-            category="after"
-            title="After Photos"
-            description="Capture photos of the pool after service"
-            disabled={saving}
-            onPhotosChange={handleAfterPhotosChange}
-          />
-        </div>
 
         {validationError && (
           <Alert variant="destructive" className="mb-6">
@@ -660,33 +685,33 @@ export default function NewServiceLog() {
         )}
 
         {!settingsLoading && hasAnyRequirements(proofOfServiceSettings) && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-            <p className="text-sm font-medium text-amber-800">
+          <div className="mb-5 rounded-[1.25rem] border border-amber-200 bg-amber-50/90 p-4">
+            <p className="text-sm font-semibold text-amber-900">
               Required for completion: {getRequirementsSummary(proofOfServiceSettings).join(', ')}
             </p>
           </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 pb-2">
           <BackButton
             fallback={createPageUrl("Home")}
             label="Cancel"
             variant="outline"
-            className="flex-1 border-2 rounded-xl"
+            className="flex-1 rounded-[1.15rem] border border-slate-200 bg-white/90"
           />
           <Button
             type="submit"
             disabled={saving}
-            className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg rounded-xl disabled:opacity-70"
+            className="flex-1 rounded-[1.15rem] bg-cyan-600 text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 disabled:opacity-70"
           >
             {saving ? (
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
                 <span>Saving...</span>
               </div>
             ) : (
               <>
-                <Save className="w-4 h-4 mr-2 stroke-[1.75]" />
+                <Save className="mr-2 h-4 w-4" aria-hidden="true" />
                 Complete Service
               </>
             )}

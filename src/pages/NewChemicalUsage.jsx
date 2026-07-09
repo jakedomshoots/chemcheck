@@ -10,7 +10,6 @@ import { BackButton } from "@/components/navigation/BackButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { toast } from "sonner";
@@ -133,28 +132,28 @@ export default function NewChemicalUsage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 font-sans">
-      <div className="mb-6">
+    <main className="relative mx-auto max-w-3xl px-3 pb-32 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Add Chemical Usage">
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
         <BackButton
           fallback={createPageUrl("ChemicalUsage")}
           label="Back to Chemical Usage"
           className="mb-4"
         />
-
-        <div>
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Add Chemical Usage</h2>
-            <p className="text-sm font-medium text-slate-600">Track extra chemicals for billing</p>
-          </div>
-        </div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Chemistry log</p>
+        <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+          Add Chemical Usage
+        </h2>
+        <p className="mt-1 text-sm font-medium text-slate-500">
+          Track extra chemicals for billing
+        </p>
       </div>
 
       <form onSubmit={handleSubmit}>
-        <Card className="p-6 mb-6 border-2 shadow-lg">
+        <div className="mb-4 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="customer_id" className="text-slate-700 font-semibold">
-                Customer *
+              <Label htmlFor="customer_id" className="text-sm font-semibold text-slate-800">
+                Customer <span className="text-cyan-700">*</span>
               </Label>
               <Select
                 value={formData.customer_id ? String(formData.customer_id) : ""}
@@ -162,7 +161,7 @@ export default function NewChemicalUsage() {
               >
                 <SelectTrigger
                   aria-label="Customer"
-                  className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-purple-500 rounded-lg h-11"
+                  className="mt-1 h-11 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500 focus:ring-cyan-500"
                 >
                   <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
@@ -177,8 +176,8 @@ export default function NewChemicalUsage() {
             </div>
 
             <div>
-              <Label htmlFor="chemical_type" className="text-slate-700 font-semibold">
-                Chemical Type *
+              <Label htmlFor="chemical_type" className="text-sm font-semibold text-slate-800">
+                Chemical Type <span className="text-cyan-700">*</span>
               </Label>
               <Select
                 value={formData.chemical_type}
@@ -186,7 +185,7 @@ export default function NewChemicalUsage() {
               >
                 <SelectTrigger
                   aria-label="Chemical Type"
-                  className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-purple-500 rounded-lg h-11"
+                  className="mt-1 h-11 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500 focus:ring-cyan-500"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -201,8 +200,8 @@ export default function NewChemicalUsage() {
             </div>
 
             <div>
-              <Label htmlFor="quantity" className="text-slate-700 font-semibold">
-                Quantity Used *
+              <Label htmlFor="quantity" className="text-sm font-semibold text-slate-800">
+                Quantity Used <span className="text-cyan-700">*</span>
               </Label>
               <Input
                 id="quantity"
@@ -210,13 +209,13 @@ export default function NewChemicalUsage() {
                 onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                 required
                 placeholder="e.g., 2 gallons, 3 lbs, 5 tablets"
-                className="mt-1 border-2 focus:border-purple-500 rounded-xl font-medium"
+                className="mt-1 h-11 rounded-xl border border-slate-200 bg-white font-medium text-slate-900 focus:border-cyan-500 focus:ring-cyan-500"
               />
-              <p className="text-xs text-slate-500 mt-1 font-medium">Include units (gallons, lbs, tablets, etc.)</p>
+              <p className="mt-1 text-xs font-medium text-slate-500">Include units (gallons, lbs, tablets, etc.)</p>
             </div>
 
             <div>
-              <Label htmlFor="notes" className="text-slate-700 font-semibold">
+              <Label htmlFor="notes" className="text-sm font-semibold text-slate-800">
                 Notes
               </Label>
               <Textarea
@@ -225,35 +224,35 @@ export default function NewChemicalUsage() {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="Why extra chemicals were needed..."
                 rows={3}
-                className="mt-1 border-2 focus:border-purple-500 rounded-xl"
+                className="mt-1 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500 focus:ring-cyan-500"
               />
             </div>
           </div>
-        </Card>
+        </div>
 
         <div className="flex gap-3">
           <BackButton
             fallback={createPageUrl("ChemicalUsage")}
             label="Cancel"
             variant="outline"
-            className="flex-1 border-2 rounded-xl font-medium"
+            className="h-12 flex-1 rounded-[1.15rem] border border-slate-200 bg-white/85 text-sm font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
           />
           <Button
             type="submit"
             disabled={saving}
-            className="flex-1 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white shadow-lg rounded-xl font-semibold"
+            className="h-12 flex-1 rounded-[1.15rem] bg-slate-950 px-4 text-sm font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
           >
             {saving ? (
               <>Saving...</>
             ) : (
               <>
-                <Save className="w-4 h-4 mr-2 stroke-[1.75]" />
+                <Save className="mr-2 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
                 Save Chemical Usage
               </>
             )}
           </Button>
         </div>
       </form>
-    </div>
+    </main>
   );
 }

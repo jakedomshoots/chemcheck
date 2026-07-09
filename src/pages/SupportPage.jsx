@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Mail, MessageSquare, HelpCircle, FileText, Shield } from 'lucide-react';
+import { Mail, MessageSquare, HelpCircle, FileText, Shield, ChevronDown } from 'lucide-react';
 
 function updateMeta(name, content) {
   if (typeof document === 'undefined') return;
@@ -41,6 +36,35 @@ const faqs = [
   },
 ];
 
+function FaqItem({ question, answer }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className={`overflow-hidden rounded-[1.35rem] border bg-white/85 backdrop-blur transition-colors ${
+        open ? 'border-cyan-200 shadow-[0_18px_46px_-38px_rgba(8,145,178,0.55)]' : 'border-white/80 shadow-sm'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+      >
+        <span className="text-sm font-semibold tracking-[-0.015em] text-slate-950">{question}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-cyan-700 transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+      {open ? (
+        <div className="border-t border-slate-200/70 px-5 pb-4 pt-3 text-sm leading-6 text-slate-600">
+          {answer}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SupportPage() {
   const [form, setForm] = useState({ name: '', email: '', message: '' });
 
@@ -62,128 +86,151 @@ export default function SupportPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-cyan-50 py-12 px-4 sm:px-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-cyan-100 rounded-2xl mb-4">
-            <HelpCircle className="w-7 h-7 text-cyan-600" />
+    <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
+        aria-hidden="true"
+      />
+
+      <section className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-14">
+        <header className="mb-8 text-center sm:mb-10">
+          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 shadow-sm">
+            <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            Help center
+          </span>
+          <div className="mx-auto mt-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
+            <HelpCircle className="h-7 w-7" aria-hidden="true" />
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-3">Help & Support</h1>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+          <h1 className="mt-4 text-balance text-3xl font-semibold tracking-[-0.035em] text-slate-950 sm:text-4xl">
+            Help &amp; Support
+          </h1>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
             Have a question or need help? Send us a message and we will get back to you as soon as possible.
           </p>
-        </div>
+        </header>
 
-        <div className="grid lg:grid-cols-5 gap-6">
-          {/* Contact form */}
-          <Card className="lg:col-span-3 p-6 sm:p-8">
-            <div className="flex items-center gap-3 mb-6">
-              <MessageSquare className="w-5 h-5 text-cyan-600" />
-              <h2 className="text-xl font-semibold text-slate-900">Contact Us</h2>
+        <div className="grid gap-5 lg:grid-cols-5">
+          <section
+            className="rounded-[1.75rem] border border-white/80 bg-white/85 p-5 shadow-[0_24px_70px_-50px_rgba(8,47,73,0.75)] backdrop-blur sm:p-7 lg:col-span-3"
+            aria-label="Contact support"
+          >
+            <div className="mb-5 flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                <MessageSquare className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <h2 className="text-lg font-semibold tracking-[-0.025em] text-slate-950">Contact us</h2>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-5">
+
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="support-name" className="text-slate-700">
+                <label htmlFor="support-name" className="mb-1.5 block text-sm font-semibold text-slate-800">
                   Name
-                </Label>
-                <Input
+                </label>
+                <input
                   id="support-name"
                   type="text"
                   required
                   value={form.name}
                   onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="Your name"
-                  className="mt-1.5 rounded-lg"
+                  className="block h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                 />
               </div>
               <div>
-                <Label htmlFor="support-email" className="text-slate-700">
+                <label htmlFor="support-email" className="mb-1.5 block text-sm font-semibold text-slate-800">
                   Email
-                </Label>
-                <Input
+                </label>
+                <input
                   id="support-email"
                   type="email"
                   required
                   value={form.email}
                   onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="you@example.com"
-                  className="mt-1.5 rounded-lg"
+                  className="block h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                 />
               </div>
               <div>
-                <Label htmlFor="support-message" className="text-slate-700">
+                <label htmlFor="support-message" className="mb-1.5 block text-sm font-semibold text-slate-800">
                   Message
-                </Label>
-                <Textarea
+                </label>
+                <textarea
                   id="support-message"
                   required
                   rows={5}
                   value={form.message}
                   onChange={(e) => setForm((prev) => ({ ...prev, message: e.target.value }))}
                   placeholder="How can we help you?"
-                  className="mt-1.5 rounded-lg"
+                  className="block w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                 />
               </div>
-              <Button
+              <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-lg"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-cyan-600 px-5 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] transition-colors hover:bg-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               >
-                <Mail className="w-4 h-4 mr-2" />
-                Email Support
-              </Button>
+                <Mail className="h-4 w-4" aria-hidden="true" />
+                Email support
+              </button>
             </form>
-          </Card>
+          </section>
 
-          {/* Quick links */}
-          <Card className="lg:col-span-2 p-6 sm:p-8 h-fit">
-            <h2 className="text-xl font-semibold text-slate-900 mb-4">Quick Links</h2>
-            <div className="space-y-3">
+          <aside
+            className="h-fit rounded-[1.75rem] border border-white/80 bg-white/85 p-5 shadow-[0_24px_70px_-50px_rgba(8,47,73,0.75)] backdrop-blur sm:p-7 lg:col-span-2"
+            aria-label="Quick links"
+          >
+            <h2 className="text-lg font-semibold tracking-[-0.025em] text-slate-950">Quick links</h2>
+            <div className="mt-4 space-y-1.5">
               <a
                 href="mailto:support@chemcheck.xyz"
-                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+                className="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-cyan-100 hover:bg-cyan-50/60 hover:text-cyan-900"
               >
-                <Mail className="w-5 h-5 text-cyan-600" />
-                <span>support@chemcheck.xyz</span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                  <Mail className="h-4 w-4" aria-hidden="true" />
+                </span>
+                support@chemcheck.xyz
               </a>
               <a
                 href="/privacy-policy.html"
-                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+                className="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-cyan-100 hover:bg-cyan-50/60 hover:text-cyan-900"
               >
-                <Shield className="w-5 h-5 text-cyan-600" />
-                <span>Privacy Policy</span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                  <Shield className="h-4 w-4" aria-hidden="true" />
+                </span>
+                Privacy policy
               </a>
               <a
                 href="/terms-of-service.html"
-                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+                className="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-cyan-100 hover:bg-cyan-50/60 hover:text-cyan-900"
               >
-                <FileText className="w-5 h-5 text-cyan-600" />
-                <span>Terms of Service</span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                </span>
+                Terms of service
               </a>
               <Link
                 to="/pricing"
-                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+                className="flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-cyan-100 hover:bg-cyan-50/60 hover:text-cyan-900"
               >
-                <HelpCircle className="w-5 h-5 text-cyan-600" />
-                <span>Pricing & Plans</span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                  <HelpCircle className="h-4 w-4" aria-hidden="true" />
+                </span>
+                Pricing &amp; plans
               </Link>
             </div>
-          </Card>
+          </aside>
         </div>
 
-        {/* FAQ */}
-        <div className="mt-12">
-          <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">Frequently Asked Questions</h2>
-          <div className="grid md:grid-cols-2 gap-6">
+        <section className="mt-10" aria-label="Frequently asked questions">
+          <h2 className="text-balance text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+            Frequently asked questions
+          </h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
             {faqs.map((faq) => (
-              <Card key={faq.question} className="p-6">
-                <h3 className="font-semibold text-slate-900 mb-2">{faq.question}</h3>
-                <p className="text-slate-600 text-sm leading-relaxed">{faq.answer}</p>
-              </Card>
+              <FaqItem key={faq.question} question={faq.question} answer={faq.answer} />
             ))}
           </div>
-        </div>
-      </div>
+        </section>
+      </section>
     </div>
   );
 }

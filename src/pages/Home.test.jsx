@@ -16,6 +16,8 @@ import * as convexHooks from '@/api/convexHooks';
 
 const FIXED_WEEKDAY_DATE = new Date('2026-06-08T12:00:00.000-04:00');
 
+const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+
 // Mock hooks - must be defined inline due to vi.mock hoisting
 vi.mock('@/api/convexHooks', () => ({
   useCustomersFilter: vi.fn(() => []),
@@ -33,6 +35,14 @@ vi.mock('@/api/convexHooks', () => ({
 vi.mock('convex/react', () => ({
   useQuery: vi.fn(() => ({ settings: { working_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] } })),
 }));
+
+vi.mock('react-router-dom', async () => {
+    const actual = await vi.importActual('react-router-dom');
+    return {
+        ...actual,
+        useNavigate: () => navigateMock,
+    };
+});
 
 // Enhanced mock data for comprehensive testing - defined after mocks
 const getTodayCustomers = () => [
@@ -127,6 +137,7 @@ describe('Home Page - Comprehensive Tests', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    navigateMock.mockReset();
     vi.useRealTimers();
   });
 
@@ -366,6 +377,65 @@ describe('Home Page - Comprehensive Tests', () => {
       
       // Should render desktop layout
       expect(screen.getByText(/Today's Route/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Empty state primary action', () => {
+    it('exposes an enabled Add First Client primary action when no customers are scheduled', () => {
+      // No customers today: the empty-state card shows AND the primary CTA
+      // must be actionable (not the disabled "No Pending Stops" CTA that the
+      // bug produced).
+      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([]);
+      vi.mocked(convexHooks.useCustomers).mockReturnValue([]);
+
+      renderWithProviders(<Home />);
+
+      const addFirstClient = screen.getByRole('button', { name: /^add first client$/i });
+      expect(addFirstClient).toBeEnabled();
+      expect(addFirstClient).not.toBeDisabled();
+    });
+
+    it('does not render the disabled No Pending Stops primary CTA when no customers are scheduled', () => {
+      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([]);
+      vi.mocked(convexHooks.useCustomers).mockReturnValue([]);
+
+      renderWithProviders(<Home />);
+
+      // The bug surface: a "No Pending Stops" disabled button lived where a
+      // usable Add Client action should be. With no scheduled customers it
+      // must NOT be present anywhere.
+      expect(screen.queryByRole('button', { name: /no pending stops/i })).not.toBeInTheDocument();
+    });
+
+    it('navigates to NewClient when the empty-state Add First Client button is clicked', async () => {
+      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([]);
+      vi.mocked(convexHooks.useCustomers).mockReturnValue([]);
+
+      const user = userEvent.setup();
+      renderWithProviders(<Home />);
+
+      const addFirstClient = screen.getByRole('button', { name: /^add first client$/i });
+      await user.click(addFirstClient);
+
+      expect(navigateMock).toHaveBeenCalledWith('/page/NewClient');
+    });
+
+    it('still renders the enabled Add First Client primary action alongside the empty-state card', () => {
+      // The empty-state card explains "no customers scheduled" and offers its
+      // own "Add Clients" link; the HEADER primary CTA must be enabled too so
+      // users always have a usable path forward.
+      vi.mocked(convexHooks.useCustomersFilter).mockReturnValue([]);
+      vi.mocked(convexHooks.useCustomers).mockReturnValue([]);
+
+      renderWithProviders(<Home />);
+
+      expect(
+        screen.getByRole('heading', { name: /no customers scheduled/i })
+      ).toBeInTheDocument();
+
+      const addFirstClient = screen.getByRole('button', { name: /^add first client$/i });
+      expect(addFirstClient).toBeInTheDocument();
+      expect(addFirstClient).toBeEnabled();
     });
   });
 });

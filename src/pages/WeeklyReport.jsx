@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Download, Calendar, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { format, startOfWeek, endOfWeek, parseISO, isWithinInterval, addWeeks } from "date-fns";
 
@@ -317,10 +316,24 @@ export default function WeeklyReport() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-slate-600 text-sm">Loading report...</p>
-      </div>
+      <main
+        aria-label="Weekly Report"
+        className="relative mx-auto max-w-7xl px-3 pb-28 pt-4 font-sans sm:px-4 lg:px-6"
+      >
+        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+            Reporting
+          </p>
+          <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">
+            Weekly Report
+          </h2>
+          <p className="mt-1 text-sm font-medium text-slate-500">Loading week data</p>
+        </div>
+        <div className="flex items-center justify-center py-16">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-200 border-t-cyan-600" aria-hidden="true" />
+          <span className="sr-only">Loading report</span>
+        </div>
+      </main>
     );
   }
 
@@ -328,76 +341,102 @@ export default function WeeklyReport() {
   const isCurrentWeek = weekOffset === 0;
 
   return (
-    <div className="max-w-7xl mx-auto px-3 py-4">
-      <div className="flex flex-col gap-3 mb-4">
-        <div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Weekly Report</h2>
-            <p className="text-xs text-slate-600">
+    <main
+      aria-label="Weekly Report"
+      className="relative mx-auto max-w-7xl px-3 pb-28 pt-4 font-sans sm:px-4 lg:px-6"
+    >
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+              Reporting
+            </p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">
+              Weekly Report
+            </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
               {format(currentWeekStart, "MMM dd")} - {format(currentWeekEnd, "MMM dd, yyyy")}
             </p>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => setWeekOffset(weekOffset - 1)}
-            variant="outline"
-            size="sm"
-            className="border-2 rounded-xl"
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Previous
-          </Button>
-
-          {!isCurrentWeek && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button
-              onClick={() => setWeekOffset(0)}
+              onClick={() => setWeekOffset(weekOffset - 1)}
               variant="outline"
               size="sm"
-              className="border-2 rounded-xl border-cyan-500 text-cyan-600"
+              className="rounded-full"
+              aria-label="Previous week"
             >
-              Current Week
+              <ChevronLeft className="h-4 w-4" />
+              <span className="ml-1">Previous</span>
             </Button>
-          )}
 
+            {!isCurrentWeek && (
+              <Button
+                onClick={() => setWeekOffset(0)}
+                variant="secondary"
+                size="sm"
+                className="rounded-full"
+              >
+                Current Week
+              </Button>
+            )}
+
+            <Button
+              onClick={() => setWeekOffset(weekOffset + 1)}
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              disabled={isCurrentWeek}
+              aria-label="Next week"
+            >
+              <span className="mr-1">Next</span>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-4">
           <Button
-            onClick={() => setWeekOffset(weekOffset + 1)}
-            variant="outline"
-            size="sm"
-            className="border-2 rounded-xl"
-            disabled={isCurrentWeek}
+            onClick={generateExpandedPDF}
+            disabled={generating || logs.length === 0}
+            className="h-12 w-full rounded-[1.15rem] bg-slate-950 text-sm font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700 disabled:bg-slate-300 disabled:text-white disabled:shadow-none"
           >
-            Next
-            <ChevronRight className="w-4 h-4 ml-1" />
+            <Download className="h-4 w-4" aria-hidden="true" />
+            {generating ? "Generating..." : "Download Report"}
           </Button>
         </div>
-
-        <Button
-          onClick={generateExpandedPDF}
-          disabled={generating || logs.length === 0}
-          className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg text-sm h-10"
-        >
-          <Download className="w-4 h-4 mr-2" />
-          {generating ? "Generating..." : "Download Report"}
-        </Button>
       </div>
 
-      <Card className="p-4 mb-4 border-2 shadow-lg bg-gradient-to-br from-cyan-50 to-blue-50">
-        <div className="text-center">
-          <div className="text-3xl font-bold text-cyan-600 mb-1">{totalServiced}</div>
-          <div className="text-sm text-slate-600">Total Services This Week</div>
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+          Week summary
+        </p>
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div>
+            <div className="text-4xl font-semibold tracking-[-0.045em] tabular-nums text-slate-950">
+              {totalServiced}
+            </div>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              Total Services This Week
+            </p>
+          </div>
+          <p className="text-xs font-medium text-slate-500">
+            {daysOfWeek.filter(day => getDayLogs(day).length > 0).length} of {daysOfWeek.length} active days
+          </p>
         </div>
-      </Card>
+      </div>
 
       {logs.length === 0 ? (
-        <Card className="p-8 text-center bg-slate-50 border-2 border-dashed border-slate-200">
-          <div className="w-12 h-12 mx-auto mb-3 bg-slate-100 rounded-full flex items-center justify-center">
-            <Calendar className="w-6 h-6 text-slate-400" />
+        <div className="overflow-hidden rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
+            <Calendar className="h-6 w-6 text-slate-400" aria-hidden="true" />
           </div>
-          <h3 className="text-sm font-semibold text-slate-900 mb-1">No Services This Week</h3>
-          <p className="text-xs text-slate-600">Complete services to generate a report</p>
-        </Card>
+          <h3 className="text-base font-semibold text-slate-900">No Services This Week</h3>
+          <p className="mx-auto mt-1 max-w-xs text-sm font-medium text-slate-500">
+            Complete services to generate a report
+          </p>
+        </div>
       ) : (
         <div className="space-y-2">
           {daysOfWeek.map(day => {
@@ -407,83 +446,94 @@ export default function WeeklyReport() {
             const isExpanded = expandedDays.includes(day);
 
             return (
-              <Card key={day} className="overflow-hidden border-2 shadow-sm">
-                <div
+              <div
+                key={day}
+                className="overflow-hidden rounded-[1.25rem] border border-white/80 bg-white/85 shadow-[0_16px_46px_-36px_rgba(8,47,73,0.75)] backdrop-blur"
+              >
+                <button
+                  type="button"
                   onClick={() => toggleDay(day)}
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 active:bg-slate-100"
+                  aria-expanded={isExpanded}
+                  aria-controls={`day-panel-${day}`}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-cyan-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white font-bold text-sm">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-white shadow-sm">
+                      <span className="text-xs font-semibold uppercase tracking-wide">
                         {day.substring(0, 3)}
                       </span>
                     </div>
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900">{day}</h3>
-                      <p className="text-xs text-slate-600">{dayData.length} service{dayData.length !== 1 ? 's' : ''}</p>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-semibold text-slate-950">{day}</h3>
+                      <p className="text-xs font-medium text-slate-500">
+                        {dayData.length} service{dayData.length !== 1 ? 's' : ''}
+                      </p>
                     </div>
                   </div>
-                  <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                </div>
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    aria-hidden="true"
+                  />
+                </button>
 
                 {isExpanded && (
-                  <div className="border-t border-slate-200 bg-slate-50">
+                  <div id={`day-panel-${day}`} className="border-t border-slate-200/70 bg-slate-50/60">
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-slate-100">
+                        <thead className="bg-white/80">
                           <tr>
-                            <th className="text-left p-2 text-[10px] font-semibold text-slate-700">Customer</th>
-                            <th className="text-center p-2 text-[10px] font-semibold text-slate-700">pH</th>
-                            <th className="text-center p-2 text-[10px] font-semibold text-slate-700">Cl</th>
-                            <th className="text-center p-2 text-[10px] font-semibold text-slate-700">Alk</th>
-                            <th className="text-center p-2 text-[10px] font-semibold text-slate-700">CYA</th>
-                            <th className="text-left p-2 text-[10px] font-semibold text-slate-700">Notes</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer</th>
+                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">pH</th>
+                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cl</th>
+                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">Alk</th>
+                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">CYA</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Notes</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {dayData.map(({ customer, log }, idx) => (
-                            <tr key={customer._id} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                              <td className="p-2">
-                                <div className="font-semibold text-xs text-slate-900">{customer.full_name}</div>
-                                <div className="text-[10px] text-slate-500 truncate">{customer.address}</div>
+                          {dayData.map(({ customer, log }) => (
+                            <tr key={customer._id} className="border-t border-slate-200/70 bg-white/90 align-top">
+                              <td className="px-3 py-2">
+                                <div className="text-sm font-semibold text-slate-900">{customer.full_name}</div>
+                                <div className="truncate text-xs text-slate-500">{customer.address}</div>
                               </td>
-                              <td className="p-2 text-center">
-                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${log.ph === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.ph === 'low' ? 'bg-yellow-100 text-yellow-700' :
+                              <td className="px-2 py-2 text-center">
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.ph === 'good' ? 'bg-emerald-100 text-emerald-700' :
+                                  log.ph === 'low' ? 'bg-amber-100 text-amber-700' :
                                     log.ph === 'high' ? 'bg-orange-100 text-orange-700' :
                                       log.ph === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
                                   }`}>
                                   {log.ph || '-'}
                                 </span>
                               </td>
-                              <td className="p-2 text-center">
-                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${log.chlorine === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.chlorine === 'low' ? 'bg-yellow-100 text-yellow-700' :
+                              <td className="px-2 py-2 text-center">
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.chlorine === 'good' ? 'bg-emerald-100 text-emerald-700' :
+                                  log.chlorine === 'low' ? 'bg-amber-100 text-amber-700' :
                                     log.chlorine === 'high' ? 'bg-orange-100 text-orange-700' :
                                       log.chlorine === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
                                   }`}>
                                   {log.chlorine || '-'}
                                 </span>
                               </td>
-                              <td className="p-2 text-center">
-                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${log.alkalinity === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.alkalinity === 'low' ? 'bg-yellow-100 text-yellow-700' :
+                              <td className="px-2 py-2 text-center">
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.alkalinity === 'good' ? 'bg-emerald-100 text-emerald-700' :
+                                  log.alkalinity === 'low' ? 'bg-amber-100 text-amber-700' :
                                     log.alkalinity === 'high' ? 'bg-orange-100 text-orange-700' :
                                       log.alkalinity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
                                   }`}>
                                   {log.alkalinity || '-'}
                                 </span>
                               </td>
-                              <td className="p-2 text-center">
-                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${log.stabilizer === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.stabilizer === 'low' ? 'bg-yellow-100 text-yellow-700' :
+                              <td className="px-2 py-2 text-center">
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.stabilizer === 'good' ? 'bg-emerald-100 text-emerald-700' :
+                                  log.stabilizer === 'low' ? 'bg-amber-100 text-amber-700' :
                                     log.stabilizer === 'high' ? 'bg-orange-100 text-orange-700' :
                                       log.stabilizer === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
                                   }`}>
                                   {log.stabilizer || '-'}
                                 </span>
                               </td>
-                              <td className="p-2 text-[10px] text-slate-600 max-w-[150px] truncate">{log.notes || '-'}</td>
+                              <td className="max-w-[160px] truncate px-3 py-2 text-xs text-slate-600">{log.notes || '-'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -491,11 +541,11 @@ export default function WeeklyReport() {
                     </div>
                   </div>
                 )}
-              </Card>
+              </div>
             );
           })}
         </div>
       )}
-    </div>
+    </main>
   );
 }

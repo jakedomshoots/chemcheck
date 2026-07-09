@@ -5,7 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Filter, Camera, Clock, CheckCircle2, AlertCircle, X } from "lucide-react";
+import { Calendar, Filter, Camera, Clock, CheckCircle2, AlertCircle, X, History as HistoryIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -197,45 +197,42 @@ export default function History() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="mb-6">
+      <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Service History">
+        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
           <div>
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Service History</h2>
-              <p className="text-sm text-slate-600">All service logs by day</p>
-            </div>
+            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Service History</h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">Loading...</p>
           </div>
         </div>
-        <div className="mb-6">
-          <Skeleton className="h-10 w-full rounded-2xl" />
+        <div className="space-y-2">
+          <div className="h-24 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
+          <div className="h-24 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
+          <div className="h-24 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
         </div>
-        <div className="space-y-3">
-          <CustomerCardSkeleton />
-          <CustomerCardSkeleton />
-          <CustomerCardSkeleton />
-        </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <div className="mb-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Service History</h2>
-              <p className="text-sm text-slate-600">All service logs by day</p>
-            </div>
+    <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Service History">
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Service history</p>
+            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              <HistoryIcon className="h-7 w-7 text-cyan-700" aria-hidden="true" />
+              Service History
+            </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">All service logs by day</p>
           </div>
 
           {/* Proof-of-Service Filter */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" aria-hidden="true" />
             <Select value={proofFilter} onValueChange={setProofFilter}>
               <SelectTrigger
                 aria-label="History Range"
-                className="w-full sm:w-[180px] h-9 text-sm bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg"
+                className="w-full sm:w-[200px] h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
               >
                 <SelectValue placeholder="Filter by proof" />
               </SelectTrigger>
@@ -262,20 +259,20 @@ export default function History() {
 
         {/* Customer Filter Indicator */}
         {filteredCustomer && (
-          <div className="mt-3 p-3 bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-200 rounded-xl flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div>
-                <span className="text-sm font-semibold text-slate-900">
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-[1.25rem] border border-cyan-100 bg-cyan-50/70 px-3 py-2.5 shadow-sm shadow-cyan-900/5">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="min-w-0">
+                <span className="truncate block text-sm font-semibold text-slate-900">
                   {filteredCustomer.full_name}
                 </span>
-                <p className="text-xs text-slate-600">
+                <p className="text-xs font-medium text-slate-600">
                   Viewing chemical history · {filteredCustomer.service_day}
                 </p>
               </div>
             </div>
             <button
               onClick={clearCustomerFilter}
-              className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white/80 rounded-lg transition-colors"
+              className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-white hover:text-slate-700"
               aria-label="Clear customer filter"
             >
               <X className="w-4 h-4" />
@@ -285,18 +282,18 @@ export default function History() {
 
         {/* Active Filter Indicator */}
         {proofFilter !== 'all' && (
-          <div className="mt-3 flex items-center gap-2">
-            <span className="text-xs text-slate-500">Showing:</span>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">Showing:</span>
             <Badge
               variant="outline"
-              className="text-xs bg-cyan-50 border-cyan-200 text-cyan-700"
+              className="rounded-full border-cyan-200 bg-cyan-50 text-xs text-cyan-700"
             >
               {PROOF_OF_SERVICE_FILTER_OPTIONS.find(o => o.value === proofFilter)?.label}
               <span className="ml-1 text-cyan-500">({filteredLogs.length} logs)</span>
             </Badge>
             <button
               onClick={() => setProofFilter('all')}
-              className="text-xs text-slate-500 hover:text-slate-700 underline"
+              className="text-xs font-semibold text-slate-500 underline-offset-2 transition-colors hover:text-slate-700 hover:underline"
             >
               Clear filter
             </button>
@@ -305,13 +302,14 @@ export default function History() {
       </div>
 
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-        <div className="overflow-x-auto mb-6">
-          <TabsList className="inline-flex w-full sm:w-auto min-w-full sm:min-w-0 bg-slate-100 p-1 rounded-2xl">
+
+        <div className="mb-5 overflow-x-auto">
+          <TabsList className="inline-flex w-full min-w-full rounded-2xl border border-white/80 bg-white/80 p-1 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur sm:w-auto sm:min-w-0">
             {daysOfWeek.map((day) => (
               <TabsTrigger
                 key={day}
                 value={day}
-                className="flex-1 sm:flex-none rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-cyan-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all whitespace-nowrap px-3"
+                className="flex-1 whitespace-nowrap rounded-xl px-3 text-slate-600 transition-colors data-[state=active]:bg-cyan-600 data-[state=active]:text-white sm:flex-none"
               >
                 {day.substring(0, 3)}
               </TabsTrigger>
@@ -324,14 +322,14 @@ export default function History() {
           return (
             <TabsContent key={day} value={day}>
               {dayData.length === 0 ? (
-                <Card className="p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-                    <Calendar className="w-8 h-8 text-slate-400" />
+                <Card className="rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+                    <Calendar className="h-7 w-7" aria-hidden="true" />
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                  <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
                     No Service History for {day}
                   </h3>
-                  <p className="text-slate-600">
+                  <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-600">
                     No service logs in the past month for customers scheduled on {day}
                   </p>
                 </Card>
@@ -354,6 +352,6 @@ export default function History() {
           );
         })}
       </Tabs>
-    </div>
+    </main>
   );
 }

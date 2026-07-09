@@ -65,20 +65,18 @@ function formatDuration(ms) {
 
 function LoadingSkeleton() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100 p-4">
-      <div className="max-w-2xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-64" />
-            <Skeleton className="h-4 w-40" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-48 w-full" />
-          </CardContent>
-        </Card>
+    <div className="min-h-screen bg-[#f6fbfc] px-3 py-6 sm:px-6">
+      <div className="mx-auto max-w-2xl space-y-4">
+        <Skeleton className="h-10 w-48 rounded-full" />
+        <div className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="mt-3 h-7 w-64" />
+          <div className="mt-4 space-y-3">
+            <Skeleton className="h-24 w-full rounded-[1.25rem]" />
+            <Skeleton className="h-32 w-full rounded-[1.25rem]" />
+            <Skeleton className="h-48 w-full rounded-[1.25rem]" />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -86,43 +84,41 @@ function LoadingSkeleton() {
 
 function ErrorState({ message }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100 flex items-center justify-center p-4">
-      <Card className="max-w-md w-full">
-        <CardContent className="pt-6 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
-            <AlertTriangle className="w-8 h-8 text-red-600" />
-          </div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-2">Report Not Found</h2>
-          <p className="text-sm text-slate-600">{message}</p>
-        </CardContent>
-      </Card>
+    <div className="flex min-h-screen items-center justify-center bg-[#f6fbfc] px-4 py-10">
+      <div className="max-w-md overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 p-8 text-center shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
+          <AlertTriangle className="h-7 w-7 text-red-600" aria-hidden="true" />
+        </div>
+        <h2 className="text-2xl font-semibold tracking-[-0.04em] text-slate-950">Report Not Found</h2>
+        <p className="mt-2 text-sm font-medium text-slate-500">{message}</p>
+      </div>
     </div>
   );
 }
 
 function ChemicalReadingCard({ label, value, unit }) {
   const status = getReadingStatus(value);
-  
+
   return (
-    <div className={`p-3 rounded-lg ${status.bgColor}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-600">{label}</span>
+    <div className={`rounded-[1.15rem] border border-white/80 p-3 shadow-[0_14px_36px_-30px_rgba(8,47,73,0.55)] backdrop-blur ${status.bgColor}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{label}</span>
         {status.icon === 'check' && (
-          <CheckCircle2 className={`w-4 h-4 ${status.color}`} />
+          <CheckCircle2 className={`h-4 w-4 shrink-0 ${status.color}`} aria-hidden="true" />
         )}
         {status.icon === 'warning' && (
-          <AlertTriangle className={`w-4 h-4 ${status.color}`} />
+          <AlertTriangle className={`h-4 w-4 shrink-0 ${status.color}`} aria-hidden="true" />
         )}
         {status.icon === 'critical' && (
-          <AlertTriangle className={`w-4 h-4 ${status.color}`} />
+          <AlertTriangle className={`h-4 w-4 shrink-0 ${status.color}`} aria-hidden="true" />
         )}
         {status.icon === 'unknown' && (
-          <Minus className={`w-4 h-4 ${status.color}`} />
+          <Minus className={`h-4 w-4 shrink-0 ${status.color}`} aria-hidden="true" />
         )}
       </div>
-      <div className={`text-sm font-semibold mt-1 ${status.color}`}>
+      <div className={`mt-1 text-sm font-semibold ${status.color}`}>
         {status.label}
-        {unit && value && <span className="text-xs font-normal ml-1">{unit}</span>}
+        {unit && value && <span className="ml-1 text-xs font-normal opacity-80">{unit}</span>}
       </div>
     </div>
   );
@@ -130,36 +126,36 @@ function ChemicalReadingCard({ label, value, unit }) {
 
 function PhotoGallerySection({ title, photos, badgeColor }) {
   if (photos.length === 0) return null;
-  
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
-        <span className={`px-2 py-0.5 text-xs font-medium rounded-full text-white ${badgeColor}`}>
+      <div className="mb-3 flex items-center gap-2">
+        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white ${badgeColor}`}>
           {title}
         </span>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs font-medium text-slate-500">
           {photos.length} {photos.length === 1 ? 'photo' : 'photos'}
         </span>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {photos.map((photo) => (
           <div
             key={photo.id}
-            className="relative aspect-square rounded-lg overflow-hidden bg-slate-100"
+            className="relative aspect-square overflow-hidden rounded-[1rem] border border-white/80 bg-slate-100 shadow-sm"
           >
             {photo.url ? (
               <img
                 src={photo.url}
                 alt={`${title} photo`}
-                className="w-full h-full object-cover"
+                className="h-full w-full object-cover"
                 loading="lazy"
                 decoding="async"
                 width="300"
                 height="300"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <Image className="w-8 h-8 text-slate-400" />
+              <div className="flex h-full w-full items-center justify-center">
+                <Image className="h-8 w-8 text-slate-400" aria-hidden="true" />
               </div>
             )}
           </div>
@@ -244,70 +240,78 @@ export default function ReportPage() {
     : 'Photo documentation is partial for this service.';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100">
-      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Droplets className="w-5 h-5 text-cyan-600" />
-            <span className="font-semibold text-slate-900">{report.businessName}</span>
-          </div>
+    <div className="min-h-screen bg-[#f6fbfc] font-sans">
+      <header className="sticky top-0 z-10 border-b border-white/70 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-600 text-white shadow-sm">
+            <Droplets className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <span className="truncate text-sm font-semibold tracking-tight text-slate-950">
+            {report.businessName}
+          </span>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        <Card className="overflow-hidden border-cyan-200 bg-gradient-to-r from-cyan-50 via-white to-blue-50">
-          <CardContent className="p-4 space-y-3">
+      <main className="mx-auto max-w-2xl space-y-3 px-3 pb-10 pt-4 sm:px-6 sm:pt-6">
+        <Card className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <CardContent className="space-y-3 p-5">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Service Summary</p>
-              <Badge className="bg-cyan-100 text-cyan-700 hover:bg-cyan-100">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+                Service Summary
+              </p>
+              <Badge className="rounded-full bg-cyan-100 px-2.5 py-1 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-100">
                 Confidence: {confidenceLabel}
               </Badge>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-md border border-slate-200 bg-white p-2">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Overall</p>
-                <p className={`text-sm font-semibold ${report.overallStatus === 'good' ? 'text-emerald-700' : 'text-amber-700'}`}>
+              <div className="rounded-[1rem] border border-white/80 bg-white/95 p-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Overall</p>
+                <p className={`mt-1 text-sm font-semibold ${report.overallStatus === 'good' ? 'text-emerald-700' : 'text-amber-700'}`}>
                   {report.overallStatus === 'good' ? 'All Good' : 'Needs Attention'}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 bg-white p-2">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Before</p>
-                <p className="text-sm font-semibold text-slate-900">{beforeCount}</p>
+              <div className="rounded-[1rem] border border-white/80 bg-white/95 p-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Before</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-slate-950">{beforeCount}</p>
               </div>
-              <div className="rounded-md border border-slate-200 bg-white p-2">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">After</p>
-                <p className="text-sm font-semibold text-slate-900">{afterCount}</p>
+              <div className="rounded-[1rem] border border-white/80 bg-white/95 p-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">After</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-slate-950">{afterCount}</p>
               </div>
             </div>
-            <p className="text-sm text-slate-700 leading-relaxed">{beforeAfterNarrative}</p>
+            <p className="text-sm font-medium leading-relaxed text-slate-600">
+              {beforeAfterNarrative}
+            </p>
           </CardContent>
         </Card>
 
         {report.settings?.show_overall_status !== false && (
-          <Card>
+          <Card className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
             <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-lg">Service Report</CardTitle>
-                  <p className="text-sm text-slate-600 mt-1">
-                    for {report.customerName}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+                    Service Report
                   </p>
+                  <CardTitle className="mt-2 truncate text-2xl font-semibold tracking-[-0.04em] text-slate-950">
+                    {report.customerName}
+                  </CardTitle>
                 </div>
                 <Badge
                   className={
                     report.overallStatus === 'good'
-                      ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                      : 'bg-amber-100 text-amber-700 hover:bg-amber-100'
+                      ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100'
+                      : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100'
                   }
                 >
                   {report.overallStatus === 'good' ? (
                     <>
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden="true" />
                       All Good
                     </>
                   ) : (
                     <>
-                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      <AlertTriangle className="mr-1 h-3 w-3" aria-hidden="true" />
                       Needs Attention
                     </>
                   )}
@@ -315,20 +319,20 @@ export default function ReportPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
                 <div className="flex items-center gap-2 text-slate-600">
-                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <Calendar className="h-4 w-4 text-slate-400" aria-hidden="true" />
                   <span>{formatDisplayDate(report.serviceDate)}</span>
                 </div>
                 {report.settings?.show_technician_name !== false && (
                   <div className="flex items-center gap-2 text-slate-600">
-                    <User className="w-4 h-4 text-slate-400" />
+                    <User className="h-4 w-4 text-slate-400" aria-hidden="true" />
                     <span>{report.technicianName}</span>
                   </div>
                 )}
                 {report.settings?.show_service_duration !== false && report.serviceDuration && (
                   <div className="flex items-center gap-2 text-slate-600">
-                    <Clock className="w-4 h-4 text-slate-400" />
+                    <Clock className="h-4 w-4 text-slate-400" aria-hidden="true" />
                     <span>{formatDuration(report.serviceDuration)}</span>
                   </div>
                 )}
@@ -338,10 +342,13 @@ export default function ReportPage() {
         )}
 
         {report.settings?.show_chemical_readings !== false && report.chemicalReadings && (
-          <Card>
+          <Card className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Droplets className="w-4 h-4 text-cyan-600" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+                Readings
+              </p>
+              <CardTitle className="mt-2 flex items-center gap-2 text-lg font-semibold tracking-[-0.035em] text-slate-950">
+                <Droplets className="h-4 w-4 text-cyan-700" aria-hidden="true" />
                 Chemical Readings
               </CardTitle>
             </CardHeader>
@@ -352,9 +359,9 @@ export default function ReportPage() {
                 <ChemicalReadingCard label="Alkalinity" value={report.chemicalReadings.alkalinity} />
                 <ChemicalReadingCard label="Stabilizer" value={report.chemicalReadings.stabilizer} />
                 {report.chemicalReadings.salt !== null && report.chemicalReadings.salt !== undefined && (
-                  <ChemicalReadingCard 
-                    label="Salt" 
-                    value={report.chemicalReadings.salt.toString()} 
+                  <ChemicalReadingCard
+                    label="Salt"
+                    value={report.chemicalReadings.salt.toString()}
                     unit="ppm"
                   />
                 )}
@@ -364,26 +371,31 @@ export default function ReportPage() {
         )}
 
         {report.settings?.show_service_notes !== false && report.notes && (
-          <Card>
+          <Card className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="w-4 h-4 text-slate-600" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+                Notes
+              </p>
+              <CardTitle className="mt-2 flex items-center gap-2 text-lg font-semibold tracking-[-0.035em] text-slate-950">
+                <FileText className="h-4 w-4 text-slate-500" aria-hidden="true" />
                 Service Notes
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-600">
                 {report.notes}
               </p>
             </CardContent>
           </Card>
         )}
-
         {(report.photos.before.length > 0 || report.photos.after.length > 0) && (
-          <Card>
+          <Card className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Image className="w-4 h-4 text-slate-600" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+                Gallery
+              </p>
+              <CardTitle className="mt-2 flex items-center gap-2 text-lg font-semibold tracking-[-0.035em] text-slate-950">
+                <Image className="h-4 w-4 text-slate-500" aria-hidden="true" />
                 Service Photos
               </CardTitle>
             </CardHeader>
@@ -396,14 +408,14 @@ export default function ReportPage() {
               <PhotoGallerySection
                 title="After"
                 photos={report.photos.after}
-                badgeColor="bg-green-500"
+                badgeColor="bg-emerald-500"
               />
             </CardContent>
           </Card>
         )}
 
-        <footer className="text-center py-6">
-          <p className="text-xs text-slate-500">
+        <footer className="px-2 py-6 text-center">
+          <p className="text-xs font-medium text-slate-500">
             Powered by ChemCheck Pool Software built by Dominick Pool Solutions
           </p>
         </footer>

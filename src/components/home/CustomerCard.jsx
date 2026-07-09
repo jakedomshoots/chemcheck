@@ -175,7 +175,7 @@ const CustomerCard = memo(function CustomerCard({
               className={`h-9 rounded-lg px-2 text-xs font-semibold text-white shadow-sm ${
                 isSkipped
                   ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
-                  : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
+                  : 'bg-cyan-600 shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)] hover:bg-cyan-700'
               }`}
               onClick={(e) => {
                 e.stopPropagation();

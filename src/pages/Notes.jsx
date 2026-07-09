@@ -26,13 +26,13 @@ import { SaltCellLogSection } from "@/components/notes/SaltCellLogSection";
 
 const categories = ["General", "Customer", "Equipment", "Reminder", "Chemical", "Billing"];
 
-const categoryColors = {
-  General: "from-slate-500 to-gray-600",
-  Customer: "from-cyan-500 to-blue-600",
-  Equipment: "from-orange-500 to-red-600",
-  Reminder: "from-yellow-500 to-amber-600",
-  Chemical: "from-purple-500 to-pink-600",
-  Billing: "from-green-500 to-emerald-600"
+const categoryTextClass = {
+  General: "text-slate-700",
+  Customer: "text-cyan-800",
+  Equipment: "text-orange-700",
+  Reminder: "text-amber-700",
+  Chemical: "text-violet-700",
+  Billing: "text-emerald-700"
 };
 
 const priorityConfig = {
@@ -133,32 +133,56 @@ export default function Notes() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
+      <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Notes">
+        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Notes & Reminders</h2>
-            <p className="text-sm text-slate-600">{activeCount} active • {completedCount} completed</p>
+            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Notes &amp; Reminders</h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">Loading...</p>
           </div>
         </div>
-        <Button
-          onClick={() => setShowForm(!showForm)}
-          className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          {showForm ? "Cancel" : "Add Note"}
-        </Button>
+        <div className="space-y-2">
+          <div className="h-20 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
+          <div className="h-20 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
+          <div className="h-20 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
+        </div>
+      </main>
+    );
+  }
+  return (
+    <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Notes">
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Operations</p>
+            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              <StickyNote className="h-7 w-7 text-cyan-700" aria-hidden="true" />
+              Notes &amp; Reminders
+            </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              {activeCount} active · {completedCount} completed
+            </p>
+          </div>
+          <Button
+            onClick={() => setShowForm(!showForm)}
+            className="h-12 w-full shrink-0 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto"
+          >
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {showForm ? "Cancel" : "Add Note"}
+          </Button>
+        </div>
       </div>
 
       {showForm && (
-        <Card className="p-6 mb-6 border-2 shadow-lg bg-gradient-to-br from-amber-50 to-orange-50">
+        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <div className="mb-4 flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
+              <Plus className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold tracking-[-0.025em] text-slate-950">New note</h3>
+              <p className="text-sm font-medium text-slate-500">Add a quick reminder or a detailed customer note.</p>
+            </div>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="title">Title *</Label>
@@ -168,7 +192,7 @@ export default function Notes() {
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 required
                 placeholder="Quick summary..."
-                className="mt-1 border-2 focus:border-amber-500 rounded-xl"
+                className="mt-1 rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
               />
             </div>
 
@@ -181,7 +205,7 @@ export default function Notes() {
                 required
                 placeholder="Full details of the note or reminder..."
                 rows={3}
-                className="mt-1 border-2 focus:border-amber-500 rounded-xl"
+                className="mt-1 rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
               />
             </div>
 
@@ -194,7 +218,7 @@ export default function Notes() {
                 >
                   <SelectTrigger
                     aria-label="Category"
-                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11"
+                    className="mt-1 h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -214,7 +238,7 @@ export default function Notes() {
                 >
                   <SelectTrigger
                     aria-label="Priority"
-                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11"
+                    className="mt-1 h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -236,7 +260,7 @@ export default function Notes() {
                 >
                   <SelectTrigger
                     aria-label="Customer"
-                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-amber-500 rounded-lg h-11"
+                    className="mt-1 h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
                   >
                     <SelectValue placeholder="Select customer (optional)" />
                   </SelectTrigger>
@@ -253,8 +277,9 @@ export default function Notes() {
 
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white"
+              className="h-12 w-full rounded-full bg-cyan-600 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto sm:px-6"
             >
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
               Save Note
             </Button>
           </form>
@@ -262,36 +287,36 @@ export default function Notes() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full bg-slate-100 p-1 rounded-2xl mb-6">
-          <TabsTrigger value="active" className="flex-1 rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-amber-500 data-[state=active]:to-orange-600 data-[state=active]:text-white">
+        <TabsList className="mb-5 w-full rounded-2xl border border-white/80 bg-white/80 p-1 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur">
+          <TabsTrigger value="active" className="flex-1 rounded-xl text-slate-600 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
             Active ({activeCount})
           </TabsTrigger>
-          <TabsTrigger value="completed" className="flex-1 rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-emerald-500 data-[state=active]:to-green-600 data-[state=active]:text-white">
+          <TabsTrigger value="completed" className="flex-1 rounded-xl text-slate-600 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
             Completed ({completedCount})
           </TabsTrigger>
-          <TabsTrigger value="all" className="flex-1 rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-slate-500 data-[state=active]:to-gray-600 data-[state=active]:text-white">
+          <TabsTrigger value="all" className="flex-1 rounded-xl text-slate-600 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
             All ({notes.length})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab}>
           {filteredNotes.length === 0 ? (
-            <Card className="p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200">
-              <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-                <StickyNote className="w-8 h-8 text-slate-400" />
+            <Card className="rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+                <StickyNote className="h-7 w-7" aria-hidden="true" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
                 No {activeTab === "active" ? "Active" : activeTab === "completed" ? "Completed" : ""} Notes
               </h3>
-              <p className="text-slate-600 mb-4">
+              <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
                 {activeTab === "active" ? "Add a note or reminder to get started" : "No completed notes yet"}
               </p>
               {activeTab === "active" && (
                 <Button
                   onClick={() => setShowForm(true)}
-                  className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white"
+                  className="h-11 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
                   Add Note
                 </Button>
               )}
@@ -305,23 +330,24 @@ export default function Notes() {
                 const customerName = note.customer_id ? getCustomerName(note.customer_id) : null;
 
                 return (
-                  <Card key={note.id} className="overflow-hidden border-2 shadow-sm">
+                  <Card key={note.id} className="overflow-hidden rounded-[1.25rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.7)] backdrop-blur">
                     <div
                       onClick={() => toggleNote(note.id)}
-                      className="flex items-start justify-between p-4 cursor-pointer hover:bg-slate-50 active:bg-slate-100"
+                      className="flex items-start justify-between gap-3 p-4 cursor-pointer transition-colors hover:bg-slate-50/70 active:bg-slate-100"
                     >
-                      <div className="flex items-start gap-3 flex-1">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleComplete(note);
                           }}
-                          className="mt-0.5"
+                          aria-label={note.completed ? `Mark ${note.title} as active` : `Mark ${note.title} as complete`}
+                          className="mt-0.5 shrink-0 rounded-full p-1 transition-colors hover:bg-cyan-50"
                         >
                           {note.completed ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                            <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden="true" />
                           ) : (
-                            <Circle className="w-5 h-5 text-slate-400 hover:text-amber-600" />
+                            <Circle className="h-5 w-5 text-slate-400" aria-hidden="true" />
                           )}
                         </button>
 
@@ -330,23 +356,23 @@ export default function Notes() {
                             <h3 className={`font-semibold text-slate-900 ${note.completed ? 'line-through text-slate-500' : ''}`}>
                               {note.title}
                             </h3>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium bg-gradient-to-r ${categoryColors[note.category]} text-white`}>
+                            <span className={`rounded-full border border-cyan-100 bg-cyan-50 px-2 py-0.5 text-xs font-medium ${categoryTextClass[note.category]}`}>
                               {note.category}
                             </span>
-                            <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${priority.bg}`}>
-                              <PriorityIcon className={`w-3 h-3 ${priority.color}`} />
+                            <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${priority.bg}`}>
+                              <PriorityIcon className={`h-3 w-3 ${priority.color}`} aria-hidden="true" />
                               <span className={priority.color}>{note.priority}</span>
                             </div>
                           </div>
 
                           {customerName && (
                             <div className="flex items-center gap-2 flex-wrap text-xs text-slate-600">
-                              <span className="text-cyan-600">→ {customerName}</span>
+                              <span className="text-cyan-700">→ {customerName}</span>
                             </div>
                           )}
                         </div>
 
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 shrink-0">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -354,21 +380,22 @@ export default function Notes() {
                               e.stopPropagation();
                               setDeleteNote(note);
                             }}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8"
+                            aria-label={`Delete ${note.title}`}
+                            className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-700"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                           </Button>
-                          <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
                         </div>
                       </div>
                     </div>
 
                     {isExpanded && (
-                      <div className="border-t border-slate-200 bg-slate-50 p-4">
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                      <div className="border-t border-slate-200/70 bg-slate-50/70 p-4">
+                        <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
                           {note.content}
                         </p>
-                        <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-500">
+                        <div className="mt-3 border-t border-slate-200/70 pt-3 text-xs text-slate-500">
                           Created {format(parseISO(note.created_date), "MMM dd, yyyy 'at' h:mm a")}
                         </div>
                       </div>
@@ -402,6 +429,6 @@ export default function Notes() {
       </AlertDialog>
 
       <SaltCellLogSection customers={customers} />
-    </div>
+    </main>
   );
 }

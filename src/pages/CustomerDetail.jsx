@@ -695,41 +695,57 @@ export default function CustomerDetail() {
 
   if (!customer) {
     return (
-      <div className="text-center py-16">
-        <p className="text-slate-900">Customer not found</p>
+      <div className="mx-auto flex max-w-3xl flex-col items-center justify-center px-3 pb-36 pt-16 font-sans sm:px-6">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+          <Calendar className="h-7 w-7" aria-hidden="true" />
+        </div>
+        <h2 className="mb-1 text-xl font-semibold tracking-[-0.035em] text-slate-950">
+          Customer not found
+        </h2>
+        <p className="mb-5 max-w-sm text-center text-sm font-medium leading-6 text-slate-600">
+          We couldn't locate this client. They may have been removed or the link is out of date.
+        </p>
+        <Button
+          onClick={() => navigate(createPageUrl("Clients"))}
+          className="h-11 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+        >
+          Back to Clients
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-3 py-4">
+    <div className="mx-auto max-w-3xl px-3 pb-36 pt-4 font-sans sm:px-6">
       <BackButton
         fallback={createPageUrl("Clients")}
-        label="Back"
+        label="Back to Clients"
+        variant="ghost"
         size="sm"
-        className="mb-3 -ml-2"
+        className="mb-3 -ml-2 text-slate-600 hover:text-cyan-700"
       />
 
-      <Card className="p-4 mb-3 border-2 shadow-lg">
+      <Card className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
         <div className="mb-3">
-          <h2 className="text-lg font-bold text-slate-900 mb-1">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Client profile</p>
+          <h2 className="text-2xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-3xl">
             {customer.full_name}
           </h2>
-          <div className="flex items-start gap-1.5 text-slate-900">
-            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
-            <p className="text-xs leading-relaxed">{customer.address}</p>
+          <div className="mt-2 flex items-start gap-1.5 text-slate-600">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+            <p className="text-sm font-medium leading-relaxed">{customer.address}</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-3">
+        <div className="mb-3 flex flex-wrap gap-2">
           {logs && logs.length >= 3 && (
             <Button
               size="sm"
               onClick={() => setShowAnalysis(true)}
               variant="outline"
-              className="border-2 border-purple-200 text-purple-700 hover:bg-purple-50 h-8"
+              className="h-9 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
             >
-              <BarChart3 className="w-3.5 h-3.5 mr-1" />
+              <BarChart3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
               Analysis
             </Button>
           )}
@@ -737,57 +753,65 @@ export default function CustomerDetail() {
             size="sm"
             onClick={handleOpenReportSettings}
             variant="outline"
-            className="border-2 border-slate-200 text-slate-700 hover:bg-slate-50 h-8"
+            className="h-9 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
             title="Customize what customers see on reports"
           >
-            <Settings className="w-3.5 h-3.5 mr-1" />
+            <Settings className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
             Report Settings
           </Button>
           <Button
             size="sm"
             onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
-            className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg h-8"
+            className="h-9 rounded-full bg-cyan-600 px-3 text-xs font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
           >
-            <Plus className="w-3.5 h-3.5 mr-1" />
-            Log
+            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+            Log Service
           </Button>
         </div>
 
         {(customer.phone || customer.email) && (
-          <div className="space-y-1.5 mb-3">
+          <div className="mb-3 space-y-1.5">
             {customer.phone && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-900">
-                <Phone className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <a
+                href={`tel:${customer.phone}`}
+                className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-cyan-700"
+              >
+                <Phone className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
                 <span>{customer.phone}</span>
-              </div>
+              </a>
             )}
             {customer.email && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-900">
-                <Mail className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <a
+                href={`mailto:${customer.email}`}
+                className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-cyan-700"
+              >
+                <Mail className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
                 <span className="truncate">{customer.email}</span>
-              </div>
+              </a>
             )}
           </div>
         )}
 
-        <div className="flex gap-1.5 flex-wrap">
-          <span className="text-[10px] px-2 py-1 bg-cyan-100 text-cyan-700 rounded-md font-medium">
-            <Calendar className="w-2.5 h-2.5 inline mr-0.5" />
-            {customer.service_day}
-          </span>
+        <div className="flex flex-wrap gap-1.5">
+          {customer.service_day && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-800">
+              <Calendar className="h-3 w-3" aria-hidden="true" />
+              {customer.service_day}
+            </span>
+          )}
           {customer.pool_type && (
-            <span className="text-[10px] px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">
-              <Droplets className="w-2.5 h-2.5 inline mr-0.5" />
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800">
+              <Droplets className="h-3 w-3" aria-hidden="true" />
               {customer.pool_type}
             </span>
           )}
           {customer.pool_gallons && (
-            <span className="text-[10px] px-2 py-1 bg-slate-100 text-slate-700 rounded-md">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
               {customer.pool_gallons?.toLocaleString()} gal
             </span>
           )}
           {customer.surface_type && (
-            <span className="text-[10px] px-2 py-1 bg-slate-100 text-slate-700 rounded-md">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
               {customer.surface_type}
             </span>
           )}
@@ -795,29 +819,29 @@ export default function CustomerDetail() {
       </Card>
 
       {lastWeekLog && (lastWeekLog.notes || lastWeekLog.ph || lastWeekLog.chlorine) && (
-        <Card className="p-4 mb-3 border-2 shadow-lg bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200">
-          <div className="flex items-center gap-1.5 mb-2">
-            <FileText className="w-4 h-4 text-amber-600" />
-            <h3 className="text-sm font-bold text-slate-900">Last Week</h3>
-            <span className="text-[10px] text-slate-600">
+        <div className="mb-4 overflow-hidden rounded-[1.35rem] border border-amber-200/80 bg-amber-50/85 p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <FileText className="h-4 w-4 text-amber-700" aria-hidden="true" />
+            <h3 className="text-sm font-semibold text-slate-900">Last Week</h3>
+            <span className="text-[11px] font-medium text-slate-600">
               ({formatServiceDate(lastWeekLog.service_date)})
             </span>
           </div>
 
           {(lastWeekLog.ph || lastWeekLog.chlorine || lastWeekLog.alkalinity) && (
-            <div className="flex gap-1.5 mb-2 flex-wrap">
+            <div className="mb-2 flex flex-wrap gap-1.5">
               {lastWeekLog.ph && (
-                <span className="text-[10px] px-2 py-1 bg-white/60 text-slate-700 rounded-md font-medium">
+                <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
                   pH: {lastWeekLog.ph}
                 </span>
               )}
               {lastWeekLog.chlorine && (
-                <span className="text-[10px] px-2 py-1 bg-white/60 text-slate-700 rounded-md font-medium">
+                <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
                   Cl: {lastWeekLog.chlorine}
                 </span>
               )}
               {lastWeekLog.alkalinity && (
-                <span className="text-[10px] px-2 py-1 bg-white/60 text-slate-700 rounded-md font-medium">
+                <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
                   Alk: {lastWeekLog.alkalinity}
                 </span>
               )}
@@ -825,37 +849,44 @@ export default function CustomerDetail() {
           )}
 
           {lastWeekLog.notes && (
-            <div className="bg-white/60 p-2.5 rounded-lg">
-              <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+            <div className="rounded-2xl bg-white/70 p-3">
+              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-700">
                 {lastWeekLog.notes}
               </p>
             </div>
           )}
-        </Card>
+        </div>
       )}
 
-      <div className="mb-3">
-        <h3 className="text-base font-bold text-slate-900">Service History</h3>
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field log</p>
+          <h3 className="mt-1 text-lg font-semibold tracking-[-0.025em] text-slate-950 sm:text-xl">
+            Service History
+          </h3>
+        </div>
       </div>
 
       {logs.length === 0 ? (
-        <Card className="p-8 text-center bg-slate-50 border-2 border-dashed border-slate-200">
-          <div className="w-12 h-12 mx-auto mb-3 bg-slate-100 rounded-full flex items-center justify-center">
-            <Calendar className="w-6 h-6 text-slate-400" />
+        <div className="mb-20 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+            <Calendar className="h-7 w-7" aria-hidden="true" />
           </div>
-          <h3 className="text-sm font-semibold text-slate-900 mb-1">
+          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
             No Service Logs Yet
           </h3>
-          <p className="text-xs text-slate-900 mb-3">Start tracking services</p>
+          <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
+            Start tracking services for {customer.full_name} to keep their pool history up to date.
+          </p>
           <Button
             size="sm"
             onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
-            className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+            className="h-11 rounded-full bg-cyan-600 px-6 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
           >
-            <Plus className="w-3.5 h-3.5 mr-1" />
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             Create First Log
           </Button>
-        </Card>
+        </div>
       ) : (
         <div className="space-y-2">
           {logs.map((log) => (

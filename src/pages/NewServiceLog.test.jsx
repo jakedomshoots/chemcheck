@@ -63,12 +63,20 @@ vi.mock('canvas-confetti', () => ({
     default: vi.fn()
 }));
 
+const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }));
+
 vi.mock('react-router-dom', async () => {
     const actual = await vi.importActual('react-router-dom');
     return {
         ...actual,
-        useNavigate: () => vi.fn(),
+        useNavigate: () => mockNavigate,
     };
+});
+
+beforeEach(() => {
+    mockNavigate.mockReset();
+    // Default URL: no customerId param so the missing-client state applies.
+    window.history.pushState({}, 'Test Page', '/newservicelog');
 });
 
 describe('New Service Log Page', () => {
@@ -87,10 +95,75 @@ describe('New Service Log Page', () => {
         expect(screen.getByText(/Chlorine Level Input/i)).toBeInTheDocument();
     });
 
-    it('labels the service type selector', () => {
+    it('renders a single Service Photos area containing Before Photos and After Photos', () => {
         window.history.pushState({}, 'Test Page', '/?customerId=1');
         render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
 
-        expect(screen.getByRole('combobox', { name: 'Service Type' })).toBeInTheDocument();
+        expect(screen.getByText('Service Photos')).toBeInTheDocument();
+        expect(screen.getByText('Before Photos')).toBeInTheDocument();
+        expect(screen.getByText('After Photos')).toBeInTheDocument();
+        expect(screen.queryByRole('combobox', { name: 'Service Type' })).not.toBeInTheDocument();
+    });
+
+    it('renders an actionable missing-client state when no customerId is provided', () => {
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        // Heading invites the user to pick a client.
+        expect(
+            screen.getByRole('heading', { name: /choose a client first/i })
+        ).toBeInTheDocument();
+
+        // Users learn why they are stuck: a service log requires a client.
+        expect(
+            screen.getByText(/service log.*(needs|requires).*client/i)
+        ).toBeInTheDocument();
+    });
+
+    it('does not render an indefinite loader-only state when no customerId is provided', () => {
+        const { container } = render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        // An indefinite loader-only render provides no heading, no buttons,
+        // and almost no copy. Asserting presence of actionable controls and a
+        // meaningful body length rules out that regression.
+        const actionableControls = container.querySelectorAll('button, a[href]');
+        const headings = container.querySelectorAll('h1, h2, h3');
+        const bodyText = (container.textContent || '').trim();
+
+        expect(
+            screen.queryByRole('heading', { name: /choose a client first/i })
+        ).not.toBeNull();
+        expect(headings.length).toBeGreaterThan(0);
+        expect(actionableControls.length).toBeGreaterThan(0);
+        expect(bodyText.length).toBeGreaterThan(40);
+    });
+
+    it('exposes a Go to Clients action that navigates to the Clients page', () => {
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        const goToClients = screen.getByRole('button', { name: /go to clients/i });
+        fireEvent.click(goToClients);
+
+        expect(mockNavigate).toHaveBeenCalledWith('/page/Clients');
+    });
+
+    it('exposes a Back to Home action that navigates to the Home page', () => {
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        const backToHome = screen.getByRole('button', { name: /back to home/i });
+        fireEvent.click(backToHome);
+
+        expect(mockNavigate).toHaveBeenCalledWith('/page/Home');
+    });
+
+    it('still renders the service log form when a valid customerId is provided', () => {
+        window.history.pushState({}, 'Test Page', '/?customerId=1');
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        // With a valid customerId the missing-client state must NOT appear.
+        expect(
+            screen.queryByRole('heading', { name: /choose a client first/i })
+        ).not.toBeInTheDocument();
+        expect(screen.getByText(/Service Log/i)).toBeInTheDocument();
+        expect(screen.getByText(/Alice Smith/i)).toBeInTheDocument();
     });
 });

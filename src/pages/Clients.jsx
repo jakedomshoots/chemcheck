@@ -6,7 +6,6 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Plus, Users, Search, ArrowUp, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -377,104 +376,116 @@ export default function Clients() {
   const visibleCustomerCount = useMemo(() => {
     return customers.filter(c => daysOfWeek.includes(c.service_day)).length;
   }, [customers, daysOfWeek]);
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
+      <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
+        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Clients</h2>
+          <p className="mt-1 text-sm font-medium text-slate-500">Loading your client list…</p>
+        </div>
+        <div className="flex items-center justify-center py-16">
+          <div className="h-10 w-10 rounded-full border-4 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Clients</h2>
-            <p className="text-sm text-slate-900">
+    <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
+      <div
+        data-testid="clients-header"
+        className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Client roster</p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              Clients
+            </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
               {visibleCustomerCount} clients scheduled
               {orphanedCustomers.length > 0 && (
-                <span className="text-amber-600 ml-1">
+                <span className="ml-1 text-amber-700">
                   ({orphanedCustomers.length} not on working days)
                 </span>
               )}
             </p>
           </div>
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          {!reorderMode ? (
-            <>
+          <div className="flex w-full gap-2 sm:w-auto">
+            {!reorderMode ? (
+              <>
+                <Button
+                  onClick={() => setReorderMode(true)}
+                  disabled={visibleCustomerCount === 0}
+                  variant="outline"
+                  className="h-11 flex-1 rounded-[1.15rem] border border-slate-200 bg-white/90 text-sm font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none sm:flex-none"
+                >
+                  <ArrowUp className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Reorder
+                </Button>
+                <Button
+                  onClick={() => navigate(createPageUrl("NewClient"))}
+                  className="h-11 flex-1 rounded-[1.15rem] bg-cyan-600 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:flex-none"
+                >
+                  <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Add Client
+                </Button>
+              </>
+            ) : (
               <Button
-                onClick={() => setReorderMode(true)}
-                variant="outline"
-                className="flex-1 sm:flex-none border-2 rounded-xl hover:border-blue-500"
+                onClick={() => setReorderMode(false)}
+                className="h-11 w-full rounded-[1.15rem] bg-slate-950 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700 sm:w-auto"
               >
-                <ArrowUp className="w-4 h-4 mr-2" />
-                Reorder
+                <Check className="mr-2 h-4 w-4" aria-hidden="true" />
+                Done Reordering
               </Button>
-              <Button
-                onClick={() => navigate(createPageUrl("NewClient"))}
-                className="flex-1 sm:flex-none bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
-              >
-                <Plus className="w-5 h-5 mr-2" />
-                Add Client
-              </Button>
-            </>
-          ) : (
-            <Button
-              onClick={() => setReorderMode(false)}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg"
-            >
-              <Check className="w-4 h-4 mr-2" />
-              Done Reordering
-            </Button>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       {reorderMode && (
-        <Card className="p-4 mb-4 bg-blue-50 border-2 border-blue-200">
-          <p className="text-sm text-blue-900 font-medium">
-            ⬆️⬇️ Reorder Mode - Use arrows to move customers up or down
+        <div className="mb-4 rounded-[1.25rem] border border-cyan-200/80 bg-cyan-50/80 px-4 py-3 shadow-sm">
+          <p className="text-sm font-semibold text-cyan-900">
+            Reorder Mode active. Use the arrows on each client to move them up or down for the selected day.
           </p>
-        </Card>
+        </div>
       )}
 
       {orphanedCustomers.length > 0 && (
-        <Card className="p-4 mb-4 bg-amber-50 border-2 border-amber-200">
-          <div className="flex items-start gap-3">
-            <div className="p-1 bg-amber-500 rounded-full">
-              <Users className="w-4 h-4 text-white" />
+        <div className="mb-4 overflow-hidden rounded-[1.35rem] border border-amber-200/80 bg-amber-50/85 shadow-sm">
+          <div className="flex items-start gap-3 px-4 py-3">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <Users className="h-3.5 w-3.5" aria-hidden="true" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-900 mb-1">
-                ⚠️ {orphanedCustomers.length} customer{orphanedCustomers.length !== 1 ? 's' : ''} not scheduled on working days
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-900">
+                {orphanedCustomers.length} customer{orphanedCustomers.length !== 1 ? 's' : ''} not scheduled on working days
               </p>
-              <p className="text-xs text-amber-800">
+              <p className="mt-1 text-xs font-medium text-amber-800">
                 These customers have service days outside your current working schedule: {orphanedCustomers.map(c => c.full_name).join(', ')}
               </p>
-              <p className="text-xs text-amber-700 mt-1">
+              <p className="mt-1 text-xs font-medium text-amber-700">
                 Update their service days in Settings → Schedule or edit individual customers.
               </p>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
-      <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+      <div className="relative mb-4">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search clients by name or address..."
-          className="pl-10 border-2 focus:border-cyan-500 rounded-xl bg-white"
+          className="h-11 rounded-[1.15rem] border border-slate-200 bg-white/90 pl-9 text-sm font-medium text-slate-700 shadow-sm focus:border-cyan-400"
         />
       </div>
 
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto native-scroll mb-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <TabsList className="inline-flex w-max min-w-full sm:min-w-0 bg-slate-100 p-1 rounded-2xl gap-1 snap-x snap-mandatory">
+        <div className="-mx-3 mb-4 overflow-x-auto px-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex w-max min-w-full gap-1 rounded-[1.15rem] border border-white/80 bg-white/85 p-1 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.55)] backdrop-blur sm:min-w-0 sm:w-full">
             {validWorkingDays.map((day) => {
               const count = customerCounts[day] || 0;
               return (
@@ -484,11 +495,11 @@ export default function Clients() {
                   ref={(el) => {
                     if (el) dayTabRefs.current[day] = el;
                   }}
-                  className="shrink-0 min-w-[4.75rem] sm:min-w-0 sm:flex-1 snap-start rounded-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-cyan-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all whitespace-nowrap px-3 relative"
+                  className="group inline-flex h-9 shrink-0 min-w-[4.5rem] snap-start items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-slate-500 transition-all data-[state=active]:bg-cyan-600 data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-slate-700 sm:min-w-0 sm:flex-1"
                 >
                   <span>{day.substring(0, 3)}</span>
                   {count > 0 && (
-                    <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-white/20 rounded-full">
+                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
                       {count}
                     </span>
                   )}
@@ -503,17 +514,26 @@ export default function Clients() {
           return (
             <TabsContent key={day} value={day}>
               {dayCustomers.length === 0 ? (
-                <Card className="p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-                    <Users className="w-8 h-8 text-slate-400" />
+                <div className="mb-20 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+                    <Users className="h-7 w-7" aria-hidden="true" />
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                  <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
                     {searchQuery ? "No Matching Clients" : `No Clients for ${day}`}
                   </h3>
-                  <p className="text-slate-900 mb-4">
+                  <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
                     {searchQuery ? "Try adjusting your search" : "Add clients to this day's route"}
                   </p>
-                </Card>
+                  {!searchQuery && (
+                    <Button
+                      onClick={() => navigate(createPageUrl("NewClient"))}
+                      className="h-11 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+                    >
+                      <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Add Client
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-2">
                   {dayCustomers.map((customer, index) => (
@@ -557,6 +577,6 @@ export default function Clients() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </main>
   );
 }

@@ -293,48 +293,78 @@ export function SetupWizardPage() {
 
   if (!auth.isLoaded || !auth.isInitialized) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-900">Loading setup...</p>
+      <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+        <div
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
+          aria-hidden="true"
+        />
+        <div className="flex min-h-screen items-center justify-center p-4">
+          <div className="text-center">
+            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
+            <p className="text-base font-semibold tracking-[-0.035em] text-slate-950">Loading setup</p>
+            <p className="mt-1 text-sm font-medium text-slate-600">Preparing your workspace</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
+        aria-hidden="true"
+      />
+      <div className="pointer-events-none fixed inset-0 -z-10 opacity-[0.05] [background-image:linear-gradient(rgba(15,23,42,0.75)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.75)_1px,transparent_1px)] [background-size:44px_44px]" />
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-4 py-12">
         {/* Logo Header */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <Droplets className="w-8 h-8 text-white" />
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]">
+            <Droplets className="h-8 w-8" aria-hidden="true" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">Welcome to ChemCheck!</h1>
-          <p className="text-slate-600">Let's set up your business profile</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+            Workspace setup
+          </p>
+          <h1 className="text-balance text-3xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-4xl">
+            Welcome to ChemCheck
+          </h1>
+          <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+            Let's set up your business profile.
+          </p>
         </div>
-
-        <Card className="p-6 shadow-xl">
+        <Card className="w-full rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
           {/* Progress Indicator */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${step >= 1 ? 'bg-cyan-600 text-white' : 'bg-slate-200 text-slate-600'
-              }`}>
-              {step > 1 ? <CheckCircle className="w-5 h-5" /> : '1'}
+          <div className="mb-6 flex items-center justify-center gap-2">
+            <div
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                step >= 1 ? 'bg-cyan-600 text-white shadow-[0_10px_24px_-16px_rgba(8,145,178,0.95)]' : 'bg-slate-100 text-slate-500'
+              }`}
+              aria-current={step === 1 ? 'step' : undefined}
+            >
+              {step > 1 ? <CheckCircle className="h-5 w-5" aria-hidden="true" /> : '1'}
             </div>
-            <div className={`w-12 h-1 transition-colors ${step > 1 ? 'bg-cyan-600' : 'bg-slate-200'}`} />
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${step >= 2 ? 'bg-cyan-600 text-white' : 'bg-slate-200 text-slate-600'
-              }`}>
-              {step > 2 ? <CheckCircle className="w-5 h-5" /> : '2'}
+            <div className={`h-1 w-12 rounded-full transition-colors ${step > 1 ? 'bg-cyan-600' : 'bg-slate-200'}`} />
+            <div
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                step >= 2 ? 'bg-cyan-600 text-white shadow-[0_10px_24px_-16px_rgba(8,145,178,0.95)]' : 'bg-slate-100 text-slate-500'
+              }`}
+              aria-current={step === 2 ? 'step' : undefined}
+            >
+              {step > 2 ? <CheckCircle className="h-5 w-5" aria-hidden="true" /> : '2'}
             </div>
-            <div className={`w-12 h-1 transition-colors ${step > 2 ? 'bg-cyan-600' : 'bg-slate-200'}`} />
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${step >= 3 ? 'bg-cyan-600 text-white' : 'bg-slate-200 text-slate-600'
-              }`}>
+            <div className={`h-1 w-12 rounded-full transition-colors ${step > 2 ? 'bg-cyan-600' : 'bg-slate-200'}`} />
+            <div
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                step >= 3 ? 'bg-cyan-600 text-white shadow-[0_10px_24px_-16px_rgba(8,145,178,0.95)]' : 'bg-slate-100 text-slate-500'
+              }`}
+              aria-current={step === 3 ? 'step' : undefined}
+            >
               3
             </div>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50/80 p-3 text-sm font-medium text-red-700 shadow-sm">
               {error}
             </div>
           )}
@@ -343,40 +373,42 @@ export function SetupWizardPage() {
           {step === 1 && (
             <div className="space-y-4">
               <div className="mb-4">
-                <h2 className="text-xl font-semibold text-slate-900">Business Information</h2>
-                <p className="text-slate-600 text-sm">Tell us about your pool service business</p>
+                <h2 className="text-xl font-semibold tracking-[-0.03em] text-slate-950">Business Information</h2>
+                <p className="mt-1 text-sm font-medium text-slate-600">Tell us about your pool service business</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Business Name *
+                <label htmlFor="businessName" className="mb-2 block text-sm font-semibold text-slate-800">
+                  Business Name <span className="text-cyan-700">*</span>
                 </label>
                 <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Building2 className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                   <input
+                    id="businessName"
                     type="text"
                     value={formData.businessName}
                     onChange={(e) => handleChange('businessName', e.target.value)}
                     placeholder="Crystal Clear Pool Service"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Owner Name *
+                <label htmlFor="ownerName" className="mb-2 block text-sm font-semibold text-slate-800">
+                  Owner Name <span className="text-cyan-700">*</span>
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <User className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                   <input
+                    id="ownerName"
                     type="text"
                     value={formData.ownerName}
                     onChange={(e) => handleChange('ownerName', e.target.value)}
                     placeholder="John Smith"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
                 </div>
               </div>
@@ -385,10 +417,10 @@ export function SetupWizardPage() {
                 type="button"
                 onClick={handleNext}
                 disabled={!formData.businessName.trim() || !formData.ownerName.trim()}
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white py-2.5"
+                className="h-11 w-full rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
               >
                 Continue
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
           )}
@@ -397,54 +429,57 @@ export function SetupWizardPage() {
           {step === 2 && (
             <div className="space-y-4">
               <div className="mb-4">
-                <h2 className="text-xl font-semibold text-slate-900">Contact Information</h2>
-                <p className="text-slate-600 text-sm">How can customers reach you?</p>
+                <h2 className="text-xl font-semibold tracking-[-0.03em] text-slate-950">Contact Information</h2>
+                <p className="mt-1 text-sm font-medium text-slate-600">How can customers reach you?</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="businessPhone" className="mb-2 block text-sm font-semibold text-slate-800">
                   Business Phone
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Phone className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                   <input
+                    id="businessPhone"
                     type="tel"
                     value={formData.businessPhone}
                     onChange={(e) => handleChange('businessPhone', e.target.value)}
                     placeholder="(555) 123-4567"
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="businessEmail" className="mb-2 block text-sm font-semibold text-slate-800">
                   Business Email
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                   <input
+                    id="businessEmail"
                     type="email"
                     value={formData.businessEmail}
                     onChange={(e) => handleChange('businessEmail', e.target.value)}
                     placeholder="info@crystalclearpools.com"
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="businessAddress" className="mb-2 block text-sm font-semibold text-slate-800">
                   Business Address
                 </label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <MapPin className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                   <input
+                    id="businessAddress"
                     type="text"
                     value={formData.businessAddress}
                     onChange={(e) => handleChange('businessAddress', e.target.value)}
                     placeholder="123 Main St, City, State 12345"
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
                 </div>
               </div>
@@ -454,18 +489,18 @@ export function SetupWizardPage() {
                   type="button"
                   variant="outline"
                   onClick={() => setStep(1)}
-                  className="flex-1"
+                  className="h-11 flex-1 rounded-full border-slate-300 bg-white text-slate-800 hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
                 >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
                   Back
                 </Button>
                 <Button
                   type="button"
                   onClick={handleNext}
-                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                  className="h-11 flex-1 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 focus-visible:ring-2 focus-visible:ring-cyan-500"
                 >
                   Continue
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             </div>
@@ -475,14 +510,14 @@ export function SetupWizardPage() {
           {step === 3 && (
             <div className="space-y-4">
               <div className="mb-4">
-                <h2 className="text-xl font-semibold text-slate-900">Schedule & Services</h2>
-                <p className="text-slate-600 text-sm">Set your working schedule and service types</p>
+                <h2 className="text-xl font-semibold tracking-[-0.03em] text-slate-950">Schedule & Services</h2>
+                <p className="mt-1 text-sm font-medium text-slate-600">Set your working schedule and service types</p>
               </div>
 
               {/* Working Days */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  <CalendarDays className="w-4 h-4 inline-block mr-1 -mt-0.5" />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">
+                  <CalendarDays className="mr-1 inline-block h-4 w-4 -mt-0.5" aria-hidden="true" />
                   Working Days
                 </label>
                 <div className="grid grid-cols-7 gap-1">
@@ -493,9 +528,10 @@ export function SetupWizardPage() {
                         key={day}
                         type="button"
                         onClick={() => toggleWorkingDay(day)}
-                        className={`text-xs font-medium py-2 rounded-lg transition-colors ${
+                        aria-pressed={isSelected}
+                        className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
                           isSelected
-                            ? 'bg-cyan-600 text-white'
+                            ? 'bg-cyan-600 text-white shadow-[0_10px_24px_-18px_rgba(8,145,178,0.95)]'
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                         title={day}
@@ -509,8 +545,8 @@ export function SetupWizardPage() {
 
               {/* Working Hours */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  <Clock className="w-4 h-4 inline-block mr-1 -mt-0.5" />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">
+                  <Clock className="mr-1 inline-block h-4 w-4 -mt-0.5" aria-hidden="true" />
                   Working Hours
                 </label>
                 <div className="flex items-center gap-3">
@@ -518,25 +554,27 @@ export function SetupWizardPage() {
                     type="time"
                     value={scheduleData.workingHoursStart}
                     onChange={(e) => handleScheduleChange('workingHoursStart', e.target.value)}
-                    className="flex-1 pl-3 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    aria-label="Working hours start"
+                    className="flex-1 rounded-xl border border-slate-300 bg-white/95 px-3 py-2.5 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
-                  <span className="text-slate-500 text-sm">to</span>
+                  <span className="text-sm font-medium text-slate-500">to</span>
                   <input
                     type="time"
                     value={scheduleData.workingHoursEnd}
                     onChange={(e) => handleScheduleChange('workingHoursEnd', e.target.value)}
-                    className="flex-1 pl-3 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    aria-label="Working hours end"
+                    className="flex-1 rounded-xl border border-slate-300 bg-white/95 px-3 py-2.5 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
                 </div>
               </div>
 
               {/* Service Types */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  <Wrench className="w-4 h-4 inline-block mr-1 -mt-0.5" />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">
+                  <Wrench className="mr-1 inline-block h-4 w-4 -mt-0.5" aria-hidden="true" />
                   Service Types
                 </label>
-                <div className="flex gap-2 mb-2">
+                <div className="mb-2 flex gap-2">
                   <input
                     type="text"
                     value={scheduleData.newServiceType}
@@ -548,31 +586,34 @@ export function SetupWizardPage() {
                       }
                     }}
                     placeholder="Add a service type"
-                    className="flex-1 pl-3 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    aria-label="New service type"
+                    className="flex-1 rounded-xl border border-slate-300 bg-white/95 px-3 py-2 text-sm font-medium text-slate-900 shadow-sm transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   />
                   <Button
                     type="button"
                     variant="outline"
                     onClick={addServiceType}
                     disabled={!scheduleData.newServiceType.trim()}
+                    aria-label="Add service type"
+                    className="h-10 rounded-full border-slate-300 bg-white text-cyan-700 hover:border-cyan-300 hover:bg-cyan-50"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {scheduleData.serviceTypes.map(type => (
                     <span
                       key={type}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-cyan-50 text-cyan-800 text-sm rounded-full"
+                      className="inline-flex items-center gap-1 rounded-full border border-cyan-100 bg-cyan-50/80 px-2.5 py-1 text-sm font-medium text-cyan-800"
                     >
                       {type}
                       <button
                         type="button"
                         onClick={() => removeServiceType(type)}
-                        className="text-cyan-600 hover:text-cyan-900"
+                        className="text-cyan-700 transition-colors hover:text-cyan-900"
                         aria-label={`Remove ${type}`}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="h-3 w-3" aria-hidden="true" />
                       </button>
                     </span>
                   ))}
@@ -585,23 +626,23 @@ export function SetupWizardPage() {
                     type="button"
                     variant="outline"
                     onClick={() => setStep(2)}
-                    className="flex-1"
+                    className="h-11 flex-1 rounded-full border-slate-300 bg-white text-slate-800 hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
                   >
-                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
                     Back
                   </Button>
                   <Button
                     type="button"
                     onClick={() => handleComplete()}
                     disabled={isLoading}
-                    className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                    className="h-11 flex-1 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
                   >
                     {isLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                     ) : (
                       <>
                         Complete Setup
-                        <CheckCircle className="w-4 h-4 ml-2" />
+                        <CheckCircle className="ml-2 h-4 w-4" aria-hidden="true" />
                       </>
                     )}
                   </Button>
@@ -611,7 +652,7 @@ export function SetupWizardPage() {
                   variant="ghost"
                   onClick={() => handleComplete({ skip: true })}
                   disabled={isLoading}
-                  className="w-full text-slate-500 hover:text-slate-700"
+                  className="h-11 w-full rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 >
                   Set up later
                 </Button>
@@ -621,9 +662,9 @@ export function SetupWizardPage() {
         </Card>
 
         {/* Help Text */}
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800 text-center">
-            Don't worry - you can change these settings anytime in your account preferences.
+        <div className="mt-4 w-full rounded-2xl border border-cyan-100 bg-cyan-50/70 p-3 text-center shadow-sm backdrop-blur">
+          <p className="text-sm font-medium text-cyan-900">
+            You can change these settings anytime in your account preferences.
           </p>
         </div>
       </div>

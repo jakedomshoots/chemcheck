@@ -1,6 +1,5 @@
 import React from "react";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2, AlertTriangle, AlertCircle, XCircle } from "lucide-react";
 
@@ -56,20 +55,20 @@ export default function SimplifiedChemicalInput({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {icon && <div className="text-cyan-600">{icon}</div>}
-          <Label className="text-sm font-semibold text-slate-700">{label}</Label>
+    <div className="rounded-[1.25rem] border border-slate-200/70 bg-white/80 p-3 shadow-[0_14px_44px_-36px_rgba(8,47,73,0.75)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {icon && <div className="text-cyan-700">{icon}</div>}
+          <Label className="text-sm font-semibold text-slate-800">{label}</Label>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-lg">
+        <div className="grid shrink-0 grid-cols-2 rounded-full bg-slate-100/90 p-1">
           <button
             type="button"
             onClick={() => onModeChange?.("quick")}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
               mode === "quick"
-                ? "bg-white shadow-sm text-slate-900"
-                : "text-slate-600 hover:text-slate-800"
+                ? "bg-white text-slate-950 shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
             }`}
           >
             Quick
@@ -77,10 +76,10 @@ export default function SimplifiedChemicalInput({
           <button
             type="button"
             onClick={() => onModeChange?.("numeric")}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
               mode === "numeric"
-                ? "bg-white shadow-sm text-slate-900"
-                : "text-slate-600 hover:text-slate-800"
+                ? "bg-white text-slate-950 shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
             }`}
           >
             Numeric
@@ -89,7 +88,7 @@ export default function SimplifiedChemicalInput({
       </div>
 
       {mode === "numeric" ? (
-        <div className="space-y-2">
+        <div className="mt-3 space-y-2">
           <div className="relative">
             <Input
               type="number"
@@ -100,11 +99,11 @@ export default function SimplifiedChemicalInput({
               value={numericValue ?? ""}
               onChange={handleNumericChange}
               placeholder={hint || label}
-              className="border-2 focus:border-cyan-500 rounded-xl pr-12"
+              className="h-12 rounded-2xl border border-slate-200 bg-white pr-12 text-base focus:border-cyan-500"
               data-testid={testId}
             />
             {unit && (
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500 pointer-events-none">
+              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">
                 {unit}
               </span>
             )}
@@ -114,32 +113,27 @@ export default function SimplifiedChemicalInput({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-4 gap-2">
           {levels.map((level) => {
             const Icon = level.icon;
             const isSelected = value === level.value;
             return (
-              <Card
+              <button
                 key={level.value}
+                type="button"
+                aria-pressed={isSelected}
                 onClick={() => onChange(level.value)}
-                className={`relative overflow-hidden cursor-pointer transition-all duration-300 border-2 p-4 ${
+                className={`rounded-2xl border p-2.5 text-left transition-all duration-200 active:scale-[0.98] ${
                   isSelected
-                    ? `${level.bg} ${level.border} shadow-lg scale-105`
-                    : "bg-white/50 border-slate-200/60 hover:border-slate-300 hover:shadow-md hover:bg-white/70"
+                    ? `${level.bg} ${level.border} shadow-sm ring-1 ring-inset ring-white/70`
+                    : "border-slate-200/70 bg-white/70 hover:border-cyan-200 hover:bg-cyan-50/50"
                 }`}
               >
-                {isSelected && (
-                  <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${level.color}`}></div>
-                )}
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-xl ${isSelected ? level.bg : "bg-slate-50/50"}`}>
-                    <Icon className={`w-5 h-5 ${isSelected ? level.text : "text-slate-400"}`} />
-                  </div>
-                  <span className={`font-semibold ${isSelected ? level.text : "text-slate-600"}`}>
-                    {level.label}
-                  </span>
-                </div>
-              </Card>
+                <Icon className={`mb-2 h-4 w-4 ${isSelected ? level.text : "text-slate-400"}`} aria-hidden="true" />
+                <span className={`block text-[11px] font-semibold leading-tight ${isSelected ? level.text : "text-slate-600"}`}>
+                  {level.label}
+                </span>
+              </button>
             );
           })}
         </div>

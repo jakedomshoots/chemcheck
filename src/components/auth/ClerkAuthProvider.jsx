@@ -270,7 +270,7 @@ export function ClerkAuthProvider({ children }) {
         },
         elements: {
           formButtonPrimary:
-            'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium',
+            'bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-full shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)]',
           card: 'shadow-xl border-0',
           headerTitle: 'text-xl font-bold text-slate-900',
           headerSubtitle: 'text-slate-600',

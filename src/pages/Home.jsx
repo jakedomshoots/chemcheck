@@ -388,6 +388,12 @@ export default function Home() {
   const handlePrimaryHomeAction = () => {
     trackUxEvent('ux_task_started', { flow: 'home_primary_action', action: homePrimaryAction });
 
+    if (customers.length === 0) {
+      navigate(createPageUrl("NewClient"));
+      trackUxEvent('ux_task_completed', { flow: 'home_primary_action', action: 'add_client' });
+      return;
+    }
+
     if (homePrimaryAction === 'open_route_plan') {
       navigate(createPageUrl("RouteOptimizer"));
       trackUxEvent('ux_task_completed', { flow: 'home_primary_action', action: homePrimaryAction });
@@ -438,27 +444,27 @@ export default function Home() {
     trackUxEvent('ux_task_completed', { flow: 'home_off_day_service', selected_day: selectedOffDay || 'unknown' });
   };
 
-  const primaryActionConfig = homePrimaryAction === 'open_route_plan'
-    ? { icon: Route, label: 'Open Route Plan', disabled: false }
-    : homePrimaryAction === 'add_client'
-      ? { icon: Plus, label: 'Add Client', disabled: false }
-      : {
-          icon: PlayCircle,
-          label: nextPendingCustomer ? `Start Next: ${nextPendingCustomer.full_name}` : "No Pending Stops",
-          disabled: !nextPendingCustomer,
-        };
+  const primaryActionConfig = customers.length === 0
+    ? { icon: Plus, label: 'Add First Client', disabled: false }
+    : homePrimaryAction === 'open_route_plan'
+      ? { icon: Route, label: 'Open Route Plan', disabled: false }
+      : homePrimaryAction === 'add_client'
+        ? { icon: Plus, label: 'Add Client', disabled: false }
+        : {
+            icon: PlayCircle,
+            label: nextPendingCustomer ? `Start Next: ${nextPendingCustomer.full_name}` : "No Pending Stops",
+            disabled: !nextPendingCustomer,
+          };
 
   if (loading) {
     return (
-      <main className="max-w-7xl mx-auto px-3 py-4 font-sans" aria-label="Home">
-        <div className="mb-4">
-          <div className="mb-1">
-            <div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
-              <p className="text-xs font-medium text-slate-600">
-                {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
-              </p>
-            </div>
+      <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
+        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Today's Route</h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
+            </p>
           </div>
         </div>
         <QuickStatsSkeleton />
@@ -473,76 +479,81 @@ export default function Home() {
   }
 
   return (
-    <main className="max-w-7xl mx-auto px-3 py-4 font-sans" aria-label="Home">
+    <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
       <div
         data-testid="route-header"
-        className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+        className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur"
       >
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Today's Route</h2>
-          <p className="text-xs font-medium text-slate-600">
-            {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
-          </p>
-        </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field command</p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              Today's Route
+            </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              {dayOfWeek}, {format(new Date(), "MMM dd, yyyy")}
+            </p>
+          </div>
 
-        {showOpsBrief && (
-          <aside
-            aria-label="Daily Ops Brief"
-            className="w-full rounded-xl border border-cyan-100 bg-white/85 px-3 py-2 shadow-sm shadow-cyan-900/5 backdrop-blur sm:w-auto sm:min-w-[230px] sm:max-w-[270px] sm:shrink-0"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-cyan-700" />
-                  <span>Daily Ops Brief</span>
+          {showOpsBrief && (
+            <aside
+              aria-label="Daily Ops Brief"
+              className="w-full rounded-2xl border border-cyan-100 bg-cyan-50/70 px-4 py-3 shadow-sm shadow-cyan-900/5 sm:w-auto sm:min-w-[250px] sm:max-w-[300px] sm:shrink-0"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
+                    <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>Daily Ops Brief</span>
+                  </div>
+                  <p className="mt-1 text-xs font-medium text-slate-500">Estimated route</p>
                 </div>
-                <p className="mt-0.5 text-[11px] font-medium text-slate-500">Estimated route</p>
+                <p className="flex shrink-0 items-center gap-1 whitespace-nowrap text-base font-semibold tabular-nums text-cyan-800">
+                  <Route className="h-4 w-4" aria-hidden="true" />
+                  {opsBrief.pendingStops} stops · {formatRouteDuration(opsBrief.estimatedRouteMinutes)}
+                </p>
               </div>
-              <p className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-bold tabular-nums text-cyan-700">
-                <Route className="h-3.5 w-3.5" />
-                {opsBrief.pendingStops} stops · {formatRouteDuration(opsBrief.estimatedRouteMinutes)}
-              </p>
-            </div>
-          </aside>
-        )}
+            </aside>
+          )}
+        </div>
       </div>
 
       {missedServices.length > 0 && (
-        <div className="mb-4 bg-white rounded-xl shadow-sm border border-slate-200/60 border-l-4 border-l-amber-400 overflow-hidden">
-          <div className="px-4 py-3 flex items-center justify-between">
+        <div className="mb-4 overflow-hidden rounded-[1.35rem] border border-amber-200/80 bg-amber-50/85 shadow-sm">
+          <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500 stroke-[2]" />
-              <span className="text-sm font-semibold text-slate-800">
+              <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />
+              <span className="text-sm font-semibold text-slate-900">
                 {missedServices.length} Missed
               </span>
             </div>
             {missedServices.length > 2 && (
               <button
                 onClick={() => setMissedExpanded(!missedExpanded)}
-                className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+                className="rounded-full px-3 py-1 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
               >
                 {missedExpanded ? 'Show less' : `+${missedServices.length - 2} more`}
               </button>
             )}
           </div>
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-amber-200/70">
             {(missedExpanded ? missedServices : missedServices.slice(0, 2)).map(customer => (
               <div
                 key={customer._id}
-                className="px-4 py-2.5 flex items-center justify-between gap-3"
+                className="flex items-center justify-between gap-3 px-4 py-3"
               >
                 <div
-                  className="flex-1 min-w-0 cursor-pointer"
+                  className="min-w-0 flex-1 cursor-pointer"
                   onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
                 >
-                  <p className="text-sm font-medium text-slate-800 truncate">{customer.full_name || 'Customer'}</p>
-                  <p className="text-xs text-slate-400 truncate">
+                  <p className="truncate text-sm font-semibold text-slate-900">{customer.full_name || 'Customer'}</p>
+                  <p className="truncate text-xs text-slate-500">
                     {customer.scheduledDay} · {customer.address}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
-                    className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors px-2 py-1"
+                    className="rounded-full px-3 py-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-white/70 hover:text-slate-700"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleSkipCustomer(customer);
@@ -552,7 +563,7 @@ export default function Home() {
                   </button>
                   <Button
                     size="sm"
-                    className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white h-7 text-xs font-medium rounded-lg px-3"
+                    className="h-8 rounded-full bg-slate-950 px-3 text-xs font-semibold text-white hover:bg-cyan-700"
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`);
@@ -567,23 +578,23 @@ export default function Home() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-col gap-2">
+      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/80 p-2 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
         <Button
           onClick={handlePrimaryHomeAction}
           disabled={primaryActionConfig.disabled}
-          className="w-full h-14 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg text-base font-semibold rounded-xl"
+          className="h-[3.25rem] w-full rounded-[1.15rem] bg-cyan-600 px-4 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 disabled:border disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none"
         >
-          <primaryActionConfig.icon className="w-5 h-5 mr-2" />
-          {primaryActionConfig.label}
+          <primaryActionConfig.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{primaryActionConfig.label}</span>
         </Button>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           onClick={handleOpenOffDayPicker}
-          className="w-full h-11 border-2 border-slate-200 hover:border-cyan-500 text-slate-700 rounded-xl"
+          className="mt-2 h-auto w-full rounded-[1rem] px-4 py-2.5 text-sm font-semibold text-cyan-700 shadow-none hover:bg-cyan-50 hover:text-cyan-800 focus-visible:ring-2 focus-visible:ring-cyan-500/30"
         >
-          <Calendar className="w-4 h-4 mr-2" />
-          Service Another Day
+          <Calendar className="h-4 w-4" aria-hidden="true" />
+          <span>Service another day</span>
         </Button>
       </div>
 
@@ -595,23 +606,16 @@ export default function Home() {
       />
 
       {customers.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-3 bg-slate-100 rounded-full flex items-center justify-center">
-            <Calendar className="w-8 h-8 text-slate-400 stroke-[1.75]" />
+        <div className="mb-24 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-7 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+            <Calendar className="h-7 w-7" aria-hidden="true" />
           </div>
-          <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-2">
+          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
             No Customers Scheduled
           </h3>
-          <p className="text-sm font-medium text-slate-600 mb-4">
-            You have no customers scheduled for {dayOfWeek}
+          <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-600">
+            You have no customers scheduled for {dayOfWeek}. Use Add First Client above to build the route.
           </p>
-          <Button
-            onClick={() => navigate(createPageUrl("Clients"))}
-            className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg font-semibold"
-          >
-            <Plus className="w-4 h-4 mr-2 stroke-[1.75]" />
-            Add Clients
-          </Button>
         </div>
       ) : (
         <section className="space-y-3" aria-label="Today's customers">

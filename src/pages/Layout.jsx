@@ -77,6 +77,8 @@ export default function Layout({ children, currentPageName }) {
     return canonicalPath === path;
   };
 
+  const isMoreActive = moreItems.some((item) => isActive(item.path));
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-cyan-100/50 font-sans selection:bg-cyan-100">
       <header className="lg:hidden sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm safe-area-top">
@@ -116,7 +118,7 @@ export default function Layout({ children, currentPageName }) {
                 key={item.name}
                 to={item.path}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${active
-                  ? "bg-primary text-white shadow-sm"
+                  ? "bg-cyan-600 text-white shadow-sm"
                   : "text-slate-700 hover:bg-slate-100"
                   }`}
               >
@@ -143,9 +145,8 @@ export default function Layout({ children, currentPageName }) {
         {children}
       </main>
 
-      {/* Mobile bottom tab bar */}
       <nav
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-t border-slate-200/60 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200/60 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]"
         aria-label="Primary navigation"
       >
         <div className="flex items-center justify-around h-16">
@@ -156,7 +157,7 @@ export default function Layout({ children, currentPageName }) {
                 key={item.name}
                 to={item.path}
                 className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 ${active
-                  ? "bg-primary text-white shadow-sm"
+                  ? "bg-cyan-600 text-white shadow-sm"
                   : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"
                   }`}
                 aria-current={active ? "page" : undefined}
@@ -169,11 +170,12 @@ export default function Layout({ children, currentPageName }) {
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
-            className="flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"
+            className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 ${isMoreActive ? "bg-cyan-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"}`}
             aria-label="More navigation"
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
             aria-controls="mobile-more-navigation"
+            aria-current={isMoreActive ? "page" : undefined}
           >
             <MoreHorizontal className="h-5 w-5 stroke-[1.75]" />
             <span className="text-[10px] font-medium truncate px-1">More</span>
@@ -215,7 +217,7 @@ export default function Layout({ children, currentPageName }) {
                     to={item.path}
                     onClick={() => setMoreOpen(false)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${active
-                      ? "bg-primary text-white shadow-sm"
+                      ? "bg-cyan-600 text-white shadow-sm"
                       : "text-slate-700 hover:bg-slate-100"
                       }`}
                     aria-current={active ? "page" : undefined}
