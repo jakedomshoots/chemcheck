@@ -42,9 +42,8 @@ describe("security regression boundaries", () => {
   it("does not fail open unauthenticated photo upload when production env is missing", () => {
     const contents = source("convex/servicePhotos.ts");
 
-    expect(contents).toContain('process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true"');
-    expect(contents).not.toMatch(/CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD[\s\S]+?\|\|[\s\S]+?runtimeEnv !== "production"/);
-    expect(contents).toMatch(/CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD[\s\S]+?&&[\s\S]+?runtimeEnv !== "production"/);
+    expect(contents).toContain("requireUserEmail");
+    expect(contents).not.toContain("CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD");
   });
 
   it("always consumes a server-side public report limiter key", () => {
@@ -72,12 +71,12 @@ describe("security regression boundaries", () => {
     const customers = source("convex/customers.ts");
     const workOrders = source("convex/workOrders.ts");
 
-    expect(customers).toContain("assertBusinessRole");
-    expect(blockBetween(customers, "export const update", "// Delete a customer")).toContain("assertBusinessRole");
-    expect(blockBetween(customers, "export const remove", "});")).toContain("assertBusinessRole");
-    expect(workOrders).toContain("assertBusinessRole");
-    expect(blockBetween(workOrders, "export const update", "export const complete")).toContain("assertBusinessRole");
-    expect(blockBetween(workOrders, "export const complete", "export const remove")).toContain("assertBusinessRole");
+    expect(customers).toContain("requireCustomerRole");
+    expect(blockBetween(customers, "export const update", "// Delete a customer")).toContain("requireCustomerRole");
+    expect(blockBetween(customers, "export const remove", "});")).toContain("requireCustomerRole");
+    expect(workOrders).toContain("requireWorkOrderRole");
+    expect(blockBetween(workOrders, "export const update", "export const complete")).toContain("requireWorkOrderRole");
+    expect(blockBetween(workOrders, "export const complete", "export const remove")).toContain("requireWorkOrderRole");
   });
 
   it("uses configured app origins instead of caller-provided link origins", () => {

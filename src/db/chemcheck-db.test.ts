@@ -138,7 +138,7 @@ describe('ChemCheckDB Schema and Sync Fields', () => {
   it('should have latest database version with sync field indexes', () => {
     const db = new ChemCheckDB();
     
-    // Schema currently includes v3 (salt cell logs + composite customer index)
-    expect(db.verno).toBe(3);
+    // v4 adds tenant indexes and tombstone/outbox persistence.
+    expect(db.verno).toBe(4);
   });
 });

@@ -16,6 +16,7 @@ import { MigrationService, MigrationResult } from './MigrationService';
 import { db, Customer, ServiceLog, ChemicalUsage, Note } from '../../db/chemcheck-db';
 import { syncService } from './SyncService';
 import { dataIntegrityService } from './DataIntegrityService';
+import { clearActiveTenantScope, setActiveTenantScope } from '@/lib/tenantScope';
 
 // ============================================================================
 // Mock Setup
@@ -310,6 +311,7 @@ describe('MigrationService Property Tests', () => {
   let mockConvexClient: any;
 
   beforeEach(async () => {
+    setActiveTenantScope({ userEmail: 'migration@chemcheck.test', businessId: 'migration_test' });
     // Clear database before each test
     await clearDatabase();
     
@@ -438,6 +440,7 @@ describe('MigrationService Property Tests', () => {
     // Clean up
     migrationService.destroy();
     await clearDatabase();
+    clearActiveTenantScope();
   });
 
   describe('Property 9: Migration Data Integrity', () => {
