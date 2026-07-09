@@ -14,7 +14,7 @@ export default defineSchema({
     surface_type: v.string(), // Plaster, Vinyl, Fiberglass, Tile
     sort_order: v.optional(v.number()),
     created_by: v.string(), // User email
-    business_id: v.optional(v.string()), // For multi-tenant support
+    business_id: v.optional(v.id("businesses")), // For multi-tenant support
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
     // Report customization settings
@@ -35,6 +35,7 @@ export default defineSchema({
 
   serviceLogs: defineTable({
     customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
     created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     service_date: v.string(), // YYYY-MM-DD format
     status: v.string(), // completed, pending, etc.
@@ -64,10 +65,13 @@ export default defineSchema({
     .index("by_created_by", ["created_by"])
     .index("by_service_date", ["service_date"])
     .index("by_customer_and_date", ["customer_id", "service_date"])
-    .index("by_created_by_and_service_date", ["created_by", "service_date"]),
+    .index("by_created_by_and_service_date", ["created_by", "service_date"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_service_date", ["business_id", "service_date"]),
 
   chemicalUsage: defineTable({
     customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
     created_by: v.optional(v.string()), // User email for tenant isolation (optional during backfill)
     chemical_type: v.string(),
     quantity: v.string(),
@@ -79,7 +83,9 @@ export default defineSchema({
     .index("by_customer", ["customer_id"])
     .index("by_created_date", ["created_date"])
     .index("by_created_by", ["created_by"])
-    .index("by_created_by_and_created_date", ["created_by", "created_date"]),
+    .index("by_created_by_and_created_date", ["created_by", "created_date"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_created_date", ["business_id", "created_date"]),
 
   notes: defineTable({
     title: v.string(),
@@ -92,6 +98,7 @@ export default defineSchema({
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
     created_by: v.optional(v.string()), // User email for tenant isolation (optional for migration)
+    business_id: v.optional(v.id("businesses")),
   })
     .index("by_customer", ["customer_id"])
     .index("by_completed", ["completed"])
@@ -99,7 +106,9 @@ export default defineSchema({
     .index("by_created_by", ["created_by"])
     .index("by_created_by_and_created_date", ["created_by", "created_date"])
     .index("by_created_by_and_customer_id", ["created_by", "customer_id"])
-    .index("by_created_by_and_completed", ["created_by", "completed"]),
+    .index("by_created_by_and_completed", ["created_by", "completed"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_created_date", ["business_id", "created_date"]),
 
   subscriptions: defineTable({
     user_email: v.string(),
@@ -122,6 +131,7 @@ export default defineSchema({
   servicePhotos: defineTable({
     service_log_id: v.id("serviceLogs"),
     customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
     category: v.string(), // 'before' | 'after'
     storage_id: v.id("_storage"), // Convex file storage
     timestamp: v.string(), // ISO 8601 UTC
@@ -132,7 +142,8 @@ export default defineSchema({
     created_at: v.number(),
   })
     .index("by_service_log", ["service_log_id"])
-    .index("by_customer", ["customer_id"]),
+    .index("by_customer", ["customer_id"])
+    .index("by_business", ["business_id"]),
 
   // Business/Tenant table for multi-tenancy
   businesses: defineTable({
@@ -192,6 +203,7 @@ export default defineSchema({
   // Salt cell cleaning logs for salt pool maintenance tracking
   saltCellLogs: defineTable({
     customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
     cleaning_date: v.string(), // YYYY-MM-DD format
     condition: v.string(), // good, moderate, heavy - scale buildup condition
     notes: v.optional(v.string()),
@@ -200,12 +212,14 @@ export default defineSchema({
     updated_at: v.optional(v.number()),
   })
     .index("by_customer", ["customer_id"])
-    .index("by_cleaning_date", ["cleaning_date"]),
+    .index("by_cleaning_date", ["cleaning_date"])
+    .index("by_business", ["business_id"]),
 
   // Service reports for SMS/Email notifications to customers
   serviceReports: defineTable({
     service_log_id: v.id("serviceLogs"),
     customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
     report_token: v.string(), // UUID v4, generated at record creation
     sent_at: v.optional(v.number()), // Timestamp when last sent
     sent_to_phone: v.optional(v.string()), // Phone number SMS was sent to (E.164)
@@ -217,7 +231,8 @@ export default defineSchema({
   })
     .index("by_service_log", ["service_log_id"])
     .index("by_token", ["report_token"])
-    .index("by_expires_at", ["expires_at"]),
+    .index("by_expires_at", ["expires_at"])
+    .index("by_business", ["business_id"]),
 
   // Month 1 roadmap: work-order operations (one-off + recurring)
   workOrders: defineTable({
@@ -248,6 +263,7 @@ export default defineSchema({
   // Month 1 roadmap: invoice drafts for completed work
   invoices: defineTable({
     customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
     work_order_id: v.optional(v.id("workOrders")),
     source_quote_id: v.optional(v.id("quotes")),
     service_log_id: v.optional(v.id("serviceLogs")),
@@ -280,11 +296,14 @@ export default defineSchema({
     .index("by_source_quote", ["source_quote_id"])
     .index("by_stripe_checkout_session", ["stripe_checkout_session_id"])
     .index("by_created_by_and_status", ["created_by", "status", "created_at"])
-    .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"]),
+    .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_status", ["business_id", "status", "created_at"]),
 
   // Phase 2 roadmap: quote/deposit workflow
   quotes: defineTable({
     customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
     created_by: v.string(),
     title: v.string(),
     description: v.optional(v.string()),
@@ -313,7 +332,9 @@ export default defineSchema({
     .index("by_customer", ["customer_id"])
     .index("by_status", ["status"])
     .index("by_converted_work_order", ["converted_work_order_id"])
-    .index("by_deposit_checkout_session", ["deposit_checkout_session_id"]),
+    .index("by_deposit_checkout_session", ["deposit_checkout_session_id"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_status", ["business_id", "status", "created_at"]),
 
   // Month 1 roadmap: service-text infrastructure and communication events
   communications: defineTable({
@@ -336,6 +357,7 @@ export default defineSchema({
     provider_message_id: v.optional(v.string()),
     error: v.optional(v.string()),
     created_by: v.string(),
+    business_id: v.optional(v.id("businesses")),
     created_at: v.number(),
     updated_at: v.number(),
   })
@@ -346,7 +368,9 @@ export default defineSchema({
     .index("by_invoice", ["invoice_id"])
     .index("by_quote", ["quote_id"])
     .index("by_created_by_and_status", ["created_by", "status", "created_at"])
-    .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"]),
+    .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"])
+    .index("by_business", ["business_id"])
+    .index("by_business_and_status", ["business_id", "status", "created_at"]),
 
   // Stripe webhook idempotency and delivery diagnostics
   stripeWebhookEvents: defineTable({

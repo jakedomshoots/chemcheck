@@ -2,11 +2,26 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { validateEmail, validatePhone } from "./validation";
 import { normalizeTaxRate } from "./tax";
+import {
+  getBusinessContext,
+  requireCustomerAccess,
+  requireCustomerRole,
+  requireUserEmail,
+} from "./authorization";
 
 const VALID_STATUSES = ["draft", "sent", "paid", "cancelled"] as const;
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_BACKFILL_BATCH_SIZE = 100;
 const MAX_BACKFILL_BATCH_SIZE = 500;
+const BILLING_WRITE_ROLES = ["owner", "admin"] as const;
+
+async function requireInvoiceAccess(ctx: any, invoice: any, userEmail: string, write = false) {
+  const customer = await ctx.db.get(invoice.customer_id);
+  if (!customer) throw new Error("Customer not found or access denied");
+  if (write) return await requireCustomerRole(ctx, customer, userEmail, BILLING_WRITE_ROLES);
+  await requireCustomerAccess(ctx, customer, userEmail);
+  return undefined;
+}
 
 function validateStatus(status: string): void {
   if (!VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
@@ -130,25 +145,36 @@ export const list = query({
     numItems: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const numItems = clampPageSize(args.numItems);
-    const email = identity.email!;
+    const business = await getBusinessContext(ctx, email);
+
+    if (args.customer_id) {
+      const customer = await ctx.db.get(args.customer_id);
+      if (!customer) throw new Error("Customer not found or access denied");
+      await requireCustomerAccess(ctx, customer, email);
+    }
 
     let query;
     // Prefer the most selective index, then apply any remaining filters in JS.
-    if (args.customer_id) {
+    if (business) {
+      query = args.status
+        ? ctx.db.query("invoices").withIndex("by_business_and_status", (q: any) =>
+            q.eq("business_id", business.businessId).eq("status", args.status))
+        : ctx.db.query("invoices").withIndex("by_business", (q: any) =>
+            q.eq("business_id", business.businessId));
+    } else if (args.customer_id) {
       query = ctx.db
         .query("invoices")
         .withIndex("by_created_by_and_customer", (q) =>
-          q.eq("created_by", email).eq("customer_id", args.customer_id)
+          q.eq("created_by", email).eq("customer_id", args.customer_id!)
         );
     } else if (args.status) {
       query = ctx.db
         .query("invoices")
         .withIndex("by_created_by_and_status", (q) =>
-          q.eq("created_by", email).eq("status", args.status)
+          q.eq("created_by", email).eq("status", args.status!)
         );
     } else {
       query = ctx.db
@@ -163,9 +189,8 @@ export const list = query({
 
     let invoices = pageResult.page;
 
-    if (args.status && args.customer_id) {
-      invoices = invoices.filter((invoice) => invoice.status === args.status);
-    }
+    if (args.customer_id) invoices = invoices.filter((invoice: any) => invoice.customer_id === args.customer_id);
+    if (args.status) invoices = invoices.filter((invoice: any) => invoice.status === args.status);
 
     if (args.source_quote_id) {
       invoices = invoices.filter((invoice) => invoice.source_quote_id === args.source_quote_id);
@@ -182,12 +207,11 @@ export const list = query({
 export const get = query({
   args: { id: v.id("invoices") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    await requireInvoiceAccess(ctx, invoice, email);
 
     return invoice;
   },
@@ -200,14 +224,12 @@ export const getForPayment = internalQuery({
   },
   handler: async (ctx, args) => {
     const invoice = await ctx.db.get(args.id);
-    if (!invoice || invoice.created_by !== args.user_email) {
+    if (!invoice) {
       throw new Error("Invoice not found or access denied");
     }
-
+    await requireInvoiceAccess(ctx, invoice, args.user_email);
     const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
-      throw new Error("Customer not found or access denied");
-    }
+    if (!customer) throw new Error("Customer not found or access denied");
 
     return { invoice, customer };
   },
@@ -229,13 +251,13 @@ export const createDraft = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer) {
       throw new Error("Customer not found or access denied");
     }
+    const business = await requireCustomerRole(ctx, customer, email, BILLING_WRITE_ROLES);
 
     let resolvedWorkOrderId = args.work_order_id;
     let resolvedSourceQuoteId = args.source_quote_id;
@@ -243,9 +265,10 @@ export const createDraft = mutation({
 
     if (resolvedSourceQuoteId) {
       const quote = await ctx.db.get(resolvedSourceQuoteId);
-      if (!quote || quote.created_by !== identity.email) {
+      if (!quote) {
         throw new Error("Quote not found or access denied");
       }
+      await requireCustomerAccess(ctx, customer, email);
       if (quote.customer_id !== args.customer_id) {
         throw new Error("Quote customer does not match invoice customer");
       }
@@ -255,7 +278,7 @@ export const createDraft = mutation({
 
     if (resolvedWorkOrderId) {
       const workOrder = await ctx.db.get(resolvedWorkOrderId);
-      if (!workOrder || workOrder.created_by !== identity.email) {
+      if (!workOrder) {
         throw new Error("Work order not found or access denied");
       }
       if (workOrder.customer_id !== args.customer_id) {
@@ -280,7 +303,7 @@ export const createDraft = mutation({
 
     if (resolvedSourceQuoteId) {
       const quote = await ctx.db.get(resolvedSourceQuoteId);
-      if (!quote || quote.created_by !== identity.email) {
+      if (!quote) {
         throw new Error("Quote not found or access denied");
       }
       if (quote.customer_id !== args.customer_id) {
@@ -321,7 +344,8 @@ export const createDraft = mutation({
       work_order_id: resolvedWorkOrderId,
       source_quote_id: resolvedSourceQuoteId,
       service_log_id: undefined,
-      created_by: identity.email!,
+      business_id: business?.businessId,
+      created_by: email,
       status: initialStatus,
       line_items: args.line_items,
       subtotal,
@@ -355,8 +379,7 @@ export const backfillMissingNotesBatch = mutation({
     dry_run: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const batchSize = Math.max(
       1,
@@ -364,7 +387,7 @@ export const backfillMissingNotesBatch = mutation({
     );
     const page = await ctx.db
       .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+      .withIndex("by_created_by", (q) => q.eq("created_by", email))
       .paginate({
         cursor: args.cursor ?? null,
         numItems: batchSize,
@@ -413,12 +436,11 @@ export const backfillMissingNotesBatch = mutation({
 export const countMissingNotes = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const invoices = await ctx.db
       .query("invoices")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+      .withIndex("by_created_by", (q) => q.eq("created_by", email))
       .collect();
 
     let missing = 0;
@@ -452,8 +474,8 @@ export const batchCreateFromCompletedWorkOrders = mutation({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
+    const business = await getBusinessContext(ctx, email);
     if (args.from_date > args.to_date) {
       throw new Error("From date must be on or before To date");
     }
@@ -463,14 +485,15 @@ export const batchCreateFromCompletedWorkOrders = mutation({
     const dueInDays = Math.max(0, Math.min(60, Math.floor(args.due_in_days ?? 7)));
     const limit = Math.max(1, Math.min(200, Math.floor(args.limit ?? 100)));
 
-    const workOrders = await ctx.db
-      .query("workOrders")
-      .withIndex("by_created_by_and_scheduled_date", (q) =>
-        q
-          .eq("created_by", identity.email!)
-          .gte("scheduled_date", args.from_date)
-          .lte("scheduled_date", args.to_date)
-      )
+    const workOrders = await (business
+      ? ctx.db.query("workOrders").withIndex("by_business_and_scheduled_date", (q: any) =>
+          q.eq("business_id", business.businessId)
+            .gte("scheduled_date", args.from_date)
+            .lte("scheduled_date", args.to_date))
+      : ctx.db.query("workOrders").withIndex("by_created_by_and_scheduled_date", (q) =>
+          q.eq("created_by", email)
+            .gte("scheduled_date", args.from_date)
+            .lte("scheduled_date", args.to_date)))
       .filter((q) => q.eq(q.field("status"), "completed"))
       .take(limit);
 
@@ -502,7 +525,7 @@ export const batchCreateFromCompletedWorkOrders = mutation({
         let linkedQuote: any = null;
         if (workOrder.source_quote_id) {
           const quote = await ctx.db.get(workOrder.source_quote_id);
-          if (quote && quote.created_by === identity.email) {
+          if (quote && (!quote.business_id || String(quote.business_id) === String(business?.businessId))) {
             linkedQuote = quote;
           }
         }
@@ -555,7 +578,8 @@ export const batchCreateFromCompletedWorkOrders = mutation({
           work_order_id: workOrder._id,
           source_quote_id: linkedQuote?._id || workOrder.source_quote_id,
           service_log_id: undefined,
-          created_by: identity.email!,
+          business_id: business?.businessId ?? workOrder.business_id,
+          created_by: email,
           status: initialStatus,
           line_items: lineItems,
           subtotal,
@@ -599,14 +623,13 @@ export const updateStatus = mutation({
     payment_url: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     validateStatus(args.status);
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    await requireInvoiceAccess(ctx, invoice, email, true);
 
     const now = Date.now();
     await ctx.db.patch(args.id, {
@@ -629,20 +652,20 @@ export const sendInvoice = mutation({
     recipient_override: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    const business = await requireInvoiceAccess(ctx, invoice, email, true);
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       throw new Error("Cannot send an invoice that is paid or cancelled");
     }
 
     const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer) {
       throw new Error("Customer not found or access denied");
     }
+    await requireCustomerAccess(ctx, customer, email);
 
     const configuredBaseUrl = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
     const paymentUrl = configuredBaseUrl
@@ -680,7 +703,8 @@ export const sendInvoice = mutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
-      created_by: identity.email!,
+      business_id: business?.businessId ?? invoice.business_id,
+      created_by: email,
       created_at: now,
       updated_at: now,
     });
@@ -704,16 +728,17 @@ export const finalizeSend = internalMutation({
   },
   handler: async (ctx, args) => {
     const invoice = await ctx.db.get(args.id);
-    if (!invoice || invoice.created_by !== args.user_email) {
+    if (!invoice) {
       throw new Error("Invoice not found or access denied");
     }
+    const business = await requireInvoiceAccess(ctx, invoice, args.user_email, true);
 
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       throw new Error("Cannot send an invoice that is paid or cancelled");
     }
 
     const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
+    if (!customer) {
       throw new Error("Customer not found or access denied");
     }
 
@@ -749,6 +774,7 @@ export const finalizeSend = internalMutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
+      business_id: business?.businessId ?? invoice.business_id,
       created_by: args.user_email,
       created_at: now,
       updated_at: now,
@@ -766,12 +792,11 @@ export const finalizeSend = internalMutation({
 export const markPaid = mutation({
   args: { id: v.id("invoices") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    await requireInvoiceAccess(ctx, invoice, email, true);
     if (invoice.stripe_checkout_session_id && invoice.status === "sent") {
       throw new Error("This invoice is linked to Stripe. It will be marked paid automatically after Stripe confirms payment.");
     }
@@ -818,10 +843,11 @@ const MAX_REMINDERS_QUEUED = 50;
 export const queueUnpaidReminders = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const email = identity.email!;
+    const email = await requireUserEmail(ctx);
+    const business = await getBusinessContext(ctx, email);
+    if (business && !(BILLING_WRITE_ROLES as readonly string[]).includes(business.role)) {
+      throw new Error("Insufficient role permissions");
+    }
     const now = Date.now();
     const today = new Date().toISOString().slice(0, 10);
 
@@ -829,11 +855,11 @@ export const queueUnpaidReminders = mutation({
     // invoice_unpaid_reminder in JS. This avoids collecting all communications.
     const latestReminderByInvoice = new Map<string, { status: string; timestamp: number }>();
     for (const status of REMINDER_STATUSES) {
-      const communications = await ctx.db
-        .query("communications")
-        .withIndex("by_created_by_and_status", (q) =>
-          q.eq("created_by", email).eq("status", status)
-        )
+      const communications = await (business
+        ? ctx.db.query("communications").withIndex("by_business_and_status", (q: any) =>
+            q.eq("business_id", business.businessId).eq("status", status))
+        : ctx.db.query("communications").withIndex("by_created_by_and_status", (q) =>
+            q.eq("created_by", email).eq("status", status)))
         .order("desc")
         .take(MAX_REMINDER_COMM_SCAN_PER_STATUS);
 
@@ -853,11 +879,11 @@ export const queueUnpaidReminders = mutation({
     }
 
     // Bounded scan: only consider sent invoices for this user.
-    const pending = await ctx.db
-      .query("invoices")
-      .withIndex("by_created_by_and_status", (q) =>
-        q.eq("created_by", email).eq("status", "sent")
-      )
+    const pending = await (business
+      ? ctx.db.query("invoices").withIndex("by_business_and_status", (q: any) =>
+          q.eq("business_id", business.businessId).eq("status", "sent"))
+      : ctx.db.query("invoices").withIndex("by_created_by_and_status", (q) =>
+          q.eq("created_by", email).eq("status", "sent")))
       .order("desc")
       .take(MAX_SENT_INVOICE_SCAN);
 
@@ -874,7 +900,12 @@ export const queueUnpaidReminders = mutation({
       }
 
       const customer = await ctx.db.get(invoice.customer_id);
-      if (!customer || customer.created_by !== email) continue;
+      if (!customer) continue;
+      try {
+        await requireCustomerRole(ctx, customer, email, BILLING_WRITE_ROLES);
+      } catch {
+        continue;
+      }
 
       const destination = resolveReminderDestination(customer);
       if (!destination) continue;
@@ -898,6 +929,7 @@ export const queueUnpaidReminders = mutation({
         provider: undefined,
         provider_message_id: undefined,
         error: undefined,
+        business_id: business?.businessId ?? invoice.business_id,
         created_by: email,
         created_at: now,
         updated_at: now,

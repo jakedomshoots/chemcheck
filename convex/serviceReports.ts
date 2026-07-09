@@ -14,6 +14,7 @@ import { query, mutation, action, internalMutation, internalQuery } from "./_gen
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
+import { requireCustomerAccess, requireUserEmail } from "./authorization";
 
 /**
  * Helper: Verify service log ownership
@@ -29,9 +30,10 @@ async function verifyServiceLogOwnership(
   }
 
   const customer = await ctx.db.get(serviceLog.customer_id);
-  if (!customer || customer.created_by !== userEmail) {
+  if (!customer) {
     throw new Error("Access denied");
   }
+  await requireCustomerAccess(ctx, customer, userEmail);
 
   return { serviceLog, customer };
 }
@@ -122,14 +124,13 @@ export const getOrCreateReport = mutation({
     service_log_id: v.id("serviceLogs"),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     // Verify ownership of service log
     const { serviceLog } = await verifyServiceLogOwnership(
       ctx,
       args.service_log_id,
-      identity.email!
+      email
     );
 
     // Check if report already exists for this service log
@@ -161,6 +162,7 @@ export const getOrCreateReport = mutation({
     const reportId = await ctx.db.insert("serviceReports", {
       service_log_id: args.service_log_id,
       customer_id: serviceLog.customer_id,
+      business_id: serviceLog.business_id,
       report_token: reportToken,
       created_at: createdAt,
     });
@@ -186,11 +188,10 @@ export const getByServiceLog = query({
     service_log_id: v.id("serviceLogs"),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     // Verify ownership
-    await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
+    await verifyServiceLogOwnership(ctx, args.service_log_id, email);
 
     const report = await ctx.db
       .query("serviceReports")
@@ -248,7 +249,7 @@ export const cleanupExpiredReportsAndLogs = internalMutation({
     while (true) {
       const expiredReports = await ctx.db
         .query("serviceReports")
-        .withIndex("by_expires_at", (q) => q.lt(q.field("expires_at"), now))
+        .withIndex("by_expires_at", (q) => q.lt("expires_at", now))
         .take(BATCH_SIZE);
 
       if (expiredReports.length === 0) break;
@@ -264,7 +265,7 @@ export const cleanupExpiredReportsAndLogs = internalMutation({
     while (true) {
       const oldLogs = await ctx.db
         .query("reportAccessLogs")
-        .withIndex("by_accessed_at", (q) => q.lt(q.field("accessed_at"), cutoff))
+        .withIndex("by_accessed_at", (q) => q.lt("accessed_at", cutoff))
         .take(BATCH_SIZE);
 
       if (oldLogs.length === 0) break;

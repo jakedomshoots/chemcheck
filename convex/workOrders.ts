@@ -1,67 +1,29 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { normalizeTaxRate } from "./tax";
+import {
+  getBusinessContext,
+  requireCustomerAccess,
+  requireCustomerRole,
+  requireUserEmail,
+} from "./authorization";
 
 const VALID_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
-const WORK_ORDER_WRITE_ROLES = new Set(["owner", "admin", "technician"]);
-
-async function resolveBusinessContext(ctx: any, userEmail: string) {
-  const teamMember = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-
-  if (teamMember) {
-    const teamBusiness = await ctx.db.get(teamMember.business_id);
-    if (teamBusiness) return teamBusiness;
-  }
-
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-    .first();
-}
-
-async function getActiveBusinessMemberEmails(
-  ctx: any,
-  businessId: any,
-  ownerEmail: string
-): Promise<Set<string>> {
-  const members = await ctx.db
-    .query("team_members")
-    .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .collect();
-
-  const emails = new Set<string>([ownerEmail]);
-  for (const member of members) {
-    if (member.user_email) {
-      emails.add(member.user_email);
-    }
-  }
-  return emails;
-}
-
-async function getAllowedCreatedByEmails(ctx: any, userEmail: string): Promise<Set<string>> {
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return new Set([userEmail]);
-  return await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-}
+const WORK_ORDER_WRITE_ROLES = ["owner", "admin", "technician"] as const;
 
 async function accessibleWorkOrdersQuery(
   ctx: any,
   userEmail: string,
   scheduledDate: string | undefined
 ) {
-  const business = await resolveBusinessContext(ctx, userEmail);
+  const business = await getBusinessContext(ctx, userEmail);
 
   if (business) {
     return ctx.db
       .query("workOrders")
       .withIndex("by_business_and_scheduled_date", (q: any) => {
-        let builder = q.eq("business_id", business._id);
+        let builder = q.eq("business_id", business.businessId);
         if (scheduledDate) {
           builder = builder.eq("scheduled_date", scheduledDate);
         }
@@ -85,49 +47,10 @@ function clampWorkOrderPageSize(numItems: number | undefined): number {
   return Math.max(1, Math.min(200, Math.floor(numItems ?? 50)));
 }
 
-async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-  if (!customer) return false;
-  if (customer.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(customer.created_by);
-}
-
-async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): Promise<boolean> {
-  if (!workOrder) return false;
-  if (workOrder.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(workOrder.created_by);
-}
-
-async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
-  const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
-  const ownerEmail = String(business?.owner_email || "").trim().toLowerCase();
-  if (ownerEmail && normalizedUserEmail === ownerEmail) {
-    return "owner";
-  }
-
-  const member = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) =>
-      q.and(
-        q.eq(q.field("business_id"), business._id),
-        q.eq(q.field("is_active"), true),
-      )
-    )
-    .first();
-
-  return member?.role || null;
-}
-
-async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set<string>): Promise<void> {
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return;
-
-  const role = await getBusinessRole(ctx, business, userEmail);
-  if (!role || !allowedRoles.has(role)) {
-    throw new Error("Insufficient role permissions");
-  }
+async function requireWorkOrderRole(ctx: any, workOrder: any, userEmail: string) {
+  const customer = await ctx.db.get(workOrder.customer_id);
+  if (!customer) throw new Error("Customer not found or access denied");
+  return await requireCustomerRole(ctx, customer, userEmail, WORK_ORDER_WRITE_ROLES);
 }
 
 function normalizeWorkOrderDate(value: unknown): string {
@@ -166,11 +89,10 @@ export const list = query({
     numItems: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const numItems = clampWorkOrderPageSize(args.numItems);
-    const query = await accessibleWorkOrdersQuery(ctx, identity.email!, args.scheduled_date);
+    const query = await accessibleWorkOrdersQuery(ctx, email, args.scheduled_date);
 
     const pageResult = await query.order("asc").paginate({
       cursor: args.cursor ?? null,
@@ -180,10 +102,10 @@ export const list = query({
     let workOrders = pageResult.page;
 
     if (args.status) {
-      workOrders = workOrders.filter((item) => item.status === args.status);
+      workOrders = workOrders.filter((item: any) => item.status === args.status);
     }
 
-    workOrders.sort((a, b) => {
+    workOrders.sort((a: any, b: any) => {
       const aDate = normalizeWorkOrderDate((a as { scheduled_date?: unknown }).scheduled_date);
       const bDate = normalizeWorkOrderDate((b as { scheduled_date?: unknown }).scheduled_date);
       const dateDiff = aDate.localeCompare(bDate);
@@ -204,12 +126,13 @@ export const list = query({
 export const get = query({
   args: { id: v.id("workOrders") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
+    const customer = await ctx.db.get(workOrder.customer_id);
+    if (!customer) throw new Error("Customer not found or access denied");
+    await requireCustomerAccess(ctx, customer, email);
 
     return workOrder;
   },
@@ -228,27 +151,21 @@ export const create = mutation({
     source_quote_id: v.optional(v.id("quotes")),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const customer = await ctx.db.get(args.customer_id);
     if (!customer) {
       throw new Error("Customer not found or access denied");
     }
-    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-      throw new Error("Customer not found or access denied");
-    }
-    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
+    const business = await requireCustomerRole(ctx, customer, email, WORK_ORDER_WRITE_ROLES);
 
     validatePriority(args.priority);
-
-    const business = await resolveBusinessContext(ctx, identity.email!);
 
     const now = Date.now();
     const workOrderId = await ctx.db.insert("workOrders", {
       customer_id: args.customer_id,
-      business_id: business?._id,
-      created_by: customer.created_by || identity.email!,
+      business_id: business?.businessId,
+      created_by: email,
       title: args.title.trim(),
       description: args.description?.trim(),
       status: "scheduled",
@@ -280,13 +197,11 @@ export const update = mutation({
     priority: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const current = await ctx.db.get(args.id);
     if (!current) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, current, identity.email!))) throw new Error("Access denied");
-    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
+    await requireWorkOrderRole(ctx, current, email);
 
     if (args.status) validateStatus(args.status);
     if (args.priority) validatePriority(args.priority);
@@ -319,21 +234,17 @@ export const complete = mutation({
     tax_rate: v.optional(v.number()), // e.g. 0.0825
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
-    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
+    const business = await requireWorkOrderRole(ctx, workOrder, email);
 
     const customer = await ctx.db.get(workOrder.customer_id);
     if (!customer) {
       throw new Error("Customer not found or access denied");
     }
-    if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-      throw new Error("Customer not found or access denied");
-    }
+    await requireCustomerAccess(ctx, customer, email);
 
     const now = Date.now();
 
@@ -349,7 +260,7 @@ export const complete = mutation({
       const quote = await ctx.db.get(workOrder.source_quote_id);
       if (
         quote &&
-        quote.created_by === identity.email &&
+        (!quote.business_id || String(quote.business_id) === String(business?.businessId)) &&
         quote.deposit_required &&
         quote.deposit_required > 0 &&
         quote.deposit_status !== "paid"
@@ -357,7 +268,7 @@ export const complete = mutation({
         invoiceBlockedReason = "deposit_pending";
       } else if (
         quote &&
-        quote.created_by === identity.email &&
+        (!quote.business_id || String(quote.business_id) === String(business?.businessId)) &&
         quote.deposit_status === "paid" &&
         quote.deposit_required &&
         quote.deposit_required > 0
@@ -389,7 +300,8 @@ export const complete = mutation({
         work_order_id: args.id,
         source_quote_id: workOrder.source_quote_id,
         service_log_id: undefined,
-        created_by: identity.email!,
+        business_id: business?.businessId,
+        created_by: email,
         status: initialStatus,
         line_items: [
           {
@@ -434,7 +346,8 @@ export const complete = mutation({
         provider: undefined,
         provider_message_id: undefined,
         error: undefined,
-        created_by: identity.email!,
+        business_id: business?.businessId,
+        created_by: email,
         created_at: now,
         updated_at: now,
       });
@@ -451,13 +364,11 @@ export const complete = mutation({
 export const remove = mutation({
   args: { id: v.id("workOrders") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
-    if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
-    await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
+    await requireWorkOrderRole(ctx, workOrder, email);
 
     await ctx.db.delete(args.id);
   },

@@ -1,9 +1,17 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import {
+    getBusinessContext,
+    requireBusinessContext,
+    requireCustomerAccess,
+    requireCustomerRole,
+    requireUserEmail,
+} from "./authorization";
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
+const NOTE_WRITE_ROLES = ["owner", "admin", "technician"] as const;
 
 function boundedLimit(limit: number | undefined): number {
     if (limit === undefined) return DEFAULT_PAGE_LIMIT;
@@ -40,13 +48,15 @@ export const list = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         const sortOrder = args.order === "-created_date" ? "desc" : "asc";
-        const noteQuery = ctx.db
-            .query("notes")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+        const business = await getBusinessContext(ctx, email);
+        const noteQuery = (business
+            ? ctx.db.query("notes").withIndex("by_business_and_created_date", (q: any) =>
+                q.eq("business_id", business.businessId)
+            )
+            : ctx.db.query("notes").withIndex("by_created_by", (q: any) => q.eq("created_by", email)))
             .order(sortOrder);
 
         return await noteQuery.paginate({
@@ -66,20 +76,21 @@ export const filter = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         if (args.customer_id !== undefined) {
             // Verify ownership first
             const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
+            if (!customer) {
                 throw new Error("Customer not found or access denied");
             }
+            await requireCustomerAccess(ctx, customer, email);
         }
 
-        let noteQuery = ctx.db
-            .query("notes")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!));
+        const business = await getBusinessContext(ctx, email);
+        let noteQuery = business
+            ? ctx.db.query("notes").withIndex("by_business", (q: any) => q.eq("business_id", business.businessId))
+            : ctx.db.query("notes").withIndex("by_created_by", (q: any) => q.eq("created_by", email));
 
         if (args.customer_id !== undefined) {
             noteQuery = noteQuery.filter((q) => q.eq(q.field("customer_id"), args.customer_id!));
@@ -106,14 +117,14 @@ export const getByCustomer = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Customer not found or access denied");
         }
+        await requireCustomerAccess(ctx, customer, email);
 
         return await ctx.db
             .query("notes")
@@ -136,22 +147,26 @@ export const create = mutation({
         priority: v.string(),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'note.create');
+        await enforceRateLimit(ctx, email, 'note.create');
 
         // Validate category and priority
         validateCategory(args.category);
         validatePriority(args.priority);
 
         // If note is linked to a customer, verify ownership (tenant isolation)
+        let business;
         if (args.customer_id) {
             const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
+            if (!customer) {
                 throw new Error("Customer not found or access denied");
             }
+            business = await requireCustomerRole(ctx, customer, email, NOTE_WRITE_ROLES);
+        } else {
+            business = await requireBusinessContext(ctx, email);
+            if (business.role === "viewer") throw new Error("Insufficient role permissions");
         }
 
         const now = new Date();
@@ -161,7 +176,8 @@ export const create = mutation({
             ...args,
             completed: false,
             created_date: today,
-            created_by: identity.email!,
+            created_by: email,
+            business_id: business?.businessId,
         });
 
         return noteId;
@@ -180,32 +196,43 @@ export const update = mutation({
         completed: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'note.create');
+        await enforceRateLimit(ctx, email, 'note.update');
 
         // Verify note access (tenant isolation)
         const note = await ctx.db.get(args.id);
         if (!note) throw new Error("Note not found");
 
         // SECURITY: Verify ownership - check both customer-linked and general notes
+        let business;
         if (note.customer_id) {
             // Note is linked to a customer - verify customer ownership
             const customer = await ctx.db.get(note.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
+            if (!customer) {
                 throw new Error("Access denied");
             }
+            business = await requireCustomerRole(ctx, customer, email, NOTE_WRITE_ROLES);
         } else {
-            // General note (no customer_id) - verify created_by matches user
-            if (note.created_by !== identity.email) {
-                throw new Error("Access denied: cannot modify another user's note");
+            if (!note.business_id) {
+                if (note.created_by !== email) throw new Error("Access denied");
+            } else {
+                business = await requireBusinessContext(ctx, email, String(note.business_id));
+                if (business.role === "viewer") throw new Error("Insufficient role permissions");
             }
         }
 
         const { id, ...updates } = args;
-        await ctx.db.patch(id, updates);
+        if (updates.customer_id && updates.customer_id !== note.customer_id) {
+            const replacementCustomer = await ctx.db.get(updates.customer_id);
+            if (!replacementCustomer) throw new Error("Customer not found or access denied");
+            const replacementBusiness = await requireCustomerRole(ctx, replacementCustomer, email, NOTE_WRITE_ROLES);
+            if (String(replacementBusiness?.businessId || "") !== String(business?.businessId || "")) {
+                throw new Error("Notes cannot be moved between businesses");
+            }
+        }
+        await ctx.db.patch(id, { ...updates, business_id: business?.businessId ?? note.business_id });
 
         return id;
     },
@@ -215,11 +242,10 @@ export const update = mutation({
 export const remove = mutation({
     args: { id: v.id("notes") },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'note.create');
+        await enforceRateLimit(ctx, email, 'note.delete');
 
         // Verify note access (tenant isolation)
         const note = await ctx.db.get(args.id);
@@ -229,13 +255,16 @@ export const remove = mutation({
         if (note.customer_id) {
             // Note is linked to a customer - verify customer ownership
             const customer = await ctx.db.get(note.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
+            if (!customer) {
                 throw new Error("Access denied");
             }
+            await requireCustomerRole(ctx, customer, email, NOTE_WRITE_ROLES);
         } else {
-            // General note (no customer_id) - verify created_by matches user
-            if (note.created_by !== identity.email) {
-                throw new Error("Access denied: cannot delete another user's note");
+            if (!note.business_id) {
+                if (note.created_by !== email) throw new Error("Access denied");
+            } else {
+                const business = await requireBusinessContext(ctx, email, String(note.business_id));
+                if (business.role === "viewer") throw new Error("Insufficient role permissions");
             }
         }
 

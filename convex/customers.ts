@@ -2,65 +2,25 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
+import {
+    canAccessCustomer,
+    getBusinessContext,
+    requireBusinessContext,
+    requireCustomerRole,
+    requireUserEmail,
+} from "./authorization";
 
-const CUSTOMER_WRITE_ROLES = new Set(["owner", "admin"]);
-
-function normalizeEmail(email: any): string {
-    return String(email || "").trim().toLowerCase();
-}
-
-async function resolveBusinessContext(ctx: any, userEmail: string) {
-    const teamMember = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .first();
-
-    if (teamMember) {
-        const teamBusiness = await ctx.db.get(teamMember.business_id);
-        if (teamBusiness) return teamBusiness;
-    }
-
-    return await ctx.db
-        .query("businesses")
-        .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-        .first();
-}
-
-async function getActiveBusinessMemberEmails(
-    ctx: any,
-    businessId: any,
-    ownerEmail: string
-): Promise<Set<string>> {
-    const members = await ctx.db
-        .query("team_members")
-        .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .collect();
-
-    const emails = new Set<string>([ownerEmail]);
-    for (const member of members) {
-        if (member.user_email) {
-            emails.add(member.user_email);
-        }
-    }
-    return emails;
-}
+const CUSTOMER_WRITE_ROLES = ["owner", "admin"] as const;
 
 async function listAccessibleCustomers(ctx: any, userEmail: string) {
     // Guard: if userEmail is undefined/empty (e.g. Clerk token missing email claim),
     // throw a clear error instead of silently returning an empty list.
-    const normalizedEmail = normalizeEmail(userEmail);
-    if (!normalizedEmail) {
-        throw new Error("listAccessibleCustomers: userEmail is empty or undefined. Check that the Clerk JWT includes an email claim.");
-    }
-
-    const business = await resolveBusinessContext(ctx, userEmail);
+    const business = await getBusinessContext(ctx, userEmail);
 
     if (business) {
         return await ctx.db
             .query("customers")
-            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+            .withIndex("by_business", (q: any) => q.eq("business_id", business.businessId))
             .collect();
     }
 
@@ -70,70 +30,25 @@ async function listAccessibleCustomers(ctx: any, userEmail: string) {
         .collect();
 }
 
-async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-    if (!customer) return false;
-
-    const business = await resolveBusinessContext(ctx, userEmail);
-    if (business) {
-        return String(customer.business_id || "") === String(business._id);
-    }
-
-    const normalizedUserEmail = normalizeEmail(userEmail);
-    const createdBy = normalizeEmail(customer.created_by);
-    return createdBy === normalizedUserEmail;
-}
-
-async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
-    const normalizedUserEmail = normalizeEmail(userEmail);
-    const ownerEmail = normalizeEmail(business?.owner_email);
-    if (ownerEmail && normalizedUserEmail === ownerEmail) {
-        return "owner";
-    }
-
-    const member = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) =>
-            q.and(
-                q.eq(q.field("business_id"), business._id),
-                q.eq(q.field("is_active"), true)
-            )
-        )
-        .first();
-
-    return member?.role || null;
-}
-
-async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set<string>): Promise<void> {
-    const business = await resolveBusinessContext(ctx, userEmail);
-    if (!business) return;
-
-    const role = await getBusinessRole(ctx, business, userEmail);
-    if (!role || !allowedRoles.has(role)) {
-        throw new Error("Insufficient role permissions");
-    }
-}
-
 // Count accessible customers for the current user, bounded by a safe cap.
 export const count = query({
     args: {},
     handler: async (ctx) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         const COUNT_CAP = 1000;
-        const business = await resolveBusinessContext(ctx, identity.email!);
+        const business = await getBusinessContext(ctx, email);
 
         let customers;
         if (business) {
             customers = await ctx.db
                 .query("customers")
-                .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .withIndex("by_business", (q: any) => q.eq("business_id", business.businessId))
                 .take(COUNT_CAP + 1);
         } else {
             customers = await ctx.db
                 .query("customers")
-                .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+                .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
                 .take(COUNT_CAP + 1);
         }
 
@@ -146,10 +61,8 @@ export const count = query({
 export const list = query({
     args: {},
     handler: async (ctx) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
-
-        const customers = await listAccessibleCustomers(ctx, identity.email!);
+        const email = await requireUserEmail(ctx);
+        const customers = await listAccessibleCustomers(ctx, email);
         // Default limit keeps the query bounded while remaining compatible with existing callers.
         const DEFAULT_LIST_LIMIT = 100;
         return customers.slice(0, DEFAULT_LIST_LIMIT);
@@ -163,22 +76,21 @@ export const listPaginated = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
-        const business = await resolveBusinessContext(ctx, identity.email!);
+        const business = await getBusinessContext(ctx, email);
 
         let result: any;
         if (business) {
             result = await ctx.db
                 .query("customers")
-                .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .withIndex("by_business", (q: any) => q.eq("business_id", business.businessId))
                 .paginate({ cursor: args.cursor ?? null, numItems: limit });
         } else {
             result = await ctx.db
                 .query("customers")
-                .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+                .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
                 .paginate({ cursor: args.cursor ?? null, numItems: limit });
         }
 
@@ -199,25 +111,24 @@ export const filter = query({
         service_day: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Ignore created_by input and enforce tenant-safe lookup on the server.
-        const business = await resolveBusinessContext(ctx, identity.email!);
+        const business = await getBusinessContext(ctx, email);
 
         if (business) {
             if (args.service_day) {
                 return await ctx.db
                     .query("customers")
                     .withIndex("by_business_and_day", (q: any) =>
-                        q.eq("business_id", String(business._id)).eq("service_day", args.service_day)
+                        q.eq("business_id", business.businessId).eq("service_day", args.service_day)
                     )
                     .collect();
             }
 
             return await ctx.db
                 .query("customers")
-                .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .withIndex("by_business", (q: any) => q.eq("business_id", business.businessId))
                 .collect();
         }
 
@@ -225,14 +136,14 @@ export const filter = query({
             return await ctx.db
                 .query("customers")
                 .withIndex("by_created_by_and_service_day" as any, (q: any) =>
-                    q.eq("created_by", identity.email!).eq("service_day", args.service_day)
+                    q.eq("created_by", email).eq("service_day", args.service_day)
                 )
                 .collect();
         }
 
         return await ctx.db
             .query("customers")
-            .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+            .withIndex("by_created_by", (q: any) => q.eq("created_by", email))
             .collect();
     },
 });
@@ -241,13 +152,12 @@ export const filter = query({
 export const get = query({
     args: { id: v.id("customers") },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         const customer = await ctx.db.get(args.id);
         if (!customer) throw new Error("Customer not found");
 
-        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
+        if (!(await canAccessCustomer(ctx, customer, email))) {
             throw new Error("Access denied");
         }
 
@@ -270,23 +180,20 @@ export const create = mutation({
         sort_order: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'customer.create');
+        await enforceRateLimit(ctx, email, 'customer.create');
 
         // SECURITY: Server-side validation and sanitization
         // This cannot be bypassed by attackers sending data directly to Convex
         const validatedData = validateCustomerCreate(args);
-        const business = await resolveBusinessContext(ctx, identity.email!);
-        const createdBy = business ? business.owner_email : identity.email!;
-        const businessId = business ? String(business._id) : undefined;
+        const business = await requireBusinessContext(ctx, email);
 
         const customerId = await ctx.db.insert("customers", {
             ...validatedData,
-            created_by: createdBy,
-            business_id: businessId,
+            created_by: business.ownerEmail,
+            business_id: business.businessId,
         });
 
         return customerId;
@@ -317,19 +224,15 @@ export const update = mutation({
         })),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'customer.update');
+        await enforceRateLimit(ctx, email, 'customer.update');
 
         // Verify ownership (tenant isolation)
         const customer = await ctx.db.get(args.id);
         if (!customer) throw new Error("Customer not found");
-        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-            throw new Error("Access denied");
-        }
-        await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
+        await requireCustomerRole(ctx, customer, email, CUSTOMER_WRITE_ROLES);
 
         const { id, report_settings, ...otherArgs } = args;
 
@@ -384,19 +287,15 @@ export const update = mutation({
 export const remove = mutation({
     args: { id: v.id("customers") },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'customer.delete');
+        await enforceRateLimit(ctx, email, 'customer.delete');
 
         // Verify ownership (tenant isolation)
         const customer = await ctx.db.get(args.id);
         if (!customer) throw new Error("Customer not found");
-        if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
-            throw new Error("Access denied");
-        }
-        await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
+        await requireCustomerRole(ctx, customer, email, CUSTOMER_WRITE_ROLES);
 
         await ctx.db.delete(args.id);
     },

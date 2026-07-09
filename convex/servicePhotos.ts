@@ -2,14 +2,16 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { enforceRateLimit } from "./rateLimit";
+import {
+  assertBusinessRole,
+  requireBusinessContext,
+  requireCustomerAccess,
+  requireCustomerRole,
+  requireUserEmail,
+} from "./authorization";
 
-const runtimeEnv =
-  process.env.CONVEX_DEPLOYMENT_ENV ||
-  process.env.VERCEL_ENV ||
-  process.env.NODE_ENV;
-const allowUnauthenticatedPhotoUpload =
-  process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true" &&
-  runtimeEnv !== "production";
+const PHOTO_UPLOAD_ROLES = ["owner", "admin", "technician"] as const;
+const PHOTO_DELETE_ROLES = ["owner", "admin"] as const;
 
 /**
  * Service Photos mutations and queries for Proof of Service feature
@@ -29,32 +31,10 @@ async function verifyServiceLogOwnership(
   }
 
   const customer = await ctx.db.get(serviceLog.customer_id);
-  if (!customer || customer.created_by !== userEmail) {
+  if (!customer) {
     throw new Error("Access denied");
   }
-
-  return { serviceLog, customer };
-}
-
-// Helper: Verify service log belongs to customer (for limited unauthenticated flows)
-async function verifyServiceLogCustomerLink(
-  ctx: any,
-  serviceLogId: Id<"serviceLogs">,
-  customerId: Id<"customers">
-): Promise<{ serviceLog: any; customer: any }> {
-  const serviceLog = await ctx.db.get(serviceLogId);
-  if (!serviceLog) {
-    throw new Error("Service log not found");
-  }
-
-  const customer = await ctx.db.get(customerId);
-  if (!customer) {
-    throw new Error("Customer not found");
-  }
-
-  if (serviceLog.customer_id !== customerId) {
-    throw new Error("Service log does not belong to customer");
-  }
+  await requireCustomerAccess(ctx, customer, userEmail);
 
   return { serviceLog, customer };
 }
@@ -66,9 +46,10 @@ async function verifyCustomerOwnership(
   userEmail: string
 ): Promise<any> {
   const customer = await ctx.db.get(customerId);
-  if (!customer || customer.created_by !== userEmail) {
+  if (!customer) {
     throw new Error("Customer not found or access denied");
   }
+  await requireCustomerAccess(ctx, customer, userEmail);
   return customer;
 }
 
@@ -79,12 +60,10 @@ async function verifyCustomerOwnership(
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity && !allowUnauthenticatedPhotoUpload) {
-      throw new Error("Not authenticated");
-    }
-    // In dev/auth-bypass flows identity may be absent; ownership is enforced when
-    // the uploadPhoto record is created.
+    const email = await requireUserEmail(ctx);
+    const business = await requireBusinessContext(ctx, email);
+    assertBusinessRole(business.role, PHOTO_UPLOAD_ROLES);
+    await enforceRateLimit(ctx, email, "servicePhoto.uploadUrl");
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -107,22 +86,15 @@ export const uploadPhoto = mutation({
     address: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (identity) {
-      // Enforce rate limiting (database-backed for distributed rate limiting)
-      await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
+    const email = await requireUserEmail(ctx);
+    await enforceRateLimit(ctx, email, 'servicePhoto.create');
 
-      // Verify ownership of service log and customer
-      await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
-      await verifyCustomerOwnership(ctx, args.customer_id, identity.email!);
-    } else {
-      if (!allowUnauthenticatedPhotoUpload) {
-        throw new Error("Not authenticated");
-      }
-      // Limited fallback for auth-bypass/dev workflows:
-      // still enforce that the service log and customer are linked.
-      await verifyServiceLogCustomerLink(ctx, args.service_log_id, args.customer_id);
+    // Verify both entities are linked and the caller can add proof-of-service.
+    const { customer } = await verifyServiceLogOwnership(ctx, args.service_log_id, email);
+    if (String(customer._id) !== String(args.customer_id)) {
+      throw new Error("Service log does not belong to customer");
     }
+    const business = await requireCustomerRole(ctx, customer, email, PHOTO_UPLOAD_ROLES);
 
     // Validate category
     if (args.category !== "before" && args.category !== "after") {
@@ -146,6 +118,7 @@ export const uploadPhoto = mutation({
     const photoId = await ctx.db.insert("servicePhotos", {
       service_log_id: args.service_log_id,
       customer_id: args.customer_id,
+      business_id: business?.businessId,
       storage_id: args.storage_id,
       category: args.category,
       timestamp: args.timestamp,
@@ -173,11 +146,10 @@ export const uploadPhoto = mutation({
 export const getPhotosByServiceLog = query({
   args: { service_log_id: v.id("serviceLogs") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     // Verify ownership
-    await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
+    await verifyServiceLogOwnership(ctx, args.service_log_id, email);
 
     const photos = await ctx.db
       .query("servicePhotos")
@@ -218,11 +190,10 @@ export const getPhotosByServiceLog = query({
 export const getPhotosByCustomer = query({
   args: { customer_id: v.id("customers") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     // Verify ownership
-    await verifyCustomerOwnership(ctx, args.customer_id, identity.email!);
+    await verifyCustomerOwnership(ctx, args.customer_id, email);
 
     const photos = await ctx.db
       .query("servicePhotos")
@@ -260,8 +231,7 @@ export const getPhotosByCustomer = query({
 export const getPhoto = query({
   args: { photo_id: v.id("servicePhotos") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const photo = await ctx.db.get(args.photo_id);
     if (!photo) {
@@ -269,7 +239,7 @@ export const getPhoto = query({
     }
 
     // Verify ownership through customer
-    await verifyCustomerOwnership(ctx, photo.customer_id, identity.email!);
+    await verifyCustomerOwnership(ctx, photo.customer_id, email);
 
     const url = await ctx.storage.getUrl(photo.storage_id);
 
@@ -292,11 +262,10 @@ export const getPhoto = query({
 export const deletePhoto = mutation({
   args: { photo_id: v.id("servicePhotos") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     // Enforce rate limiting (database-backed for distributed rate limiting)
-    await enforceRateLimit(ctx, identity.email!, 'serviceLog.delete');
+    await enforceRateLimit(ctx, email, 'servicePhoto.delete');
 
     const photo = await ctx.db.get(args.photo_id);
     if (!photo) {
@@ -304,7 +273,8 @@ export const deletePhoto = mutation({
     }
 
     // Verify ownership through customer
-    await verifyCustomerOwnership(ctx, photo.customer_id, identity.email!);
+    const customer = await verifyCustomerOwnership(ctx, photo.customer_id, email);
+    await requireCustomerRole(ctx, customer, email, PHOTO_DELETE_ROLES);
 
     // Delete database record first, then storage
     // This ordering ensures that if storage deletion fails, we don't have

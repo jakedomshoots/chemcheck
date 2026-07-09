@@ -2,8 +2,34 @@ import { v } from "convex/values";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
+import {
+  getBusinessContext,
+  requireBusinessContext,
+  requireCustomerAccess,
+  requireCustomerRole,
+  requireUserEmail,
+} from "./authorization";
 
 const VALID_STATUSES = ["queued", "sent", "delivered", "failed"] as const;
+const COMMUNICATION_WRITE_ROLES = ["owner", "admin", "technician"] as const;
+
+async function requireCommunicationAccess(ctx: any, item: any, userEmail: string, write = false) {
+  if (item.customer_id) {
+    const customer = await ctx.db.get(item.customer_id);
+    if (!customer) throw new Error("Customer not found or access denied");
+    if (write) return await requireCustomerRole(ctx, customer, userEmail, COMMUNICATION_WRITE_ROLES);
+    await requireCustomerAccess(ctx, customer, userEmail);
+    return undefined;
+  }
+
+  if (!item.business_id) {
+    if (item.created_by !== userEmail) throw new Error("Access denied");
+    return undefined;
+  }
+  const business = await requireBusinessContext(ctx, userEmail, String(item.business_id));
+  if (write && business.role === "viewer") throw new Error("Insufficient role permissions");
+  return business;
+}
 
 type DeliveryResult = {
   success: boolean;
@@ -246,25 +272,36 @@ export const list = query({
     numItems: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const numItems = clampPageSize(args.numItems);
-    const email = identity.email!;
+    const business = await getBusinessContext(ctx, email);
+
+    if (args.customer_id) {
+      const customer = await ctx.db.get(args.customer_id);
+      if (!customer) throw new Error("Customer not found or access denied");
+      await requireCustomerAccess(ctx, customer, email);
+    }
 
     // Prefer the most selective index, then apply remaining filters in JS.
     let query;
-    if (args.customer_id) {
+    if (business) {
+      query = args.status
+        ? ctx.db.query("communications").withIndex("by_business_and_status", (q: any) =>
+            q.eq("business_id", business.businessId).eq("status", args.status))
+        : ctx.db.query("communications").withIndex("by_business", (q: any) =>
+            q.eq("business_id", business.businessId));
+    } else if (args.customer_id) {
       query = ctx.db
         .query("communications")
         .withIndex("by_created_by_and_customer", (q) =>
-          q.eq("created_by", email).eq("customer_id", args.customer_id)
+          q.eq("created_by", email).eq("customer_id", args.customer_id!)
         );
     } else if (args.status) {
       query = ctx.db
         .query("communications")
         .withIndex("by_created_by_and_status", (q) =>
-          q.eq("created_by", email).eq("status", args.status)
+          q.eq("created_by", email).eq("status", args.status!)
         );
     } else {
       query = ctx.db
@@ -279,9 +316,8 @@ export const list = query({
 
     let items = pageResult.page;
 
-    if (args.status && args.customer_id) {
-      items = items.filter((item) => item.status === args.status);
-    }
+    if (args.customer_id) items = items.filter((item: any) => item.customer_id === args.customer_id);
+    if (args.status) items = items.filter((item: any) => item.status === args.status);
 
     return {
       page: items,
@@ -301,13 +337,13 @@ export const queueServiceText = mutation({
     scheduled_for: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer) {
       throw new Error("Customer not found or access denied");
     }
+    const business = await requireCustomerRole(ctx, customer, email, COMMUNICATION_WRITE_ROLES);
 
     const now = Date.now();
     return await ctx.db.insert("communications", {
@@ -327,7 +363,8 @@ export const queueServiceText = mutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
-      created_by: identity.email!,
+      business_id: business?.businessId,
+      created_by: email,
       created_at: now,
       updated_at: now,
     });
@@ -343,14 +380,13 @@ export const updateStatus = mutation({
     provider_message_id: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     validateStatus(args.status);
 
     const item = await ctx.db.get(args.id);
     if (!item) throw new Error("Communication record not found");
-    if (item.created_by !== identity.email) throw new Error("Access denied");
+    await requireCommunicationAccess(ctx, item, email, true);
 
     const now = Date.now();
     await ctx.db.patch(args.id, {
@@ -373,18 +409,18 @@ export const requeueFailed = mutation({
     only_template_keys: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const email = await requireUserEmail(ctx);
 
     const limit = toPositiveInt(args.limit, 25);
     const allowedTemplates = new Set((args.only_template_keys || []).map((key) => key.trim()).filter(Boolean));
 
     // Bounded scan using the status index; filter template_key in JS.
-    const items = await ctx.db
-      .query("communications")
-      .withIndex("by_created_by_and_status", (q) =>
-        q.eq("created_by", identity.email!).eq("status", "failed")
-      )
+    const business = await getBusinessContext(ctx, email);
+    const items = await (business
+      ? ctx.db.query("communications").withIndex("by_business_and_status", (q: any) =>
+          q.eq("business_id", business.businessId).eq("status", "failed"))
+      : ctx.db.query("communications").withIndex("by_created_by_and_status", (q: any) =>
+          q.eq("created_by", email).eq("status", "failed")))
       .order("desc")
       .take(limit * 4);
 
@@ -420,14 +456,17 @@ export const getForDelivery = internalQuery({
   },
   handler: async (ctx, args) => {
     const item = await ctx.db.get(args.id);
-    if (!item || item.created_by !== args.user_email) {
+    if (!item) {
       throw new Error("Communication record not found or access denied");
     }
-
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
-      .first();
+    const businessContext = await requireCommunicationAccess(ctx, item, args.user_email);
+    const business = businessContext
+      ? await ctx.db.get(businessContext.businessId)
+      : item.business_id
+        ? await ctx.db.get(item.business_id)
+        : await ctx.db.query("businesses")
+          .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
+          .first();
 
     return {
       item,
@@ -446,19 +485,21 @@ export const listQueuedForDelivery = internalQuery({
     const limit = toPositiveInt(args.limit, 25);
     const now = args.now ?? Date.now();
 
-    // Bounded scan of queued communications for this user.
-    const queued = await ctx.db
-      .query("communications")
-      .withIndex("by_created_by_and_status", (q) =>
-        q.eq("created_by", args.user_email).eq("status", "queued")
-      )
+    const businessContext = await getBusinessContext(ctx, args.user_email);
+    // Bounded scan of queued communications for the active business.
+    const queued = await (businessContext
+      ? ctx.db.query("communications").withIndex("by_business_and_status", (q: any) =>
+          q.eq("business_id", businessContext.businessId).eq("status", "queued"))
+      : ctx.db.query("communications").withIndex("by_created_by_and_status", (q) =>
+          q.eq("created_by", args.user_email).eq("status", "queued")))
       .order("asc")
       .take(limit * 4);
 
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
-      .first();
+    const business = businessContext
+      ? await ctx.db.get(businessContext.businessId)
+      : await ctx.db.query("businesses")
+        .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
+        .first();
 
     return queued
       .filter((item) => !item.scheduled_for || item.scheduled_for <= now)
@@ -484,9 +525,10 @@ export const recordDeliveryAttempt = internalMutation({
     validateStatus(args.status);
 
     const item = await ctx.db.get(args.id);
-    if (!item || item.created_by !== args.user_email) {
+    if (!item) {
       throw new Error("Communication record not found or access denied");
     }
+    await requireCommunicationAccess(ctx, item, args.user_email, true);
 
     const now = Date.now();
     const nextAttempts = (item.attempts || 0) + 1;

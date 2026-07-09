@@ -1,9 +1,16 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import {
+    getBusinessContext,
+    requireCustomerAccess,
+    requireCustomerRole,
+    requireUserEmail,
+} from "./authorization";
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
+const CHEMICAL_WRITE_ROLES = ["owner", "admin", "technician"] as const;
 
 function boundedLimit(limit: number | undefined): number {
     if (limit === undefined) return DEFAULT_PAGE_LIMIT;
@@ -20,15 +27,17 @@ export const list = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         const sortOrder = args.order === "-created_date" ? "desc" : "asc";
-        const usageQuery = ctx.db
-            .query("chemicalUsage")
-            .withIndex("by_created_by_and_created_date", (q) =>
-                q.eq("created_by", identity.email!)
+        const business = await getBusinessContext(ctx, email);
+        const usageQuery = (business
+            ? ctx.db.query("chemicalUsage").withIndex("by_business_and_created_date", (q: any) =>
+                q.eq("business_id", business.businessId)
             )
+            : ctx.db.query("chemicalUsage").withIndex("by_created_by_and_created_date", (q: any) =>
+                q.eq("created_by", email)
+            ))
             .order(sortOrder);
 
         return await usageQuery.paginate({
@@ -46,20 +55,21 @@ export const filter = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         if (args.customer_id) {
             // Verify ownership first
             const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
+            if (!customer) {
                 throw new Error("Customer not found or access denied");
             }
+            await requireCustomerAccess(ctx, customer, email);
         }
 
-        let usageQuery = ctx.db
-            .query("chemicalUsage")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!));
+        const business = await getBusinessContext(ctx, email);
+        let usageQuery = business
+            ? ctx.db.query("chemicalUsage").withIndex("by_business", (q: any) => q.eq("business_id", business.businessId))
+            : ctx.db.query("chemicalUsage").withIndex("by_created_by", (q: any) => q.eq("created_by", email));
 
         if (args.customer_id) {
             usageQuery = usageQuery.filter((q) => q.eq(q.field("customer_id"), args.customer_id!));
@@ -80,14 +90,14 @@ export const getByCustomer = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Customer not found or access denied");
         }
+        await requireCustomerAccess(ctx, customer, email);
 
         return await ctx.db
             .query("chemicalUsage")
@@ -109,17 +119,17 @@ export const create = mutation({
         notes: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'chemical.create');
+        await enforceRateLimit(ctx, email, 'chemical.create');
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Customer not found or access denied");
         }
+        const business = await requireCustomerRole(ctx, customer, email, CHEMICAL_WRITE_ROLES);
 
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -127,7 +137,8 @@ export const create = mutation({
         const recordId = await ctx.db.insert("chemicalUsage", {
             ...args,
             created_date: today,
-            created_by: identity.email!,
+            created_by: email,
+            business_id: business?.businessId,
         });
 
         return recordId;
@@ -144,23 +155,32 @@ export const update = mutation({
         notes: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'chemical.create');
+        await enforceRateLimit(ctx, email, 'chemical.update');
 
         // Verify record belongs to user's customer (tenant isolation)
         const record = await ctx.db.get(args.id);
         if (!record) throw new Error("Chemical usage record not found");
 
         const customer = await ctx.db.get(record.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Access denied");
+        }
+        const business = await requireCustomerRole(ctx, customer, email, CHEMICAL_WRITE_ROLES);
+
+        if (args.customer_id && args.customer_id !== record.customer_id) {
+            const replacementCustomer = await ctx.db.get(args.customer_id);
+            if (!replacementCustomer) throw new Error("Customer not found or access denied");
+            const replacementBusiness = await requireCustomerRole(ctx, replacementCustomer, email, CHEMICAL_WRITE_ROLES);
+            if (String(replacementBusiness?.businessId || "") !== String(business?.businessId || "")) {
+                throw new Error("Chemical usage cannot be moved between businesses");
+            }
         }
 
         const { id, ...updates } = args;
-        await ctx.db.patch(id, updates);
+        await ctx.db.patch(id, { ...updates, business_id: business?.businessId ?? record.business_id });
 
         return id;
     },
@@ -170,20 +190,20 @@ export const update = mutation({
 export const remove = mutation({
     args: { id: v.id("chemicalUsage") },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'chemical.create');
+        await enforceRateLimit(ctx, email, 'chemical.delete');
 
         // Verify record belongs to user's customer (tenant isolation)
         const record = await ctx.db.get(args.id);
         if (!record) throw new Error("Chemical usage record not found");
 
         const customer = await ctx.db.get(record.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Access denied");
         }
+        await requireCustomerRole(ctx, customer, email, CHEMICAL_WRITE_ROLES);
 
         await ctx.db.delete(args.id);
     },

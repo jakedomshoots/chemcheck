@@ -1,6 +1,12 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import {
+    getBusinessContext,
+    requireCustomerAccess,
+    requireCustomerRole,
+    requireUserEmail,
+} from "./authorization";
 
 /**
  * Validates that a string is a valid ISO 8601 date format
@@ -49,6 +55,7 @@ function calculateDuration(startTime: string | undefined, endTime: string | unde
 // Valid status values for service logs
 const VALID_STATUS_VALUES = ['completed', 'pending', 'scheduled', 'in_progress', 'cancelled'] as const;
 type ServiceLogStatus = typeof VALID_STATUS_VALUES[number];
+const SERVICE_LOG_WRITE_ROLES = ["owner", "admin", "technician"] as const;
 
 function validateStatus(status: string): void {
     if (!VALID_STATUS_VALUES.includes(status as ServiceLogStatus)) {
@@ -68,17 +75,21 @@ export const list = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         const descending = args.order === "-service_date";
         const numItems = clampLimit(args.limit);
 
-        return await ctx.db
-            .query("serviceLogs")
-            .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!)
+        const business = await getBusinessContext(ctx, email);
+        const serviceLogs = business
+            ? ctx.db.query("serviceLogs").withIndex("by_business_and_service_date", (q: any) =>
+                q.eq("business_id", business.businessId)
             )
+            : ctx.db.query("serviceLogs").withIndex("by_created_by_and_service_date", (q: any) =>
+                q.eq("created_by", email)
+            );
+
+        return await serviceLogs
             .order(descending ? "desc" : "asc")
             .paginate({ cursor: args.cursor ?? null, numItems });
     },
@@ -96,8 +107,7 @@ export const filter = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         if (args.service_date_from && !isValidDateString(args.service_date_from)) {
             throw new Error(`Invalid service_date_from: "${args.service_date_from}". Expected ISO 8601 date string.`);
@@ -110,11 +120,15 @@ export const filter = query({
         }
 
         const numItems = clampLimit(args.limit);
-        const result = await ctx.db
-            .query("serviceLogs")
-            .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!)
+        const business = await getBusinessContext(ctx, email);
+        const serviceLogs = business
+            ? ctx.db.query("serviceLogs").withIndex("by_business_and_service_date", (q: any) =>
+                q.eq("business_id", business.businessId)
             )
+            : ctx.db.query("serviceLogs").withIndex("by_created_by_and_service_date", (q: any) =>
+                q.eq("created_by", email)
+            );
+        const result = await serviceLogs
             .order("desc")
             .paginate({ cursor: args.cursor ?? null, numItems });
 
@@ -145,14 +159,14 @@ export const getByCustomer = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Customer not found or access denied");
         }
+        await requireCustomerAccess(ctx, customer, email);
 
         const numItems = clampLimit(args.limit);
         return await ctx.db
@@ -171,15 +185,18 @@ export const getByDate = query({
         cursor: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         const numItems = clampLimit(args.limit);
-        return await ctx.db
-            .query("serviceLogs")
-            .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!).eq("service_date", args.service_date)
+        const business = await getBusinessContext(ctx, email);
+        const serviceLogs = business
+            ? ctx.db.query("serviceLogs").withIndex("by_business_and_service_date", (q: any) =>
+                q.eq("business_id", business.businessId).eq("service_date", args.service_date)
             )
+            : ctx.db.query("serviceLogs").withIndex("by_created_by_and_service_date", (q: any) =>
+                q.eq("created_by", email).eq("service_date", args.service_date)
+            );
+        return await serviceLogs
             .paginate({ cursor: args.cursor ?? null, numItems });
     },
 });
@@ -210,17 +227,17 @@ export const create = mutation({
         has_after_photos: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
-        await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
+        await enforceRateLimit(ctx, email, 'serviceLog.create');
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Customer not found or access denied");
         }
+        const business = await requireCustomerRole(ctx, customer, email, SERVICE_LOG_WRITE_ROLES);
 
         // Calculate duration with validation (throws if dates are invalid)
         const duration_ms = calculateDuration(args.start_time, args.end_time);
@@ -230,7 +247,8 @@ export const create = mutation({
 
         const logData = {
             customer_id: args.customer_id,
-            created_by: customer.created_by,
+            created_by: email,
+            business_id: business?.businessId,
             service_date: args.service_date,
             status: args.status,
             service_type: args.service_type,
@@ -285,19 +303,29 @@ export const update = mutation({
         has_after_photos: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Verify log belongs to user's customer (tenant isolation)
         const log = await ctx.db.get(args.id);
         if (!log) throw new Error("Service log not found");
 
         const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Access denied");
+        }
+        const business = await requireCustomerRole(ctx, customer, email, SERVICE_LOG_WRITE_ROLES);
+
+        if (args.customer_id && args.customer_id !== log.customer_id) {
+            const replacementCustomer = await ctx.db.get(args.customer_id);
+            if (!replacementCustomer) throw new Error("Customer not found or access denied");
+            const replacementBusiness = await requireCustomerRole(ctx, replacementCustomer, email, SERVICE_LOG_WRITE_ROLES);
+            if (String(replacementBusiness?.businessId || "") !== String(business?.businessId || "")) {
+                throw new Error("Service logs cannot be moved between businesses");
+            }
         }
 
         const { id, ...updates } = args;
+        if (updates.status !== undefined) validateStatus(updates.status);
 
         // Calculate duration if both start_time and end_time are available
         // Use provided values or fall back to existing log values
@@ -311,7 +339,8 @@ export const update = mutation({
         const finalUpdates = {
             ...updates,
             duration_ms,
-            created_by: log.created_by ?? customer.created_by,
+            created_by: log.created_by ?? email,
+            business_id: business?.businessId ?? log.business_id,
         };
 
         await ctx.db.patch(id, finalUpdates);
@@ -324,17 +353,17 @@ export const update = mutation({
 export const remove = mutation({
     args: { id: v.id("serviceLogs") },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Not authenticated");
+        const email = await requireUserEmail(ctx);
 
         // Verify log belongs to user's customer (tenant isolation)
         const log = await ctx.db.get(args.id);
         if (!log) throw new Error("Service log not found");
 
         const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer) {
             throw new Error("Access denied");
         }
+        await requireCustomerRole(ctx, customer, email, SERVICE_LOG_WRITE_ROLES);
 
         await ctx.db.delete(args.id);
     },

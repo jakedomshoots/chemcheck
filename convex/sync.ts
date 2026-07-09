@@ -153,7 +153,7 @@ export const syncCustomer = mutation({
     // Resolve business context so we can set business_id (matches customers.create behavior)
     const business = await resolveBusinessContext(ctx, identity.email!);
     const createdBy = business ? business.owner_email : identity.email!;
-    const businessId = business ? String(business._id) : undefined;
+    const businessId = business?._id;
 
     const customerData = {
       ...data,
@@ -712,7 +712,7 @@ export const batchSyncCustomers = mutation({
     // Resolve business context so we can set business_id (matches customers.create behavior)
     const business = await resolveBusinessContext(ctx, identity.email!);
     const createdBy = business ? business.owner_email : identity.email!;
-    const businessId = business ? String(business._id) : undefined;
+    const businessId = business?._id;
 
     for (const customer of args.customers) {
       try {

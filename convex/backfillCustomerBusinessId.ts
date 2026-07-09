@@ -53,7 +53,7 @@ export const run = mutation({
             }
         }
 
-        const businessId = String(business._id);
+        const businessId = business._id;
 
         // 3. Find customers with no business_id that were created by an allowed email
         //    OR created_by is "local" (legacy Dexie sync without auth)
