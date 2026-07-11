@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useChemicalUsage, useCustomersFilter, useCurrentUser, useChemicalUsageDelete, useChemicalUsageUpdate } from "@/api/convexHooks";
-import { Plus, TestTube, ChevronDown, Trash2, Edit2, Save, X, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, Trash2, Edit2, Save, X, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -354,7 +355,7 @@ export default function ChemicalUsagePage() {
             <Drawer open={isAddSheetOpen} onOpenChange={setIsAddSheetOpen}>
               <DrawerTrigger asChild>
                 <Button className="h-12 w-full rounded-[1.15rem] bg-cyan-600 px-4 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto">
-                  <Plus className="mr-2 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+                  <PoolIcon name="add" className="mr-2 h-4 w-4" />
                   Add Chemical Usage
                 </Button>
               </DrawerTrigger>
@@ -417,7 +418,7 @@ export default function ChemicalUsagePage() {
         <div className="flex flex-col justify-between rounded-[1.35rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
-              <TestTube className="h-5 w-5 stroke-[1.75]" aria-hidden="true" />
+              <PoolIcon name="chemicals" className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Monthly Chemical Records</p>
@@ -440,22 +441,13 @@ export default function ChemicalUsagePage() {
 
       {customersWithUsage.length === 0 ? (
         <div className="rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50/80 px-5 py-10 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-inner">
-            <TestTube className="h-7 w-7 stroke-[1.75]" aria-hidden="true" />
-          </div>
+          <IconBadge name="chemicals" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
           <h3 className="mb-1 text-lg font-semibold tracking-[-0.025em] text-slate-950">
             No Chemical Usage Records This Month
           </h3>
           <p className="mx-auto mb-5 max-w-sm text-sm font-medium text-slate-500">
             Switch months or add usage entries to build a reportable log.
           </p>
-          <Button
-            onClick={() => setIsAddSheetOpen(true)}
-            className="h-11 rounded-[1.15rem] bg-slate-950 px-4 text-sm font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700"
-          >
-            <Plus className="mr-2 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
-            Add Chemical Usage
-          </Button>
         </div>
       ) : (
         <div className="space-y-2">

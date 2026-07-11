@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { Button } from "@/components/ui/button";
 import { Download, Calendar, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { format, startOfWeek, endOfWeek, parseISO, isWithinInterval, addWeeks } from "date-fns";
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -351,7 +352,8 @@ export default function WeeklyReport() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
               Reporting
             </p>
-            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">
+            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">
+              <PoolIcon name="report" className="h-7 w-7 text-cyan-700" />
               Weekly Report
             </h2>
             <p className="mt-1 text-sm font-medium text-slate-500">
@@ -429,9 +431,7 @@ export default function WeeklyReport() {
 
       {logs.length === 0 ? (
         <div className="overflow-hidden rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
-            <Calendar className="h-6 w-6 text-slate-400" aria-hidden="true" />
-          </div>
+          <IconBadge name="report" size="md" tone="slate" className="mx-auto mb-3" iconClassName="h-6 w-6" />
           <h3 className="text-base font-semibold text-slate-900">No Services This Week</h3>
           <p className="mx-auto mt-1 max-w-xs text-sm font-medium text-slate-500">
             Complete services to generate a report

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { createPageUrl, parseLocalDate } from "@/utils";
-import { Calendar, Plus, AlertTriangle, PlayCircle, ShieldAlert, Route } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Button } from "@/components/ui/button";
 import { format, subWeeks, startOfWeek, endOfWeek } from "date-fns";
 import CustomerCard from "../components/home/CustomerCard";
@@ -445,13 +445,13 @@ export default function Home() {
   };
 
   const primaryActionConfig = customers.length === 0
-    ? { icon: Plus, label: 'Add First Client', disabled: false }
+    ? { icon: "add", label: 'Add First Client', disabled: false }
     : homePrimaryAction === 'open_route_plan'
-      ? { icon: Route, label: 'Open Route Plan', disabled: false }
+      ? { icon: "route", label: 'Open Route Plan', disabled: false }
       : homePrimaryAction === 'add_client'
-        ? { icon: Plus, label: 'Add Client', disabled: false }
+        ? { icon: "add", label: 'Add Client', disabled: false }
         : {
-            icon: PlayCircle,
+            icon: "start",
             label: nextPendingCustomer ? `Start Next: ${nextPendingCustomer.full_name}` : "No Pending Stops",
             disabled: !nextPendingCustomer,
           };
@@ -503,13 +503,13 @@ export default function Home() {
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
-                    <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <PoolIcon name="ops" className="h-4 w-4 shrink-0" />
                     <span>Daily Ops Brief</span>
                   </div>
                   <p className="mt-1 text-xs font-medium text-slate-500">Estimated route</p>
                 </div>
                 <p className="flex shrink-0 items-center gap-1 whitespace-nowrap text-base font-semibold tabular-nums text-cyan-800">
-                  <Route className="h-4 w-4" aria-hidden="true" />
+                  <PoolIcon name="route" className="h-4 w-4" />
                   {opsBrief.pendingStops} stops · {formatRouteDuration(opsBrief.estimatedRouteMinutes)}
                 </p>
               </div>
@@ -522,7 +522,7 @@ export default function Home() {
         <div className="mb-4 overflow-hidden rounded-[1.35rem] border border-amber-200/80 bg-amber-50/85 shadow-sm">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />
+              <PoolIcon name="warning" className="h-4 w-4 text-amber-600" />
               <span className="text-sm font-semibold text-slate-900">
                 {missedServices.length} Missed
               </span>
@@ -584,7 +584,7 @@ export default function Home() {
           disabled={primaryActionConfig.disabled}
           className="h-[3.25rem] w-full rounded-[1.15rem] bg-cyan-600 px-4 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 disabled:border disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none"
         >
-          <primaryActionConfig.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <PoolIcon name={primaryActionConfig.icon} className="h-4 w-4 shrink-0" />
           <span className="truncate">{primaryActionConfig.label}</span>
         </Button>
         <Button
@@ -593,7 +593,7 @@ export default function Home() {
           onClick={handleOpenOffDayPicker}
           className="mt-2 h-auto w-full rounded-[1rem] px-4 py-2.5 text-sm font-semibold text-cyan-700 shadow-none hover:bg-cyan-50 hover:text-cyan-800 focus-visible:ring-2 focus-visible:ring-cyan-500/30"
         >
-          <Calendar className="h-4 w-4" aria-hidden="true" />
+          <PoolIcon name="serviceDay" className="h-4 w-4" />
           <span>Service another day</span>
         </Button>
       </div>
@@ -607,9 +607,7 @@ export default function Home() {
 
       {customers.length === 0 ? (
         <div className="mb-24 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-7 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
-            <Calendar className="h-7 w-7" aria-hidden="true" />
-          </div>
+          <IconBadge name="empty" size="lg" tone="cyan" className="mx-auto mb-4" iconClassName="h-7 w-7 text-cyan-900" />
           <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
             No Customers Scheduled
           </h3>

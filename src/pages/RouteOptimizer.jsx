@@ -17,6 +17,7 @@ import {
   Flag,
   Play,
 } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -362,7 +363,7 @@ export default function RouteOptimizer() {
                 </>
               ) : (
                 <>
-                  <Zap className="mr-2 h-4 w-4" aria-hidden="true" />
+                  <PoolIcon name="route" className="mr-2 h-4 w-4" />
                   Generate Route Plan
                 </>
               )}
@@ -378,9 +379,7 @@ export default function RouteOptimizer() {
 
       {dayCustomers.length === 0 ? (
         <div className="rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
-            <Navigation className="h-7 w-7" aria-hidden="true" />
-          </div>
+          <IconBadge name="route" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
           <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">No Customers Scheduled</h3>
           <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-600">
             Add customers to {selectedDay} to build a route plan.
@@ -388,9 +387,7 @@ export default function RouteOptimizer() {
         </div>
       ) : !optimizedRoute ? (
         <div className="rounded-[1.5rem] border border-white/80 bg-white/85 p-8 text-center shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
-            <Navigation className="h-7 w-7" aria-hidden="true" />
-          </div>
+          <IconBadge name="route" size="lg" className="mx-auto mb-4" iconClassName="h-7 w-7" />
           <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">Ready to Build Route</h3>
           <p className="mx-auto mb-3 max-w-md text-sm font-medium leading-6 text-slate-600">
             You have {dayCustomers.length} customer{dayCustomers.length !== 1 ? 's' : ''} scheduled for {selectedDay}.
@@ -404,9 +401,7 @@ export default function RouteOptimizer() {
           <div className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
-                  <Navigation className="h-4 w-4" aria-hidden="true" />
-                </div>
+                <IconBadge name="route" size="sm" iconClassName="h-4 w-4" />
                 <h3 className="text-lg font-semibold tracking-[-0.025em] text-slate-950">Route Summary</h3>
               </div>
               <span className="text-xs font-medium text-slate-500">{optimizedRoute.optimization_summary}</span>
@@ -668,7 +663,7 @@ function RouteRunnerView({
               onClick={() => onNavigate(currentStop.customer_address, currentStop.customer_location)}
               className="rounded-full bg-cyan-600 text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
             >
-              <Navigation className="w-5 h-5 mr-2" />
+              <PoolIcon name="route" className="mr-2 h-5 w-5" />
               Navigate
             </Button>
             <Button

@@ -1,19 +1,8 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { APP_ROUTES, getCanonicalRoute } from '@/lib/routeConfig';
-import {
-  Home,
-  Users,
-  FileText,
-  TestTube,
-  StickyNote,
-  X,
-  Settings,
-  BookOpen,
-  ClipboardList,
-  Navigation,
-  MoreHorizontal,
-} from "lucide-react";
+import { PoolIcon } from "@/components/ui/iconography";
+import { X } from "lucide-react";
 import { importWithRetry } from "@/lib/chunkErrorRecovery";
 import chemcheckLogo from "@/assets/chemcheck-logo.svg";
 
@@ -41,30 +30,30 @@ export default function Layout({ children, currentPageName }) {
   }, []);
 
   const navItems = [
-    { name: "Home", path: APP_ROUTES.Home, icon: Home },
-    { name: "Clients", path: APP_ROUTES.Clients, icon: Users },
-    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: ClipboardList },
-    { name: "Report", path: APP_ROUTES.WeeklyReport, icon: FileText },
-    { name: "Notes", path: APP_ROUTES.Notes, icon: StickyNote },
-    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: TestTube },
-    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: Navigation },
-    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: BookOpen },
-    { name: "Settings", path: APP_ROUTES.Settings, icon: Settings },
+    { name: "Home", path: APP_ROUTES.Home, icon: "home" },
+    { name: "Clients", path: APP_ROUTES.Clients, icon: "clients" },
+    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: "workOrders" },
+    { name: "Report", path: APP_ROUTES.WeeklyReport, icon: "report" },
+    { name: "Notes", path: APP_ROUTES.Notes, icon: "notes" },
+    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: "chemicals" },
+    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: "route" },
+    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: "poolSchool" },
+    { name: "Settings", path: APP_ROUTES.Settings, icon: "settings" },
   ];
 
   const primaryTabs = [
-    { name: "Home", path: APP_ROUTES.Home, icon: Home },
-    { name: "Clients", path: APP_ROUTES.Clients, icon: Users },
-    { name: "Chemical", path: APP_ROUTES.ChemicalUsage, icon: TestTube },
-    { name: "Notes", path: APP_ROUTES.Notes, icon: StickyNote },
+    { name: "Home", path: APP_ROUTES.Home, icon: "home" },
+    { name: "Clients", path: APP_ROUTES.Clients, icon: "clients" },
+    { name: "Chemical", path: APP_ROUTES.ChemicalUsage, icon: "chemicals" },
+    { name: "Notes", path: APP_ROUTES.Notes, icon: "notes" },
   ];
 
   const moreItems = [
-    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: ClipboardList },
-    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: Navigation },
-    { name: "Reports", path: APP_ROUTES.WeeklyReport, icon: FileText },
-    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: BookOpen },
-    { name: "Settings", path: APP_ROUTES.Settings, icon: Settings },
+    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: "workOrders" },
+    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: "route" },
+    { name: "Reports", path: APP_ROUTES.WeeklyReport, icon: "report" },
+    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: "poolSchool" },
+    { name: "Settings", path: APP_ROUTES.Settings, icon: "settings" },
   ];
 
   const isActive = (path) => {
@@ -122,8 +111,12 @@ export default function Layout({ children, currentPageName }) {
                   : "text-slate-700 hover:bg-slate-100"
                   }`}
               >
-                <item.icon className={`h-5 w-5 stroke-[1.75] transition-all ${active ? "text-white" : "text-muted-foreground group-hover:text-primary"
-                  }`} />
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors ${active ? "" : "group-hover:bg-slate-50"}`}>
+                  <PoolIcon
+                    name={item.icon}
+                    className={`h-5 w-5 transition-all ${active ? "text-white" : "text-slate-600 group-hover:text-slate-800"}`}
+                  />
+                </span>
                 <span className="font-medium">{item.name}</span>
               </Link>
             );
@@ -162,7 +155,9 @@ export default function Layout({ children, currentPageName }) {
                   }`}
                 aria-current={active ? "page" : undefined}
               >
-                <item.icon className={`h-5 w-5 stroke-[1.75] ${active ? "text-white" : ""}`} />
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg">
+                  <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-white" : ""}`} />
+                </span>
                 <span className="text-[10px] font-medium truncate px-1">{item.name}</span>
               </Link>
             );
@@ -177,7 +172,9 @@ export default function Layout({ children, currentPageName }) {
             aria-controls="mobile-more-navigation"
             aria-current={isMoreActive ? "page" : undefined}
           >
-            <MoreHorizontal className="h-5 w-5 stroke-[1.75]" />
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg">
+              <PoolIcon name="more" className="h-5 w-5" />
+            </span>
             <span className="text-[10px] font-medium truncate px-1">More</span>
           </button>
         </div>
@@ -205,7 +202,7 @@ export default function Layout({ children, currentPageName }) {
                 className="p-2 -mr-2 hover:bg-slate-100 active:bg-slate-200 active:scale-95 rounded-lg transition-all touch-manipulation"
                 aria-label="Close more options"
               >
-                <X className="w-5 h-5 stroke-[1.75] text-slate-500" />
+                <PoolIcon name="close" className="h-5 w-5 text-slate-500" />
               </button>
             </div>
             <nav className="grid grid-cols-1 gap-1">
@@ -222,7 +219,9 @@ export default function Layout({ children, currentPageName }) {
                       }`}
                     aria-current={active ? "page" : undefined}
                   >
-                    <item.icon className={`h-5 w-5 stroke-[1.75] ${active ? "text-white" : "text-muted-foreground"}`} />
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
+                      <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-white" : "text-slate-600"}`} />
+                    </span>
                     <span className="font-medium">{item.name}</span>
                   </Link>
                 );

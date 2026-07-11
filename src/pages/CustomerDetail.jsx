@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCustomers, useServiceLogsByCustomer, useServiceLogDelete, useCustomerUpdate } from "@/api/convexHooks";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl, formatServiceDate, parseLocalDate } from "@/utils";
-import { MapPin, Phone, Mail, Droplets, Plus, Calendar, FileText, BarChart3, Settings } from "lucide-react";
+import { MapPin, Phone, Mail, Droplets, Calendar, FileText, BarChart3, Settings } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { BackButton } from "@/components/navigation/BackButton";
@@ -764,7 +765,7 @@ export default function CustomerDetail() {
             onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
             className="h-9 rounded-full bg-cyan-600 px-3 text-xs font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
           >
-            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+            <PoolIcon name="add" className="mr-1 h-3.5 w-3.5" />
             Log Service
           </Button>
         </div>
@@ -869,9 +870,7 @@ export default function CustomerDetail() {
 
       {logs.length === 0 ? (
         <div className="mb-20 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
-            <Calendar className="h-7 w-7" aria-hidden="true" />
-          </div>
+          <IconBadge name="report" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
           <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
             No Service Logs Yet
           </h3>
@@ -883,7 +882,7 @@ export default function CustomerDetail() {
             onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
             className="h-11 rounded-full bg-cyan-600 px-6 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
           >
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            <PoolIcon name="add" className="mr-2 h-4 w-4" />
             Create First Log
           </Button>
         </div>

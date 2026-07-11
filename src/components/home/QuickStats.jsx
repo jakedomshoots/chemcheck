@@ -1,12 +1,12 @@
 import React, { memo } from "react";
-import { CheckCircle2, Clock, SkipForward, TrendingUp } from "lucide-react";
+import { PoolIcon } from "@/components/ui/iconography";
 
 const QuickStats = memo(function QuickStats({ total, completed, pending, skipped = 0 }) {
   const stats = [
     {
       label: "Done",
       value: completed,
-      icon: CheckCircle2,
+      icon: "done",
       bgColor: "bg-white/85",
       iconColor: "text-cyan-700",
       valueColor: "text-slate-950",
@@ -14,7 +14,7 @@ const QuickStats = memo(function QuickStats({ total, completed, pending, skipped
     {
       label: "Pending",
       value: pending,
-      icon: Clock,
+      icon: "pending",
       bgColor: "bg-cyan-50/80",
       iconColor: "text-cyan-700",
       valueColor: "text-cyan-900",
@@ -23,7 +23,7 @@ const QuickStats = memo(function QuickStats({ total, completed, pending, skipped
       ? [{
           label: "Skipped",
           value: skipped,
-          icon: SkipForward,
+          icon: "skipped",
           bgColor: "bg-amber-50/85",
           iconColor: "text-amber-700",
           valueColor: "text-amber-900",
@@ -32,7 +32,7 @@ const QuickStats = memo(function QuickStats({ total, completed, pending, skipped
     {
       label: "Total",
       value: total,
-      icon: TrendingUp,
+      icon: "total",
       bgColor: "bg-white/85",
       iconColor: "text-slate-500",
       valueColor: "text-slate-950",
@@ -49,7 +49,7 @@ const QuickStats = memo(function QuickStats({ total, completed, pending, skipped
           <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-cyan-200/35 blur-2xl" />
 
           <div className="relative">
-            <stat.icon className={`mb-2 h-4 w-4 ${stat.iconColor}`} aria-hidden="true" />
+            <PoolIcon name={stat.icon} className={`mb-2 h-4 w-4 ${stat.iconColor}`} />
             <div className={`text-2xl font-semibold tracking-[-0.04em] tabular-nums ${stat.valueColor}`}>
               {stat.value}
             </div>

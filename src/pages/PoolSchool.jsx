@@ -16,6 +16,7 @@ import {
   Gauge,
   X
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 
 const POOL_SCHOOL_DATA = {
   categories: [
@@ -1108,6 +1109,7 @@ export default function PoolSchool() {
   }, [searchQuery, totalTopics]);
 
   const showAllCategories = searchQuery.length > 0;
+  const activeCategoryData = POOL_SCHOOL_DATA.categories.find((category) => category.id === activeCategory);
 
   return (
     <main className="relative mx-auto max-w-5xl px-3 pb-32 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Pool School">
@@ -1191,31 +1193,46 @@ export default function PoolSchool() {
 
       {!searchQuery && (
         <div className="mb-6">
-          <div className="grid grid-cols-3 gap-2">
-            {POOL_SCHOOL_DATA.categories.map(cat => {
-              const IconComponent = iconMap[cat.icon] || AlertTriangle;
-              const isActive = activeCategory === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setActiveCategory(cat.id)}
-                  aria-pressed={isActive}
-                  className={`flex min-w-0 items-center gap-1.5 rounded-full px-2.5 py-2 text-left text-[11px] font-semibold transition-all sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm ${
-                    isActive
-                      ? 'bg-slate-950 text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)]'
-                      : 'border border-slate-200/70 bg-white/85 text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800'
-                  }`}
-                >
-                  <IconComponent className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{cat.title}</span>
-                  <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs font-bold ${isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {cat.topics.length}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <Select value={activeCategory} onValueChange={setActiveCategory}>
+            <SelectTrigger
+              aria-label="Pool School category"
+              className="h-12 rounded-2xl border border-slate-200/80 bg-white/90 px-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-slate-300 focus:ring-2 focus:ring-slate-300/30"
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                {activeCategoryData && (() => {
+                  const ActiveIcon = iconMap[activeCategoryData.icon] || AlertTriangle;
+                  return <ActiveIcon className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />;
+                })()}
+                <span className="min-w-0 flex-1 truncate">
+                  {activeCategoryData?.title ?? "Choose a category"}
+                </span>
+                <span className="ml-auto shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                  {activeCategoryData?.topics.length ?? 0}
+                </span>
+              </span>
+            </SelectTrigger>
+            <SelectContent className="rounded-2xl border-slate-200 bg-white p-1 shadow-xl">
+              {POOL_SCHOOL_DATA.categories.map((cat) => {
+                const IconComponent = iconMap[cat.icon] || AlertTriangle;
+                return (
+                  <SelectItem
+                    key={cat.id}
+                    value={cat.id}
+                    className="rounded-xl py-2.5 pr-8 text-sm text-slate-700 hover:bg-slate-50 focus:bg-transparent data-[highlighted]:bg-transparent data-[highlighted]:outline data-[highlighted]:outline-1 data-[highlighted]:outline-slate-300 data-[state=checked]:bg-transparent focus:text-slate-900"
+                    textValue={cat.title}
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <IconComponent className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate">{cat.title}</span>
+                      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-500">
+                        {cat.topics.length}
+                      </span>
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
       )}
 

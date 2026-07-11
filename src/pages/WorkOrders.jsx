@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  ClipboardList,
   CalendarClock,
   UserRound,
   DollarSign,
@@ -22,6 +21,7 @@ import {
   RotateCcw,
   Plus,
 } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { toast } from "sonner";
 import {
   Drawer,
@@ -386,7 +386,7 @@ function safeLoadJson(key, fallback) {
 export default function WorkOrders() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const workOrdersSplitEnabled = useMemo(() => isWorkOrdersSplitEnabled(), []);
   const defaultSection = useMemo(
     () => (workOrdersSplitEnabled ? getDefaultWorkOrdersSectionFromStorage() : "dispatch"),
@@ -466,8 +466,6 @@ export default function WorkOrders() {
     return workOrdersSplitEnabled ? resolvedSection : "dispatch";
   }, [defaultSection, location.pathname, workOrdersSplitEnabled]);
 
-  const viewMode = searchParams.get("view") === "compact" ? "compact" : "detailed";
-  const isCompactView = viewMode === "compact";
 
   const [localWorkOrders, setLocalWorkOrders] = useState([]);
   const [localInvoices, setLocalInvoices] = useState([]);
@@ -494,15 +492,6 @@ export default function WorkOrders() {
     navigate(`/workorders/${section}${query ? `?${query}` : ""}`);
   };
 
-  const handleViewModeChange = (nextView) => {
-    const nextParams = new URLSearchParams(searchParams);
-    if (nextView === "detailed") {
-      nextParams.delete("view");
-    } else {
-      nextParams.set("view", "compact");
-    }
-    setSearchParams(nextParams, { replace: true });
-  };
 
   useEffect(() => {
     const loadedWorkOrders = safeLoadJson(LOCAL_WORK_ORDERS_KEY, []);
@@ -3203,13 +3192,13 @@ const workOrderCreateForm = (
   const hideOverviewPanelsOnMobile = activeSection !== "dispatch";
 
   return (
-    <div className={`relative mx-auto w-full max-w-7xl px-3 pb-28 pt-4 font-sans sm:px-6 lg:px-8 ${isCompactView ? "space-y-3 sm:space-y-4" : "space-y-4 sm:space-y-6"}`}>
+    <div className="relative mx-auto w-full max-w-7xl px-3 pb-28 pt-4 font-sans space-y-4 sm:px-6 sm:space-y-6 lg:px-8">
       <div className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Dispatch board</p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
-              <ClipboardList className="h-7 w-7 text-cyan-700" aria-hidden="true" />
+              <PoolIcon name="workOrders" className="h-7 w-7 text-cyan-700" />
               Work Orders & Dispatch
             </h1>
             <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">
@@ -3257,26 +3246,6 @@ const workOrderCreateForm = (
               Work Orders IA split is disabled. Showing dispatch view.
             </p>
           )}
-          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 self-start">
-            <button
-              type="button"
-              onClick={() => handleViewModeChange("detailed")}
-              className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium rounded-lg transition-colors ${
-                viewMode === "detailed" ? "bg-cyan-50 text-cyan-700" : "text-slate-500"
-              }`}
-            >
-              Detailed
-            </button>
-            <button
-              type="button"
-              onClick={() => handleViewModeChange("compact")}
-              className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium rounded-lg transition-colors ${
-                viewMode === "compact" ? "bg-cyan-50 text-cyan-700" : "text-slate-500"
-              }`}
-            >
-              Compact
-            </button>
-          </div>
         </div>
       </Card>
 
@@ -3423,7 +3392,7 @@ const workOrderCreateForm = (
         </div>
       </Card>
 
-      <div className={isCompactView ? "space-y-4" : "space-y-6"}>
+      <div className="space-y-6">
         {activeSection === "dispatch" && (
         <div className="hidden lg:block">
           <Card className="p-4 sm:p-5">
@@ -4157,7 +4126,7 @@ const workOrderCreateForm = (
       <Card className="p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-200 pb-2">
           <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950 flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-cyan-700" />
+            <PoolIcon name="workOrders" className="h-4 w-4 text-cyan-700" />
             Work Orders
           </h2>
           <span className="text-xs text-slate-500">{workOrders.length} total</span>
@@ -4166,9 +4135,7 @@ const workOrderCreateForm = (
         <div className="space-y-3">
           {workOrders.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-cyan-50">
-                <ClipboardList className="h-6 w-6 text-cyan-600" />
-              </div>
+              <IconBadge name="workOrders" size="lg" className="mx-auto mb-4" iconClassName="h-6 w-6" />
               <h3 className="text-base font-semibold text-slate-900">No jobs scheduled</h3>
               <p className="mt-1 text-sm text-slate-600">
                 Add your first work order for {selectedDate} to start dispatching.

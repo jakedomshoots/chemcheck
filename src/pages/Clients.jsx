@@ -4,7 +4,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Plus, Users, Search, ArrowUp, Check } from "lucide-react";
+import { Search, ArrowUp, Check } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -411,23 +412,23 @@ export default function Clients() {
               )}
             </p>
           </div>
-          <div className="flex w-full gap-2 sm:w-auto">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0 sm:flex-row">
             {!reorderMode ? (
               <>
                 <Button
                   onClick={() => setReorderMode(true)}
                   disabled={visibleCustomerCount === 0}
                   variant="outline"
-                  className="h-11 flex-1 rounded-[1.15rem] border border-slate-200 bg-white/90 text-sm font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none sm:flex-none"
+                  className="h-11 w-full rounded-[1.15rem] border border-slate-200 bg-white/90 text-sm font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none sm:w-auto"
                 >
                   <ArrowUp className="mr-2 h-4 w-4" aria-hidden="true" />
                   Reorder
                 </Button>
                 <Button
                   onClick={() => navigate(createPageUrl("NewClient"))}
-                  className="h-11 flex-1 rounded-[1.15rem] bg-cyan-600 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:flex-none"
+                  className="h-11 w-full rounded-[1.15rem] bg-cyan-600 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto"
                 >
-                  <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                  <PoolIcon name="add" className="mr-2 h-4 w-4" />
                   Add Client
                 </Button>
               </>
@@ -456,7 +457,7 @@ export default function Clients() {
         <div className="mb-4 overflow-hidden rounded-[1.35rem] border border-amber-200/80 bg-amber-50/85 shadow-sm">
           <div className="flex items-start gap-3 px-4 py-3">
             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
-              <Users className="h-3.5 w-3.5" aria-hidden="true" />
+              <PoolIcon name="clients" className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-amber-900">
@@ -515,24 +516,13 @@ export default function Clients() {
             <TabsContent key={day} value={day}>
               {dayCustomers.length === 0 ? (
                 <div className="mb-20 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
-                    <Users className="h-7 w-7" aria-hidden="true" />
-                  </div>
+                  <IconBadge name="clients" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
                   <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
                     {searchQuery ? "No Matching Clients" : `No Clients for ${day}`}
                   </h3>
                   <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
                     {searchQuery ? "Try adjusting your search" : "Add clients to this day's route"}
                   </p>
-                  {!searchQuery && (
-                    <Button
-                      onClick={() => navigate(createPageUrl("NewClient"))}
-                      className="h-11 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
-                    >
-                      <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                      Add Client
-                    </Button>
-                  )}
                 </div>
               ) : (
                 <div className="space-y-2">

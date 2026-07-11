@@ -3,15 +3,13 @@ import {
   Phone,
   Mail,
   ChevronDown,
-  CheckCircle2,
-  Clock,
   FileText,
-  SkipForward,
   PhoneCall,
   MapPin,
   ShieldCheck,
   Lock,
 } from "lucide-react";
+import { PoolIcon } from "@/components/ui/iconography";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatServiceDate } from "@/utils";
@@ -165,7 +163,7 @@ const CustomerCard = memo(function CustomerCard({
               onClick?.();
             }}
           >
-            <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-600" />
+            <PoolIcon name="done" className="mr-2 h-4 w-4 text-emerald-600" />
             View Service Log
           </Button>
         ) : (
@@ -182,7 +180,7 @@ const CustomerCard = memo(function CustomerCard({
                 onStart?.();
               }}
             >
-              <Clock className="w-3.5 h-3.5" />
+              <PoolIcon name="pending" className="h-3.5 w-3.5" />
               {startLabel}
             </Button>
             <Button
@@ -202,7 +200,7 @@ const CustomerCard = memo(function CustomerCard({
                 }
               }}
             >
-              <SkipForward className="w-3.5 h-3.5" />
+              <PoolIcon name="skipped" className="h-3.5 w-3.5" />
               {skipLabel}
             </Button>
           </div>

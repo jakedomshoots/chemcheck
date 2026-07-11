@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNotes, useCustomersFilter, useCurrentUser, useNoteCreate, useNoteUpdate, useNoteDelete } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
-import { Plus, StickyNote, CheckCircle2, Circle, Trash2, ChevronDown, AlertCircle } from "lucide-react";
+import { CheckCircle2, Circle, Trash2, ChevronDown, AlertCircle } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -155,7 +156,7 @@ export default function Notes() {
           <div className="min-w-0">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Operations</p>
             <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
-              <StickyNote className="h-7 w-7 text-cyan-700" aria-hidden="true" />
+              <PoolIcon name="notes" className="h-7 w-7 text-cyan-700" />
               Notes &amp; Reminders
             </h2>
             <p className="mt-1 text-sm font-medium text-slate-500">
@@ -166,7 +167,7 @@ export default function Notes() {
             onClick={() => setShowForm(!showForm)}
             className="h-12 w-full shrink-0 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto"
           >
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            <PoolIcon name="add" className="mr-2 h-4 w-4" />
             {showForm ? "Cancel" : "Add Note"}
           </Button>
         </div>
@@ -176,7 +177,7 @@ export default function Notes() {
         <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
           <div className="mb-4 flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
-              <Plus className="h-4 w-4" aria-hidden="true" />
+              <PoolIcon name="add" className="h-4 w-4" />
             </div>
             <div className="min-w-0">
               <h3 className="text-base font-semibold tracking-[-0.025em] text-slate-950">New note</h3>
@@ -279,7 +280,7 @@ export default function Notes() {
               type="submit"
               className="h-12 w-full rounded-full bg-cyan-600 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto sm:px-6"
             >
-              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              <PoolIcon name="add" className="mr-2 h-4 w-4" />
               Save Note
             </Button>
           </form>
@@ -302,9 +303,7 @@ export default function Notes() {
         <TabsContent value={activeTab}>
           {filteredNotes.length === 0 ? (
             <Card className="rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
-                <StickyNote className="h-7 w-7" aria-hidden="true" />
-              </div>
+              <IconBadge name="notes" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
               <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
                 No {activeTab === "active" ? "Active" : activeTab === "completed" ? "Completed" : ""} Notes
               </h3>
@@ -316,7 +315,7 @@ export default function Notes() {
                   onClick={() => setShowForm(true)}
                   className="h-11 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
                 >
-                  <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                  <PoolIcon name="add" className="mr-2 h-4 w-4" />
                   Add Note
                 </Button>
               )}

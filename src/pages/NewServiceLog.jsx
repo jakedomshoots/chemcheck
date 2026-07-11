@@ -4,7 +4,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { createPageUrl } from "@/utils";
-import { Save, Droplets, TestTube, Waves, Activity, AlertCircle, Camera, Home as HomeIcon, UserPlus } from "lucide-react";
+import { Save, Droplets, Activity, AlertCircle, Camera } from "lucide-react";
+import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Label } from "@/components/ui/label";
@@ -475,9 +476,7 @@ export default function NewServiceLog() {
     return (
       <main className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8" aria-label="Service Log">
         <section className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 text-center shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
-            <UserPlus className="h-7 w-7" aria-hidden="true" />
-          </div>
+          <IconBadge name="clients" size="lg" className="mx-auto mb-4" iconClassName="h-7 w-7" />
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field service</p>
           <h2 className="text-3xl font-semibold tracking-[-0.045em] text-slate-950">{missingTitle}</h2>
           <p className="mx-auto mt-2 max-w-sm text-sm font-medium leading-6 text-slate-600">{missingMessage}</p>
@@ -487,7 +486,7 @@ export default function NewServiceLog() {
               onClick={() => navigate(createPageUrl("Clients"))}
               className="h-11 rounded-full bg-cyan-600 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
             >
-              <UserPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+              <PoolIcon name="clients" className="mr-2 h-4 w-4" />
               Go to Clients
             </Button>
             <Button
@@ -496,7 +495,7 @@ export default function NewServiceLog() {
               onClick={() => navigate(createPageUrl("Home"))}
               className="h-11 rounded-full border border-slate-200 bg-white/90 font-semibold text-slate-700 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
             >
-              <HomeIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+              <PoolIcon name="home" className="mr-2 h-4 w-4" />
               Back to Home
             </Button>
           </div>
@@ -584,7 +583,7 @@ export default function NewServiceLog() {
 
         <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
           <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-slate-950">
-            <TestTube className="h-5 w-5 text-cyan-700" aria-hidden="true" />
+            <PoolIcon name="chemicals" className="h-5 w-5 text-cyan-700" />
             Chemical Readings
           </h3>
           <p className="mb-4 text-sm font-medium text-slate-600">Select the level for each chemical test</p>
@@ -625,7 +624,7 @@ export default function NewServiceLog() {
               numericValue={formData.alkalinity_value}
               onNumericValueChange={(val) => setFormData({ ...formData, alkalinity_value: val })}
               config={CHEMICAL_CONFIGS.alkalinity}
-              icon={<TestTube className="w-4 h-4 stroke-[1.75]" />}
+              icon={<PoolIcon name="chemicals" className="h-4 w-4" />}
               testId="alkalinity-numeric-input"
             />
 
@@ -638,14 +637,14 @@ export default function NewServiceLog() {
               numericValue={formData.stabilizer_value}
               onNumericValueChange={(val) => setFormData({ ...formData, stabilizer_value: val })}
               config={CHEMICAL_CONFIGS.stabilizer}
-              icon={<TestTube className="w-4 h-4 stroke-[1.75]" />}
+              icon={<PoolIcon name="chemicals" className="h-4 w-4" />}
               testId="stabilizer-numeric-input"
             />
 
             {customer.pool_type === "Salt" && (
               <div className="rounded-[1.25rem] border border-slate-200/70 bg-white/80 p-3">
                 <div className="flex items-center gap-2">
-                  <Waves className="h-4 w-4 text-cyan-700" aria-hidden="true" />
+                  <PoolIcon name="waterLevel" className="h-4 w-4 text-cyan-700" />
                   <Label className="text-sm font-semibold text-slate-800">Salt Level (PPM)</Label>
                 </div>
                 <Input
