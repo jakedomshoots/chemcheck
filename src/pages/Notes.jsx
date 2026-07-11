@@ -310,15 +310,6 @@ export default function Notes() {
               <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
                 {activeTab === "active" ? "Add a note or reminder to get started" : "No completed notes yet"}
               </p>
-              {activeTab === "active" && (
-                <Button
-                  onClick={() => setShowForm(true)}
-                  className="h-11 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
-                >
-                  <PoolIcon name="add" className="mr-2 h-4 w-4" />
-                  Add Note
-                </Button>
-              )}
             </Card>
           ) : (
             <div className="space-y-3">

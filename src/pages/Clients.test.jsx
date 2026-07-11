@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Clients from './Clients';
 import { BrowserRouter } from 'react-router-dom';
@@ -83,6 +83,29 @@ describe('Clients Page', () => {
         // We mock ClientListItem to just show name, so we look for that
         expect(await screen.findByText('Alice Smith')).toBeInTheDocument();
         expect(await screen.findByText('Bob Jones')).toBeInTheDocument();
+    });
+
+    it('stacks header actions at full width on mobile', () => {
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+
+        const header = screen.getByTestId('clients-header');
+        const actionGroup = header.querySelector('div.flex.w-full.flex-col');
+        const reorderButton = within(header).getByRole('button', { name: /Reorder/i });
+        const addButton = within(header).getByRole('button', { name: /Add Client/i });
+
+        expect(actionGroup).toHaveClass('flex-col', 'sm:w-auto', 'sm:shrink-0');
+        expect(reorderButton).toHaveClass('w-full');
+        expect(reorderButton).not.toHaveClass('flex-1');
+        expect(addButton).toHaveClass('w-full');
+        expect(addButton).not.toHaveClass('flex-1');
+    });
+
+    it('keeps the empty day state free of a duplicate Add Client action', () => {
+        setMockCustomers([]);
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+
+        expect(screen.getByText('No Clients for Monday')).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: /Add Client/i })).toHaveLength(1);
     });
 
     it('filters clients by search', async () => {

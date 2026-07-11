@@ -10,6 +10,7 @@ const mockUser = { email: 'test@example.com' };
 const mockUsage = [
     { _id: 'u1', chemical_type: 'chlorine_tabs', quantity: '2', customer_id: 1, created_date: fixedDate, notes: 'Test notes' }
 ];
+const defaultMockUsage = [...mockUsage];
 const mockCustomers = [
     { _id: 1, full_name: 'Alice Smith', address: '123 Main St' }
 ];
@@ -50,6 +51,7 @@ vi.mock('@/components/servicelog/AddChemicalForm', () => ({
 
 describe('Chemical Usage Page', () => {
     beforeEach(() => {
+        mockUsage.splice(0, mockUsage.length, ...defaultMockUsage);
         vi.clearAllMocks();
     });
 
@@ -105,12 +107,18 @@ describe('Chemical Usage Page', () => {
         });
     });
 
-    it('renders Add Chemical Usage button in header', () => {
+    it('renders one Add Chemical Usage button in the header', () => {
         render(<BrowserRouter><ChemicalUsage /></BrowserRouter>);
         
-        // Use getAllByRole since there may be multiple buttons with this text
-        const addButtons = screen.getAllByRole('button', { name: /Add Chemical Usage/i });
-        expect(addButtons.length).toBeGreaterThan(0);
+        expect(screen.getAllByRole('button', { name: /Add Chemical Usage/i })).toHaveLength(1);
+    });
+
+    it('does not duplicate the Add Chemical Usage button in the empty state', () => {
+        mockUsage.splice(0);
+        render(<BrowserRouter><ChemicalUsage /></BrowserRouter>);
+
+        expect(screen.getByText('No Chemical Usage Records This Month')).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: /Add Chemical Usage/i })).toHaveLength(1);
     });
 
     it('displays monthly record count', () => {
