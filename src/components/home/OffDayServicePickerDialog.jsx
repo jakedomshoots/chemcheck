@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function OffDayServicePickerDialog({
   open,
@@ -34,21 +35,26 @@ export default function OffDayServicePickerDialog({
         <div className="space-y-4 px-5 py-4">
           {availableDays.length > 0 ? (
             <>
-              <div className="grid grid-cols-2 gap-2">
-                {availableDays.map((day) => (
-                  <Button
-                    key={day}
-                    type="button"
-                    variant="outline"
-                    className={selectedDay === day
-                      ? "h-10 rounded-full border-cyan-600 bg-cyan-600 px-4 text-sm font-semibold text-white shadow-[0_14px_32px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
-                      : "h-10 rounded-full border border-slate-200 bg-white/85 px-4 text-sm font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"}
-                    onClick={() => onSelectedDayChange(day)}
-                  >
-                    {day}
-                  </Button>
-                ))}
-              </div>
+              <Select value={selectedDay || undefined} onValueChange={onSelectedDayChange}>
+                <SelectTrigger
+                  aria-label="Service day"
+                  className="h-11 rounded-2xl border border-slate-200/80 bg-white/90 px-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-slate-300 focus:ring-2 focus:ring-slate-300/30"
+                >
+                  <SelectValue placeholder="Choose a service day" />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-slate-200 bg-white p-1 shadow-xl">
+                  {availableDays.map((day) => (
+                    <SelectItem
+                      key={day}
+                      value={day}
+                      textValue={day}
+                      className="rounded-xl py-2.5 text-sm text-slate-700 hover:bg-slate-50 focus:bg-transparent data-[highlighted]:bg-transparent data-[highlighted]:outline data-[highlighted]:outline-1 data-[highlighted]:outline-slate-300 data-[state=checked]:bg-transparent focus:text-slate-900"
+                    >
+                      {day}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
               <div className="relative">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
