@@ -10,10 +10,10 @@ This guide walks you through setting up Stripe for ChemCheck billing.
 ## Step 1: Get Your API Keys
 
 1. Go to [Stripe Dashboard](https://dashboard.stripe.com/apikeys)
-2. Copy your **Publishable key** (starts with `pk_test_` or `pk_live_`)
-3. Add it to your `.env.local`:
+2. Copy your **Secret key** (starts with `sk_test_` or `sk_live_`)
+3. Add it to Convex environment variables. The browser does not need a Stripe key:
    ```
-   VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_key_here
+   STRIPE_SECRET_KEY=sk_test_your_key_here
    ```
 
 ## Step 2: Create Products and Prices
@@ -36,11 +36,14 @@ This guide walks you through setting up Stripe for ChemCheck billing.
 - Price: $149.00 USD, recurring monthly
 - Copy the Price ID
 
-3. Add the Price IDs to your `.env.local`:
+3. Add monthly and annual Price IDs to the Convex environment. Price IDs are intentionally never exposed to the frontend:
    ```
-   VITE_STRIPE_STARTER_PRICE_ID=price_xxxxx
-   VITE_STRIPE_PRO_PRICE_ID=price_xxxxx
-   VITE_STRIPE_BUSINESS_PRICE_ID=price_xxxxx
+    STRIPE_STARTER_MONTHLY_PRICE_ID=price_xxxxx
+    STRIPE_STARTER_YEARLY_PRICE_ID=price_xxxxx
+    STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_xxxxx
+    STRIPE_PROFESSIONAL_YEARLY_PRICE_ID=price_xxxxx
+    STRIPE_BUSINESS_MONTHLY_PRICE_ID=price_xxxxx
+    STRIPE_BUSINESS_YEARLY_PRICE_ID=price_xxxxx
    ```
 
 ## Step 3: Configure Webhooks
@@ -125,16 +128,21 @@ stripe listen --forward-to localhost:3000/stripe-webhook
 ## Environment Variables Summary
 
 ```env
-# Frontend (Vite)
-VITE_STRIPE_PUBLISHABLE_KEY=pk_live_xxxxx
-VITE_STRIPE_STARTER_PRICE_ID=price_xxxxx
-VITE_STRIPE_PRO_PRICE_ID=price_xxxxx
-VITE_STRIPE_BUSINESS_PRICE_ID=price_xxxxx
-
 # Backend (Convex)
 STRIPE_SECRET_KEY=sk_live_xxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxx
+APP_URL=https://app.chemcheck.app
+STRIPE_STARTER_MONTHLY_PRICE_ID=price_xxxxx
+STRIPE_STARTER_YEARLY_PRICE_ID=price_xxxxx
+STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_xxxxx
+STRIPE_PROFESSIONAL_YEARLY_PRICE_ID=price_xxxxx
+STRIPE_BUSINESS_MONTHLY_PRICE_ID=price_xxxxx
+STRIPE_BUSINESS_YEARLY_PRICE_ID=price_xxxxx
 ```
+
+## Subscription Migration
+
+Deploy the optional `subscriptions.business_id` schema change first. Then run `subscriptions:backfillBusinessId` repeatedly as a business owner, beginning with `dry_run: true`. It links each legacy subscription to the business currently owned by `user_email`, skips already-linked rows, and reports rows with no owned business as `unlinked`; it never creates businesses.
 
 ## Troubleshooting
 

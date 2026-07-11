@@ -393,6 +393,7 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
       case "customer.subscription.updated": {
         const subscription = event.data.object;
         await ctx.runMutation(internal.subscriptions.upsert, {
+          business_id: subscription.metadata?.business_id || undefined,
           user_email: subscription.metadata?.user_email || "",
           stripe_customer_id: subscription.customer,
           stripe_subscription_id: subscription.id,
@@ -410,6 +411,7 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
         await ctx.runMutation(internal.subscriptions.upsert, {
+          business_id: subscription.metadata?.business_id || undefined,
           user_email: subscription.metadata?.user_email || "",
           stripe_customer_id: subscription.customer,
           stripe_subscription_id: subscription.id,
@@ -477,9 +479,9 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
 
         if (userEmail) {
           try {
-            const business = await ctx.runQuery(internal.businesses.getByOwnerEmailInternal, {
-              owner_email: userEmail,
-            });
+            const business = subscription?.business_id
+              ? await ctx.runQuery(internal.businesses.getByIdInternal, { business_id: subscription.business_id })
+              : await ctx.runQuery(internal.businesses.getByOwnerEmailInternal, { owner_email: userEmail });
             await sendPaymentFailedNotificationEmail({
               userEmail,
               businessName: business?.name,

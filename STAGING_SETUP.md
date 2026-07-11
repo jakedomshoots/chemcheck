@@ -29,17 +29,25 @@ VITE_CONVEX_URL=https://tangible-bloodhound-615.convex.cloud
 # Clerk (create staging application)
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_staging_key_here
 
-# Stripe (use test mode)
-VITE_STRIPE_PUBLISHABLE_KEY=pk_test_staging_stripe_key
-VITE_STRIPE_STARTER_PRICE_ID=price_staging_starter
-VITE_STRIPE_PRO_PRICE_ID=price_staging_pro
-VITE_STRIPE_BUSINESS_PRICE_ID=price_staging_business
-
 # Sentry (optional: create staging project)
 VITE_SENTRY_DSN=https://staging-sentry-dsn@sentry.io/staging-project
 ```
 
 ## Convex Staging Setup
+
+Set Stripe configuration in the staging Convex deployment, never in Vercel:
+
+```bash
+STRIPE_SECRET_KEY=sk_test_staging_stripe_key
+STRIPE_WEBHOOK_SECRET=whsec_staging_webhook_secret
+APP_URL=https://staging.chemcheck.app
+STRIPE_STARTER_MONTHLY_PRICE_ID=price_staging_starter_monthly
+STRIPE_STARTER_YEARLY_PRICE_ID=price_staging_starter_yearly
+STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_staging_professional_monthly
+STRIPE_PROFESSIONAL_YEARLY_PRICE_ID=price_staging_professional_yearly
+STRIPE_BUSINESS_MONTHLY_PRICE_ID=price_staging_business_monthly
+STRIPE_BUSINESS_YEARLY_PRICE_ID=price_staging_business_yearly
+```
 
 ### Option 1: Shared Database (Simpler)
 Use the same Convex deployment for both staging and production:

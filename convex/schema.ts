@@ -151,6 +151,8 @@ export default defineSchema({
     .index("by_created_by_and_completed", ["created_by", "completed"]),
 
   subscriptions: defineTable({
+    // Optional while legacy user-scoped subscriptions are backfilled.
+    business_id: v.optional(v.id("businesses")),
     user_email: v.string(),
     stripe_customer_id: v.string(),
     stripe_subscription_id: v.string(),
@@ -163,6 +165,7 @@ export default defineSchema({
     created_at: v.number(),
     updated_at: v.number(),
   })
+    .index("by_business", ["business_id"])
     .index("by_user_email", ["user_email"])
     .index("by_stripe_subscription", ["stripe_subscription_id"])
     .index("by_stripe_customer", ["stripe_customer_id"]),
@@ -304,6 +307,7 @@ export default defineSchema({
     updated_at: v.number(),
   })
     .index("by_created_by", ["created_by"])
+    .index("by_customer", ["customer_id"])
     .index("by_status", ["status"])
     .index("by_scheduled_date", ["scheduled_date"])
     .index("by_created_by_and_scheduled_date", ["created_by", "scheduled_date"])

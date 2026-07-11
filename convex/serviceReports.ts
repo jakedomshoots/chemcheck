@@ -16,6 +16,12 @@ import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
 
+export const REPORT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function isReportExpired(expiresAt: number | undefined, now = Date.now()): boolean {
+  return expiresAt === undefined || now >= expiresAt;
+}
+
 /**
  * Helper: Verify service log ownership
  */
@@ -164,6 +170,7 @@ export const getOrCreateReport = mutation({
       customer_id: serviceLog.customer_id,
       report_token: reportToken,
       created_at: createdAt,
+      expires_at: createdAt + REPORT_TOKEN_TTL_MS,
     });
 
     return {
@@ -353,7 +360,7 @@ export const sendReport = action({
     });
 
     // Check for duplicate send within 60 seconds (idempotency)
-    if (report.sent_at) {
+    if (!report.rotated && report.sent_at) {
       const timeSinceLastSend = Date.now() - report.sent_at;
       if (timeSinceLastSend < 60000) {
         return {
@@ -485,6 +492,12 @@ export const getOrCreateReportInternal = internalMutation({
       .first();
 
     if (existingReport) {
+      if (isReportExpired(existingReport.expires_at)) {
+        const report_token = await generateUniqueToken(ctx);
+        const expires_at = Date.now() + REPORT_TOKEN_TTL_MS;
+        await ctx.db.patch(existingReport._id, { report_token, expires_at });
+        return { ...existingReport, report_token, expires_at, rotated: true };
+      }
       return existingReport;
     }
 
@@ -495,8 +508,7 @@ export const getOrCreateReportInternal = internalMutation({
     const createdAt = Date.now();
 
     // Token expires in 30 days
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const expiresAt = createdAt + THIRTY_DAYS_MS;
+    const expiresAt = createdAt + REPORT_TOKEN_TTL_MS;
 
     // Create new report
     const reportId = await ctx.db.insert("serviceReports", {
@@ -1508,7 +1520,7 @@ export const getReportByTokenInternal = internalQuery({
 
     // SECURITY: Check token expiration (30 days)
     const now = Date.now();
-    if (report.expires_at && now > report.expires_at) {
+    if (isReportExpired(report.expires_at, now)) {
       return {
         found: false,
         error: "This report link has expired. Please request a new report from your service provider.",

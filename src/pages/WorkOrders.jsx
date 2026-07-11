@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
-import { useCustomers } from "@/api/convexHooks";
 import { createPageUrl } from "@/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +37,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  calculateInvoiceTotalsFromQuote,
   canConvertQuote,
   canDraftInvoiceFromQuote,
   hasPendingDeposit,
@@ -51,17 +49,7 @@ import {
   isWorkOrdersSplitEnabled,
   normalizeWorkOrdersSection,
 } from "@/lib/workOrdersNavigation";
-
-const LOCAL_WORK_ORDERS_KEY = "chemcheck_local_work_orders";
-const LOCAL_INVOICES_KEY = "chemcheck_local_invoices";
-const LOCAL_INVOICES_MIGRATION_V1_KEY = "chemcheck_local_invoices_migration_v1";
-const LOCAL_QUOTES_KEY = "chemcheck_local_quotes";
-const LOCAL_QUOTES_MIGRATION_V1_KEY = "chemcheck_local_quotes_migration_v1";
-const LOCAL_COMMUNICATIONS_KEY = "chemcheck_local_communications";
-const LOCAL_REMINDER_AUTOPILOT_ENABLED_KEY = "chemcheck_reminder_autopilot_enabled";
-const LOCAL_REMINDER_AUTOPILOT_INTERVAL_KEY = "chemcheck_reminder_autopilot_interval_minutes";
-const LOCAL_REMINDER_AUTOPILOT_NEXT_RUN_KEY = "chemcheck_reminder_autopilot_next_run";
-const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+import { getWorkOrdersCloudState, requireWorkOrdersCloud } from "@/lib/workOrdersCloud";
 
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -121,10 +109,6 @@ function downloadCsv(filename, headers, rows) {
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
-}
-
-function makeLocalId(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function statusBadgeClass(status) {
@@ -289,30 +273,6 @@ function getInvoicePrimaryDescription(invoice) {
   return String(invoice.notes || "").trim();
 }
 
-function calculateDraftTotals({ lineItems, taxRate, quote }) {
-  const subtotal = roundCurrency(
-    (Array.isArray(lineItems) ? lineItems : []).reduce(
-      (sum, item) => sum + toFiniteNumber(item?.amount, 0),
-      0
-    )
-  );
-  const safeTaxRate = normalizeTaxRateInput(toFiniteNumber(taxRate, 0));
-  const tax = roundCurrency(subtotal * safeTaxRate);
-  const grossTotal = roundCurrency(subtotal + tax);
-  const depositApplied = getDepositAppliedAmount(quote, grossTotal);
-  const total = roundCurrency(Math.max(0, grossTotal - depositApplied));
-  return { subtotal, tax, grossTotal, depositApplied, total };
-}
-
-function getDepositAppliedAmount(quote, grossTotal) {
-  const totals = calculateInvoiceTotalsFromQuote({
-    subtotal: grossTotal,
-    tax: 0,
-    quote,
-  });
-  return totals.depositApplied;
-}
-
 function communicationStatusBadgeClass(status) {
   switch (status) {
     case "delivered":
@@ -364,26 +324,7 @@ function isValidRecipientForChannel(channel, recipient) {
   return false;
 }
 
-function resolvePreferredSendDestination(customer) {
-  const phone = isValidPhoneForSend(customer?.phone) ? String(customer.phone).trim() : "";
-  const email = isValidEmailForSend(customer?.email) ? String(customer.email).trim() : "";
-  if (phone) return { channel: "sms", recipient: phone };
-  if (email) return { channel: "email", recipient: email };
-  return null;
-}
-
-function safeLoadJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export default function WorkOrders() {
+function WorkOrdersContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -467,11 +408,6 @@ export default function WorkOrders() {
   }, [defaultSection, location.pathname, workOrdersSplitEnabled]);
 
 
-  const [localWorkOrders, setLocalWorkOrders] = useState([]);
-  const [localInvoices, setLocalInvoices] = useState([]);
-  const [localQuotes, setLocalQuotes] = useState([]);
-  const [localCommunications, setLocalCommunications] = useState([]);
-
   useEffect(() => {
     const pathname = location.pathname.toLowerCase();
     if (!pathname.startsWith("/workorders")) return;
@@ -492,78 +428,6 @@ export default function WorkOrders() {
     navigate(`/workorders/${section}${query ? `?${query}` : ""}`);
   };
 
-
-  useEffect(() => {
-    const loadedWorkOrders = safeLoadJson(LOCAL_WORK_ORDERS_KEY, []);
-    const loadedInvoices = safeLoadJson(LOCAL_INVOICES_KEY, []);
-    const loadedQuotes = safeLoadJson(LOCAL_QUOTES_KEY, []);
-    const loadedCommunications = safeLoadJson(LOCAL_COMMUNICATIONS_KEY, []);
-
-    setLocalWorkOrders(loadedWorkOrders);
-    const normalizedInvoices = loadedInvoices.map((invoice) => normalizeInvoiceRecord(invoice));
-    setLocalInvoices(normalizedInvoices);
-    const invoiceMigrationCompleted = localStorage.getItem(LOCAL_INVOICES_MIGRATION_V1_KEY) === "true";
-    if (!invoiceMigrationCompleted) {
-      localStorage.setItem(LOCAL_INVOICES_KEY, JSON.stringify(normalizedInvoices));
-      localStorage.setItem(LOCAL_INVOICES_MIGRATION_V1_KEY, "true");
-    }
-
-    const normalizedQuotes = loadedQuotes.map((quote) => normalizeQuoteRecord(quote));
-    setLocalQuotes(normalizedQuotes);
-    const migrationCompleted = localStorage.getItem(LOCAL_QUOTES_MIGRATION_V1_KEY) === "true";
-    if (!migrationCompleted) {
-      localStorage.setItem(LOCAL_QUOTES_KEY, JSON.stringify(normalizedQuotes));
-      localStorage.setItem(LOCAL_QUOTES_MIGRATION_V1_KEY, "true");
-    }
-
-    setLocalCommunications(loadedCommunications);
-
-    const storedAutopilotEnabled = localStorage.getItem(LOCAL_REMINDER_AUTOPILOT_ENABLED_KEY);
-    const storedAutopilotInterval = localStorage.getItem(LOCAL_REMINDER_AUTOPILOT_INTERVAL_KEY);
-    const storedAutopilotNextRun = localStorage.getItem(LOCAL_REMINDER_AUTOPILOT_NEXT_RUN_KEY);
-    if (storedAutopilotEnabled === "true" || storedAutopilotEnabled === "false") {
-      setReminderAutopilotEnabled(storedAutopilotEnabled === "true");
-    }
-    if (storedAutopilotInterval && Number.isFinite(Number(storedAutopilotInterval))) {
-      setReminderAutopilotIntervalMinutes(String(Math.max(15, Math.min(720, Math.floor(Number(storedAutopilotInterval))))));
-    }
-    if (storedAutopilotNextRun && Number.isFinite(Number(storedAutopilotNextRun))) {
-      setReminderAutopilotNextRunAt(Number(storedAutopilotNextRun));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_WORK_ORDERS_KEY, JSON.stringify(localWorkOrders));
-  }, [localWorkOrders]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_INVOICES_KEY, JSON.stringify(localInvoices));
-  }, [localInvoices]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_QUOTES_KEY, JSON.stringify(localQuotes));
-  }, [localQuotes]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_COMMUNICATIONS_KEY, JSON.stringify(localCommunications));
-  }, [localCommunications]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_REMINDER_AUTOPILOT_ENABLED_KEY, reminderAutopilotEnabled ? "true" : "false");
-  }, [reminderAutopilotEnabled]);
-
-  useEffect(() => {
-    const minutes = Math.max(15, Math.min(720, Math.floor(toFiniteNumber(reminderAutopilotIntervalMinutes, 60))));
-    localStorage.setItem(LOCAL_REMINDER_AUTOPILOT_INTERVAL_KEY, String(minutes));
-  }, [reminderAutopilotIntervalMinutes]);
-
-  useEffect(() => {
-    if (!reminderAutopilotNextRunAt || !Number.isFinite(reminderAutopilotNextRunAt)) {
-      localStorage.removeItem(LOCAL_REMINDER_AUTOPILOT_NEXT_RUN_KEY);
-      return;
-    }
-    localStorage.setItem(LOCAL_REMINDER_AUTOPILOT_NEXT_RUN_KEY, String(reminderAutopilotNextRunAt));
-  }, [reminderAutopilotNextRunAt]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -614,9 +478,9 @@ export default function WorkOrders() {
     };
   }, []);
 
-  const localCustomers = useCustomers();
   const currentBusiness = useQuery(api.businesses.getCurrent, {});
-  const cloudEnabled = Boolean(currentBusiness);
+  const workOrdersCloudState = getWorkOrdersCloudState(currentBusiness);
+  const cloudEnabled = workOrdersCloudState === "ready";
 
   const cloudCustomersData = useQuery(api.customers.list, cloudEnabled ? {} : "skip");
   const teamMembersData = useQuery(api.businesses.getTeamMembers, cloudEnabled ? {} : "skip");
@@ -657,49 +521,25 @@ export default function WorkOrders() {
   const createDepositPaymentLink = useAction(api.payments.createDepositPaymentLink);
 
   const cloudCustomers = useMemo(() => cloudCustomersData ?? [], [cloudCustomersData]);
-  const customers = useMemo(() => {
-    if (cloudEnabled) return cloudCustomers;
-    return localCustomers ?? [];
-  }, [cloudEnabled, cloudCustomers, localCustomers]);
+  const customers = cloudCustomers;
 
   const teamMembers = useMemo(() => teamMembersData ?? [], [teamMembersData]);
 
-  const workOrders = useMemo(() => {
-    if (cloudEnabled) return workOrdersData?.page ?? [];
-    return (localWorkOrders ?? [])
-      .filter((item) => item.scheduled_date === selectedDate)
-      .sort((a, b) => a.created_at - b.created_at);
-  }, [cloudEnabled, workOrdersData, localWorkOrders, selectedDate]);
+  const workOrders = useMemo(() => workOrdersData?.page ?? [], [workOrdersData]);
 
-  const allWorkOrders = useMemo(() => {
-    if (cloudEnabled) return allWorkOrdersData?.page ?? [];
-    return (localWorkOrders ?? []).slice().sort((a, b) => a.created_at - b.created_at);
-  }, [cloudEnabled, allWorkOrdersData, localWorkOrders]);
+  const allWorkOrders = useMemo(() => allWorkOrdersData?.page ?? [], [allWorkOrdersData]);
 
-  const allInvoices = useMemo(() => {
-    if (cloudEnabled) {
-      return (allInvoicesData?.page ?? []).map((invoice) => normalizeInvoiceRecord(invoice));
-    }
-    return (localInvoices ?? [])
-      .map((invoice) => normalizeInvoiceRecord(invoice))
-      .slice()
-      .sort((a, b) => b.created_at - a.created_at);
-  }, [cloudEnabled, allInvoicesData, localInvoices]);
+  const allInvoices = useMemo(
+    () => (allInvoicesData?.page ?? []).map((invoice) => normalizeInvoiceRecord(invoice)),
+    [allInvoicesData]
+  );
 
-  const allQuotes = useMemo(() => {
-    if (cloudEnabled) {
-      return (allQuotesData ?? []).map((quote) => normalizeQuoteRecord(quote));
-    }
-    return (localQuotes ?? [])
-      .map((quote) => normalizeQuoteRecord(quote))
-      .slice()
-      .sort((a, b) => b.created_at - a.created_at);
-  }, [cloudEnabled, allQuotesData, localQuotes]);
+  const allQuotes = useMemo(
+    () => (allQuotesData ?? []).map((quote) => normalizeQuoteRecord(quote)),
+    [allQuotesData]
+  );
 
-  const allCommunications = useMemo(() => {
-    if (cloudEnabled) return communicationsData?.page ?? [];
-    return (localCommunications ?? []).slice().sort((a, b) => b.created_at - a.created_at);
-  }, [cloudEnabled, communicationsData, localCommunications]);
+  const allCommunications = useMemo(() => communicationsData?.page ?? [], [communicationsData]);
 
   const customerById = useMemo(() => {
     const map = new Map();
@@ -1007,26 +847,6 @@ export default function WorkOrders() {
     return errors;
   }, [batchInvoiceForm]);
 
-  const queueLocalCommunication = (payload) => {
-    setLocalCommunications((prev) => [
-      {
-        _id: makeLocalId("comm"),
-        status: "queued",
-        attempts: 0,
-        provider: undefined,
-        provider_message_id: undefined,
-        sent_at: undefined,
-        delivered_at: undefined,
-        last_attempt_at: undefined,
-        error: undefined,
-        created_at: Date.now(),
-        updated_at: Date.now(),
-        ...payload,
-      },
-      ...prev,
-    ]);
-  };
-
   const handleFixCustomerContact = (customerId) => {
     if (!customerId) return;
     navigate(`${createPageUrl("EditClient")}?id=${customerId}`);
@@ -1078,10 +898,7 @@ export default function WorkOrders() {
   };
 
   const handleDeliverQueued = async (limit) => {
-    if (!cloudEnabled) {
-      toast.message("Local mode simulates sends. Enable cloud mode for live delivery.");
-      return null;
-    }
+    requireWorkOrdersCloud(workOrdersCloudState);
 
     setIsDeliveringCommunications(true);
     try {
@@ -1100,54 +917,6 @@ export default function WorkOrders() {
     } finally {
       setIsDeliveringCommunications(false);
     }
-  };
-
-  const buildDraftPayloadFromWorkOrder = (order, defaults) => {
-    const linkedQuote = quoteByWorkOrderId.get(String(order._id))
-      || (order.source_quote_id ? quoteById.get(String(order.source_quote_id)) : undefined);
-
-    const defaultUnitPrice = toFiniteNumber(defaults?.unitPrice, 120);
-    const defaultTaxRate = normalizeTaxRateInput(toFiniteNumber(defaults?.taxRate, 0));
-    const dueInDays = Math.max(0, Math.floor(toFiniteNumber(defaults?.dueInDays, 7)));
-    const forceBatchPricing = Boolean(defaults?.forceBatchPricing);
-
-    const lineItemsFromQuote = Array.isArray(linkedQuote?.line_items)
-      && linkedQuote.line_items.length > 0
-      ? linkedQuote.line_items.map((item) => ({
-          description: item.description || order.title,
-          quantity: toFiniteNumber(item.quantity, 1),
-          unit_price: toFiniteNumber(item.unit_price, 0),
-          amount: toFiniteNumber(item.amount, roundCurrency(toFiniteNumber(item.quantity, 1) * toFiniteNumber(item.unit_price, 0))),
-        }))
-      : null;
-
-    const defaultLineItems = [
-      {
-        description: order.title,
-        quantity: 1,
-        unit_price: defaultUnitPrice,
-        amount: roundCurrency(defaultUnitPrice),
-      },
-    ];
-
-    const draftLineItems = forceBatchPricing ? defaultLineItems : (lineItemsFromQuote || defaultLineItems);
-
-    return {
-      customer_id: order.customer_id,
-      work_order_id: order._id,
-      source_quote_id: linkedQuote?._id || order.source_quote_id || undefined,
-      line_items: draftLineItems,
-      tax_rate: forceBatchPricing
-        ? defaultTaxRate
-        : linkedQuote?.subtotal > 0
-          ? (toFiniteNumber(linkedQuote.tax, 0) / toFiniteNumber(linkedQuote.subtotal, 1))
-          : defaultTaxRate,
-      due_date: forceBatchPricing
-        ? getDatePlusDays(order.scheduled_date || selectedDate, dueInDays)
-        : (linkedQuote?.valid_until || getDatePlusDays(order.scheduled_date || selectedDate, dueInDays)),
-      notes: resolveInvoiceNotes(linkedQuote?.description || order.description, draftLineItems, order.title),
-      linked_quote: linkedQuote,
-    };
   };
 
   const handleUseQuoteTemplate = (quote) => {
@@ -1171,6 +940,7 @@ export default function WorkOrders() {
 
   const handleDuplicateQuote = async (quote) => {
     if (!quote) return;
+    requireWorkOrdersCloud(workOrdersCloudState);
     setQuoteActionId(quote._id);
     try {
       const clonedLineItems = Array.isArray(quote.line_items)
@@ -1183,44 +953,15 @@ export default function WorkOrders() {
         : [];
       const taxRate = quote.subtotal > 0 ? (toFiniteNumber(quote.tax, 0) / toFiniteNumber(quote.subtotal, 1)) : 0;
 
-      if (cloudEnabled) {
-        await createQuote({
-          customer_id: quote.customer_id,
-          title: `Copy - ${quote.title || "Quote"}`,
-          description: quote.description || undefined,
-          line_items: clonedLineItems,
-          tax_rate: taxRate,
-          deposit_required: quote.deposit_required,
-          valid_until: quote.valid_until || undefined,
-        });
-      } else {
-        const now = Date.now();
-        const subtotal = roundCurrency(clonedLineItems.reduce((sum, item) => sum + toFiniteNumber(item.amount, 0), 0));
-        const tax = roundCurrency(subtotal * normalizeTaxRateInput(taxRate));
-        const total = roundCurrency(subtotal + tax);
-        const localQuote = {
-          _id: makeLocalId("quo"),
-          customer_id: quote.customer_id,
-          title: `Copy - ${quote.title || "Quote"}`,
-          description: quote.description || undefined,
-          status: "draft",
-          line_items: clonedLineItems,
-          subtotal,
-          tax,
-          total,
-          deposit_required: quote.deposit_required,
-          deposit_status: quote.deposit_required && quote.deposit_required > 0 ? "pending" : "not_required",
-          deposit_payment_url: undefined,
-          deposit_checkout_session_id: undefined,
-          deposit_paid_at: undefined,
-          deposit_paid_source: undefined,
-          valid_until: quote.valid_until || undefined,
-          converted_work_order_id: undefined,
-          created_at: now,
-          updated_at: now,
-        };
-        setLocalQuotes((prev) => [localQuote, ...prev]);
-      }
+      await createQuote({
+        customer_id: quote.customer_id,
+        title: `Copy - ${quote.title || "Quote"}`,
+        description: quote.description || undefined,
+        line_items: clonedLineItems,
+        tax_rate: taxRate,
+        deposit_required: quote.deposit_required,
+        valid_until: quote.valid_until || undefined,
+      });
 
       toast.success("Quote duplicated.");
     } catch (error) {
@@ -1250,6 +991,7 @@ export default function WorkOrders() {
 
   const handleDuplicateInvoice = async (invoice) => {
     if (!invoice) return;
+    requireWorkOrdersCloud(workOrdersCloudState);
     setInvoiceActionId(invoice._id);
     try {
       const clonedLineItems = Array.isArray(invoice.line_items)
@@ -1263,43 +1005,13 @@ export default function WorkOrders() {
       const taxRate = invoice.subtotal > 0 ? (toFiniteNumber(invoice.tax, 0) / toFiniteNumber(invoice.subtotal, 1)) : 0;
       const duplicateNotes = resolveInvoiceNotes(invoice.notes, clonedLineItems);
 
-      if (cloudEnabled) {
-        await createInvoiceDraft({
-          customer_id: invoice.customer_id,
-          line_items: clonedLineItems,
-          tax_rate: taxRate,
-          due_date: invoice.due_date || getDatePlusDays(selectedDate, 7),
-          notes: duplicateNotes,
-        });
-      } else {
-        const now = Date.now();
-        const totals = calculateDraftTotals({
-          lineItems: clonedLineItems,
-          taxRate,
-          quote: undefined,
-        });
-        const localInvoice = {
-          _id: makeLocalId("inv"),
-          customer_id: invoice.customer_id,
-          work_order_id: undefined,
-          source_quote_id: undefined,
-          status: totals.total <= 0 ? "paid" : "draft",
-          line_items: clonedLineItems,
-          subtotal: totals.subtotal,
-          tax: totals.tax,
-          total: totals.total,
-          due_date: invoice.due_date || getDatePlusDays(selectedDate, 7),
-          notes: duplicateNotes,
-          paid_at: totals.total <= 0 ? now : undefined,
-          sent_at: undefined,
-          payment_url: undefined,
-          stripe_checkout_session_id: undefined,
-          stripe_payment_intent_id: undefined,
-          created_at: now,
-          updated_at: now,
-        };
-        setLocalInvoices((prev) => [localInvoice, ...prev]);
-      }
+      await createInvoiceDraft({
+        customer_id: invoice.customer_id,
+        line_items: clonedLineItems,
+        tax_rate: taxRate,
+        due_date: invoice.due_date || getDatePlusDays(selectedDate, 7),
+        notes: duplicateNotes,
+      });
       toast.success("Invoice duplicated as draft.");
     } catch (error) {
       toast.error(error?.message || "Failed to duplicate invoice.");
@@ -1309,6 +1021,7 @@ export default function WorkOrders() {
   };
 
   const handleBatchCreateInvoices = async () => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     if (batchInvoiceErrors.dateRange || batchInvoiceErrors.unitPrice || batchInvoiceErrors.dueDays) {
       toast.error(batchInvoiceErrors.dateRange || batchInvoiceErrors.unitPrice || batchInvoiceErrors.dueDays);
       return;
@@ -1331,160 +1044,43 @@ export default function WorkOrders() {
         failed: 0,
       };
 
-      const localInvoicesToAdd = [];
-      const localCommunicationsToAdd = [];
       const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
 
-      if (cloudEnabled) {
-        const batchResult = await batchCreateFromCompletedWorkOrders({
-          from_date: fromDate,
-          to_date: toDate,
-          unit_price: unitPrice,
-          tax_rate: taxRate,
-          due_in_days: dueInDays,
-          limit: 100,
-        });
+      const batchResult = await batchCreateFromCompletedWorkOrders({
+        from_date: fromDate,
+        to_date: toDate,
+        unit_price: unitPrice,
+        tax_rate: taxRate,
+        due_in_days: dueInDays,
+        limit: 100,
+      });
 
-        const processed = toFiniteNumber(batchResult?.processed, 0);
-        summary.created += toFiniteNumber(batchResult?.created, 0);
-        summary.skippedExisting += toFiniteNumber(batchResult?.skipped_existing, 0);
-        summary.skippedDeposit += toFiniteNumber(batchResult?.skipped_deposit, 0);
-        summary.failed += toFiniteNumber(batchResult?.failed, 0);
+      const processed = toFiniteNumber(batchResult?.processed, 0);
+      summary.created += toFiniteNumber(batchResult?.created, 0);
+      summary.skippedExisting += toFiniteNumber(batchResult?.skipped_existing, 0);
+      summary.skippedDeposit += toFiniteNumber(batchResult?.skipped_deposit, 0);
+      summary.failed += toFiniteNumber(batchResult?.failed, 0);
 
-        if (processed === 0) {
-          toast.message("No completed work orders found in this date range.");
-          return;
-        }
+      if (processed === 0) {
+        toast.message("No completed work orders found in this date range.");
+        return;
+      }
 
-        if (autoSend && Array.isArray(batchResult?.created_invoice_ids)) {
-          for (const invoiceId of batchResult.created_invoice_ids) {
-            try {
-              const sendResult = await sendInvoiceWithStripe({
-                id: invoiceId,
-                base_url: baseUrl,
-              });
-              const hadSendableResult = Boolean(sendResult?.payment_url || sendResult?.communication_id);
-              if (!hadSendableResult) continue;
-
-              if (sendResult?.communication_id) {
-                const delivery = await deliverCommunication({ id: sendResult.communication_id });
-                if (!delivery?.success) {
-                  summary.failed += 1;
-                  continue;
-                }
-              }
-              summary.sent += 1;
-            } catch {
-              summary.failed += 1;
-            }
-          }
-        }
-      } else {
-        const candidates = allWorkOrders
-          .filter((order) =>
-            order.status === "completed"
-            && order.scheduled_date >= fromDate
-            && order.scheduled_date <= toDate
-          )
-          .slice(0, 100);
-
-        if (candidates.length === 0) {
-          toast.message("No completed work orders found in this date range.");
-          return;
-        }
-
-        const seenWorkOrderIds = new Set(Array.from(invoicedWorkOrderIds));
-        const seenQuoteIds = new Set(Array.from(invoicedQuoteIds));
-
-        for (const order of candidates) {
-          const linkedQuote = quoteByWorkOrderId.get(String(order._id))
-            || (order.source_quote_id ? quoteById.get(String(order.source_quote_id)) : undefined);
-
-          const existingByWorkOrder = invoiceByWorkOrderId.has(String(order._id)) || seenWorkOrderIds.has(String(order._id));
-          const existingByQuote = Boolean(
-            (order.source_quote_id && (invoiceByQuoteId.has(String(order.source_quote_id)) || seenQuoteIds.has(String(order.source_quote_id))))
-            || (linkedQuote?._id && (invoiceByQuoteId.has(String(linkedQuote._id)) || seenQuoteIds.has(String(linkedQuote._id))))
-          );
-          if (existingByWorkOrder || existingByQuote) {
-            summary.skippedExisting += 1;
-            continue;
-          }
-          if (linkedQuote && hasPendingDeposit(linkedQuote)) {
-            summary.skippedDeposit += 1;
-            continue;
-          }
-
-          const payload = buildDraftPayloadFromWorkOrder(order, {
-            unitPrice,
-            taxRate,
-            dueInDays,
-            forceBatchPricing: true,
-          });
-          const totals = calculateDraftTotals({
-            lineItems: payload.line_items,
-            taxRate: payload.tax_rate,
-            quote: payload.linked_quote,
-          });
-
+      if (autoSend && Array.isArray(batchResult?.created_invoice_ids)) {
+        for (const invoiceId of batchResult.created_invoice_ids) {
           try {
-            const now = Date.now();
-            const simulatedPaymentUrl = `https://pay.chemcheck.app/invoice/${makeLocalId("invpay")}`;
-            const localInvoice = {
-              _id: makeLocalId("inv"),
-              customer_id: payload.customer_id,
-              work_order_id: payload.work_order_id,
-              source_quote_id: payload.source_quote_id,
-              status: totals.total <= 0 ? "paid" : autoSend ? "sent" : "draft",
-              line_items: payload.line_items,
-              subtotal: totals.subtotal,
-              tax: totals.tax,
-              deposit_applied: totals.depositApplied > 0 ? totals.depositApplied : undefined,
-              total: totals.total,
-              due_date: payload.due_date,
-              notes: payload.notes,
-              sent_at: autoSend && totals.total > 0 ? now : undefined,
-              paid_at: totals.total <= 0 ? now : undefined,
-              payment_url: autoSend && totals.total > 0 ? simulatedPaymentUrl : undefined,
-              created_at: now,
-              updated_at: now,
-            };
-            localInvoicesToAdd.push(localInvoice);
-            seenWorkOrderIds.add(String(payload.work_order_id));
-            if (payload.source_quote_id) {
-              seenQuoteIds.add(String(payload.source_quote_id));
-            }
-            summary.created += 1;
-
-            if (autoSend && totals.total > 0) {
-              const customer = customerById.get(String(payload.customer_id));
-              const destination = resolvePreferredSendDestination(customer);
-              if (destination) {
-                localCommunicationsToAdd.push({
-                  type: "reminder",
-                  channel: destination.channel,
-                  recipient: destination.recipient,
-                  customer_id: payload.customer_id,
-                  work_order_id: payload.work_order_id,
-                  invoice_id: localInvoice._id,
-                  quote_id: payload.source_quote_id,
-                  template_key: "invoice_sent",
-                  message: `Invoice for $${totals.total.toFixed(2)} is ready. Pay here: ${simulatedPaymentUrl}`,
-                });
-                summary.sent += 1;
+            const sendResult = await sendInvoiceWithStripe({ id: invoiceId, base_url: baseUrl });
+            if (!sendResult?.payment_url && !sendResult?.communication_id) continue;
+            if (sendResult.communication_id) {
+              const delivery = await deliverCommunication({ id: sendResult.communication_id });
+              if (!delivery?.success) {
+                summary.failed += 1;
+                continue;
               }
             }
-          } catch (error) {
-            console.error("[BatchInvoice] Failed for work order", order._id, error);
+            summary.sent += 1;
+          } catch {
             summary.failed += 1;
-          }
-        }
-
-        if (localInvoicesToAdd.length > 0) {
-          setLocalInvoices((prev) => [...localInvoicesToAdd, ...prev]);
-        }
-        if (localCommunicationsToAdd.length > 0) {
-          for (const message of localCommunicationsToAdd) {
-            queueLocalCommunication(message);
           }
         }
       }
@@ -1504,6 +1100,7 @@ export default function WorkOrders() {
 
   const handleCreate = async (event) => {
     event.preventDefault();
+    requireWorkOrdersCloud(workOrdersCloudState);
     if (!form.customer_id || !form.title.trim()) {
       toast.error("Choose a customer and enter a work-order title.");
       return;
@@ -1511,40 +1108,21 @@ export default function WorkOrders() {
 
     setIsCreating(true);
     try {
-      if (cloudEnabled) {
-        const selectedCloudCustomer = customerById.get(String(form.customer_id));
-        if (!selectedCloudCustomer) {
-          throw new Error("Select a valid customer before creating a work order.");
-        }
-
-        await createWorkOrder({
-          customer_id: selectedCloudCustomer._id,
-          title: form.title.trim(),
-          description: form.description.trim() || undefined,
-          assignee_email: form.assignee_email || undefined,
-          scheduled_date: selectedDate,
-          is_recurring: form.is_recurring,
-          recurrence_rule: form.is_recurring ? (form.recurrence_rule || "WEEKLY") : undefined,
-          priority: form.priority,
-        });
-      } else {
-        const now = Date.now();
-        const localOrder = {
-          _id: makeLocalId("wo"),
-          customer_id: form.customer_id,
-          title: form.title.trim(),
-          description: form.description.trim() || undefined,
-          status: "scheduled",
-          assignee_email: form.assignee_email || undefined,
-          scheduled_date: selectedDate,
-          is_recurring: form.is_recurring,
-          recurrence_rule: form.is_recurring ? (form.recurrence_rule || "WEEKLY") : undefined,
-          priority: form.priority,
-          created_at: now,
-          updated_at: now,
-        };
-        setLocalWorkOrders((prev) => [...prev, localOrder]);
+      const selectedCloudCustomer = customerById.get(String(form.customer_id));
+      if (!selectedCloudCustomer) {
+        throw new Error("Select a valid customer before creating a work order.");
       }
+
+      await createWorkOrder({
+        customer_id: selectedCloudCustomer._id,
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        assignee_email: form.assignee_email || undefined,
+        scheduled_date: selectedDate,
+        is_recurring: form.is_recurring,
+        recurrence_rule: form.is_recurring ? (form.recurrence_rule || "WEEKLY") : undefined,
+        priority: form.priority,
+      });
 
       setForm((prev) => ({
         ...prev,
@@ -1560,23 +1138,9 @@ export default function WorkOrders() {
   };
 
   const handleStatusChange = async (id, status) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     try {
-      if (cloudEnabled) {
-        await updateWorkOrder({ id, status });
-      } else {
-        setLocalWorkOrders((prev) =>
-          prev.map((item) =>
-            String(item._id) === String(id)
-              ? {
-                  ...item,
-                  status,
-                  completed_at: status === "completed" ? Date.now() : item.completed_at,
-                  updated_at: Date.now(),
-                }
-              : item
-          )
-        );
-      }
+      await updateWorkOrder({ id, status });
       toast.success("Status updated.");
     } catch (error) {
       toast.error(error?.message || "Failed to update status.");
@@ -1584,18 +1148,9 @@ export default function WorkOrders() {
   };
 
   const handleAssigneeChange = async (id, assignee_email) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     try {
-      if (cloudEnabled) {
-        await updateWorkOrder({ id, assignee_email: assignee_email || undefined });
-      } else {
-        setLocalWorkOrders((prev) =>
-          prev.map((item) =>
-            String(item._id) === String(id)
-              ? { ...item, assignee_email: assignee_email || undefined, updated_at: Date.now() }
-              : item
-          )
-        );
-      }
+      await updateWorkOrder({ id, assignee_email: assignee_email || undefined });
       toast.success("Assignee updated.");
     } catch (error) {
       toast.error(error?.message || "Failed to update assignee.");
@@ -1603,78 +1158,13 @@ export default function WorkOrders() {
   };
 
   const handleComplete = async (id) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     try {
-      if (cloudEnabled) {
-        const result = await completeWorkOrder({ id });
-        if (result?.invoice_blocked_reason === "deposit_pending") {
-          toast.success("Marked complete. Deposit is still required before invoicing.");
-        } else {
-          toast.success(result?.invoice_id ? "Marked complete and drafted invoice." : "Marked complete.");
-        }
+      const result = await completeWorkOrder({ id });
+      if (result?.invoice_blocked_reason === "deposit_pending") {
+        toast.success("Marked complete. Deposit is still required before invoicing.");
       } else {
-        const order = localWorkOrders.find((item) => String(item._id) === String(id));
-        if (!order) throw new Error("Work order not found");
-
-        setLocalWorkOrders((prev) =>
-          prev.map((item) =>
-            String(item._id) === String(id)
-              ? { ...item, status: "completed", completed_at: Date.now(), updated_at: Date.now() }
-              : item
-          )
-        );
-
-        const customer = customerById.get(String(order.customer_id));
-        const recipient = customer?.phone || customer?.email;
-        const channel = customer?.phone ? "sms" : customer?.email ? "email" : undefined;
-        if (recipient && channel) {
-          queueLocalCommunication({
-            type: "service_text",
-            channel,
-            recipient,
-            customer_id: order.customer_id,
-            work_order_id: order._id,
-            template_key: "work_order_completed",
-            message: `${order.title} completed on ${order.scheduled_date}.`,
-          });
-        }
-
-        const alreadyInvoiced = localInvoices.some((invoice) => String(invoice.work_order_id) === String(id));
-        const linkedQuote = order.source_quote_id ? quoteById.get(String(order.source_quote_id)) : undefined;
-        const invoiceBlockedByDeposit = Boolean(linkedQuote && hasPendingDeposit(linkedQuote));
-        if (!alreadyInvoiced && !invoiceBlockedByDeposit) {
-          const amount = 120;
-          const completedLineItems = [{ description: order.title, quantity: 1, unit_price: amount, amount }];
-          const subtotal = roundCurrency(amount);
-          const tax = 0;
-          const grossTotal = roundCurrency(subtotal + tax);
-          const depositApplied = getDepositAppliedAmount(linkedQuote, grossTotal);
-          const total = roundCurrency(grossTotal - depositApplied);
-          const status = total <= 0 ? "paid" : "draft";
-          const now = Date.now();
-          const newInvoice = {
-            _id: makeLocalId("inv"),
-            customer_id: order.customer_id,
-            work_order_id: order._id,
-            source_quote_id: order.source_quote_id || undefined,
-            status,
-            line_items: completedLineItems,
-            subtotal,
-            tax,
-            deposit_applied: depositApplied > 0 ? depositApplied : undefined,
-            total,
-            due_date: getDatePlusDays(order.scheduled_date || selectedDate, 7),
-            notes: resolveInvoiceNotes(linkedQuote?.description || order.description, completedLineItems, order.title),
-            paid_at: status === "paid" ? now : undefined,
-            created_at: now,
-            updated_at: now,
-          };
-          setLocalInvoices((prev) => [newInvoice, ...prev]);
-          toast.success(status === "paid" ? "Marked complete. Deposit covered invoice in full." : "Marked complete and drafted invoice.");
-        } else if (invoiceBlockedByDeposit) {
-          toast.success("Marked complete. Deposit is still required before invoicing.");
-        } else {
-          toast.success("Marked complete.");
-        }
+        toast.success(result?.invoice_id ? "Marked complete and drafted invoice." : "Marked complete.");
       }
     } catch (error) {
       toast.error(error?.message || "Failed to complete work order.");
@@ -1682,12 +1172,9 @@ export default function WorkOrders() {
   };
 
   const handleRemove = async (id) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     try {
-      if (cloudEnabled) {
-        await removeWorkOrder({ id });
-      } else {
-        setLocalWorkOrders((prev) => prev.filter((item) => String(item._id) !== String(id)));
-      }
+      await removeWorkOrder({ id });
       toast.success("Work order deleted.");
     } catch (error) {
       toast.error(error?.message || "Failed to delete work order.");
@@ -1696,6 +1183,7 @@ export default function WorkOrders() {
 
   const handleCreateInvoiceDraft = async (event) => {
     event.preventDefault();
+    requireWorkOrdersCloud(workOrdersCloudState);
     const firstError = Object.values(invoiceFormErrors).find(Boolean);
     if (firstError) {
       toast.error(firstError);
@@ -1732,66 +1220,24 @@ export default function WorkOrders() {
     const trimmedDescription = invoiceForm.description.trim();
     setIsCreatingInvoice(true);
     try {
-      if (cloudEnabled) {
-        const selectedCloudCustomer = customerById.get(String(invoiceForm.customer_id));
-        if (!selectedCloudCustomer) {
-          throw new Error("Select a valid customer before creating an invoice.");
-        }
-
-        const draftLineItems = [
-          {
-            description: trimmedDescription,
-            quantity,
-            unit_price: unitPrice,
-            amount: Number((quantity * unitPrice).toFixed(2)),
-          },
-        ];
-
-        await createInvoiceDraft({
-          customer_id: selectedCloudCustomer._id,
-          work_order_id: invoiceForm.work_order_id || undefined,
-          line_items: draftLineItems,
-          tax_rate: taxRate,
-          due_date: invoiceForm.due_date || undefined,
-          notes: resolveInvoiceNotes(trimmedDescription, draftLineItems, trimmedDescription),
-        });
-      } else {
-        const subtotal = Number((quantity * unitPrice).toFixed(2));
-        const tax = roundCurrency(subtotal * taxRate);
-        const grossTotal = roundCurrency(subtotal + tax);
-        const depositApplied = getDepositAppliedAmount(linkedQuote, grossTotal);
-        const total = roundCurrency(grossTotal - depositApplied);
-        const status = total <= 0 ? "paid" : "draft";
-        const now = Date.now();
-        const draftLineItems = [
-          {
-            description: trimmedDescription,
-            quantity,
-            unit_price: unitPrice,
-            amount: subtotal,
-          },
-        ];
-
-        const localInvoice = {
-          _id: makeLocalId("inv"),
-          customer_id: invoiceForm.customer_id,
-          work_order_id: invoiceForm.work_order_id || undefined,
-          source_quote_id: selectedWorkOrder?.source_quote_id || undefined,
-          status,
-          line_items: draftLineItems,
-          subtotal,
-          tax,
-          deposit_applied: depositApplied > 0 ? depositApplied : undefined,
-          total,
-          due_date: invoiceForm.due_date || undefined,
-          notes: resolveInvoiceNotes(trimmedDescription, draftLineItems, trimmedDescription),
-          paid_at: status === "paid" ? now : undefined,
-          created_at: now,
-          updated_at: now,
-        };
-
-        setLocalInvoices((prev) => [localInvoice, ...prev]);
+      const selectedCloudCustomer = customerById.get(String(invoiceForm.customer_id));
+      if (!selectedCloudCustomer) {
+        throw new Error("Select a valid customer before creating an invoice.");
       }
+      const draftLineItems = [{
+        description: trimmedDescription,
+        quantity,
+        unit_price: unitPrice,
+        amount: Number((quantity * unitPrice).toFixed(2)),
+      }];
+      await createInvoiceDraft({
+        customer_id: selectedCloudCustomer._id,
+        work_order_id: invoiceForm.work_order_id || undefined,
+        line_items: draftLineItems,
+        tax_rate: taxRate,
+        due_date: invoiceForm.due_date || undefined,
+        notes: resolveInvoiceNotes(trimmedDescription, draftLineItems, trimmedDescription),
+      });
 
       setInvoiceForm((prev) => ({
         ...prev,
@@ -1809,6 +1255,7 @@ export default function WorkOrders() {
 
   const handleCreateQuoteDraft = async (event) => {
     event.preventDefault();
+    requireWorkOrdersCloud(workOrdersCloudState);
     const firstError = Object.values(quoteFormErrors).find(Boolean);
     if (firstError) {
       toast.error(firstError);
@@ -1841,65 +1288,24 @@ export default function WorkOrders() {
     setIsCreatingQuote(true);
     try {
       const lineAmount = Number((quantity * unitPrice).toFixed(2));
-      if (cloudEnabled) {
-        const selectedCloudCustomer = customerById.get(String(quoteForm.customer_id));
-        if (!selectedCloudCustomer) {
-          throw new Error("Select a valid customer before creating a quote.");
-        }
-
-        await createQuote({
-          customer_id: selectedCloudCustomer._id,
-          title: quoteForm.title.trim(),
-          description: quoteForm.description.trim() || undefined,
-          line_items: [
-            {
-              description: quoteForm.description.trim() || quoteForm.title.trim(),
-              quantity,
-              unit_price: unitPrice,
-              amount: lineAmount,
-            },
-          ],
-          tax_rate: taxRate,
-          deposit_required: depositRequired,
-          valid_until: quoteForm.valid_until || undefined,
-        });
-      } else {
-        const subtotal = lineAmount;
-        const tax = Number((subtotal * taxRate).toFixed(2));
-        const total = Number((subtotal + tax).toFixed(2));
-        const now = Date.now();
-
-        const localQuote = {
-          _id: makeLocalId("quo"),
-          customer_id: quoteForm.customer_id,
-          title: quoteForm.title.trim(),
-          description: quoteForm.description.trim() || undefined,
-          status: "draft",
-          line_items: [
-            {
-              description: quoteForm.description.trim() || quoteForm.title.trim(),
-              quantity,
-              unit_price: unitPrice,
-              amount: lineAmount,
-            },
-          ],
-          subtotal,
-          tax,
-          total,
-          deposit_required: depositRequired,
-          deposit_status: depositRequired && depositRequired > 0 ? "pending" : "not_required",
-          deposit_payment_url: undefined,
-          deposit_checkout_session_id: undefined,
-          deposit_paid_at: undefined,
-          deposit_paid_source: undefined,
-          valid_until: quoteForm.valid_until || undefined,
-          converted_work_order_id: undefined,
-          created_at: now,
-          updated_at: now,
-        };
-
-        setLocalQuotes((prev) => [localQuote, ...prev]);
+      const selectedCloudCustomer = customerById.get(String(quoteForm.customer_id));
+      if (!selectedCloudCustomer) {
+        throw new Error("Select a valid customer before creating a quote.");
       }
+      await createQuote({
+        customer_id: selectedCloudCustomer._id,
+        title: quoteForm.title.trim(),
+        description: quoteForm.description.trim() || undefined,
+        line_items: [{
+          description: quoteForm.description.trim() || quoteForm.title.trim(),
+          quantity,
+          unit_price: unitPrice,
+          amount: lineAmount,
+        }],
+        tax_rate: taxRate,
+        deposit_required: depositRequired,
+        valid_until: quoteForm.valid_until || undefined,
+      });
 
       setQuoteForm((prev) => ({
         ...prev,
@@ -1917,6 +1323,7 @@ export default function WorkOrders() {
 
   const handleQuoteStatusChange = async (quote, status) => {
     if (!quote) return;
+    requireWorkOrdersCloud(workOrdersCloudState);
 
     const nextDepositStatus =
       status === "approved" && quote.deposit_required && quote.deposit_required > 0
@@ -1925,28 +1332,7 @@ export default function WorkOrders() {
 
     setQuoteActionId(quote._id);
     try {
-      if (cloudEnabled) {
-        await updateQuoteStatus({
-          id: quote._id,
-          status,
-          deposit_status: nextDepositStatus,
-        });
-      } else {
-        setLocalQuotes((prev) =>
-          prev.map((item) =>
-            String(item._id) === String(quote._id)
-              ? {
-                  ...item,
-                  status,
-                  deposit_status: nextDepositStatus,
-                  deposit_paid_at: nextDepositStatus === "paid" ? (item.deposit_paid_at || Date.now()) : undefined,
-                  deposit_paid_source: nextDepositStatus === "paid" ? (item.deposit_paid_source || "manual") : undefined,
-                  updated_at: Date.now(),
-                }
-              : item
-          )
-        );
-      }
+      await updateQuoteStatus({ id: quote._id, status, deposit_status: nextDepositStatus });
       toast.success("Quote status updated.");
     } catch (error) {
       toast.error(error?.message || "Failed to update quote status.");
@@ -1957,30 +1343,15 @@ export default function WorkOrders() {
 
   const handleMarkDepositPaid = async (quote) => {
     if (!quote) return;
+    requireWorkOrdersCloud(workOrdersCloudState);
     setQuoteActionId(quote._id);
     try {
-      if (cloudEnabled) {
-        await updateQuoteStatus({
-          id: quote._id,
-          status: quote.status,
-          deposit_status: "paid",
-          deposit_paid_source: "manual",
-        });
-      } else {
-        setLocalQuotes((prev) =>
-          prev.map((item) =>
-            String(item._id) === String(quote._id)
-              ? {
-                  ...item,
-                  deposit_status: "paid",
-                  deposit_paid_at: item.deposit_paid_at || Date.now(),
-                  deposit_paid_source: "manual",
-                  updated_at: Date.now(),
-                }
-              : item
-          )
-        );
-      }
+      await updateQuoteStatus({
+        id: quote._id,
+        status: quote.status,
+        deposit_status: "paid",
+        deposit_paid_source: "manual",
+      });
       toast.success("Deposit marked as paid.");
     } catch (error) {
       toast.error(error?.message || "Failed to mark deposit as paid.");
@@ -1991,6 +1362,7 @@ export default function WorkOrders() {
 
   const handleCreateDepositLink = async (quote, destinationOverride) => {
     if (!quote) return;
+    requireWorkOrdersCloud(workOrdersCloudState);
     if (!quote.deposit_required || quote.deposit_required <= 0) {
       toast.error("This quote does not require a deposit.");
       return;
@@ -2012,61 +1384,24 @@ export default function WorkOrders() {
 
     setQuoteActionId(quote._id);
     try {
-      if (cloudEnabled) {
-        const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
-        const result = await createDepositPaymentLink({
-          id: quote._id,
-          base_url: baseUrl,
-          channel_override: hasOverride ? destinationOverride.channel : undefined,
-          recipient_override: hasOverride ? destinationOverride.recipient : undefined,
-        });
-        if (result?.communication_id) {
-          const delivery = await deliverCommunication({ id: result.communication_id });
-          if (delivery?.success) {
-            toast.success("Deposit payment link created and sent.");
-          } else {
-            toast.warning(`Deposit link created, but delivery failed: ${delivery?.error || "Unknown error"}`);
-          }
-        } else if (result?.payment_url) {
-          toast.success("Deposit payment link created.");
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
+      const result = await createDepositPaymentLink({
+        id: quote._id,
+        base_url: baseUrl,
+        channel_override: hasOverride ? destinationOverride.channel : undefined,
+        recipient_override: hasOverride ? destinationOverride.recipient : undefined,
+      });
+      if (result?.communication_id) {
+        const delivery = await deliverCommunication({ id: result.communication_id });
+        if (delivery?.success) {
+          toast.success("Deposit payment link created and sent.");
         } else {
-          toast.success("Deposit payment link is ready.");
+          toast.warning(`Deposit link created, but delivery failed: ${delivery?.error || "Unknown error"}`);
         }
+      } else if (result?.payment_url) {
+          toast.success("Deposit payment link created.");
       } else {
-        const paymentUrl = `https://pay.chemcheck.app/deposit/${quote._id}`;
-
-        setLocalQuotes((prev) =>
-          prev.map((item) =>
-            String(item._id) === String(quote._id)
-              ? {
-                  ...item,
-                  status: item.status === "draft" ? "sent" : item.status,
-                  deposit_status: "pending",
-                  deposit_payment_url: paymentUrl,
-                  deposit_paid_at: undefined,
-                  deposit_paid_source: undefined,
-                  updated_at: Date.now(),
-                }
-              : item
-          )
-        );
-
-        const customerDestination = resolvePreferredSendDestination(customer);
-        const recipient = hasOverride ? destinationOverride.recipient : customerDestination?.recipient;
-        const channel = hasOverride ? destinationOverride.channel : customerDestination?.channel;
-        if (recipient && channel) {
-          queueLocalCommunication({
-            type: "reminder",
-            channel,
-            recipient,
-            customer_id: quote.customer_id,
-            work_order_id: quote.converted_work_order_id,
-            quote_id: quote._id,
-            template_key: "quote_deposit_requested",
-            message: `Deposit request for ${quote.title}: ${paymentUrl}`,
-          });
-        }
-        toast.success("Deposit payment link created.");
+        toast.success("Deposit payment link is ready.");
       }
       if (hasOverride) {
         closeAlternateRecipientEditor();
@@ -2080,6 +1415,7 @@ export default function WorkOrders() {
 
   const handleConvertQuote = async (quote) => {
     if (!quote) return;
+    requireWorkOrdersCloud(workOrdersCloudState);
     if (quote.converted_work_order_id) {
       toast.message("Quote is already converted.");
       return;
@@ -2091,45 +1427,7 @@ export default function WorkOrders() {
 
     setQuoteActionId(quote._id);
     try {
-      if (cloudEnabled) {
-        await convertQuoteToWorkOrder({
-          id: quote._id,
-          scheduled_date: selectedDate,
-          priority: "medium",
-        });
-      } else {
-        const now = Date.now();
-        const workOrderId = makeLocalId("wo");
-        const localOrder = {
-          _id: workOrderId,
-          customer_id: quote.customer_id,
-          title: quote.title,
-          description: quote.description || undefined,
-          status: "scheduled",
-          assignee_email: undefined,
-          scheduled_date: selectedDate,
-          is_recurring: false,
-          recurrence_rule: undefined,
-          source_quote_id: quote._id,
-          priority: "medium",
-          created_at: now,
-          updated_at: now,
-        };
-
-        setLocalWorkOrders((prev) => [...prev, localOrder]);
-        setLocalQuotes((prev) =>
-          prev.map((item) =>
-            String(item._id) === String(quote._id)
-              ? {
-                  ...item,
-                  status: "converted",
-                  converted_work_order_id: workOrderId,
-                  updated_at: now,
-                }
-              : item
-          )
-        );
-      }
+      await convertQuoteToWorkOrder({ id: quote._id, scheduled_date: selectedDate, priority: "medium" });
       toast.success("Quote converted to work order.");
     } catch (error) {
       toast.error(error?.message || "Failed to convert quote.");
@@ -2140,6 +1438,7 @@ export default function WorkOrders() {
 
   const handleCreateInvoiceFromQuote = async (quote) => {
     if (!quote) return;
+    requireWorkOrdersCloud(workOrdersCloudState);
     if (invoicedQuoteIds.has(String(quote._id))) {
       toast.error("An invoice already exists for this quote.");
       return;
@@ -2152,41 +1451,15 @@ export default function WorkOrders() {
     setQuoteActionId(quote._id);
     try {
       const quoteInvoiceNotes = resolveInvoiceNotes(quote.description, quote.line_items, quote.title);
-      if (cloudEnabled) {
-        await createInvoiceDraft({
-          customer_id: quote.customer_id,
-          work_order_id: quote.converted_work_order_id || undefined,
-          source_quote_id: quote._id,
-          line_items: quote.line_items,
-          tax_rate: quote.subtotal > 0 ? quote.tax / quote.subtotal : 0,
-          due_date: quote.valid_until || getDatePlusDays(selectedDate, 7),
-          notes: quoteInvoiceNotes,
-        });
-      } else {
-        const now = Date.now();
-        const grossTotal = roundCurrency((quote.subtotal || 0) + (quote.tax || 0));
-        const depositApplied = getDepositAppliedAmount(quote, grossTotal);
-        const total = roundCurrency(grossTotal - depositApplied);
-        const status = total <= 0 ? "paid" : "draft";
-        const localInvoice = {
-          _id: makeLocalId("inv"),
-          customer_id: quote.customer_id,
-          work_order_id: quote.converted_work_order_id || undefined,
-          source_quote_id: quote._id,
-          status,
-          line_items: quote.line_items,
-          subtotal: quote.subtotal,
-          tax: quote.tax,
-          deposit_applied: depositApplied > 0 ? depositApplied : undefined,
-          total,
-          due_date: quote.valid_until || getDatePlusDays(selectedDate, 7),
-          notes: quoteInvoiceNotes,
-          paid_at: status === "paid" ? now : undefined,
-          created_at: now,
-          updated_at: now,
-        };
-        setLocalInvoices((prev) => [localInvoice, ...prev]);
-      }
+      await createInvoiceDraft({
+        customer_id: quote.customer_id,
+        work_order_id: quote.converted_work_order_id || undefined,
+        source_quote_id: quote._id,
+        line_items: quote.line_items,
+        tax_rate: quote.subtotal > 0 ? quote.tax / quote.subtotal : 0,
+        due_date: quote.valid_until || getDatePlusDays(selectedDate, 7),
+        notes: quoteInvoiceNotes,
+      });
       toast.success("Invoice draft created from quote.");
     } catch (error) {
       toast.error(error?.message || "Failed to create invoice from quote.");
@@ -2196,6 +1469,7 @@ export default function WorkOrders() {
   };
 
   const handleQuickInvoiceFromWorkOrder = async (order) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     const linkedQuote = order.source_quote_id ? quoteById.get(String(order.source_quote_id)) : undefined;
     if (linkedQuote && hasPendingDeposit(linkedQuote)) {
       toast.error("Deposit must be marked paid before invoicing this work order.");
@@ -2220,43 +1494,15 @@ export default function WorkOrders() {
         },
       ];
       const quickInvoiceNotes = resolveInvoiceNotes(order.description, quickLineItems, order.title);
-      if (cloudEnabled) {
-        await createInvoiceDraft({
-          customer_id: order.customer_id,
-          work_order_id: order._id,
-          source_quote_id: order.source_quote_id || undefined,
-          line_items: quickLineItems,
-          tax_rate: 0,
-          due_date: getDatePlusDays(order.scheduled_date || selectedDate, 7),
-          notes: quickInvoiceNotes,
-        });
-      } else {
-        const subtotal = 120;
-        const tax = 0;
-        const grossTotal = roundCurrency(subtotal + tax);
-        const depositApplied = getDepositAppliedAmount(linkedQuote, grossTotal);
-        const total = roundCurrency(grossTotal - depositApplied);
-        const status = total <= 0 ? "paid" : "draft";
-        const now = Date.now();
-        const localInvoice = {
-          _id: makeLocalId("inv"),
-          customer_id: order.customer_id,
-          work_order_id: order._id,
-          source_quote_id: order.source_quote_id || undefined,
-          status,
-          line_items: quickLineItems,
-          subtotal,
-          tax,
-          deposit_applied: depositApplied > 0 ? depositApplied : undefined,
-          total,
-          due_date: getDatePlusDays(order.scheduled_date || selectedDate, 7),
-          notes: quickInvoiceNotes,
-          paid_at: status === "paid" ? now : undefined,
-          created_at: now,
-          updated_at: now,
-        };
-        setLocalInvoices((prev) => [localInvoice, ...prev]);
-      }
+      await createInvoiceDraft({
+        customer_id: order.customer_id,
+        work_order_id: order._id,
+        source_quote_id: order.source_quote_id || undefined,
+        line_items: quickLineItems,
+        tax_rate: 0,
+        due_date: getDatePlusDays(order.scheduled_date || selectedDate, 7),
+        notes: quickInvoiceNotes,
+      });
       toast.success("Invoice draft created from work order.");
     } catch (error) {
       toast.error(error?.message || "Failed to draft invoice.");
@@ -2296,6 +1542,7 @@ export default function WorkOrders() {
   };
 
   const handleSendInvoice = async (invoiceId, destinationOverride) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     setInvoiceActionId(invoiceId);
     try {
       const invoice = allInvoices.find((item) => String(item._id) === String(invoiceId));
@@ -2314,74 +1561,22 @@ export default function WorkOrders() {
         throw new Error("Customer needs a valid phone or email before sending this invoice.");
       }
 
-      if (cloudEnabled) {
-        const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
-        const result = await sendInvoiceWithStripe({
-          id: invoiceId,
-          base_url: baseUrl,
-          channel_override: hasOverride ? destinationOverride.channel : undefined,
-          recipient_override: hasOverride ? destinationOverride.recipient : undefined,
-        });
-        if (result?.communication_id) {
-          const delivery = await deliverCommunication({ id: result.communication_id });
-          if (delivery?.success) {
-            toast.success(result?.payment_url ? "Invoice sent with payment link." : "Invoice sent.");
-          } else {
-            toast.warning(`Invoice queued but delivery failed: ${delivery?.error || "Unknown error"}`);
-          }
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
+      const result = await sendInvoiceWithStripe({
+        id: invoiceId,
+        base_url: baseUrl,
+        channel_override: hasOverride ? destinationOverride.channel : undefined,
+        recipient_override: hasOverride ? destinationOverride.recipient : undefined,
+      });
+      if (result?.communication_id) {
+        const delivery = await deliverCommunication({ id: result.communication_id });
+        if (delivery?.success) {
+          toast.success(result?.payment_url ? "Invoice sent with payment link." : "Invoice sent.");
         } else {
-          toast.success(result?.payment_url ? "Invoice marked as sent with payment link." : "Invoice is already paid in full.");
+          toast.warning(`Invoice queued but delivery failed: ${delivery?.error || "Unknown error"}`);
         }
       } else {
-        const paymentUrl = `https://pay.chemcheck.app/invoice/${invoiceId}`;
-        if (invoice && invoice.total <= 0) {
-          setLocalInvoices((prev) =>
-            prev.map((item) =>
-              String(item._id) === String(invoiceId)
-                ? {
-                    ...item,
-                    status: "paid",
-                    paid_at: item.paid_at || Date.now(),
-                    updated_at: Date.now(),
-                  }
-                : item
-            )
-          );
-          toast.success("Invoice is already paid in full.");
-          return;
-        }
-        setLocalInvoices((prev) =>
-          prev.map((invoice) =>
-            String(invoice._id) === String(invoiceId)
-              ? {
-                  ...invoice,
-                  status: "sent",
-                  sent_at: Date.now(),
-                  payment_url: paymentUrl,
-                  updated_at: Date.now(),
-                }
-              : invoice
-          )
-        );
-        if (invoice) {
-          const customerDestination = resolvePreferredSendDestination(customer);
-          const recipient = hasOverride ? destinationOverride.recipient : customerDestination?.recipient;
-          const channel = hasOverride ? destinationOverride.channel : customerDestination?.channel;
-          if (recipient && channel) {
-            queueLocalCommunication({
-              type: "reminder",
-              channel,
-              recipient,
-              customer_id: invoice.customer_id,
-              work_order_id: invoice.work_order_id,
-              invoice_id: invoice._id,
-              quote_id: invoice.source_quote_id,
-              template_key: "invoice_sent",
-              message: `Invoice for $${invoice.total.toFixed(2)} is ready. Pay here: ${paymentUrl}`,
-            });
-          }
-        }
-        toast.success("Invoice marked as sent.");
+        toast.success(result?.payment_url ? "Invoice marked as sent with payment link." : "Invoice is already paid in full.");
       }
       if (hasOverride) {
         closeAlternateRecipientEditor();
@@ -2395,39 +1590,21 @@ export default function WorkOrders() {
 
   const handleOpenPayLink = async (invoice) => {
     if (!invoice) return;
-
-    if (cloudEnabled) {
-      setInvoiceActionId(invoice._id);
-      try {
-        const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
-        const result = await sendInvoiceWithStripe({
-          id: invoice._id,
-          base_url: baseUrl,
-          force_new_session: true,
-        });
-        if (!result?.payment_url) {
-          toast.message("Invoice is already paid in full.");
-          return;
-        }
-        window.open(result.payment_url, "_blank", "noopener,noreferrer");
-      } catch (error) {
-        toast.error(error?.message || "Failed to open payment link.");
-      } finally {
-        setInvoiceActionId(null);
+    requireWorkOrdersCloud(workOrdersCloudState);
+    setInvoiceActionId(invoice._id);
+    try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
+      const result = await sendInvoiceWithStripe({ id: invoice._id, base_url: baseUrl, force_new_session: true });
+      if (!result?.payment_url) {
+        toast.message("Invoice is already paid in full.");
+        return;
       }
-      return;
+      window.open(result.payment_url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(error?.message || "Failed to open payment link.");
+    } finally {
+      setInvoiceActionId(null);
     }
-
-    if (!invoice.payment_url) {
-      toast.error("No payment link is available for this local invoice.");
-      return;
-    }
-    if (/pay\.chemcheck\.app\/invoice\//i.test(invoice.payment_url)) {
-      toast.message("Local mode uses simulated invoices. Switch to cloud mode for live Stripe pay links.");
-      return;
-    }
-
-    window.open(invoice.payment_url, "_blank", "noopener,noreferrer");
   };
 
   const handleSendInvoiceWithAlternateRecipient = async (invoice) => {
@@ -2447,25 +1624,16 @@ export default function WorkOrders() {
   };
 
   const handleMarkPaid = async (invoiceId) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     const invoice = allInvoices.find((item) => String(item._id) === String(invoiceId));
-    if (cloudEnabled && invoice?.status === "sent" && invoice?.stripe_checkout_session_id) {
+    if (invoice?.status === "sent" && invoice?.stripe_checkout_session_id) {
       toast.error("Stripe-linked invoices are marked paid automatically after Stripe confirms payment.");
       return;
     }
 
     setInvoiceActionId(invoiceId);
     try {
-      if (cloudEnabled) {
-        await markInvoicePaid({ id: invoiceId });
-      } else {
-        setLocalInvoices((prev) =>
-          prev.map((invoice) =>
-            String(invoice._id) === String(invoiceId)
-              ? { ...invoice, status: "paid", paid_at: Date.now(), updated_at: Date.now() }
-              : invoice
-          )
-        );
-      }
+      await markInvoicePaid({ id: invoiceId });
       toast.success("Invoice marked as paid.");
     } catch (error) {
       toast.error(error?.message || "Failed to mark invoice as paid.");
@@ -2475,69 +1643,19 @@ export default function WorkOrders() {
   };
 
   const handleQueueReminders = async (options = {}) => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     const silent = Boolean(options.silent);
     setIsQueueingReminders(true);
     try {
-      if (cloudEnabled) {
-        const result = await queueUnpaidReminders({});
-        const queued = result?.queued || 0;
-        if (!silent) {
-          toast.success(`Queued ${queued} unpaid invoice reminder${queued === 1 ? "" : "s"}.`);
-        }
-        if (queued > 0) {
-          await handleDeliverQueued(Math.min(queued, 50));
-        } else if (!silent) {
-          toast.message("No reminders were due right now.");
-        }
-      } else {
-        const today = getTodayDateString();
-        const dueOrPast = localInvoices.filter(
-          (invoice) =>
-            invoice.status === "sent" &&
-            (!invoice.due_date || invoice.due_date <= today)
-        );
-        const latestReminderByInvoice = new Map();
-        for (const item of localCommunications) {
-          if (item.template_key !== "invoice_unpaid_reminder") continue;
-          if (!item.invoice_id) continue;
-          const key = String(item.invoice_id);
-          const existing = latestReminderByInvoice.get(key);
-          const timestamp = toFiniteNumber(item.updated_at || item.created_at, 0);
-          if (!existing || timestamp >= existing.timestamp) {
-            latestReminderByInvoice.set(key, { status: item.status, timestamp });
-          }
-        }
-
-        let queuedCount = 0;
-        for (const invoice of dueOrPast) {
-          if (queuedCount >= 50) break;
-          const latestReminder = latestReminderByInvoice.get(String(invoice._id));
-          if (latestReminder?.status === "queued") continue;
-          if (latestReminder && (Date.now() - latestReminder.timestamp) < REMINDER_COOLDOWN_MS) {
-            continue;
-          }
-
-          const customer = customerById.get(String(invoice.customer_id));
-          const destination = resolvePreferredSendDestination(customer);
-          if (!destination) continue;
-          const invoiceTotal = toFiniteNumber(invoice.total, 0);
-          queueLocalCommunication({
-            type: "reminder",
-            channel: destination.channel,
-            recipient: destination.recipient,
-            customer_id: invoice.customer_id,
-            work_order_id: invoice.work_order_id,
-            invoice_id: invoice._id,
-            quote_id: invoice.source_quote_id,
-            template_key: "invoice_unpaid_reminder",
-            message: `Friendly reminder: invoice for $${invoiceTotal.toFixed(2)} is still unpaid.${invoice.payment_url ? ` Pay here: ${invoice.payment_url}` : ""}`,
-          });
-          latestReminderByInvoice.set(String(invoice._id), { status: "queued", timestamp: Date.now() });
-          queuedCount += 1;
-        }
-        if (!silent) {
-          toast.success(`Queued ${queuedCount} unpaid invoice reminder${queuedCount === 1 ? "" : "s"}.`);
-        }
+      const result = await queueUnpaidReminders({});
+      const queued = result?.queued || 0;
+      if (!silent) {
+        toast.success(`Queued ${queued} unpaid invoice reminder${queued === 1 ? "" : "s"}.`);
+      }
+      if (queued > 0) {
+        await handleDeliverQueued(Math.min(queued, 50));
+      } else if (!silent) {
+        toast.message("No reminders were due right now.");
       }
     } catch (error) {
       if (!silent) {
@@ -2551,45 +1669,20 @@ export default function WorkOrders() {
   queueRemindersRef.current = handleQueueReminders;
 
   const handleRetryFailedCommunications = async () => {
+    requireWorkOrdersCloud(workOrdersCloudState);
     setIsRetryingFailedCommunications(true);
     try {
-      if (cloudEnabled) {
-        const result = await requeueFailedCommunications({
-          limit: 50,
-          only_template_keys: ["invoice_sent", "invoice_unpaid_reminder", "quote_deposit_requested"],
-        });
-        const requeued = toFiniteNumber(result?.requeued, 0);
-        if (requeued <= 0) {
-          toast.message("No failed billing sends to retry.");
-          return;
-        }
-        await handleDeliverQueued(Math.min(requeued, 50));
-        toast.success(`Retried ${requeued} failed billing send${requeued === 1 ? "" : "s"}.`);
-      } else {
-        const now = Date.now();
-        let requeued = 0;
-        setLocalCommunications((prev) =>
-          prev.map((item) => {
-            if (item.status !== "failed") return item;
-            if (!["invoice_sent", "invoice_unpaid_reminder", "quote_deposit_requested"].includes(item.template_key || "")) {
-              return item;
-            }
-            requeued += 1;
-            return {
-              ...item,
-              status: "queued",
-              scheduled_for: now,
-              error: undefined,
-              updated_at: now,
-            };
-          })
-        );
-        if (requeued <= 0) {
-          toast.message("No failed billing sends to retry.");
-        } else {
-          toast.success(`Requeued ${requeued} failed billing send${requeued === 1 ? "" : "s"}.`);
-        }
+      const result = await requeueFailedCommunications({
+        limit: 50,
+        only_template_keys: ["invoice_sent", "invoice_unpaid_reminder", "quote_deposit_requested"],
+      });
+      const requeued = toFiniteNumber(result?.requeued, 0);
+      if (requeued <= 0) {
+        toast.message("No failed billing sends to retry.");
+        return;
       }
+      await handleDeliverQueued(Math.min(requeued, 50));
+      toast.success(`Retried ${requeued} failed billing send${requeued === 1 ? "" : "s"}.`);
     } catch (error) {
       toast.error(error?.message || "Failed to retry failed sends.");
     } finally {
@@ -3190,6 +2283,10 @@ const workOrderCreateForm = (
   };
 
   const hideOverviewPanelsOnMobile = activeSection !== "dispatch";
+
+  if (workOrdersCloudState !== "ready") {
+    return <WorkOrdersAvailability state={workOrdersCloudState} />;
+  }
 
   return (
     <div className="relative mx-auto w-full max-w-7xl px-3 pb-28 pt-4 font-sans space-y-4 sm:px-6 sm:space-y-6 lg:px-8">
@@ -4298,5 +3395,44 @@ const workOrderCreateForm = (
         </DrawerContent>
       </Drawer>
     </div>
+  );
+}
+
+function WorkOrdersAvailability({ state, error }) {
+  const loading = state === "loading";
+  return (
+    <div className="mx-auto flex min-h-[50vh] w-full max-w-2xl items-center px-4 sm:px-6">
+      <Card className="w-full rounded-[1.5rem] border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-950">{loading ? "Loading Work Orders" : "Work Orders is unavailable"}</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          {loading
+            ? "Confirming your cloud business before loading financial records."
+            : error || "Connect to a cloud business to view or change work orders, invoices, quotes, communications, reminders, and payment links."}
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+class WorkOrdersErrorBoundary extends Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return <WorkOrdersAvailability state="unavailable" error="We could not load your cloud business. Work Orders is read-only until the connection is restored." />;
+    }
+    return this.props.children;
+  }
+}
+
+export default function WorkOrders() {
+  return (
+    <WorkOrdersErrorBoundary>
+      <WorkOrdersContent />
+    </WorkOrdersErrorBoundary>
   );
 }

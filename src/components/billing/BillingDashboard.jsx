@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { 
@@ -9,13 +8,12 @@ import {
   Clock,
   ExternalLink,
   Loader2,
-  Receipt,
   TrendingUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSubscription } from '@/hooks/useSubscription';
-import { formatPrice, isStripeConfigured } from '@/lib/stripe';
+import { formatPrice } from '@/lib/stripe';
 import { getPlatform, isNativePlatform } from '@/lib/native/platform';
 import { cn } from '@/lib/utils';
 
@@ -25,18 +23,14 @@ export function BillingDashboard() {
     isLoading,
     error,
     isTrialing,
-    isBillingBackendConfigured,
     currentPlan,
     daysRemaining,
     createPortalSession,
-    cancelSubscription,
   } = useSubscription();
 
   const customerCountData = useQuery(api.customers.count);
   const teamMemberCountData = useQuery(api.teamMembers.count);
   
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [isCanceling, setIsCanceling] = useState(false);
   const isNativeIos = isNativePlatform() && getPlatform() === 'ios';
 
   const handleManageBilling = async () => {
@@ -44,18 +38,6 @@ export function BillingDashboard() {
       await createPortalSession();
     } catch (err) {
       console.error('Portal error:', err);
-    }
-  };
-
-  const handleCancelSubscription = async () => {
-    setIsCanceling(true);
-    try {
-      await cancelSubscription();
-      setShowCancelConfirm(false);
-    } catch (err) {
-      console.error('Cancel error:', err);
-    } finally {
-      setIsCanceling(false);
     }
   };
 
@@ -192,82 +174,22 @@ export function BillingDashboard() {
               <p className="text-sm font-medium text-slate-600">
                 Billing changes are handled outside the iOS app.
               </p>
-            ) : isStripeConfigured() ? (
-              isBillingBackendConfigured ? (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={handleManageBilling}
-                    className="h-11 rounded-full border-slate-300 bg-white px-5 text-slate-800 hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
-                  >
-                    <CreditCard className="h-4 w-4" aria-hidden="true" />
-                    Manage Payment Method
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    onClick={handleManageBilling}
-                    className="h-11 rounded-full border-slate-300 bg-white px-5 text-slate-800 hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
-                  >
-                    <Receipt className="h-4 w-4" aria-hidden="true" />
-                    View Invoices
-                  </Button>
-                </>
-              ) : (
-                <p className="text-sm font-medium text-red-700">
-                  Billing backend URLs are missing. Portal and cancellation are currently disabled.
-                </p>
-              )
             ) : (
-              <p className="text-sm font-medium text-slate-500">
-                Billing management available when Stripe is configured.
-              </p>
-            )}
-
-            {!isNativeIos && !subscription.cancelAtPeriodEnd && (!isStripeConfigured() || isBillingBackendConfigured) && (
-              <Button
-                variant="ghost"
-                className="h-11 rounded-full px-5 text-red-700 hover:bg-red-50 hover:text-red-800"
-                onClick={() => setShowCancelConfirm(true)}
-              >
-                Cancel Subscription
-              </Button>
-            )}
-          </div>
-
-          {/* Cancel Confirmation */}
-          {showCancelConfirm && (
-            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50/80 p-4 shadow-sm">
-              <h4 className="mb-2 text-sm font-semibold tracking-[-0.02em] text-red-900">Cancel Subscription?</h4>
-              <p className="mb-4 text-sm font-medium leading-6 text-red-800">
-                Your subscription will remain active until the end of your current billing period.
-                You won't be charged again, but you'll lose access to premium features after that date.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleCancelSubscription}
-                  disabled={isCanceling}
-                  className="h-9 rounded-full bg-red-600 px-5 font-semibold text-white shadow-[0_14px_30px_-22px_rgba(220,38,38,0.85)] hover:bg-red-700"
-                >
-                  {isCanceling ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  ) : (
-                    'Yes, Cancel'
-                  )}
-                </Button>
+              <>
                 <Button
                   variant="outline"
-                  size="sm"
-                  onClick={() => setShowCancelConfirm(false)}
-                  className="h-9 rounded-full border-slate-300 bg-white px-5 font-semibold text-slate-800 hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
+                  onClick={handleManageBilling}
+                  className="h-11 rounded-full border-slate-300 bg-white px-5 text-slate-800 hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
                 >
-                  Keep Subscription
+                  <CreditCard className="h-4 w-4" aria-hidden="true" />
+                  Manage Subscription
                 </Button>
-              </div>
-            </div>
-          )}
+                <p className="self-center text-sm font-medium text-slate-600">
+                  Update payment details, invoices, and cancellation in the secure Stripe portal.
+                </p>
+              </>
+            )}
+          </div>
         </div>
       )}
 

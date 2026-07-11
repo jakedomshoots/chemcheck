@@ -86,10 +86,8 @@ Add these environment variables in Vercel:
 |----------|-------|-------------|
 | `VITE_CONVEX_URL` | `https://your-project.convex.cloud` | Convex deployment URL |
 | `VITE_CLERK_PUBLISHABLE_KEY` | `pk_live_xxx` | Clerk publishable key |
-| `VITE_STRIPE_PUBLISHABLE_KEY` | `pk_live_xxx` | Stripe publishable key (optional) |
-| `VITE_STRIPE_STARTER_PRICE_ID` | `price_xxx` | Stripe price ID |
-| `VITE_STRIPE_PRO_PRICE_ID` | `price_xxx` | Stripe price ID |
-| `VITE_STRIPE_BUSINESS_PRICE_ID` | `price_xxx` | Stripe price ID |
+
+Configure Stripe only in Convex, using the variables in `STRIPE_SETUP.md`. Do not add Stripe keys, price IDs, or billing endpoint URLs to Vercel/Vite environment variables.
 
 ### 3.4 Deploy
 
@@ -151,13 +149,18 @@ VITE_CONVEX_URL=https://your-project.convex.cloud
 VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxxxx
 ```
 
-### Optional (Billing)
+### Billing (Convex environment only)
 
 ```env
-VITE_STRIPE_PUBLISHABLE_KEY=pk_live_xxxxx
-VITE_STRIPE_STARTER_PRICE_ID=price_xxxxx
-VITE_STRIPE_PRO_PRICE_ID=price_xxxxx
-VITE_STRIPE_BUSINESS_PRICE_ID=price_xxxxx
+STRIPE_SECRET_KEY=sk_live_xxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxx
+APP_URL=https://app.chemcheck.app
+STRIPE_STARTER_MONTHLY_PRICE_ID=price_xxxxx
+STRIPE_STARTER_YEARLY_PRICE_ID=price_xxxxx
+STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_xxxxx
+STRIPE_PROFESSIONAL_YEARLY_PRICE_ID=price_xxxxx
+STRIPE_BUSINESS_MONTHLY_PRICE_ID=price_xxxxx
+STRIPE_BUSINESS_YEARLY_PRICE_ID=price_xxxxx
 ```
 
 ### Optional (Monitoring)

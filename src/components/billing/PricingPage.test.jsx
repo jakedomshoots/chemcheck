@@ -10,7 +10,6 @@ vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => ({
     subscription: null,
     error: null,
-    isBillingBackendConfigured: true,
     createCheckoutSession,
   }),
 }));

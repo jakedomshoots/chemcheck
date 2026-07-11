@@ -3,7 +3,6 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { BillingDashboard } from './BillingDashboard';
 
 const createPortalSession = vi.fn();
-const cancelSubscription = vi.fn();
 let nativePlatform = true;
 let platform = 'ios';
 
@@ -24,7 +23,6 @@ vi.mock('@/hooks/useSubscription', () => ({
     isLoading: false,
     error: null,
     isTrialing: false,
-    isBillingBackendConfigured: true,
     currentPlan: {
       name: 'Professional',
       price: 79,
@@ -33,14 +31,12 @@ vi.mock('@/hooks/useSubscription', () => ({
     },
     daysRemaining: 10,
     createPortalSession,
-    cancelSubscription,
   }),
 }));
 
 vi.mock('@/lib/stripe', () => ({
   SUBSCRIPTION_PLANS: {},
   formatPrice: (amount) => `$${amount}`,
-  isStripeConfigured: () => true,
 }));
 
 vi.mock('@/lib/native/platform', () => ({
@@ -51,17 +47,14 @@ vi.mock('@/lib/native/platform', () => ({
 describe('BillingDashboard', () => {
   beforeEach(() => {
     createPortalSession.mockReset();
-    cancelSubscription.mockReset();
     nativePlatform = true;
     platform = 'ios';
   });
 
-  it('does not expose Stripe portal or cancellation actions inside the native iOS shell', () => {
+  it('does not expose Stripe portal actions inside the native iOS shell', () => {
     render(<BillingDashboard />);
 
-    expect(screen.queryByRole('button', { name: /manage payment method/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /view invoices/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /cancel subscription/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /manage subscription/i })).not.toBeInTheDocument();
     expect(screen.getByText(/billing changes are handled outside the ios app/i)).toBeInTheDocument();
   });
 
@@ -71,10 +64,9 @@ describe('BillingDashboard', () => {
 
     render(<BillingDashboard />);
 
-    fireEvent.click(screen.getByRole('button', { name: /manage payment method/i }));
+    fireEvent.click(screen.getByRole('button', { name: /manage subscription/i }));
 
     expect(createPortalSession).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: /view invoices/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /cancel subscription/i })).toBeInTheDocument();
+    expect(screen.getByText(/secure Stripe portal/i)).toBeInTheDocument();
   });
 });

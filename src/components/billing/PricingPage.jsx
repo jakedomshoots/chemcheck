@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Check, Zap, Building2, Rocket, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { SUBSCRIPTION_PLANS, formatPrice, getAnnualPrice, isStripeConfigured } from '@/lib/stripe';
+import { SUBSCRIPTION_PLANS, formatPrice, getAnnualPrice } from '@/lib/stripe';
 import { useSubscription } from '@/hooks/useSubscription';
 import { getPlatform, isNativePlatform } from '@/lib/native/platform';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,6 @@ export function PricingPage() {
   const {
     subscription,
     error,
-    isBillingBackendConfigured,
     createCheckoutSession,
   } = useSubscription();
   const isNativeIos = isNativePlatform() && getPlatform() === 'ios';
@@ -79,19 +78,6 @@ export function PricingPage() {
           )}
         </div>
 
-        {/* Demo Mode Notice */}
-        {!isNativeIos && !isStripeConfigured() && (
-          <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-center text-sm font-medium text-amber-800 shadow-sm">
-            <strong>Demo Mode:</strong> Stripe is not configured. Selecting a plan will start a simulated 14-day trial.
-          </div>
-        )}
-
-        {!isNativeIos && isStripeConfigured() && !isBillingBackendConfigured && (
-          <div className="mb-8 rounded-2xl border border-red-200 bg-red-50/80 p-4 text-center text-sm font-medium text-red-700 shadow-sm">
-            <strong>Billing Setup Required:</strong> Stripe is enabled but checkout endpoints are not configured.
-          </div>
-        )}
-
         {/* Pricing Cards */}
         <div className="grid items-stretch gap-6 md:grid-cols-3 md:gap-7">
           {Object.entries(SUBSCRIPTION_PLANS).map(([planId, plan]) => {
@@ -149,7 +135,7 @@ export function PricingPage() {
 
                 <Button
                   onClick={() => handleSelectPlan(planId)}
-                  disabled={isNativeIos || loadingPlan || isCurrentPlan || (isStripeConfigured() && !isBillingBackendConfigured)}
+                  disabled={isNativeIos || loadingPlan || isCurrentPlan}
                   className={cn(
                     "h-11 w-full rounded-full px-6 font-semibold shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] focus-visible:ring-2 focus-visible:ring-cyan-500",
                     plan.popular
@@ -163,8 +149,6 @@ export function PricingPage() {
                     "Current Plan"
                   ) : isNativeIos ? (
                     "Plan changes are handled outside the iOS app"
-                  ) : isStripeConfigured() && !isBillingBackendConfigured ? (
-                    "Billing Setup Required"
                   ) : (
                     "Start Free Trial"
                   )}

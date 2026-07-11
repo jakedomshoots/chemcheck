@@ -8,6 +8,10 @@ const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_BACKFILL_BATCH_SIZE = 100;
 const MAX_BACKFILL_BATCH_SIZE = 500;
 
+export function canManuallyMarkInvoicePaid(invoice: { stripe_checkout_session_id?: string }): boolean {
+  return !invoice.stripe_checkout_session_id;
+}
+
 function validateStatus(status: string): void {
   if (!VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
     throw new Error(`Invalid invoice status: \"${status}\"`);
@@ -603,6 +607,9 @@ export const updateStatus = mutation({
     if (!identity) throw new Error("Not authenticated");
 
     validateStatus(args.status);
+    if (args.status === "paid") {
+      throw new Error("Payment status cannot be updated here");
+    }
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
@@ -772,7 +779,7 @@ export const markPaid = mutation({
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
     if (invoice.created_by !== identity.email) throw new Error("Access denied");
-    if (invoice.stripe_checkout_session_id && invoice.status === "sent") {
+    if (!canManuallyMarkInvoicePaid(invoice)) {
       throw new Error("This invoice is linked to Stripe. It will be marked paid automatically after Stripe confirms payment.");
     }
 

@@ -10,19 +10,14 @@ import { Id } from "./_generated/dataModel";
 const MAX_DOC_WRITES = 100;
 
 const DEFAULT_CUSTOMER_BATCH_SIZE = 1;
+const DEFAULT_TENANT_BATCH_SIZE = 1;
 const DEFAULT_GENERAL_BATCH_SIZE = 100;
 const DEFAULT_RATE_LIMIT_BATCH_SIZE = 100;
 
 /**
- * Per-service-log deletion caps. If a log has more dependents than this, the
- * extras are left behind and cleaned up by the later orphan-photo pass or by
- * the next batched call. These numbers keep a single service log well under
- * MAX_DOC_WRITES.
+ * Page size for simple customer dependents. Report access logs are handled
+ * independently so a large report tree can resume without a hard cap.
  */
-const SERVICE_LOG_PAGE_SIZE = 3;
-const PHOTOS_PER_LOG_CAP = 5;
-const MAX_REPORTS_PER_LOG = 2;
-const MAX_ACCESS_LOGS_PER_REPORT = 10;
 const DEPENDENT_PAGE_SIZE = 25;
 
 type CustomersCursor = {
@@ -32,8 +27,14 @@ type CustomersCursor = {
   businessIndex?: number;
   currentCustomerId?: string | null;
   stage?:
+    | "servicePhotos"
     | "serviceLogs"
-    | "orphanPhotos"
+    | "equipment"
+    | "pools"
+    | "communications"
+    | "invoices"
+    | "workOrders"
+    | "quotes"
     | "chemicalUsage"
     | "notes"
     | "saltCellLogs"
@@ -51,6 +52,7 @@ type GeneralCursor = {
   tableCursor?: string | null;
   ownedBusinessIds?: string[] | null;
   businessIndex?: number;
+  subscriptionScope?: "user" | "business";
 };
 
 type RateLimitsCursor = {
@@ -83,7 +85,18 @@ export const deleteAccountBatch = internalMutation({
 
     if (args.phase === "customers") {
       const batchSize = Math.max(1, args.batchSize ?? DEFAULT_CUSTOMER_BATCH_SIZE);
-      const result = await deleteCustomersBatch(ctx, args.userEmail, parsedCursor, batchSize);
+      const result = await deleteCustomersBatch(ctx, args.userEmail, parsedCursor, batchSize, false);
+      return {
+        phase: args.phase,
+        isDone: result.isDone,
+        nextCursor: result.isDone ? undefined : JSON.stringify(result.nextCursor),
+        deletedCount: result.deletedCount,
+      };
+    }
+
+    if (args.phase === "tenant") {
+      const batchSize = Math.max(1, args.batchSize ?? DEFAULT_TENANT_BATCH_SIZE);
+      const result = await deleteTenantBatch(ctx, args.userEmail, parsedCursor, batchSize);
       return {
         phase: args.phase,
         isDone: result.isDone,
@@ -122,7 +135,8 @@ async function deleteCustomersBatch(
   ctx: any,
   userEmail: string,
   cursor: CustomersCursor,
-  batchSize: number
+  batchSize: number,
+  includeBusinessCustomers: boolean
 ): Promise<{ deletedCount: number; isDone: boolean; nextCursor: CustomersCursor }> {
   const state: CustomersCursor = {
     source: cursor.source ?? "created_by",
@@ -130,7 +144,7 @@ async function deleteCustomersBatch(
     businessIds: cursor.businessIds ?? null,
     businessIndex: cursor.businessIndex ?? 0,
     currentCustomerId: cursor.currentCustomerId ?? null,
-    stage: cursor.stage ?? "serviceLogs",
+    stage: cursor.stage ?? "servicePhotos",
     tableCursor: cursor.tableCursor ?? null,
   };
 
@@ -145,13 +159,13 @@ async function deleteCustomersBatch(
       : null;
 
     if (!customer) {
-      customer = await fetchNextCustomer(ctx, userEmail, state);
+      customer = await fetchNextCustomer(ctx, userEmail, state, includeBusinessCustomers);
       if (!customer) {
         noMoreCustomers = true;
         break;
       }
       state.currentCustomerId = customer._id;
-      state.stage = "serviceLogs";
+      state.stage = "servicePhotos";
       state.tableCursor = null;
     }
 
@@ -168,7 +182,7 @@ async function deleteCustomersBatch(
     if (state.stage === "deleteCustomer") {
       // Entire customer tree deleted.
       state.currentCustomerId = null;
-      state.stage = "serviceLogs";
+      state.stage = "servicePhotos";
       state.tableCursor = null;
       customersCompleted += 1;
     } else {
@@ -182,7 +196,21 @@ async function deleteCustomersBatch(
   return { deletedCount, isDone, nextCursor: state };
 }
 
-async function fetchNextCustomer(ctx: any, userEmail: string, state: CustomersCursor): Promise<any> {
+async function deleteTenantBatch(
+  ctx: any,
+  userEmail: string,
+  cursor: CustomersCursor,
+  batchSize: number
+): Promise<{ deletedCount: number; isDone: boolean; nextCursor: CustomersCursor }> {
+  return deleteCustomersBatch(ctx, userEmail, { ...cursor, source: "business" }, batchSize, true);
+}
+
+async function fetchNextCustomer(
+  ctx: any,
+  userEmail: string,
+  state: CustomersCursor,
+  includeBusinessCustomers: boolean
+): Promise<any> {
   while (true) {
     if (state.source === "created_by" || !state.source) {
       const page = await ctx.db
@@ -195,6 +223,7 @@ async function fetchNextCustomer(ctx: any, userEmail: string, state: CustomersCu
         return page.page[0];
       }
 
+      if (!includeBusinessCustomers) return null;
       state.source = "business";
       state.customerCursor = null;
     }
@@ -230,10 +259,16 @@ async function fetchNextCustomer(ctx: any, userEmail: string, state: CustomersCu
   }
 }
 
-function nextCustomerStage(stage: string): string {
-  const order = [
+function nextCustomerStage(stage: NonNullable<CustomersCursor["stage"]>): NonNullable<CustomersCursor["stage"]> {
+  const order: NonNullable<CustomersCursor["stage"]>[] = [
+    "servicePhotos",
     "serviceLogs",
-    "orphanPhotos",
+    "equipment",
+    "pools",
+    "communications",
+    "invoices",
+    "workOrders",
+    "quotes",
     "chemicalUsage",
     "notes",
     "saltCellLogs",
@@ -249,70 +284,10 @@ async function processCustomerStage(
   state: CustomersCursor,
   writesLeft: number
 ): Promise<{ deleted: number; finished: boolean; state: CustomersCursor }> {
-  const stage = state.stage ?? "serviceLogs";
+  const stage = state.stage ?? "servicePhotos";
   let deleted = 0;
 
-  if (stage === "serviceLogs") {
-    const perLogEstimate =
-      1 +
-      PHOTOS_PER_LOG_CAP +
-      MAX_REPORTS_PER_LOG * (1 + MAX_ACCESS_LOGS_PER_REPORT);
-
-    if (writesLeft < perLogEstimate) {
-      return { deleted, finished: false, state };
-    }
-
-    const numItems = Math.min(SERVICE_LOG_PAGE_SIZE, Math.floor(writesLeft / perLogEstimate));
-    const page = await ctx.db
-      .query("serviceLogs")
-      .withIndex("by_customer", (q: any) => q.eq("customer_id", customerId))
-      .paginate({ cursor: state.tableCursor ?? null, numItems });
-
-    for (const log of page.page) {
-      const photos = await ctx.db
-        .query("servicePhotos")
-        .withIndex("by_service_log", (q: any) => q.eq("service_log_id", log._id))
-        .take(PHOTOS_PER_LOG_CAP);
-      for (const photo of photos) {
-        await ctx.db.delete(photo._id);
-        deleted += 1;
-        try {
-          await ctx.storage.delete(photo.storage_id);
-        } catch {
-          // Best-effort storage cleanup; orphaned files are not fatal.
-        }
-      }
-
-      const reports = await ctx.db
-        .query("serviceReports")
-        .withIndex("by_service_log", (q: any) => q.eq("service_log_id", log._id))
-        .take(MAX_REPORTS_PER_LOG);
-      for (const report of reports) {
-        const accessLogs = await ctx.db
-          .query("reportAccessLogs")
-          .withIndex("by_token", (q: any) => q.eq("report_token", report.report_token))
-          .take(MAX_ACCESS_LOGS_PER_REPORT);
-        for (const accessLog of accessLogs) {
-          await ctx.db.delete(accessLog._id);
-          deleted += 1;
-        }
-        await ctx.db.delete(report._id);
-        deleted += 1;
-      }
-
-      await ctx.db.delete(log._id);
-      deleted += 1;
-    }
-
-    if (!page.isDone) {
-      state.tableCursor = page.continueCursor;
-      return { deleted, finished: false, state };
-    }
-
-    return { deleted, finished: true, state };
-  }
-
-  if (stage === "orphanPhotos") {
+  if (stage === "servicePhotos") {
     const numItems = Math.min(DEPENDENT_PAGE_SIZE, writesLeft);
     if (numItems === 0) return { deleted, finished: false, state };
 
@@ -322,15 +297,72 @@ async function processCustomerStage(
       .paginate({ cursor: state.tableCursor ?? null, numItems });
 
     for (const photo of page.page) {
+      await ctx.storage.delete(photo.storage_id);
       await ctx.db.delete(photo._id);
       deleted += 1;
-      try {
-        await ctx.storage.delete(photo.storage_id);
-      } catch {
-        // Best-effort storage cleanup.
-      }
     }
 
+    if (!page.isDone) {
+      state.tableCursor = page.continueCursor;
+      return { deleted, finished: false, state };
+    }
+    return { deleted, finished: true, state };
+  }
+
+  if (stage === "serviceLogs") {
+    // Always work from the first remaining log. If a report has more access
+    // logs than fit in this mutation, deleting a page leaves the same report
+    // in place for the next call.
+    const log = await ctx.db
+      .query("serviceLogs")
+      .withIndex("by_customer", (q: any) => q.eq("customer_id", customerId))
+      .first();
+    if (!log) return { deleted, finished: true, state };
+
+    const report = await ctx.db
+      .query("serviceReports")
+      .withIndex("by_service_log", (q: any) => q.eq("service_log_id", log._id))
+      .first();
+    if (!report) {
+      if (writesLeft < 1) return { deleted, finished: false, state };
+      await ctx.db.delete(log._id);
+      return { deleted: 1, finished: false, state };
+    }
+
+    const accessLogs = await ctx.db
+      .query("reportAccessLogs")
+      .withIndex("by_token", (q: any) => q.eq("report_token", report.report_token))
+      .paginate({ cursor: null, numItems: Math.max(1, writesLeft - 1) });
+    for (const accessLog of accessLogs.page) {
+      await ctx.db.delete(accessLog._id);
+      deleted += 1;
+    }
+    if (!accessLogs.isDone || writesLeft - deleted < 1) {
+      return { deleted, finished: false, state };
+    }
+    await ctx.db.delete(report._id);
+    return { deleted: deleted + 1, finished: false, state };
+  }
+
+  const customerTableStages: Record<string, string> = {
+    equipment: "equipment",
+    pools: "pools",
+    communications: "communications",
+    invoices: "invoices",
+    workOrders: "workOrders",
+    quotes: "quotes",
+  };
+  if (customerTableStages[stage]) {
+    const numItems = Math.min(DEPENDENT_PAGE_SIZE, writesLeft);
+    if (numItems === 0) return { deleted, finished: false, state };
+    const page = await ctx.db
+      .query(customerTableStages[stage])
+      .withIndex("by_customer", (q: any) => q.eq("customer_id", customerId))
+      .paginate({ cursor: state.tableCursor ?? null, numItems });
+    for (const record of page.page) {
+      await ctx.db.delete(record._id);
+      deleted += 1;
+    }
     if (!page.isDone) {
       state.tableCursor = page.continueCursor;
       return { deleted, finished: false, state };
@@ -422,6 +454,7 @@ async function deleteGeneralBatch(
     tableCursor: cursor.tableCursor ?? null,
     ownedBusinessIds: cursor.ownedBusinessIds ?? null,
     businessIndex: cursor.businessIndex ?? 0,
+    subscriptionScope: cursor.subscriptionScope ?? "user",
   };
 
   let deletedCount = 0;
@@ -455,19 +488,55 @@ async function deleteGeneralBatch(
     }
 
     if (state.stage === "subscriptions") {
-      const subscriptions = await ctx.db
-        .query("subscriptions")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .collect();
-
-      for (const subscription of subscriptions) {
-        if (writesLeft <= 0) break;
-        await ctx.db.delete(subscription._id);
-        deletedCount += 1;
-        writesLeft -= 1;
+      const numItems = Math.min(batchSize, writesLeft);
+      if (numItems === 0) break;
+      if (state.subscriptionScope === "user") {
+        const page = await ctx.db
+          .query("subscriptions")
+          .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
+          .paginate({ cursor: state.tableCursor ?? null, numItems });
+        for (const subscription of page.page) {
+          await ctx.db.delete(subscription._id);
+          deletedCount += 1;
+          writesLeft -= 1;
+        }
+        if (!page.isDone) {
+          state.tableCursor = page.continueCursor;
+          break;
+        }
+        state.subscriptionScope = "business";
+        state.tableCursor = null;
       }
 
+      if (state.ownedBusinessIds === null) {
+        const owned = await ctx.db
+          .query("businesses")
+          .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
+          .collect();
+        state.ownedBusinessIds = owned.map((business: any) => business._id as string);
+        state.businessIndex = 0;
+      }
+      while ((state.businessIndex ?? 0) < (state.ownedBusinessIds?.length ?? 0) && writesLeft > 0) {
+        const businessId = state.ownedBusinessIds![state.businessIndex ?? 0];
+        const page = await ctx.db
+          .query("subscriptions")
+          .withIndex("by_business", (q: any) => q.eq("business_id", businessId as Id<"businesses">))
+          .paginate({ cursor: state.tableCursor ?? null, numItems: Math.min(batchSize, writesLeft) });
+        for (const subscription of page.page) {
+          await ctx.db.delete(subscription._id);
+          deletedCount += 1;
+          writesLeft -= 1;
+        }
+        if (!page.isDone) {
+          state.tableCursor = page.continueCursor;
+          break;
+        }
+        state.businessIndex = (state.businessIndex ?? 0) + 1;
+        state.tableCursor = null;
+      }
+      if ((state.businessIndex ?? 0) < (state.ownedBusinessIds?.length ?? 0)) break;
       state.stage = "team_members_owned";
+      state.businessIndex = 0;
       state.tableCursor = null;
       continue;
     }
@@ -658,12 +727,13 @@ export const deleteMyAccount = action({
     const userEmail = identity.email;
     const summary = {
       customers: 0,
+      tenant: 0,
       general: 0,
       rateLimits: 0,
     };
     const warnings: string[] = [];
 
-    const phases = ["customers", "general", "rateLimits"] as const;
+    const phases = ["customers", "tenant", "general", "rateLimits"] as const;
 
     for (const phase of phases) {
       let cursor: string | undefined;
@@ -672,7 +742,7 @@ export const deleteMyAccount = action({
           userEmail,
           phase,
           cursor,
-          batchSize: phase === "customers" ? 1 : 100,
+          batchSize: phase === "customers" || phase === "tenant" ? 1 : 100,
         });
 
         summary[phase] += result.deletedCount;

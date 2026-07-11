@@ -4,6 +4,8 @@ import { logLogin, logLogout } from '@/lib/auditLog';
 import { setUserContext, clearUserContext } from '@/lib/sentry';
 import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
 import { normalizeConvexUrl } from '@/lib/convexUrl';
+import { clearChemCheckSessionData } from '@/lib/sessionCleanup';
+import { isAccountChange } from '@/lib/sessionIdentity';
 import {
   getAuthBypassReason,
   shouldUseIosSimulatorAuthBypass,
@@ -109,7 +111,12 @@ function AuthContextProvider({ children }) {
           // Try to find existing user in localStorage
           let existingUser = userManager.getCurrentUser();
 
-          // If no current user or email doesn't match, try to login
+          // Do not let a newly authenticated account restore another account's offline state.
+          if (isAccountChange(existingUser, email)) {
+            await clearChemCheckSessionData();
+            existingUser = null;
+          }
+
           if (!existingUser || existingUser.email !== email) {
             existingUser = await userManager.loginUser(email);
           }
@@ -170,14 +177,17 @@ function AuthContextProvider({ children }) {
 
   const logout = async () => {
     try {
-      logLogout();
+      await clearChemCheckSessionData();
       const userManager = await getUserManager();
       userManager.logoutUser();
       setLocalUser(null);
       clearUserContext();
+      logLogout();
       await signOut();
     } catch (error) {
       console.error('Logout error:', error);
+      setAuthError('Could not clear local customer data. Please retry logout.');
+      throw error;
     }
   };
 

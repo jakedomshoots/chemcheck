@@ -51,6 +51,11 @@ export const getByOwnerEmailInternal = internalQuery({
   },
 });
 
+export const getByIdInternal = internalQuery({
+  args: { business_id: v.id("businesses") },
+  handler: async (ctx, args) => await ctx.db.get(args.business_id),
+});
+
 // Create a new business (tenant)
 export const create = mutation({
   args: {
