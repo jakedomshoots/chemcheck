@@ -358,7 +358,7 @@ export function PhotoLightbox({
                     <span className="text-sm font-medium">
                         {currentIndex + 1} / {photos.length}
                     </span>
-                    <span className="px-2 py-0.5 bg-cyan-500/80 text-xs rounded-full capitalize">
+                    <span className="px-2 py-0.5 bg-brand-softer0/80 text-xs rounded-full capitalize">
                         {currentPhoto?.category}
                     </span>
                 </div>
@@ -506,7 +506,7 @@ export function PhotoLightbox({
                         <button
                             type="button"
                             onClick={handleDelete}
-                            className="p-2 bg-black/50 hover:bg-red-600/70 text-white rounded-full transition-colors"
+                            className="p-2 bg-black/50 hover:bg-destructive/70 text-white rounded-full transition-colors"
                             title="Delete photo"
                             aria-label="Delete photo"
                         >
@@ -525,7 +525,7 @@ export function PhotoLightbox({
                             type="button"
                             onClick={() => setCurrentIndex(index)}
                             className={`flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${index === currentIndex
-                                ? 'border-cyan-500 scale-110'
+                                ? 'border-brand scale-110'
                                 : 'border-transparent opacity-60 hover:opacity-100'
                                 }`}
                         >

@@ -54,7 +54,7 @@ function getIconAccessibilityProps(props) {
 }
 
 export const PoolIcon = forwardRef(function PoolIcon(
-  { name, className, strokeWidth = 1.85, ...props },
+  { name, className, strokeWidth = 2, ...props },
   ref
 ) {
   const IconComponent = poolIconMap[name];
@@ -79,9 +79,9 @@ const badgeSizes = {
 };
 
 const badgeTones = {
-  cyan: "bg-cyan-100 text-cyan-800 shadow-inner shadow-cyan-900/10",
-  slate: "bg-slate-200 text-slate-700 shadow-inner shadow-slate-900/10",
-  amber: "bg-amber-100 text-amber-800 shadow-inner shadow-amber-900/10",
+  cyan: "bg-brand-soft text-brand-ink",
+  slate: "bg-surface-2 text-ink-secondary",
+  amber: "bg-[var(--status-watch-soft)] text-watch",
 };
 
 export const IconBadge = forwardRef(function IconBadge(
@@ -113,7 +113,7 @@ export const IconBadge = forwardRef(function IconBadge(
       {...accessibilityProps}
       {...props}
     >
-      <PoolIcon name={name} strokeWidth={2.15} className={cn("h-5 w-5", iconClassName)} />
+      <PoolIcon name={name} strokeWidth={2} className={cn("h-5 w-5", iconClassName)} />
     </span>
   );
 });

@@ -6,6 +6,7 @@ import { initSentry, reportError } from '@/lib/sentry';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
 import { initializeCacheLifecycle } from '@/api/dexieHooks';
+import { applyTheme, watchSystemTheme } from '@/lib/theme';
 
 const AppRouterShell = lazy(() =>
     importWithRetry(() => import('@/components/routing/AppRouterShell.jsx'), 'AppRouterShell')
@@ -13,7 +14,7 @@ const AppRouterShell = lazy(() =>
 
 function RootLoader() {
     return (
-        <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100">
+        <div className="flex items-center justify-center min-h-screen bg-surface-0">
             <Loader className="w-12 h-12" />
         </div>
     );
@@ -21,6 +22,8 @@ function RootLoader() {
 
 initSentry();
 initializeCacheLifecycle();
+applyTheme();
+watchSystemTheme();
 
 function scheduleAnalyticsInitialization() {
     const initialize = async () => {

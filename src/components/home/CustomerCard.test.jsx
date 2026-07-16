@@ -103,7 +103,7 @@ describe("CustomerCard", () => {
     expect(screen.getAllByRole("button", { name: /skip/i })).toHaveLength(1);
   });
 
-  it("uses unskip for skipped customers", () => {
+  it("moves skipped customers back to pending", () => {
     const onUnskip = vi.fn();
     const onSkip = vi.fn();
 
@@ -119,7 +119,7 @@ describe("CustomerCard", () => {
 
     expect(screen.getByRole("button", { name: /resume/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /unskip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /move back/i }));
 
     expect(onUnskip).toHaveBeenCalledTimes(1);
     expect(onSkip).not.toHaveBeenCalled();

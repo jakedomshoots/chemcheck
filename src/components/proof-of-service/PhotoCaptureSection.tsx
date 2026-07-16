@@ -63,7 +63,7 @@ export function PhotoCaptureSection({
   const shellClassName = streamlined
     ? 'p-3'
     : embedded
-      ? 'rounded-[1.25rem] border border-slate-200/70 bg-white/65 p-4 shadow-sm'
+      ? 'rounded-raised border border-line bg-white/65 p-4 shadow-sm'
       : 'p-4';
 
   /**
@@ -155,16 +155,16 @@ export function PhotoCaptureSection({
     return (
       <Shell className={shellClassName}>
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-slate-100 rounded-lg">
-            <Image className="w-5 h-5 text-slate-600" />
+          <div className="p-2 bg-surface-2 rounded-lg">
+            <Image className="w-5 h-5 text-ink-secondary" />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-900">{displayTitle}</h3>
-            <p className="text-sm text-slate-500">{displayDescription}</p>
+            <h3 className="font-semibold text-ink">{displayTitle}</h3>
+            <p className="text-sm text-ink-muted">{displayDescription}</p>
           </div>
         </div>
         <div className="flex items-center justify-center py-8">
-          <div className="animate-spin w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full" />
+          <div className="animate-spin w-6 h-6 border-2 border-brand border-t-transparent rounded-full" />
         </div>
       </Shell>
     );
@@ -174,12 +174,12 @@ export function PhotoCaptureSection({
     const tone =
       category === 'before'
         ? {
-            iconWrap: 'bg-amber-100 text-amber-700',
-            badge: 'bg-amber-100 text-amber-700',
+            iconWrap: 'bg-[var(--status-watch-soft)] text-watch',
+            badge: 'bg-[var(--status-watch-soft)] text-watch',
           }
         : {
-            iconWrap: 'bg-emerald-100 text-emerald-700',
-            badge: 'bg-emerald-100 text-emerald-700',
+            iconWrap: 'bg-[var(--status-ok-soft)] text-ok',
+            badge: 'bg-[var(--status-ok-soft)] text-ok',
           };
 
     return (
@@ -190,14 +190,14 @@ export function PhotoCaptureSection({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-sm font-semibold text-slate-950">{displayTitle}</h3>
+              <h3 className="truncate text-sm font-semibold text-ink">{displayTitle}</h3>
               {photos.length > 0 && (
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tone.badge}`}>
                   {photos.length}
                 </span>
               )}
             </div>
-            <p className="mt-0.5 truncate text-xs font-medium text-slate-500">{displayDescription}</p>
+            <p className="mt-0.5 truncate text-xs font-medium text-ink-muted">{displayDescription}</p>
           </div>
           {!isCapturing && (
             <Button
@@ -205,7 +205,7 @@ export function PhotoCaptureSection({
               variant="outline"
               onClick={() => setIsCapturing(true)}
               disabled={disabled}
-              className="h-10 shrink-0 rounded-full border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50"
+              className="h-10 shrink-0 rounded-full border border-line bg-white px-4 text-xs font-semibold text-ink shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer"
             >
               {photos.length > 0 ? (
                 <>
@@ -234,7 +234,7 @@ export function PhotoCaptureSection({
                 <button
                   type="button"
                   onClick={() => handleDeletePhoto(photo.id)}
-                  className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white opacity-0 transition-opacity hover:bg-red-600 group-hover:opacity-100"
+                  className="absolute right-1 top-1 rounded-full bg-[var(--status-critical-soft)]0 p-1 text-white opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100"
                   aria-label="Delete photo"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -266,18 +266,18 @@ export function PhotoCaptureSection({
         <div className="flex items-center gap-3">
           <div
             className={`p-2 rounded-lg ${
-              category === 'before' ? 'bg-amber-100' : 'bg-green-100'
+              category === 'before' ? 'bg-[var(--status-watch-soft)]' : 'bg-[var(--status-ok-soft)]'
             }`}
           >
             <Image
               className={`w-5 h-5 ${
-                category === 'before' ? 'text-amber-600' : 'text-green-600'
+                category === 'before' ? 'text-watch' : 'text-ok'
               }`}
             />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-900">{displayTitle}</h3>
-            <p className="text-sm text-slate-500">{displayDescription}</p>
+            <h3 className="font-semibold text-ink">{displayTitle}</h3>
+            <p className="text-sm text-ink-muted">{displayDescription}</p>
           </div>
         </div>
         {/* Photo count badge */}
@@ -285,8 +285,8 @@ export function PhotoCaptureSection({
           <span
             className={`px-2 py-1 text-xs font-medium rounded-full ${
               category === 'before'
-                ? 'bg-amber-100 text-amber-700'
-                : 'bg-green-100 text-green-700'
+                ? 'bg-[var(--status-watch-soft)] text-watch'
+                : 'bg-[var(--status-ok-soft)] text-ok'
             }`}
           >
             {photos.length} photo{photos.length !== 1 ? 's' : ''}
@@ -321,7 +321,7 @@ export function PhotoCaptureSection({
               <button
                 type="button"
                 onClick={() => handleDeletePhoto(photo.id)}
-                className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                className="absolute top-2 right-2 p-1.5 bg-[var(--status-critical-soft)]0 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive"
                 aria-label="Delete photo"
               >
                 <Trash2 className="w-3 h-3" />
@@ -346,7 +346,7 @@ export function PhotoCaptureSection({
           variant="outline"
           onClick={() => setIsCapturing(true)}
           disabled={disabled}
-          className="w-full border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+          className="w-full border-2 border-line text-ink-secondary hover:bg-surface-2 hover:border-line"
         >
           {photos.length > 0 ? (
             <>

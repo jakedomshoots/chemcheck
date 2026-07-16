@@ -308,10 +308,10 @@ export default function RouteOptimizer() {
   if (loading) {
     return (
       <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
-        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <div>
-            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Route Planner</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">Loading your customers...</p>
+            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Route Planner</h2>
+            <p className="mt-1 text-sm font-medium text-ink-muted">Loading your customers...</p>
           </div>
         </div>
       </main>
@@ -319,25 +319,25 @@ export default function RouteOptimizer() {
   }
   return (
     <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
-      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="min-w-0">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Route planner</p>
-          <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
-            <Navigation className="h-7 w-7 text-cyan-700" aria-hidden="true" />
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Route planner</p>
+          <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
+            <Navigation className="h-7 w-7 text-brand-ink" aria-hidden="true" />
             Route Planner
           </h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">Build a practical daily stop order from your saved customer list</p>
+          <p className="mt-1 text-sm font-medium text-ink-muted">Build a practical daily stop order from your saved customer list</p>
         </div>
       </div>
 
-      <div className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-end">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-800">Select Service Day</label>
+            <label className="mb-2 block text-sm font-semibold text-ink">Select Service Day</label>
             <Select value={selectedDay} onValueChange={setSelectedDay}>
               <SelectTrigger
                 aria-label="Select Service Day"
-                className="h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
+                className="h-11 rounded-2xl border border-line bg-white text-ink focus:border-ring"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -354,7 +354,7 @@ export default function RouteOptimizer() {
             <Button
               onClick={optimizeRoute}
               disabled={optimizing || dayCustomers.length === 0}
-              className="h-12 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 disabled:bg-slate-300 disabled:text-white disabled:shadow-none"
+              className="h-12 rounded-full bg-brand px-6 font-semibold text-white shadow-cta hover:bg-brand-strong disabled:bg-line disabled:text-white disabled:shadow-none"
             >
               {optimizing ? (
                 <>
@@ -369,8 +369,8 @@ export default function RouteOptimizer() {
               )}
             </Button>
           ) : (
-            <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+            <div className="flex items-center gap-2 rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-4 py-3 text-sm text-watch">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-watch" aria-hidden="true" />
               <span className="font-medium">Route optimization is disabled in Settings</span>
             </div>
           )}
@@ -378,70 +378,70 @@ export default function RouteOptimizer() {
       </div>
 
       {dayCustomers.length === 0 ? (
-        <div className="rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+        <div className="rounded-sheet border border-line bg-surface-1 px-5 py-10 text-center shadow-card ">
           <IconBadge name="route" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
-          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">No Customers Scheduled</h3>
-          <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-600">
+          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-ink">No Customers Scheduled</h3>
+          <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-ink-secondary">
             Add customers to {selectedDay} to build a route plan.
           </p>
         </div>
       ) : !optimizedRoute ? (
-        <div className="rounded-[1.5rem] border border-white/80 bg-white/85 p-8 text-center shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="rounded-sheet border border-line bg-surface-1 p-8 text-center shadow-card ">
           <IconBadge name="route" size="lg" className="mx-auto mb-4" iconClassName="h-7 w-7" />
-          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">Ready to Build Route</h3>
-          <p className="mx-auto mb-3 max-w-md text-sm font-medium leading-6 text-slate-600">
+          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-ink">Ready to Build Route</h3>
+          <p className="mx-auto mb-3 max-w-md text-sm font-medium leading-6 text-ink-secondary">
             You have {dayCustomers.length} customer{dayCustomers.length !== 1 ? 's' : ''} scheduled for {selectedDay}.
           </p>
-          <p className="mx-auto max-w-md text-xs font-medium leading-5 text-slate-500">
+          <p className="mx-auto max-w-md text-xs font-medium leading-5 text-ink-muted">
             Generate a stop sequence based on your saved customer order and addresses.
           </p>
         </div>
       ) : (
         <div className="space-y-5">
-          <div className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <div className="rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <IconBadge name="route" size="sm" iconClassName="h-4 w-4" />
-                <h3 className="text-lg font-semibold tracking-[-0.025em] text-slate-950">Route Summary</h3>
+                <h3 className="text-lg font-semibold tracking-[-0.025em] text-ink">Route Summary</h3>
               </div>
-              <span className="text-xs font-medium text-slate-500">{optimizedRoute.optimization_summary}</span>
+              <span className="text-xs font-medium text-ink-muted">{optimizedRoute.optimization_summary}</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[1.25rem] border border-cyan-100 bg-cyan-50/70 p-4 text-center">
-                <div className="text-3xl font-semibold tabular-nums tracking-[-0.04em] text-cyan-900">{optimizedRoute.optimized_order.length}</div>
-                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">Total stops</div>
+              <div className="rounded-raised border border-[var(--status-info-line)] bg-brand-softer p-4 text-center">
+                <div className="text-3xl font-semibold tabular-nums tracking-[-0.04em] text-brand-ink">{optimizedRoute.optimized_order.length}</div>
+                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-brand-ink">Total stops</div>
               </div>
-              <div className="rounded-[1.25rem] border border-slate-200/70 bg-white/80 p-4 text-center">
-                <div className="text-3xl font-semibold tabular-nums tracking-[-0.04em] text-slate-950">{optimizedRoute.total_estimated_time || 'N/A'}</div>
-                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Est. time</div>
+              <div className="rounded-raised border border-line bg-surface-1 p-4 text-center">
+                <div className="text-3xl font-semibold tabular-nums tracking-[-0.04em] text-ink">{optimizedRoute.total_estimated_time || 'N/A'}</div>
+                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Est. time</div>
               </div>
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-2 text-sm">
-              <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-slate-700">
-                Service: <span className="font-semibold text-slate-900">{formatMinutes(optimizedRoute.total_service_minutes || 0)}</span>
+              <div className="rounded-2xl border border-line bg-surface-1 px-3 py-2 text-ink-secondary">
+                Service: <span className="font-semibold text-ink">{formatMinutes(optimizedRoute.total_service_minutes || 0)}</span>
               </div>
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-slate-700">
-                <Clock className="h-4 w-4 text-cyan-700" aria-hidden="true" />
+              <div className="flex items-center gap-2 rounded-2xl border border-line bg-surface-1 px-3 py-2 text-ink-secondary">
+                <Clock className="h-4 w-4 text-brand-ink" aria-hidden="true" />
                 <span>
-                  Working hours: <span className="font-semibold text-slate-900">{workingHoursStart} - {workingHoursEnd}</span>
+                  Working hours: <span className="font-semibold text-ink">{workingHoursStart} - {workingHoursEnd}</span>
                 </span>
               </div>
               {optimizedRoute.origin_address && (
-                <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-slate-700">
-                  Starting from: <span className="font-semibold text-slate-900">{optimizedRoute.origin_address}</span>
+                <div className="rounded-2xl border border-line bg-surface-1 px-3 py-2 text-ink-secondary">
+                  Starting from: <span className="font-semibold text-ink">{optimizedRoute.origin_address}</span>
                 </div>
               )}
             </div>
 
             {exceedsWorkingHours && (
-              <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-800">
+              <div className="mt-3 rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-3 py-2 text-sm text-watch">
                 Estimated route time exceeds configured working hours. Consider splitting stops or extending working hours.
               </div>
             )}
 
             {routeWarnings.length > 0 && (
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+              <div className="mt-3 rounded-lg border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-3 py-2 text-sm text-watch" role="status">
                 <div className="font-medium">Estimated map data</div>
                 <ul className="mt-1 list-disc pl-5">
                   {routeWarnings.slice(0, 2).map((warning) => <li key={warning}>{warning}</li>)}
@@ -453,7 +453,7 @@ export default function RouteOptimizer() {
               <div className="mt-4 flex flex-col sm:flex-row gap-3">
                 <Button
                   onClick={handleStartRoute}
-                  className="h-12 w-full rounded-full bg-slate-950 px-6 font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700 sm:w-auto"
+                  className="h-12 w-full rounded-full bg-ink px-6 font-semibold text-surface-0 shadow-raised hover:bg-brand-strong sm:w-auto"
                 >
                   <Play className="mr-2 h-4 w-4" aria-hidden="true" />
                   Start Route
@@ -477,49 +477,49 @@ export default function RouteOptimizer() {
               {optimizedRoute.optimized_order.map((stop, index) => (
                 <div
                   key={index}
-                  className="overflow-hidden rounded-[1.25rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.7)] backdrop-blur transition-all hover:shadow-[0_22px_70px_-50px_rgba(8,47,73,0.85)]"
+                  className="overflow-hidden rounded-raised border border-line bg-surface-1 shadow-card transition-all hover:shadow-card"
                 >
                   <div className="flex items-stretch">
-                    <div className="flex shrink-0 items-center justify-center bg-slate-950 px-5 py-4 text-white sm:px-6 sm:py-5">
+                    <div className="flex shrink-0 items-center justify-center bg-ink px-5 py-4 text-surface-0 sm:px-6 sm:py-5">
                       <div className="text-center">
                         <div className="text-2xl font-semibold tabular-nums tracking-[-0.04em] sm:text-3xl">{stop.position}</div>
-                        <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75 sm:text-xs">Stop</div>
+                        <div className="mt-0.5 text-xs font-semibold uppercase tracking-[0.14em] opacity-75 sm:text-xs">Stop</div>
                       </div>
                     </div>
 
                     <div className="flex-1 p-4">
                       <div className="mb-2 flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h3 className="truncate text-base font-semibold tracking-[-0.025em] text-slate-950 sm:text-lg">{stop.customer_name}</h3>
-                          <div className="mt-1 flex items-start gap-2 text-slate-600">
-                            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" aria-hidden="true" />
+                          <h3 className="truncate text-base font-semibold tracking-[-0.025em] text-ink sm:text-lg">{stop.customer_name}</h3>
+                          <div className="mt-1 flex items-start gap-2 text-ink-secondary">
+                            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-ink" aria-hidden="true" />
                             <span className="text-sm font-medium leading-snug">{stop.customer_address}</span>
                           </div>
                         </div>
-                        <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+                        <ChevronRight className="h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
                       </div>
 
                       {stop.estimated_travel_time_from_previous && index > 0 && (
-                        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-cyan-100 bg-cyan-50/70 px-3 py-2">
-                          <Clock className="h-4 w-4 text-cyan-700" aria-hidden="true" />
-                          <span className="text-sm font-medium text-cyan-800">
+                        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-[var(--status-info-line)] bg-brand-softer px-3 py-2">
+                          <Clock className="h-4 w-4 text-brand-ink" aria-hidden="true" />
+                          <span className="text-sm font-medium text-brand-ink">
                             {stop.estimated_travel_time_from_previous} from previous stop
                           </span>
                         </div>
                       )}
 
                       {index === 0 && stop.estimated_travel_time_from_previous && (
-                        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-cyan-100 bg-cyan-50/70 px-3 py-2">
-                          <Clock className="h-4 w-4 text-cyan-700" aria-hidden="true" />
-                          <span className="text-sm font-medium text-cyan-800">
+                        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-[var(--status-info-line)] bg-brand-softer px-3 py-2">
+                          <Clock className="h-4 w-4 text-brand-ink" aria-hidden="true" />
+                          <span className="text-sm font-medium text-brand-ink">
                             {stop.estimated_travel_time_from_previous}
                           </span>
                         </div>
                       )}
 
                       {stop.notes && (
-                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
-                          <p className="text-sm font-medium text-slate-700">{stop.notes}</p>
+                        <div className="mt-3 rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] p-3">
+                          <p className="text-sm font-medium text-ink-secondary">{stop.notes}</p>
                         </div>
                       )}
 
@@ -527,7 +527,7 @@ export default function RouteOptimizer() {
                         <Button
                           size="sm"
                           onClick={() => handleNavigateToStop(stop.customer_address, stop.customer_location)}
-                          className="h-9 rounded-full bg-cyan-600 px-4 text-xs font-semibold text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+                          className="h-9 rounded-full bg-brand px-4 text-xs font-semibold text-white shadow-cta hover:bg-brand-strong"
                         >
                           <Navigation className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                           Navigate
@@ -535,12 +535,12 @@ export default function RouteOptimizer() {
                         {stop.customer && (
                           <>
                             {stop.customer.pool_type && (
-                              <span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-800">
+                              <span className="rounded-full border border-[var(--status-info-line)] bg-brand-softer px-2.5 py-1 text-xs font-semibold text-brand-ink">
                                 {stop.customer.pool_type}
                               </span>
                             )}
                             {stop.customer.pool_gallons && (
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                              <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
                                 {stop.customer.pool_gallons?.toLocaleString()} gal
                               </span>
                             )}
@@ -578,26 +578,26 @@ function RouteRunnerView({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">Route in Progress</h3>
-          <p className="text-sm text-slate-600">
+          <h3 className="text-lg font-semibold text-ink">Route in Progress</h3>
+          <p className="text-sm text-ink-secondary">
             Stop {currentIndex + 1} of {stops.length}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onExit} className="text-slate-600">
+        <Button variant="ghost" size="sm" onClick={onExit} className="text-ink-secondary">
           <X className="w-4 h-4 mr-1" />
           Exit
         </Button>
       </div>
 
-      <div className="w-full bg-slate-200 rounded-full h-2.5">
+      <div className="w-full bg-surface-2 rounded-full h-2.5">
         <div
-          className="h-2.5 rounded-full bg-cyan-600 transition-all duration-300"
+          className="h-2.5 rounded-full bg-brand transition-all duration-300"
           style={{ width: `${progressPercent}%` }}
         ></div>
       </div>
 
-      <Card className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
-        <div className="bg-slate-950 p-6 text-white">
+      <Card className="overflow-hidden rounded-sheet border border-line bg-surface-1 shadow-card ">
+        <div className="bg-ink p-6 text-surface-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold">
@@ -614,21 +614,21 @@ function RouteRunnerView({
 
         <div className="p-5 space-y-4">
           <div className="flex items-start gap-3">
-            <MapPin className="w-5 h-5 mt-0.5 flex-shrink-0 text-cyan-600" />
+            <MapPin className="w-5 h-5 mt-0.5 flex-shrink-0 text-brand-ink" />
             <div>
-              <div className="font-semibold text-slate-900">{currentStop.customer_address}</div>
+              <div className="font-semibold text-ink">{currentStop.customer_address}</div>
               {originAddress && isFirstStop && (
-                <div className="text-sm text-slate-500 mt-1">
+                <div className="text-sm text-ink-muted mt-1">
                   From: {originAddress}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-3">
-            <Clock className="h-5 w-5 text-cyan-700" />
+          <div className="flex items-center gap-3 rounded-2xl border border-[var(--status-info-line)] bg-brand-softer p-3">
+            <Clock className="h-5 w-5 text-brand-ink" />
             <div>
-              <div className="text-sm font-medium text-cyan-800">
+              <div className="text-sm font-medium text-brand-ink">
                 {isFirstStop
                   ? `Est. ${currentStop.raw_travel_time_minutes || 0} min from start`
                   : `Est. ${currentStop.raw_travel_time_minutes || 0} min from previous stop`}
@@ -637,20 +637,20 @@ function RouteRunnerView({
           </div>
 
           {currentStop.notes && (
-            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-              <p className="text-sm text-slate-700">{currentStop.notes}</p>
+            <div className="p-3 bg-[var(--status-watch-soft)] rounded-lg border border-[var(--status-watch-line)]">
+              <p className="text-sm text-ink-secondary">{currentStop.notes}</p>
             </div>
           )}
 
           {currentStop.customer && (
             <div className="flex flex-wrap gap-2">
               {currentStop.customer.pool_type && (
-                <span className="text-xs px-2 py-1 bg-cyan-100 text-cyan-700 rounded-lg">
+                <span className="text-xs px-2 py-1 bg-brand-soft text-brand-ink rounded-lg">
                   {currentStop.customer.pool_type}
                 </span>
               )}
               {currentStop.customer.pool_gallons && (
-                <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-lg">
+                <span className="text-xs px-2 py-1 bg-[var(--status-info-soft)] text-info rounded-lg">
                   {currentStop.customer.pool_gallons?.toLocaleString()} gal
                 </span>
               )}
@@ -661,7 +661,7 @@ function RouteRunnerView({
             <Button
               size="lg"
               onClick={() => onNavigate(currentStop.customer_address, currentStop.customer_location)}
-              className="rounded-full bg-cyan-600 text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+              className="rounded-full bg-brand text-white shadow-cta hover:bg-brand-strong"
             >
               <PoolIcon name="route" className="mr-2 h-5 w-5" />
               Navigate
@@ -669,7 +669,7 @@ function RouteRunnerView({
             <Button
               size="lg"
               onClick={onMarkArrived}
-              className="rounded-full bg-emerald-600 text-white shadow-[0_14px_30px_-22px_rgba(5,150,105,0.8)] hover:bg-emerald-700"
+              className="rounded-full bg-[var(--status-ok)] text-white shadow-card hover:bg-[var(--status-ok-ink)]"
             >
               {isLastStop ? (
                 <>

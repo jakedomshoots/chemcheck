@@ -169,7 +169,7 @@ export default function ChemicalUsagePage() {
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
-              font-family: 'Arial', sans-serif;
+              font-family: 'Outfit', 'Segoe UI', system-ui, sans-serif;
               padding: 24px;
               font-size: 12px;
               color: #0f172a;
@@ -181,7 +181,8 @@ export default function ChemicalUsagePage() {
             }
             .header h1 {
               font-size: 28px;
-              color: #7c3aed;
+              letter-spacing: -0.03em;
+              color: #0891b2;
               margin-bottom: 6px;
             }
             .header p {
@@ -212,7 +213,7 @@ export default function ChemicalUsagePage() {
             }
             .customer-header span {
               font-size: 11px;
-              color: #7c3aed;
+              color: #0891b2;
               font-weight: 600;
             }
             table {
@@ -237,8 +238,8 @@ export default function ChemicalUsagePage() {
               display: inline-block;
               padding: 2px 8px;
               border-radius: 999px;
-              background: #f3e8ff;
-              color: #6d28d9;
+              background: #ecfeff;
+              color: #155e75;
               font-weight: 600;
             }
             .notes {
@@ -254,17 +255,17 @@ export default function ChemicalUsagePage() {
               position: fixed;
               top: 20px;
               right: 20px;
-              background: #7c3aed;
+              background: #0891b2;
               color: white;
               border: none;
               padding: 12px 24px;
               border-radius: 999px;
               font-size: 13px;
               cursor: pointer;
-              box-shadow: 0 10px 15px rgba(124, 58, 237, 0.2);
+              box-shadow: 0 10px 15px rgba(8, 145, 178, 0.2);
             }
             .close-button:hover {
-              background: #6d28d9;
+              background: #0e7490;
             }
             @media print {
               body { padding: 12px; }
@@ -273,7 +274,7 @@ export default function ChemicalUsagePage() {
           </style>
         </head>
         <body>
-          <button class="close-button" onclick="window.print(); setTimeout(() => window.close(), 500);">🖨️ Print Report</button>
+          <button class="close-button" onclick="window.print(); setTimeout(() => window.close(), 500);">Print Report</button>
           <div class="header">
             <h1>Monthly Chemical Usage</h1>
             <p><strong>Month:</strong> ${format(currentMonthStart, "MMMM yyyy")}</p>
@@ -339,14 +340,14 @@ export default function ChemicalUsagePage() {
 
   return (
     <main className="relative mx-auto max-w-7xl px-3 pb-32 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Chemical Usage">
-      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Chemistry log</p>
-            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Chemicals</p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
               Chemical Usage
             </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-ink-muted">
               Track extra chemicals for billing
             </p>
           </div>
@@ -354,7 +355,7 @@ export default function ChemicalUsagePage() {
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0">
             <Drawer open={isAddSheetOpen} onOpenChange={setIsAddSheetOpen}>
               <DrawerTrigger asChild>
-                <Button className="h-12 w-full rounded-[1.15rem] bg-cyan-600 px-4 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto">
+                <Button className="h-12 w-full rounded-card bg-brand px-4 text-sm font-semibold text-white shadow-cta hover:bg-brand-strong sm:w-auto">
                   <PoolIcon name="add" className="mr-2 h-4 w-4" />
                   Add Chemical Usage
                 </Button>
@@ -379,17 +380,17 @@ export default function ChemicalUsagePage() {
       </div>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-[1.35rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Selected Month</p>
-          <p className="mt-1 text-lg font-semibold tracking-[-0.025em] text-slate-950 tabular-nums">{selectedMonthLabel}</p>
+        <div className="rounded-raised border border-line bg-surface-1 p-4 shadow-card ">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Selected Month</p>
+          <p className="mt-1 text-lg font-semibold tracking-[-0.025em] text-ink tabular-nums">{selectedMonthLabel}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               onClick={() => setMonthOffset(monthOffset - 1)}
               variant="outline"
               size="sm"
-              className="h-9 rounded-full border border-slate-200 bg-white/85 px-3 text-xs font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+              className="h-9 rounded-full border border-line bg-surface-1 px-3 text-xs font-semibold text-ink shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink"
             >
-              <ChevronLeft className="mr-1 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+              <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
               Previous
             </Button>
             {!isCurrentMonth && (
@@ -397,7 +398,7 @@ export default function ChemicalUsagePage() {
                 onClick={() => setMonthOffset(0)}
                 variant="outline"
                 size="sm"
-                className="h-9 rounded-full border border-cyan-200 bg-cyan-50/70 px-3 text-xs font-semibold text-cyan-800 shadow-sm hover:bg-cyan-100"
+                className="h-9 rounded-full border border-[var(--status-info-line)] bg-brand-softer px-3 text-xs font-semibold text-brand-ink shadow-sm hover:bg-brand-soft"
               >
                 Current Month
               </Button>
@@ -407,45 +408,45 @@ export default function ChemicalUsagePage() {
               variant="outline"
               size="sm"
               disabled={isCurrentMonth}
-              className="h-9 rounded-full border border-slate-200 bg-white/85 px-3 text-xs font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-400"
+              className="h-9 rounded-full border border-line bg-surface-1 px-3 text-xs font-semibold text-ink shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink disabled:border-line disabled:bg-surface-2 disabled:text-ink-muted"
             >
               Next
-              <ChevronRight className="ml-1 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+              <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         </div>
 
-        <div className="flex flex-col justify-between rounded-[1.35rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="flex flex-col justify-between rounded-raised border border-line bg-surface-1 p-4 shadow-card ">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-softer text-brand-ink shadow-inner">
               <PoolIcon name="chemicals" className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Monthly Chemical Records</p>
-              <p className="mt-0.5 text-sm font-medium text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Monthly Chemical Records</p>
+              <p className="mt-0.5 text-sm font-medium text-ink-muted">
                 Across {customersWithUsage.length} customer{customersWithUsage.length !== 1 ? 's' : ''}
               </p>
             </div>
-            <p className="ml-auto text-2xl font-semibold tabular-nums text-slate-950">{monthlyRecords.length}</p>
+            <p className="ml-auto text-2xl font-semibold tabular-nums text-ink">{monthlyRecords.length}</p>
           </div>
           <Button
             onClick={generateChemicalPDF}
             disabled={generating || !hasMonthlyRecords}
-            className="mt-3 h-10 w-full rounded-[1rem] bg-slate-950 px-3 text-sm font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
+            className="mt-3 h-10 w-full rounded-card bg-ink px-3 text-sm font-semibold text-surface-0 shadow-raised hover:bg-brand-strong disabled:bg-surface-2 disabled:text-ink-muted disabled:shadow-none"
           >
-            <Download className="mr-2 h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
             {generating ? "Generating..." : "Download Monthly Chemical Log"}
           </Button>
         </div>
       </div>
 
       {customersWithUsage.length === 0 ? (
-        <div className="rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50/80 px-5 py-10 text-center shadow-sm">
+        <div className="rounded-sheet border border-dashed border-line bg-surface-2 px-5 py-10 text-center shadow-sm">
           <IconBadge name="chemicals" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
-          <h3 className="mb-1 text-lg font-semibold tracking-[-0.025em] text-slate-950">
+          <h3 className="mb-1 text-lg font-semibold tracking-[-0.025em] text-ink">
             No Chemical Usage Records This Month
           </h3>
-          <p className="mx-auto mb-5 max-w-sm text-sm font-medium text-slate-500">
+          <p className="mx-auto mb-5 max-w-sm text-sm font-medium text-ink-muted">
             Switch months or add usage entries to build a reportable log.
           </p>
         </div>
@@ -459,49 +460,49 @@ export default function ChemicalUsagePage() {
             return (
               <div
                 key={customerId}
-                className="overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur"
+                className="overflow-hidden rounded-raised border border-line bg-surface-1 shadow-card"
               >
                 <button
                   type="button"
                   onClick={() => toggleCustomer(customerId)}
                   aria-expanded={isExpanded}
-                  className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-cyan-50/40 active:bg-cyan-50/60"
+                  className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-brand-softer active:bg-brand-softer"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="min-w-0">
-                      <h3 className="truncate text-base font-semibold tracking-[-0.02em] text-slate-950">
+                      <h3 className="truncate text-base font-semibold tracking-[-0.02em] text-ink">
                         {customerName}
                       </h3>
-                      <p className="text-xs font-medium text-slate-500">
+                      <p className="text-xs font-medium text-ink-muted">
                         {customerRecords.length} record{customerRecords.length !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>
                   <ChevronDown
-                    className={`h-5 w-5 shrink-0 text-slate-400 stroke-[1.75] transition-transform ${isExpanded ? 'rotate-180 text-cyan-700' : ''}`}
+                    className={`h-5 w-5 shrink-0 text-ink-muted transition-transform ${isExpanded ? 'rotate-180 text-brand-ink' : ''}`}
                     aria-hidden="true"
                   />
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-slate-200/70 bg-slate-50/60">
+                  <div className="border-t border-line bg-surface-2">
                     <div className="space-y-2 p-3">
                       {customerRecords.map((record) => (
                         <div
                           key={record._id}
-                          className="rounded-2xl border border-slate-200/70 bg-white/95 p-3 shadow-sm"
+                          className="rounded-2xl border border-line bg-surface-1 p-3 shadow-sm"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-semibold text-slate-950">
+                                <span className="text-sm font-semibold text-ink">
                                   {record.chemical_type}
                                 </span>
-                                <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800">
+                                <span className="rounded-full bg-brand-softer px-2 py-0.5 text-xs font-semibold text-brand-ink">
                                   {record.quantity}
                                 </span>
                               </div>
-                              <div className="mt-0.5 text-xs font-medium text-slate-500">
+                              <div className="mt-0.5 text-xs font-medium text-ink-muted">
                                 {formatUsageDate(record.created_date)}
                               </div>
 
@@ -518,20 +519,20 @@ export default function ChemicalUsagePage() {
                                       }}
                                       placeholder="Add notes..."
                                       rows={2}
-                                      className="rounded-xl border border-slate-200 bg-white text-xs focus:border-cyan-500 focus-visible:ring-cyan-500"
+                                      className="rounded-xl border border-line bg-white text-xs focus:border-ring focus-visible:ring-ring"
                                     />
                                     <div className="flex gap-2">
                                       <Button
                                         size="sm"
                                         onClick={() => handleSaveNote(record._id)}
                                         disabled={savingNoteId === record._id}
-                                        className="h-8 rounded-full bg-slate-950 px-3 text-xs font-semibold text-white hover:bg-cyan-700"
+                                        className="h-8 rounded-full bg-ink px-3 text-xs font-semibold text-surface-0 hover:bg-brand-strong"
                                       >
                                         {savingNoteId === record._id ? (
                                           <>Saving...</>
                                         ) : (
                                           <>
-                                            <Save className="mr-1 h-3 w-3 stroke-[1.75]" aria-hidden="true" />
+                                            <Save className="mr-1 h-3 w-3" aria-hidden="true" />
                                             Save
                                           </>
                                         )}
@@ -541,9 +542,9 @@ export default function ChemicalUsagePage() {
                                         variant="outline"
                                         onClick={handleCancelEdit}
                                         disabled={savingNoteId === record._id}
-                                        className="h-8 rounded-full border border-slate-200 bg-white/85 px-3 text-xs font-semibold text-slate-800 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+                                        className="h-8 rounded-full border border-line bg-surface-1 px-3 text-xs font-semibold text-ink hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink"
                                       >
-                                        <X className="mr-1 h-3 w-3 stroke-[1.75]" aria-hidden="true" />
+                                        <X className="mr-1 h-3 w-3" aria-hidden="true" />
                                         Cancel
                                       </Button>
                                     </div>
@@ -551,18 +552,18 @@ export default function ChemicalUsagePage() {
                                 ) : (
                                   <div className="flex items-start justify-between gap-2">
                                     {record.notes ? (
-                                      <p className="flex-1 text-xs leading-relaxed text-slate-600">{record.notes}</p>
+                                      <p className="flex-1 text-xs leading-relaxed text-ink-secondary">{record.notes}</p>
                                     ) : (
-                                      <p className="flex-1 text-xs italic text-slate-400">No notes</p>
+                                      <p className="flex-1 text-xs italic text-ink-muted">No notes</p>
                                     )}
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       onClick={() => handleEditNote(record)}
                                       aria-label={`Edit notes for ${record.chemical_type} ${record.quantity}`}
-                                      className="h-7 w-7 shrink-0 rounded-full p-0 text-cyan-700 hover:bg-cyan-50 hover:text-cyan-800"
+                                      className="h-11 w-11 shrink-0 rounded-full p-0 text-brand-ink hover:bg-brand-softer hover:text-brand-ink"
                                     >
-                                      <Edit2 className="h-3.5 w-3.5 stroke-[1.75]" aria-hidden="true" />
+                                      <Edit2 className="h-3.5 w-3.5" aria-hidden="true" />
                                     </Button>
                                   </div>
                                 )}
@@ -576,9 +577,9 @@ export default function ChemicalUsagePage() {
                                 setDeleteRecord(record);
                               }}
                               aria-label={`Delete ${record.chemical_type} ${record.quantity} record`}
-                              className="h-8 w-8 shrink-0 rounded-full p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              className="h-11 w-11 shrink-0 rounded-full p-0 text-critical hover:bg-[var(--status-critical-soft)] hover:text-critical"
                             >
-                              <Trash2 className="h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
                             </Button>
                           </div>
                         </div>
@@ -604,7 +605,7 @@ export default function ChemicalUsagePage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 font-semibold text-white hover:bg-red-700"
+              className="bg-destructive font-semibold text-white hover:bg-destructive"
             >
               Delete
             </AlertDialogAction>

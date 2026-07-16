@@ -32,10 +32,13 @@ import {
   PlugZap,
   CheckCircle2,
   XCircle,
-  Loader2
+  Loader2,
+  Palette
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { getTheme, setTheme } from '@/lib/theme';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -78,6 +81,45 @@ import {
   clearAllPhotos as clearAllLocalPhotos,
   formatStorageBytes,
 } from '@/lib/proof-of-service';
+
+function AppearanceSection() {
+  const [theme, setThemeState] = useState(() => getTheme());
+
+  const handleThemeChange = (next) => {
+    setThemeState(next);
+    setTheme(next);
+  };
+
+  return (
+    <section aria-label="Appearance">
+      <h2 className="text-lg font-semibold text-ink mb-1">Appearance</h2>
+      <p className="text-sm text-ink-muted mb-5">
+        Dark mode is tuned for early-morning and dusk service calls — same
+        hierarchy, surfaces stepped in lightness, status colors desaturated.
+      </p>
+
+      <Label className="mb-2 block text-sm font-semibold text-ink">Theme</Label>
+      <SegmentedControl
+        ariaLabel="Theme"
+        value={theme}
+        onChange={handleThemeChange}
+        options={[
+          { value: 'light', label: 'Light' },
+          { value: 'dark', label: 'Dark' },
+          { value: 'system', label: 'System' },
+        ]}
+      />
+
+      <div className="mt-5 rounded-raised border border-line bg-surface-2 p-4">
+        <p className="text-xs font-medium leading-5 text-ink-secondary">
+          Pool-deck tip: in direct sun, Light mode with full brightness reads
+          best. Dark mode earns its keep before sunrise and in the truck at
+          night.
+        </p>
+      </div>
+    </section>
+  );
+}
 
 function AccountSection({ userData, setUserData }) {
   const auth = useAuthContext();
@@ -144,13 +186,13 @@ function AccountSection({ userData, setUserData }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-slate-900 mb-1">Account Settings</h2>
-        <p className="text-sm text-slate-600">Manage your personal account</p>
+        <h2 className="text-lg font-semibold text-ink mb-1">Account Settings</h2>
+        <p className="text-sm text-ink-secondary">Manage your personal account</p>
       </div>
 
       <div className="space-y-4">
         <div>
-          <Label htmlFor="account-name" className="block text-sm font-medium text-slate-700 mb-2">
+          <Label htmlFor="account-name" className="block text-sm font-medium text-ink-secondary mb-2">
             Full Name
           </Label>
           <Input
@@ -164,7 +206,7 @@ function AccountSection({ userData, setUserData }) {
         </div>
 
         <div>
-          <Label htmlFor="account-email" className="block text-sm font-medium text-slate-700 mb-2">
+          <Label htmlFor="account-email" className="block text-sm font-medium text-ink-secondary mb-2">
             Email Address
           </Label>
           <Input
@@ -174,31 +216,31 @@ function AccountSection({ userData, setUserData }) {
             disabled
             className="rounded-lg"
           />
-          <p className="text-xs text-slate-500 mt-1">Email cannot be changed</p>
+          <p className="text-xs text-ink-muted mt-1">Email cannot be changed</p>
         </div>
       </div>
 
-      <div className="pt-6 border-t border-slate-200">
+      <div className="pt-6 border-t border-line">
         {logoutError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700">{logoutError}</p>
+          <div className="mb-4 p-3 bg-[var(--status-critical-soft)] border border-[var(--status-critical-line)] rounded-lg">
+            <p className="text-sm text-critical">{logoutError}</p>
           </div>
         )}
-        <div className="p-4 bg-slate-50 rounded-lg">
+        <div className="p-4 bg-surface-2 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium text-slate-900">Sign Out</p>
-              <p className="text-sm text-slate-600">Sign out of your ChemCheck account</p>
+              <p className="font-medium text-ink">Sign Out</p>
+              <p className="text-sm text-ink-secondary">Sign out of your ChemCheck account</p>
             </div>
             <Button
               onClick={handleLogout}
               disabled={isLoggingOut}
               variant="outline"
-              className="border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400"
+              className="border-[var(--status-critical-line)] text-critical hover:bg-[var(--status-critical-soft)] hover:border-red-400"
             >
               {isLoggingOut ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin mr-2" />
+                  <div className="w-4 h-4 border-2 border-[var(--status-critical)] border-t-transparent rounded-full animate-spin mr-2" />
                   Signing out...
                 </>
               ) : (
@@ -212,24 +254,24 @@ function AccountSection({ userData, setUserData }) {
         </div>
       </div>
 
-      <div className="pt-6 border-t border-red-200">
+      <div className="pt-6 border-t border-[var(--status-critical-line)]">
         {deleteError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700">{deleteError}</p>
+          <div className="mb-4 p-3 bg-[var(--status-critical-soft)] border border-[var(--status-critical-line)] rounded-lg">
+            <p className="text-sm text-critical">{deleteError}</p>
           </div>
         )}
 
         {!showDeleteConfirm ? (
-          <div className="p-4 bg-red-50/50 rounded-lg">
+          <div className="p-4 bg-[var(--status-critical-soft)] rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-red-800">Delete Account</p>
-                <p className="text-sm text-red-600">Permanently delete your account and all data</p>
+                <p className="font-medium text-critical">Delete Account</p>
+                <p className="text-sm text-critical">Permanently delete your account and all data</p>
               </div>
               <Button
                 onClick={() => setShowDeleteConfirm(true)}
                 variant="outline"
-                className="border-red-400 text-red-700 hover:bg-red-100 hover:border-red-500"
+                className="border-red-400 text-critical hover:bg-[var(--status-critical-soft)] hover:border-red-500"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete
@@ -237,14 +279,14 @@ function AccountSection({ userData, setUserData }) {
             </div>
           </div>
         ) : (
-          <div className="p-4 bg-red-50 border-2 border-red-300 rounded-lg space-y-4">
+          <div className="p-4 bg-[var(--status-critical-soft)] border-2 border-[var(--status-critical-line)] rounded-lg space-y-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 bg-red-100 rounded-full flex-shrink-0 mt-0.5">
-                <AlertCircle className="w-5 h-5 text-red-600" />
+              <div className="p-2 bg-[var(--status-critical-soft)] rounded-full flex-shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5 text-critical" />
               </div>
               <div>
-                <p className="font-semibold text-red-800">Are you sure?</p>
-                <p className="text-sm text-red-700 mt-1">
+                <p className="font-semibold text-critical">Are you sure?</p>
+                <p className="text-sm text-critical mt-1">
                   This will permanently delete your account, all customer data, service logs, photos, and settings. This action cannot be undone.
                 </p>
               </div>
@@ -260,7 +302,7 @@ function AccountSection({ userData, setUserData }) {
               <Button
                 onClick={handleDeleteAccount}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-destructive hover:bg-destructive text-white"
               >
                 {isDeleting ? (
                   <>
@@ -276,7 +318,7 @@ function AccountSection({ userData, setUserData }) {
               </Button>
             </div>
             {deleteProgress && (
-              <p className="text-sm text-red-700 text-right">{deleteProgress}</p>
+              <p className="text-sm text-critical text-right">{deleteProgress}</p>
             )}
           </div>
         )}
@@ -289,25 +331,25 @@ function ProviderStatusCard({ name, description, status, onTest, testing, result
   const ready = Boolean(status?.ready);
   const configured = Boolean(status?.configured);
   return (
-    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+    <div className="rounded-lg border border-line p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-medium text-slate-900">{name}</p>
-          <p className="text-xs text-slate-600 mt-1">{description}</p>
+          <p className="font-medium text-ink">{name}</p>
+          <p className="text-xs text-ink-secondary mt-1">{description}</p>
         </div>
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${ready ? 'bg-emerald-100 text-emerald-700' : configured ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${ready ? 'bg-[var(--status-ok-soft)] text-ok' : configured ? 'bg-[var(--status-watch-soft)] text-watch' : 'bg-surface-2 text-ink-secondary'}`}>
           {ready ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
           {ready ? 'Ready' : configured ? 'Needs setup' : 'Not configured'}
         </span>
       </div>
       {status?.mode && status.mode !== 'unknown' && (
-        <p className="text-xs text-slate-500">Mode: {status.mode}</p>
+        <p className="text-xs text-ink-muted">Mode: {status.mode}</p>
       )}
       {!ready && status?.missing?.length > 0 && (
-        <p className="text-xs text-amber-700">Missing: {status.missing.join(', ')}</p>
+        <p className="text-xs text-watch">Missing: {status.missing.join(', ')}</p>
       )}
       <div className="flex items-center justify-between gap-3">
-        <p className={`text-xs ${result?.ok ? 'text-emerald-700' : result ? 'text-red-700' : 'text-slate-500'}`}>
+        <p className={`text-xs ${result?.ok ? 'text-ok' : result ? 'text-critical' : 'text-ink-muted'}`}>
           {result?.message || status?.message}
         </p>
         <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testing}>
@@ -710,6 +752,7 @@ export default function Settings() {
     { id: 'business', label: 'Business Info', icon: Building2 },
     { id: 'account', label: 'Account', icon: User },
     { id: 'preferences', label: 'Preferences', icon: Globe },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'schedule', label: 'Schedule', icon: Calendar },
     { id: 'services', label: 'Service Types', icon: Beaker },
@@ -726,10 +769,10 @@ export default function Settings() {
   return (
     <>
       <div className="relative mx-auto max-w-6xl px-3 pb-28 pt-4 font-sans sm:px-4 lg:px-6">
-        <div className="mb-5 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Control room</p>
-          <h1 className="text-3xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-4xl">Settings</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">Manage your business and account</p>
+        <div className="mb-5 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Control room</p>
+          <h1 className="text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl">Settings</h1>
+          <p className="mt-1 text-sm font-medium text-ink-muted">Manage your business and account</p>
         </div>
 
       <div className="lg:hidden mb-4">
@@ -738,7 +781,7 @@ export default function Settings() {
           id="settings-section"
           value={activeSection}
           onChange={(event) => setActiveSection(event.target.value)}
-          className="h-11 w-full rounded-[1.15rem] border border-white/80 bg-white/90 px-4 text-sm font-semibold text-slate-800 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25"
+          className="h-11 w-full rounded-card border border-line bg-surface-1 px-4 text-sm font-semibold text-ink shadow-card outline-none focus:border-[var(--status-info-line)] focus:ring-2 focus:ring-ring"
         >
           {sections.map((section) => (
             <option key={section.id} value={section.id}>
@@ -750,20 +793,20 @@ export default function Settings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         <div className="hidden lg:block lg:col-span-1">
-          <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-2 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+          <Card className="rounded-sheet border border-line bg-surface-1 p-2 shadow-card ">
             <nav className="space-y-1">
               {sections.map((section) => (
                 <button
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
-                  className={`flex w-full items-center gap-3 rounded-[1.1rem] px-3 py-2.5 text-left transition-all ${activeSection === section.id
-                    ? 'bg-cyan-600 text-white shadow-[0_14px_32px_-24px_rgba(8,145,178,0.95)]'
-                    : 'text-slate-700 hover:bg-cyan-50/70 hover:text-slate-950'
+                  className={`flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-left transition-all ${activeSection === section.id
+                    ? 'bg-brand text-white shadow-cta'
+                    : 'text-ink-secondary hover:bg-brand-softer hover:text-ink'
                     }`}
                 >
                   <section.icon className="w-5 h-5" />
                   <span className="font-medium">{section.label}</span>
-                  <ChevronRight className={`w-4 h-4 ml-auto ${activeSection === section.id ? 'text-white' : 'text-slate-400'}`} />
+                  <ChevronRight className={`w-4 h-4 ml-auto ${activeSection === section.id ? 'text-white' : 'text-ink-muted'}`} />
                 </button>
               ))}
             </nav>
@@ -771,17 +814,18 @@ export default function Settings() {
         </div>
 
         <div className="lg:col-span-3">
-          <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
+          <Card className="rounded-sheet border border-line bg-surface-1 p-4 shadow-card sm:p-6">
+            {activeSection === 'appearance' && <AppearanceSection />}
             {activeSection === 'business' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Business Information</h2>
-                  <p className="text-sm text-slate-600">Update your business details</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Business Information</h2>
+                  <p className="text-sm text-ink-secondary">Update your business details</p>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="business-name" className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="business-name" className="block text-sm font-medium text-ink-secondary mb-2">
                       <Building2 className="w-4 h-4 inline mr-2" />
                       Business Name
                     </Label>
@@ -796,7 +840,7 @@ export default function Settings() {
                   </div>
 
                   <div>
-                    <Label htmlFor="business-address" className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="business-address" className="block text-sm font-medium text-ink-secondary mb-2">
                       <MapPin className="w-4 h-4 inline mr-2" />
                       Address
                     </Label>
@@ -812,7 +856,7 @@ export default function Settings() {
 
                   <div className="grid grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                      <Label htmlFor="business-phone" className="block text-sm font-medium text-slate-700 mb-2">
+                      <Label htmlFor="business-phone" className="block text-sm font-medium text-ink-secondary mb-2">
                         <Phone className="w-4 h-4 inline mr-2" />
                         Phone
                       </Label>
@@ -826,7 +870,7 @@ export default function Settings() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="business-email" className="block text-sm font-medium text-slate-700 mb-2">
+                      <Label htmlFor="business-email" className="block text-sm font-medium text-ink-secondary mb-2">
                         <Mail className="w-4 h-4 inline mr-2" />
                         Email
                       </Label>
@@ -854,13 +898,13 @@ export default function Settings() {
             {activeSection === 'preferences' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Preferences</h2>
-                  <p className="text-sm text-slate-600">Customize your app experience</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Preferences</h2>
+                  <p className="text-sm text-ink-secondary">Customize your app experience</p>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="pref-language" className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-language" className="block text-sm font-medium text-ink-secondary mb-2">
                       <Globe className="w-4 h-4 inline mr-2" />
                       Language
                     </Label>
@@ -877,12 +921,12 @@ export default function Settings() {
                       </SelectContent>
                     </Select>
                     {showPlaceholderLabels && (
-                      <p className="text-xs text-slate-500 mt-1">Additional languages coming soon</p>
+                      <p className="text-xs text-ink-muted mt-1">Additional languages coming soon</p>
                     )}
                   </div>
 
                   <div>
-                    <Label htmlFor="pref-default-view" className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-default-view" className="block text-sm font-medium text-ink-secondary mb-2">
                       Default View
                     </Label>
                     <Select
@@ -898,12 +942,12 @@ export default function Settings() {
                       </SelectContent>
                     </Select>
                     {showPlaceholderLabels && (
-                      <p className="text-xs text-slate-500 mt-1">Calendar view coming soon</p>
+                      <p className="text-xs text-ink-muted mt-1">Calendar view coming soon</p>
                     )}
                   </div>
 
                   <div>
-                    <Label htmlFor="pref-workorders-section" className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-workorders-section" className="block text-sm font-medium text-ink-secondary mb-2">
                       Default Work Orders Section
                     </Label>
                     <Select
@@ -926,7 +970,7 @@ export default function Settings() {
                   </div>
 
                   <div>
-                    <Label htmlFor="pref-home-action" className="block text-sm font-medium text-slate-700 mb-2">
+                    <Label htmlFor="pref-home-action" className="block text-sm font-medium text-ink-secondary mb-2">
                       Home Primary Action
                     </Label>
                     <Select
@@ -947,10 +991,10 @@ export default function Settings() {
                     </Select>
                   </div>
 
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                  <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
                     <div>
-                      <Label htmlFor="ops-brief-switch" className="font-medium text-slate-900">Show Daily Ops Brief</Label>
-                      <p className="text-sm text-slate-600">Display estimated route summary on Home.</p>
+                      <Label htmlFor="ops-brief-switch" className="font-medium text-ink">Show Daily Ops Brief</Label>
+                      <p className="text-sm text-ink-secondary">Display estimated route summary on Home.</p>
                     </div>
                     <Switch
                       id="ops-brief-switch"
@@ -968,8 +1012,8 @@ export default function Settings() {
             {activeSection === 'notifications' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Notifications</h2>
-                  <p className="text-sm text-slate-600">Configure notification preferences</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Notifications</h2>
+                  <p className="text-sm text-ink-secondary">Configure notification preferences</p>
                 </div>
 
                 <div className="space-y-3">
@@ -978,10 +1022,10 @@ export default function Settings() {
                     { key: 'lowChemicals', label: 'Low Chemical Alerts', desc: 'Alert when chemical levels are low' },
                     { key: 'customerUpdates', label: 'Customer Updates', desc: 'Notifications about customer changes' }
                   ].map((item) => (
-                    <div key={item.key} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <div key={item.key} className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
                       <div>
-                        <Label htmlFor={`notification-${item.key}`} className="font-medium text-slate-900">{item.label}</Label>
-                        <p className="text-sm text-slate-600">{item.desc}</p>
+                        <Label htmlFor={`notification-${item.key}`} className="font-medium text-ink">{item.label}</Label>
+                        <p className="text-sm text-ink-secondary">{item.desc}</p>
                       </div>
                       <Switch
                         id={`notification-${item.key}`}
@@ -1000,13 +1044,13 @@ export default function Settings() {
             {activeSection === 'schedule' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Work Schedule</h2>
-                  <p className="text-sm text-slate-600">Set your business working hours</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Work Schedule</h2>
+                  <p className="text-sm text-ink-secondary">Set your business working hours</p>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <Label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-ink-secondary mb-3">
                       <Calendar className="w-4 h-4 inline mr-2" />
                       Working Days
                     </Label>
@@ -1037,13 +1081,13 @@ export default function Settings() {
                   </div>
 
                   <div>
-                    <Label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-ink-secondary mb-3">
                       <Clock className="w-4 h-4 inline mr-2" />
                       Working Hours
                     </Label>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="start-time" className="block text-xs text-slate-500 mb-1">Start Time</Label>
+                        <Label htmlFor="start-time" className="block text-xs text-ink-muted mb-1">Start Time</Label>
                         <Input
                           id="start-time"
                           type="time"
@@ -1056,7 +1100,7 @@ export default function Settings() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="end-time" className="block text-xs text-slate-500 mb-1">End Time</Label>
+                        <Label htmlFor="end-time" className="block text-xs text-ink-muted mb-1">End Time</Label>
                         <Input
                           id="end-time"
                           type="time"
@@ -1077,13 +1121,13 @@ export default function Settings() {
             {activeSection === 'services' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Service Configuration</h2>
-                  <p className="text-sm text-slate-600">Configure service types, chemicals, and requirements</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Service Configuration</h2>
+                  <p className="text-sm text-ink-secondary">Configure service types, chemicals, and requirements</p>
                 </div>
 
                 <div className="space-y-6">
                   <div>
-                    <Label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-ink-secondary mb-3">
                       <Beaker className="w-4 h-4 inline mr-2" />
                       Service Types
                     </Label>
@@ -1107,7 +1151,7 @@ export default function Settings() {
                             }}
                             variant="outline"
                             size="sm"
-                            className="text-red-600 hover:text-red-700"
+                            className="text-critical hover:text-critical"
                           >
                             Remove
                           </Button>
@@ -1130,7 +1174,7 @@ export default function Settings() {
                   </div>
 
                   <div>
-                    <Label className="block text-sm font-medium text-slate-700 mb-3">
+                    <Label className="block text-sm font-medium text-ink-secondary mb-3">
                       Chemical Types
                     </Label>
                     <div className="space-y-2">
@@ -1153,7 +1197,7 @@ export default function Settings() {
                             }}
                             variant="outline"
                             size="sm"
-                            className="text-red-600 hover:text-red-700"
+                            className="text-critical hover:text-critical"
                           >
                             Remove
                           </Button>
@@ -1176,13 +1220,13 @@ export default function Settings() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
-                    <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg">
+                    <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-surface-2 rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <Label htmlFor="route-optimization" className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                        <Label htmlFor="route-optimization" className="font-medium text-ink text-sm sm:text-base flex items-center gap-2">
                           <Route className="w-4 h-4" />
                           Route Optimization
                         </Label>
-                        <p className="text-xs sm:text-sm text-slate-600">Automatically optimize daily routes</p>
+                        <p className="text-xs sm:text-sm text-ink-secondary">Automatically optimize daily routes</p>
                       </div>
                       <Switch
                         id="route-optimization"
@@ -1191,13 +1235,13 @@ export default function Settings() {
                       />
                     </div>
 
-                    <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg">
+                    <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-surface-2 rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <Label htmlFor="require-photos" className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                        <Label htmlFor="require-photos" className="font-medium text-ink text-sm sm:text-base flex items-center gap-2">
                           <Camera className="w-4 h-4" />
                           Require Photos
                         </Label>
-                        <p className="text-xs sm:text-sm text-slate-600">Require before/after photos for service completion</p>
+                        <p className="text-xs sm:text-sm text-ink-secondary">Require before/after photos for service completion</p>
                       </div>
                       <Switch
                         id="require-photos"
@@ -1223,14 +1267,14 @@ export default function Settings() {
                     </div>
 
                     {showPlaceholderLabels && (
-                      <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-lg opacity-60">
+                      <div className="flex items-start sm:items-center justify-between gap-3 p-4 bg-surface-2 rounded-lg opacity-60">
                         <div className="flex-1 min-w-0">
-                          <Label htmlFor="require-signatures" className="font-medium text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                          <Label htmlFor="require-signatures" className="font-medium text-ink text-sm sm:text-base flex items-center gap-2">
                             <FileSignature className="w-4 h-4" />
                             Require Signatures
-                            <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">Coming Soon</span>
+                            <span className="text-xs bg-surface-2 text-ink-secondary px-2 py-0.5 rounded-full">Coming Soon</span>
                           </Label>
-                          <p className="text-xs sm:text-sm text-slate-600">Require customer signatures for services</p>
+                          <p className="text-xs sm:text-sm text-ink-secondary">Require customer signatures for services</p>
                         </div>
                         <Switch
                           id="require-signatures"
@@ -1247,14 +1291,14 @@ export default function Settings() {
             {activeSection === 'integrations' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Live Integrations</h2>
-                  <p className="text-sm text-slate-600">
+                  <h2 className="text-lg font-semibold text-ink mb-1">Live Integrations</h2>
+                  <p className="text-sm text-ink-secondary">
                     Billing and customer messages use server-side Convex environment variables. Secrets are never stored in ChemCheck or sent to this device.
                   </p>
                 </div>
 
                 {!providerStatus ? (
-                  <div className="rounded-lg border border-slate-200 p-4 text-sm text-slate-600">Loading provider status...</div>
+                  <div className="rounded-lg border border-line p-4 text-sm text-ink-secondary">Loading provider status...</div>
                 ) : (
                   <div className="space-y-3">
                     <ProviderStatusCard
@@ -1284,8 +1328,8 @@ export default function Settings() {
                   </div>
                 )}
 
-                <div className="rounded-lg bg-slate-50 p-4 text-xs text-slate-600 space-y-1">
-                  <p className="font-medium text-slate-800">Deployment checklist</p>
+                <div className="rounded-lg bg-surface-2 p-4 text-xs text-ink-secondary space-y-1">
+                  <p className="font-medium text-ink">Deployment checklist</p>
                   <p>Set provider secrets with <code>npx convex env set</code> (or the production deployment secret manager), never in Vite or source control.</p>
                   <p>Use live Stripe keys and a registered <code>/stripe-webhook</code> endpoint for production billing.</p>
                   <p>Verify your Mailersend sending domain and Twilio sender before sending customer data.</p>
@@ -1296,40 +1340,40 @@ export default function Settings() {
             {activeSection === 'backup' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Data Backup</h2>
-                  <p className="text-sm text-slate-600">Protect and manage your pool service data</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Data Backup</h2>
+                  <p className="text-sm text-ink-secondary">Protect and manage your pool service data</p>
                 </div>
 
                 <div className="space-y-3">
                   <button
                     onClick={() => setShowBackupManager(true)}
-                    className="flex w-full items-center justify-between rounded-[1.25rem] border border-cyan-100 bg-cyan-50/70 p-4 text-left transition-all hover:border-cyan-200 hover:bg-cyan-50"
+                    className="flex w-full items-center justify-between rounded-raised border border-[var(--status-info-line)] bg-brand-softer p-4 text-left transition-all hover:border-[var(--status-info-line)] hover:bg-brand-softer"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="rounded-2xl bg-cyan-600 p-2 text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)]">
+                      <div className="rounded-2xl bg-brand p-2 text-white shadow-cta">
                         <HardDrive className="h-5 w-5" />
                       </div>
                       <div className="text-left">
-                        <p className="font-medium text-slate-900">Backup Manager</p>
-                        <p className="text-sm text-slate-600">Export, import, and manage data backups</p>
+                        <p className="font-medium text-ink">Backup Manager</p>
+                        <p className="text-sm text-ink-secondary">Export, import, and manage data backups</p>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-400" />
+                    <ChevronRight className="w-5 h-5 text-ink-muted" />
                   </button>
 
-                  <div className="p-4 bg-slate-50 rounded-lg">
+                  <div className="p-4 bg-surface-2 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
-                      <Activity className="w-4 h-4 text-slate-600" />
-                      <span className="text-sm font-medium text-slate-900">Auto-Backup Status</span>
+                      <Activity className="w-4 h-4 text-ink-secondary" />
+                      <span className="text-sm font-medium text-ink">Auto-Backup Status</span>
                     </div>
-                    <p className="text-sm text-slate-600 mb-3">
+                    <p className="text-sm text-ink-secondary mb-3">
                       {preferences.autoBackup
                         ? 'Automatic backups are enabled and run every 24 hours'
                         : 'Automatic backups are disabled'
                       }
                     </p>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="auto-backup" className="text-sm text-slate-700">Enable Auto-Backup</Label>
+                      <Label htmlFor="auto-backup" className="text-sm text-ink-secondary">Enable Auto-Backup</Label>
                       <Switch
                         id="auto-backup"
                         checked={preferences.autoBackup}
@@ -1344,19 +1388,19 @@ export default function Settings() {
             {activeSection === 'privacy' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Privacy & Data</h2>
-                  <p className="text-sm text-slate-600">Manage your data and privacy settings (GDPR compliant)</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Privacy & Data</h2>
+                  <p className="text-sm text-ink-secondary">Manage your data and privacy settings (GDPR compliant)</p>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="p-4 bg-[var(--status-info-soft)] border border-[var(--status-info-line)] rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="p-2 bg-blue-600 rounded-lg">
+                      <div className="p-2 bg-brand rounded-lg">
                         <Download className="w-5 h-5 text-white" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-slate-900">Export Your Data</p>
-                        <p className="text-sm text-slate-600 mb-3">
+                        <p className="font-medium text-ink">Export Your Data</p>
+                        <p className="text-sm text-ink-secondary mb-3">
                           Download all your data in a machine-readable format (JSON).
                           This includes customers, service logs, chemical usage, notes, salt cell logs,
                           businesses, team memberships, subscriptions, and communications.
@@ -1372,7 +1416,7 @@ export default function Settings() {
                             }
                           }}
                           variant="outline"
-                          className="border-blue-300 text-blue-700 hover:bg-blue-100"
+                          className="border-[var(--status-info-line)] text-info hover:bg-[var(--status-info-soft)]"
                         >
                           <Download className="w-4 h-4 mr-2" />
                           Download My Data
@@ -1381,13 +1425,13 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 rounded-lg">
+                  <div className="p-4 bg-surface-2 rounded-lg">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <BarChart3 className="w-5 h-5 text-slate-600" />
+                        <BarChart3 className="w-5 h-5 text-ink-secondary" />
                         <div>
-                          <Label htmlFor="usage-analytics" className="font-medium text-slate-900">Usage Analytics</Label>
-                          <p className="text-sm text-slate-600">
+                          <Label htmlFor="usage-analytics" className="font-medium text-ink">Usage Analytics</Label>
+                          <p className="text-sm text-ink-secondary">
                             Help improve ChemCheck by sharing anonymous usage data
                           </p>
                         </div>
@@ -1407,12 +1451,12 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 rounded-lg">
+                  <div className="p-4 bg-surface-2 rounded-lg">
                     <div className="flex items-center gap-2 mb-3">
-                      <Database className="w-4 h-4 text-slate-600" />
-                      <span className="font-medium text-slate-900">Data Storage</span>
+                      <Database className="w-4 h-4 text-ink-secondary" />
+                      <span className="font-medium text-ink">Data Storage</span>
                     </div>
-                    <p className="text-sm text-slate-600 mb-2">
+                    <p className="text-sm text-ink-secondary mb-2">
                       Your data is stored locally on this device and synced to our secure cloud servers.
                       We retain your data as long as your account is active.
                     </p>
@@ -1423,22 +1467,22 @@ export default function Settings() {
                     >
                       View Data Summary
                     </Button>
-                    <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+                    <div className="mt-4 pt-4 border-t border-line space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-slate-700">Local photo storage</span>
-                        <span className="text-sm font-medium text-slate-900">
+                        <span className="text-sm text-ink-secondary">Local photo storage</span>
+                        <span className="text-sm font-medium text-ink">
                           {isStorageLoading
                             ? 'Loading...'
                             : `${formatStorageBytes(photoStorage.totalSizeBytes)} / ${formatStorageBytes(photoStorage.maxSizeBytes)}`}
                         </span>
                       </div>
-                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-surface-2 rounded-full overflow-hidden">
                         <div
-                          className={`h-full transition-all ${photoStorage.usagePercent >= 85 ? 'bg-red-500' : 'bg-cyan-600'}`}
+                          className={`h-full transition-all ${photoStorage.usagePercent >= 85 ? 'bg-[var(--status-critical-soft)]0' : 'bg-brand'}`}
                           style={{ width: `${Math.min(100, photoStorage.usagePercent)}%` }}
                         />
                       </div>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-ink-muted">
                         {photoStorage.count} local photo{photoStorage.count === 1 ? '' : 's'} ({photoStorage.usagePercent}% used)
                       </p>
                       <div className="flex flex-wrap gap-2">
@@ -1453,7 +1497,7 @@ export default function Settings() {
                           onClick={() => setPrivacyConfirmAction('clear_all')}
                           variant="outline"
                           size="sm"
-                          className="border-red-300 text-red-700 hover:bg-red-100"
+                          className="border-[var(--status-critical-line)] text-critical hover:bg-[var(--status-critical-soft)]"
                         >
                           Clear All Local Photos
                         </Button>
@@ -1461,21 +1505,21 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="p-4 bg-[var(--status-critical-soft)] border border-[var(--status-critical-line)] rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="p-2 bg-red-600 rounded-lg">
+                      <div className="p-2 bg-destructive rounded-lg">
                         <Trash2 className="w-5 h-5 text-white" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-red-900">Delete All My Data</p>
-                        <p className="text-sm text-red-700 mb-3">
+                        <p className="font-medium text-critical">Delete All My Data</p>
+                        <p className="text-sm text-critical mb-3">
                           Permanently delete all your data from ChemCheck. This action cannot be undone.
                           We recommend exporting your data first.
                         </p>
                         <Button
                           onClick={() => setIsDeleteAllDataDialogOpen(true)}
                           variant="outline"
-                          className="border-red-300 text-red-700 hover:bg-red-100"
+                          className="border-[var(--status-critical-line)] text-critical hover:bg-[var(--status-critical-soft)]"
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
                           Delete All Data
@@ -1484,14 +1528,14 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 rounded-lg">
-                    <p className="text-sm text-slate-600">
+                  <div className="p-4 bg-surface-2 rounded-lg">
+                    <p className="text-sm text-ink-secondary">
                       For more information about how we handle your data, please read our{' '}
-                      <a href="/privacy-policy.html" target="_blank" className="text-cyan-600 hover:underline">
+                      <a href="/privacy-policy.html" target="_blank" className="text-brand-ink hover:underline">
                         Privacy Policy
                       </a>{' '}
                       and{' '}
-                      <a href="/terms-of-service.html" target="_blank" className="text-cyan-600 hover:underline">
+                      <a href="/terms-of-service.html" target="_blank" className="text-brand-ink hover:underline">
                         Terms of Service
                       </a>.
                     </p>
@@ -1503,8 +1547,8 @@ export default function Settings() {
             {activeSection === 'support' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 mb-1">Help & Support</h2>
-                  <p className="text-sm text-slate-600">Get help or contact the ChemCheck team</p>
+                  <h2 className="text-lg font-semibold text-ink mb-1">Help & Support</h2>
+                  <p className="text-sm text-ink-secondary">Get help or contact the ChemCheck team</p>
                 </div>
 
                 <Card className="p-4 hover:shadow-md transition-shadow">
@@ -1513,26 +1557,26 @@ export default function Settings() {
                     className="flex items-center justify-between"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-cyan-50 rounded-lg">
-                        <HelpCircle className="w-5 h-5 text-cyan-600" />
+                      <div className="p-2 bg-brand-softer rounded-lg">
+                        <HelpCircle className="w-5 h-5 text-brand-ink" />
                       </div>
                       <div>
-                        <p className="font-medium text-slate-900">Visit Support Center</p>
-                        <p className="text-sm text-slate-600">FAQs, contact form, and legal links</p>
+                        <p className="font-medium text-ink">Visit Support Center</p>
+                        <p className="text-sm text-ink-secondary">FAQs, contact form, and legal links</p>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-400" />
+                    <ChevronRight className="w-5 h-5 text-ink-muted" />
                   </Link>
                 </Card>
 
-                <div className="p-4 bg-slate-50 rounded-lg">
-                  <p className="text-sm text-slate-600">
+                <div className="p-4 bg-surface-2 rounded-lg">
+                  <p className="text-sm text-ink-secondary">
                     For direct assistance, email{' '}
-                    <a href="mailto:support@chemcheck.xyz" className="text-cyan-600 hover:underline">
+                    <a href="mailto:support@chemcheck.xyz" className="text-brand-ink hover:underline">
                       support@chemcheck.xyz
                     </a>
                     {' '}or visit our{' '}
-                    <Link to={APP_ROUTES.Support} className="text-cyan-600 hover:underline">
+                    <Link to={APP_ROUTES.Support} className="text-brand-ink hover:underline">
                       support page
                     </Link>.
                   </p>
@@ -1540,16 +1584,16 @@ export default function Settings() {
               </div>
             )}
 
-            <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-3 sm:mt-8 sm:flex-row sm:items-center sm:justify-between sm:pt-6">
+            <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-line pt-3 sm:mt-8 sm:flex-row sm:items-center sm:justify-between sm:pt-6">
               {saveMessage && (
-                <p className={`text-sm text-center sm:text-left ${saveMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
+                <p className={`text-sm text-center sm:text-left ${saveMessage.includes('success') ? 'text-ok' : 'text-critical'}`}>
                   {saveMessage}
                 </p>
               )}
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="w-full rounded-full bg-cyan-600 py-3 text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:ml-auto sm:w-auto sm:py-2"
+                className="w-full rounded-full bg-brand py-3 text-white shadow-cta hover:bg-brand-strong sm:ml-auto sm:w-auto sm:py-2"
               >
                 {isSaving ? (
                   <>
@@ -1592,7 +1636,7 @@ export default function Settings() {
                 }
                 setPrivacyConfirmAction(null);
               }}
-              className={privacyConfirmAction === 'clear_all' ? 'bg-red-600 hover:bg-red-700 text-white' : undefined}
+              className={privacyConfirmAction === 'clear_all' ? 'bg-destructive hover:bg-destructive text-white' : undefined}
             >
               {privacyConfirmAction === 'clear_all' ? 'Clear All Photos' : 'Clear Synced Photos'}
             </AlertDialogAction>
@@ -1608,12 +1652,12 @@ export default function Settings() {
           </DialogHeader>
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {dataSummaryRows.length === 0 ? (
-              <p className="text-sm text-slate-600">No data available.</p>
+              <p className="text-sm text-ink-secondary">No data available.</p>
             ) : (
               dataSummaryRows.map((item) => (
-                <div key={item.type} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
-                  <span className="text-sm text-slate-700">{item.type}</span>
-                  <span className="text-sm font-semibold text-slate-900">{item.count}</span>
+                <div key={item.type} className="flex items-center justify-between rounded-md border border-line px-3 py-2">
+                  <span className="text-sm text-ink-secondary">{item.type}</span>
+                  <span className="text-sm font-semibold text-ink">{item.count}</span>
                 </div>
               ))
             )}
@@ -1652,7 +1696,7 @@ export default function Settings() {
                 void handleDeleteAllData();
               }}
               disabled={deleteAllDataConfirmText.trim() !== 'DELETE' || isDeletingAllData}
-              className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+              className="bg-destructive hover:bg-destructive text-white disabled:opacity-50"
             >
               {isDeletingAllData ? 'Deleting...' : 'Delete All Data'}
             </AlertDialogAction>

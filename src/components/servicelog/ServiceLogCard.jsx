@@ -19,10 +19,10 @@ import { useRecordSyncStatus } from "@/hooks/useSyncState";
 import { getPhotosByServiceLog } from "@/lib/proof-of-service";
 
 const levelConfig = {
-  low: { icon: AlertTriangle, color: "text-yellow-600", bg: "bg-yellow-50/80", border: "border-yellow-200" },
-  good: { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50/80", border: "border-emerald-200" },
-  high: { icon: AlertCircle, color: "text-orange-600", bg: "bg-orange-50/80", border: "border-orange-200" },
-  critical: { icon: XCircle, color: "text-red-600", bg: "bg-red-50/80", border: "border-red-200" }
+  low: { icon: AlertTriangle, color: "text-watch", bg: "bg-[var(--status-watch-soft)]", border: "border-[var(--status-watch-line)]" },
+  good: { icon: CheckCircle2, color: "text-ok", bg: "bg-[var(--status-ok-soft)]", border: "border-[var(--status-ok-line)]" },
+  high: { icon: AlertCircle, color: "text-action", bg: "bg-[var(--status-action-soft)]", border: "border-[var(--status-action-line)]" },
+  critical: { icon: XCircle, color: "text-critical", bg: "bg-[var(--status-critical-soft)]", border: "border-[var(--status-critical-line)]" }
 };
 
 /**
@@ -218,28 +218,28 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
 
   return (
     <>
-      <Card className="overflow-hidden transition-all duration-200 border-2 hover:border-cyan-300 active:border-cyan-400 shadow-sm bg-white/60">
+      <Card className="overflow-hidden transition-all duration-200 border-2 hover:border-[var(--status-info-line)] active:border-[var(--status-info-line)] shadow-sm bg-surface-1">
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-          className="p-3 cursor-pointer flex items-center justify-between active:bg-slate-50/50"
+          className="p-3 cursor-pointer flex items-center justify-between active:bg-surface-2"
         >
           <div className="flex items-center gap-2 flex-1">
             <div className={`p-1.5 ${summaryConfig.bg} rounded-lg`}>
-              <Calendar className="w-3.5 h-3.5 text-cyan-600" />
+              <Calendar className="w-3.5 h-3.5 text-brand-ink" />
             </div>
             <div>
-              <span className="font-semibold text-sm text-slate-900">
+              <span className="font-semibold text-sm text-ink">
                 {formatServiceDateFull(log.service_date)}
               </span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <SummaryIcon className={`w-2.5 h-2.5 ${summaryConfig.color}`} />
-                <span className={`text-[10px] font-medium ${summaryConfig.color}`}>
+                <span className={`text-xs font-medium ${summaryConfig.color}`}>
                   {readings.filter(r => r.type === "level").length} reading{readings.filter(r => r.type === "level").length !== 1 ? 's' : ''}
                 </span>
                 
                 {/* Photo Indicator - Requirements: 1.1, 1.5 */}
                 {hasPhotos && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-slate-500 ml-1">
+                  <span className="flex items-center gap-0.5 text-xs font-medium text-ink-muted ml-1">
                     <Camera className="w-2.5 h-2.5" />
                     <span data-testid="photo-count-indicator">
                       {photoCounts.before > 0 && photoCounts.after > 0 
@@ -252,25 +252,25 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
 
                 {/* Report Status Indicators - Requirements: 5.1, Phase 2.5 */}
                 {isReportSending && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-blue-600 ml-1" data-testid="report-sending-indicator">
+                  <span className="flex items-center gap-0.5 text-xs font-medium text-info ml-1" data-testid="report-sending-indicator">
                     <Loader2 className="w-2.5 h-2.5 animate-spin" />
                     <span>Sending...</span>
                   </span>
                 )}
                 {isReportQueued && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-600 ml-1" data-testid="report-queued-indicator">
+                  <span className="flex items-center gap-0.5 text-xs font-medium text-watch ml-1" data-testid="report-queued-indicator">
                     <AlertCircle className="w-2.5 h-2.5" />
                     <span>Queued</span>
                   </span>
                 )}
                 {isReportFailed && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-red-600 ml-1" data-testid="report-failed-indicator">
+                  <span className="flex items-center gap-0.5 text-xs font-medium text-critical ml-1" data-testid="report-failed-indicator">
                     <XCircle className="w-2.5 h-2.5" />
                     <span>Failed</span>
                   </span>
                 )}
                 {isReportSent && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-medium text-green-600 ml-1" data-testid="report-sent-indicator">
+                  <span className="flex items-center gap-0.5 text-xs font-medium text-ok ml-1" data-testid="report-sent-indicator">
                     <CheckCheck className="w-2.5 h-2.5" />
                     <span>Sent {formatReportSentDate(reportStatus.sentAt)}</span>
                   </span>
@@ -297,24 +297,24 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
                 e.stopPropagation();
                 setShowDeleteDialog(true);
               }}
-              className="text-red-500 hover:text-red-700 hover:bg-red-50/50 h-8 w-8"
+              className="text-critical hover:text-critical hover:bg-[var(--status-critical-soft)] h-8 w-8"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
-            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-ink-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
           </div>
         </div>
 
         {isExpanded && (
-          <div className="border-t border-slate-200/60">
-            <div className="p-3 space-y-2 bg-slate-50/40">
+          <div className="border-t border-line">
+            <div className="p-3 space-y-2 bg-surface-2">
               <div className="grid grid-cols-3 gap-1.5">
                 {readings.map((reading) => {
                   if (reading.type === "number") {
                     return (
-                      <div key={reading.label} className="bg-blue-50/60 border border-blue-200 rounded-lg p-2">
-                        <div className="text-[10px] text-slate-600 font-medium mb-0.5">{reading.label}</div>
-                        <div className="text-xs font-semibold text-blue-700">
+                      <div key={reading.label} className="bg-[var(--status-info-soft)] border border-[var(--status-info-line)] rounded-lg p-2">
+                        <div className="text-xs text-ink-secondary font-medium mb-0.5">{reading.label}</div>
+                        <div className="text-xs font-semibold text-info">
                           {reading.value} {reading.unit}
                         </div>
                       </div>
@@ -327,7 +327,7 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
                     <div key={reading.label} className={`${config.bg} ${config.border} border rounded-lg p-2`}>
                       <div className="flex items-center gap-0.5 mb-0.5">
                         <Icon className={`w-2.5 h-2.5 ${config.color}`} />
-                        <div className="text-[10px] text-slate-600 font-medium">{reading.label}</div>
+                        <div className="text-xs text-ink-secondary font-medium">{reading.label}</div>
                       </div>
                       <div className={`text-xs font-semibold ${config.color} capitalize`}>
                         {reading.value}
@@ -338,39 +338,39 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
               </div>
 
               {log.notes && (
-                <div className="flex items-start gap-1.5 p-2.5 bg-amber-50/60 rounded-lg border border-amber-200">
-                  <FileText className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-slate-700 leading-relaxed">{log.notes}</p>
+                <div className="flex items-start gap-1.5 p-2.5 bg-[var(--status-watch-soft)] rounded-lg border border-[var(--status-watch-line)]">
+                  <FileText className="w-3.5 h-3.5 text-watch flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-ink-secondary leading-relaxed">{log.notes}</p>
                 </div>
               )}
 
               {log.gate_code && (
-                <div className="flex items-start gap-1.5 p-2.5 bg-purple-50/60 rounded-lg border border-purple-200">
-                  <Lock className="w-3.5 h-3.5 text-purple-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-slate-700 leading-relaxed">Gate Code: <span className="font-semibold text-purple-700">{log.gate_code}</span></p>
+                <div className="flex items-start gap-1.5 p-2.5 bg-brand-softer/60 rounded-lg border border-[var(--status-info-line)]">
+                  <Lock className="w-3.5 h-3.5 text-brand-ink flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-ink-secondary leading-relaxed">Gate Code: <span className="font-semibold text-brand-ink">{log.gate_code}</span></p>
                 </div>
               )}
 
               {/* Photo Gallery - Requirements: 1.2 */}
               {hasPhotos && (
-                <div className="mt-3 pt-3 border-t border-slate-200/60">
+                <div className="mt-3 pt-3 border-t border-line">
                   <ServicePhotoGallery photos={photos} />
                 </div>
               )}
 
               {/* Send Report Button - Requirements: 2.1, Phase 2.5 retry */}
               {onSendReport && (
-                <div className="mt-3 pt-3 border-t border-slate-200/60 flex justify-end">
+                <div className="mt-3 pt-3 border-t border-line flex justify-end">
                   <Button
                     variant={isReportSent ? "outline" : isReportFailed ? "outline" : "default"}
                     size="sm"
                     onClick={isReportFailed ? handleRetryReport : handleSendReport}
                     disabled={isReportSending}
                     className={isReportSent
-                      ? "border-green-200 text-green-700 hover:bg-green-50"
+                      ? "border-[var(--status-ok-line)] text-ok hover:bg-[var(--status-ok-soft)]"
                       : isReportFailed
-                        ? "border-red-200 text-red-700 hover:bg-red-50"
-                        : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                        ? "border-[var(--status-critical-line)] text-critical hover:bg-[var(--status-critical-soft)]"
+                        : "bg-brand hover:bg-brand-strong text-white"
                     }
                   >
                     {isReportSending ? (
@@ -414,7 +414,7 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
             <AlertDialogCancel className="text-sm">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700 text-white text-sm"
+              className="bg-destructive hover:bg-destructive text-white text-sm"
             >
               Delete
             </AlertDialogAction>

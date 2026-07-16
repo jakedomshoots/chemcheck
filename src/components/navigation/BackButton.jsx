@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { goBackWithTransition } from "@/lib/viewTransitions";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,12 +32,7 @@ export function BackButton({
 
   const handleClick = (event) => {
     onClick?.(event);
-
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else if (fallback) {
-      navigate(fallback);
-    }
+    goBackWithTransition(navigate, fallback);
   };
 
   return (

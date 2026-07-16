@@ -33,7 +33,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Home", path: APP_ROUTES.Home, icon: "home" },
     { name: "Clients", path: APP_ROUTES.Clients, icon: "clients" },
     { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: "workOrders" },
-    { name: "Report", path: APP_ROUTES.WeeklyReport, icon: "report" },
+    { name: "Reports", path: APP_ROUTES.WeeklyReport, icon: "report" },
     { name: "Notes", path: APP_ROUTES.Notes, icon: "notes" },
     { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: "chemicals" },
     { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: "route" },
@@ -44,7 +44,7 @@ export default function Layout({ children, currentPageName }) {
   const primaryTabs = [
     { name: "Home", path: APP_ROUTES.Home, icon: "home" },
     { name: "Clients", path: APP_ROUTES.Clients, icon: "clients" },
-    { name: "Chemical", path: APP_ROUTES.ChemicalUsage, icon: "chemicals" },
+    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: "chemicals" },
     { name: "Notes", path: APP_ROUTES.Notes, icon: "notes" },
   ];
 
@@ -69,8 +69,8 @@ export default function Layout({ children, currentPageName }) {
   const isMoreActive = moreItems.some((item) => isActive(item.path));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-cyan-100/50 font-sans selection:bg-cyan-100">
-      <header className="lg:hidden sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm safe-area-top">
+    <div className="min-h-screen bg-surface-0 font-sans selection:bg-brand-soft dark:selection:bg-cyan-900">
+      <header className="lg:hidden sticky top-0 z-50 bg-surface-1/85 backdrop-blur-xl border-b border-line safe-area-top">
         <div className="flex items-center justify-between px-3 h-12 sm:h-14">
           <div className="flex items-center">
             <img
@@ -87,15 +87,15 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </header>
 
-      <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white/80 backdrop-blur-xl border-r border-slate-200/60 shadow-2xl flex-col z-40">
-        <div className="p-6 border-b border-slate-200">
+      <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-surface-1 border-r border-line flex-col z-40">
+        <div className="p-6 border-b border-line">
           <div className="space-y-2">
             <img
               src={chemcheckLogo}
               alt="ChemCheck"
               className="h-10 w-auto max-w-[220px]"
             />
-            <p className="text-xs font-medium text-slate-500">Pool Service Manager</p>
+            <p className="text-xs font-medium text-ink-muted">Pool Service Manager</p>
           </div>
         </div>
 
@@ -106,15 +106,15 @@ export default function Layout({ children, currentPageName }) {
               <Link
                 key={item.name}
                 to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${active
-                  ? "bg-cyan-600 text-white shadow-sm"
-                  : "text-slate-700 hover:bg-slate-100"
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-150 group ${active
+                  ? "bg-primary text-primary-foreground"
+                  : "text-ink-secondary hover:bg-surface-2"
                   }`}
               >
-                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors ${active ? "" : "group-hover:bg-slate-50"}`}>
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors ${active ? "" : "group-hover:bg-surface-2"}`}>
                   <PoolIcon
                     name={item.icon}
-                    className={`h-5 w-5 transition-all ${active ? "text-white" : "text-slate-600 group-hover:text-slate-800"}`}
+                    className={`h-5 w-5 transition-colors ${active ? "text-primary-foreground" : "text-ink-secondary group-hover:text-ink"}`}
                   />
                 </span>
                 <span className="font-medium">{item.name}</span>
@@ -123,7 +123,7 @@ export default function Layout({ children, currentPageName }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-200">
+        <div className="p-4 border-t border-line">
           <Suspense fallback={<div className="h-8 w-full" aria-hidden="true" />}>
             {renderSyncIndicator ? (
               <SyncStatusIndicator showLabel={true} showPendingCount={true} />
@@ -139,7 +139,7 @@ export default function Layout({ children, currentPageName }) {
       </main>
 
       <nav
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200/60 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-1/90 backdrop-blur-xl border-t border-line pb-[env(safe-area-inset-bottom)]"
         aria-label="Primary navigation"
       >
         <div className="flex items-center justify-around h-16">
@@ -149,23 +149,23 @@ export default function Layout({ children, currentPageName }) {
               <Link
                 key={item.name}
                 to={item.path}
-                className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 ${active
-                  ? "bg-cyan-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"
+                className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-colors duration-150 ${active
+                  ? "bg-primary text-primary-foreground"
+                  : "text-ink-muted hover:text-ink-secondary hover:bg-surface-2"
                   }`}
                 aria-current={active ? "page" : undefined}
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg">
-                  <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-white" : ""}`} />
+                  <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-primary-foreground" : ""}`} />
                 </span>
-                <span className="text-[10px] font-medium truncate px-1">{item.name}</span>
+                <span className="text-xs font-medium truncate px-1">{item.name}</span>
               </Link>
             );
           })}
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
-            className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-all duration-200 ${isMoreActive ? "bg-cyan-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"}`}
+            className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-colors duration-150 ${isMoreActive ? "bg-primary text-primary-foreground" : "text-ink-muted hover:text-ink-secondary hover:bg-surface-2"}`}
             aria-label="More navigation"
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
@@ -175,7 +175,7 @@ export default function Layout({ children, currentPageName }) {
             <span className="flex h-7 w-7 items-center justify-center rounded-lg">
               <PoolIcon name="more" className="h-5 w-5" />
             </span>
-            <span className="text-[10px] font-medium truncate px-1">More</span>
+            <span className="text-xs font-medium truncate px-1">More</span>
           </button>
         </div>
       </nav>
@@ -189,20 +189,20 @@ export default function Layout({ children, currentPageName }) {
           />
           <div
             id="mobile-more-navigation"
-            className="relative w-full max-w-md mx-auto bg-white rounded-t-2xl shadow-2xl p-4 pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-bottom duration-200"
+            className="relative w-full max-w-md mx-auto bg-surface-1 rounded-t-sheet shadow-raised p-4 pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-bottom duration-200"
             role="dialog"
             aria-modal="true"
             aria-label="More options"
           >
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-semibold text-slate-900">More</h2>
+              <h2 className="text-base font-semibold text-ink">More</h2>
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}
-                className="p-2 -mr-2 hover:bg-slate-100 active:bg-slate-200 active:scale-95 rounded-lg transition-all touch-manipulation"
+                className="p-2 -mr-2 hover:bg-surface-2 active:bg-surface-2 active:scale-95 rounded-lg transition-colors touch-manipulation"
                 aria-label="Close more options"
               >
-                <PoolIcon name="close" className="h-5 w-5 text-slate-500" />
+                <PoolIcon name="close" className="h-5 w-5 text-ink-muted" />
               </button>
             </div>
             <nav className="grid grid-cols-1 gap-1">
@@ -213,14 +213,14 @@ export default function Layout({ children, currentPageName }) {
                     key={item.name}
                     to={item.path}
                     onClick={() => setMoreOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${active
-                      ? "bg-cyan-600 text-white shadow-sm"
-                      : "text-slate-700 hover:bg-slate-100"
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-150 ${active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-ink-secondary hover:bg-surface-2"
                       }`}
                     aria-current={active ? "page" : undefined}
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
-                      <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-white" : "text-slate-600"}`} />
+                      <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-primary-foreground" : "text-ink-secondary"}`} />
                     </span>
                     <span className="font-medium">{item.name}</span>
                   </Link>

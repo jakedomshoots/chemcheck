@@ -35,25 +35,25 @@ import { analyzePool, exportPoolAnalysis, downloadExport } from '@/lib/ai-summar
 import { format, parseISO } from 'date-fns';
 
 const trendIcons = {
-  improving: { icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' },
-  declining: { icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
-  stable: { icon: Minus, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
-  erratic: { icon: Activity, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' }
+  improving: { icon: TrendingUp, color: 'text-ok', bg: 'bg-[var(--status-ok-soft)]', border: 'border-[var(--status-ok-line)]' },
+  declining: { icon: TrendingDown, color: 'text-critical', bg: 'bg-[var(--status-critical-soft)]', border: 'border-[var(--status-critical-line)]' },
+  stable: { icon: Minus, color: 'text-info', bg: 'bg-[var(--status-info-soft)]', border: 'border-[var(--status-info-line)]' },
+  erratic: { icon: Activity, color: 'text-action', bg: 'bg-[var(--status-action-soft)]', border: 'border-[var(--status-action-line)]' }
 };
 
 const severityConfig = {
-  low: { icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
-  medium: { icon: AlertTriangle, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-  high: { icon: AlertCircle, color: 'text-orange-600', bg: 'bg-orange-50' },
-  critical: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' }
+  low: { icon: CheckCircle2, color: 'text-ok', bg: 'bg-[var(--status-ok-soft)]' },
+  medium: { icon: AlertTriangle, color: 'text-watch', bg: 'bg-[var(--status-watch-soft)]' },
+  high: { icon: AlertCircle, color: 'text-action', bg: 'bg-[var(--status-action-soft)]' },
+  critical: { icon: XCircle, color: 'text-critical', bg: 'bg-[var(--status-critical-soft)]' }
 };
 
 const gradeColors = {
-  A: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-  B: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-  C: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' },
-  D: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' },
-  F: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' }
+  A: { bg: 'bg-[var(--status-ok-soft)]', text: 'text-ok', border: 'border-[var(--status-ok-line)]' },
+  B: { bg: 'bg-[var(--status-info-soft)]', text: 'text-info', border: 'border-[var(--status-info-line)]' },
+  C: { bg: 'bg-[var(--status-watch-soft)]', text: 'text-watch', border: 'border-[var(--status-watch-line)]' },
+  D: { bg: 'bg-[var(--status-action-soft)]', text: 'text-action', border: 'border-[var(--status-action-line)]' },
+  F: { bg: 'bg-[var(--status-critical-soft)]', text: 'text-critical', border: 'border-[var(--status-critical-line)]' }
 };
 
 function usePrefersReducedMotion() {
@@ -79,7 +79,7 @@ function usePrefersReducedMotion() {
 const analysisCache = new Map();
 
 // Sparkline component for chemical trends
-function ChemicalSparkline({ readings, color = '#0ea5e9' }) {
+function ChemicalSparkline({ readings, color = 'var(--brand)' }) {
   if (!readings || readings.length < 2) return null;
 
   const width = 60;
@@ -105,7 +105,7 @@ function ChemicalSparkline({ readings, color = '#0ea5e9' }) {
       <polyline
         points={points}
         fill="none"
-        stroke={color}
+        style={{ stroke: color }}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -164,12 +164,12 @@ function AnimatedScoreRing({ score, grade, gradeStyle }) {
 
   // Get stroke color based on grade
   const strokeColor = {
-    A: '#22c55e',
-    B: '#3b82f6',
-    C: '#eab308',
-    D: '#f97316',
-    F: '#ef4444'
-  }[grade] || '#0ea5e9';
+    A: 'var(--status-ok)',
+    B: 'var(--status-info)',
+    C: 'var(--status-watch)',
+    D: 'var(--status-action)',
+    F: 'var(--status-critical)'
+  }[grade] || 'var(--brand)';
 
   return (
     <div className="relative w-32 h-32">
@@ -180,7 +180,7 @@ function AnimatedScoreRing({ score, grade, gradeStyle }) {
           cy="64"
           r="56"
           fill="none"
-          stroke="#e2e8f0"
+          stroke="var(--surface-2)"
           strokeWidth="8"
         />
         {/* Animated progress circle */}
@@ -189,18 +189,17 @@ function AnimatedScoreRing({ score, grade, gradeStyle }) {
           cy="64"
           r="56"
           fill="none"
-          stroke={strokeColor}
           strokeWidth="8"
           strokeLinecap="round"
           strokeDasharray="352"
           strokeDashoffset={strokeDashoffset}
-          style={{ transition: 'stroke 0.3s ease' }}
+          style={{ stroke: strokeColor, transition: 'stroke 0.3s ease' }}
         />
       </svg>
       {/* Score text overlay */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="text-center">
-          <div className={`text-4xl font-bold ${gradeStyle.text}`}>{animatedScore}</div>
+          <div className={`font-data text-4xl font-semibold tracking-[-0.04em] ${gradeStyle.text}`}>{animatedScore}</div>
           <div className={`text-lg font-semibold ${gradeStyle.text}`}>Grade {grade}</div>
         </div>
       </div>
@@ -334,7 +333,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
         <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
           <Card className="p-6">
             <PoolAnalysisSkeleton />
@@ -346,11 +345,11 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
   if (error) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
         <Card className="w-full max-w-md p-6 text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">Analysis Error</h3>
-          <p className="text-sm text-slate-600 mb-4">{error}</p>
+          <AlertCircle className="w-12 h-12 text-critical mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-ink mb-2">Analysis Error</h3>
+          <p className="text-sm text-ink-secondary mb-4">{error}</p>
           <Button onClick={onClose} variant="outline" className="w-full">
             Close
           </Button>
@@ -373,18 +372,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <Card className="p-6">
           {/* Header with Actions - Mobile Optimized */}
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-slate-800 rounded-lg flex-shrink-0">
+              <div className="p-2 bg-ink rounded-lg flex-shrink-0">
                 <BarChart3 className="w-5 h-5 text-white" />
               </div>
               <div className="min-w-0 flex-1">
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900 truncate">AI Pool Analysis</h2>
-                <p className="text-xs sm:text-sm text-slate-500 truncate">{customer.full_name} • {analysis?.totalServices || 0} services analyzed</p>
+                <h2 className="text-lg sm:text-xl font-semibold tracking-[-0.025em] text-ink truncate">Pool Analysis</h2>
+                <p className="text-xs sm:text-sm text-ink-muted truncate">{customer.full_name} • {analysis?.totalServices || 0} services analyzed</p>
               </div>
             </div>
             {/* Action buttons - separate row for mobile */}
@@ -408,18 +407,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
           </div>
 
           {/* Health Score Card - Requirement 1.2 */}
-          <Card className="mb-6 border border-slate-200">
+          <Card className="mb-6 border border-line">
             <div
-              className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
+              className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
               onClick={() => toggleSection('healthScore')}
             >
               <div className="flex items-center gap-2">
-                <Star className="w-5 h-5 text-cyan-600" />
-                <h3 className="text-lg font-semibold text-slate-900">Pool Health Score</h3>
+                <Star className="w-5 h-5 text-brand-ink" />
+                <h3 className="text-lg font-semibold text-ink">Pool Health Score</h3>
               </div>
               {expandedSections.healthScore ?
-                <ChevronUp className="w-5 h-5 text-slate-400" /> :
-                <ChevronDown className="w-5 h-5 text-slate-400" />
+                <ChevronUp className="w-5 h-5 text-ink-muted" /> :
+                <ChevronDown className="w-5 h-5 text-ink-muted" />
               }
             </div>
 
@@ -437,14 +436,14 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       {React.createElement(trendIcons[healthScore.trend]?.icon || Minus, {
-                        className: `w-5 h-5 ${trendIcons[healthScore.trend]?.color || 'text-slate-600'}`
+                        className: `w-5 h-5 ${trendIcons[healthScore.trend]?.color || 'text-ink-secondary'}`
                       })}
                       <span className="text-sm font-medium capitalize">{healthScore.trend} Trend</span>
                     </div>
-                    <div className="text-sm text-slate-600">
+                    <div className="text-sm text-ink-secondary">
                       Confidence: {healthScore.confidence}%
                     </div>
-                    <div className="text-sm text-slate-600">
+                    <div className="text-sm text-ink-secondary">
                       Data Quality: <span className="capitalize">{analysis?.dataQuality}</span>
                     </div>
                   </div>
@@ -456,12 +455,12 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                     {healthScore.breakdown.map((item) => {
                       // Get readings history for this chemical from service logs
                       const readings = serviceLogs?.slice(0, 8).map(log => log[item.chemical]).reverse() || [];
-                      const sparkColor = item.score >= 80 ? '#22c55e' : item.score >= 50 ? '#eab308' : '#ef4444';
+                      const sparkColor = item.score >= 80 ? 'var(--status-ok)' : item.score >= 50 ? 'var(--status-watch)' : 'var(--status-critical)';
 
                       return (
-                        <div key={item.chemical} className="bg-slate-50 p-3 rounded-lg text-center">
-                          <div className="text-xs text-slate-600 capitalize mb-1">{item.chemical}</div>
-                          <div className="text-xl font-bold text-slate-900">{Math.round(item.score)}</div>
+                        <div key={item.chemical} className="bg-surface-2 p-3 rounded-lg text-center">
+                          <div className="text-xs text-ink-secondary capitalize mb-1">{item.chemical}</div>
+                          <div className="font-data text-xl font-semibold text-ink">{Math.round(item.score)}</div>
                           <ChemicalSparkline readings={readings} color={sparkColor} />
                         </div>
                       );
@@ -474,43 +473,43 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Predictive Insights - Requirement 2.1 */}
           {predictiveInsights && (
-            <Card className="mb-6 border border-slate-200">
+            <Card className="mb-6 border border-line">
               <div
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
                 onClick={() => toggleSection('predictions')}
               >
                 <div className="flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-purple-600" />
-                  <h3 className="text-lg font-semibold text-slate-900">Predictive Insights</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.overallOutlook === 'stable' ? 'bg-slate-100 text-green-600' :
-                    predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-slate-100 text-yellow-600' :
-                      'bg-slate-100 text-red-600'
+                  <Eye className="w-5 h-5 text-brand-ink" />
+                  <h3 className="text-lg font-semibold text-ink">Predictive Insights</h3>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.overallOutlook === 'stable' ? 'bg-surface-2 text-ok' :
+                    predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-surface-2 text-watch' :
+                      'bg-surface-2 text-critical'
                     }`}>
                     {predictiveInsights.overallOutlook.replace('-', ' ')}
                   </span>
                 </div>
                 {expandedSections.predictions ?
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
-                  <ChevronDown className="w-5 h-5 text-slate-400" />
+                  <ChevronUp className="w-5 h-5 text-ink-muted" /> :
+                  <ChevronDown className="w-5 h-5 text-ink-muted" />
                 }
               </div>
 
               {expandedSections.predictions && (
                 <div className="px-4 pb-4 space-y-4">
                   {/* Next Service Recommendation */}
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="p-3 bg-surface-2 rounded-lg border border-line">
                     <div className="flex items-center gap-2 mb-2">
-                      <Calendar className="w-4 h-4 text-slate-500" />
+                      <Calendar className="w-4 h-4 text-ink-muted" />
                       <span className="font-medium text-sm">Next Service</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-slate-100 text-red-600' :
-                        predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-slate-100 text-yellow-600' :
-                          'bg-slate-100 text-green-600'
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.nextServiceRecommendation.urgency === 'urgent' ? 'bg-surface-2 text-critical' :
+                        predictiveInsights.nextServiceRecommendation.urgency === 'soon' ? 'bg-surface-2 text-watch' :
+                          'bg-surface-2 text-ok'
                         }`}>
                         {predictiveInsights.nextServiceRecommendation.urgency}
                       </span>
                     </div>
-                    <p className="text-sm text-slate-600">{predictiveInsights.nextServiceRecommendation.reason}</p>
-                    <p className="text-sm font-medium text-slate-700 mt-1">
+                    <p className="text-sm text-ink-secondary">{predictiveInsights.nextServiceRecommendation.reason}</p>
+                    <p className="text-sm font-medium text-ink-secondary mt-1">
                       Suggested: {safeFormatDate(predictiveInsights.nextServiceRecommendation?.suggestedDate, 'MMM d, yyyy')}
                     </p>
                   </div>
@@ -518,23 +517,23 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   {/* Chemical Predictions */}
                   {predictiveInsights.predictions && predictiveInsights.predictions.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="font-medium text-slate-900">Chemical Predictions</h4>
+                      <h4 className="font-medium text-ink">Chemical Predictions</h4>
                       {predictiveInsights.predictions.map((pred, idx) => (
-                        <div key={idx} className="p-3 bg-slate-50 rounded-lg">
+                        <div key={idx} className="p-3 bg-surface-2 rounded-lg">
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-medium capitalize">{pred.chemical}</span>
-                            <span className="text-xs text-slate-600">{pred.confidence}% confidence</span>
+                            <span className="text-xs text-ink-secondary">{pred.confidence}% confidence</span>
                           </div>
-                          <div className="text-sm text-slate-700">
+                          <div className="text-sm text-ink-secondary">
                             {pred.currentLevel} → {pred.predictedLevel}
                             {pred.daysUntilCritical && (
-                              <span className="text-red-600 ml-2">
+                              <span className="text-critical ml-2">
                                 ({pred.daysUntilCritical} days until critical)
                               </span>
                             )}
                           </div>
                           {pred.recommendedAction && (
-                            <p className="text-xs text-slate-600 mt-1">{pred.recommendedAction}</p>
+                            <p className="text-xs text-ink-secondary mt-1">{pred.recommendedAction}</p>
                           )}
                         </div>
                       ))}
@@ -543,7 +542,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
                   {/* Seasonal Factors */}
                   {predictiveInsights.seasonalFactors && predictiveInsights.seasonalFactors.length > 0 && (
-                    <div className="text-sm text-slate-600">
+                    <div className="text-sm text-ink-secondary">
                       <span className="font-medium">Seasonal factors: </span>
                       {predictiveInsights.seasonalFactors.join(', ')}
                     </div>
@@ -555,18 +554,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Chemical Trends */}
           {chemicalTrends && chemicalTrends.length > 0 && (
-            <Card className="mb-6 border border-slate-200">
+            <Card className="mb-6 border border-line">
               <div
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
                 onClick={() => toggleSection('trends')}
               >
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-cyan-600" />
-                  <h3 className="text-lg font-semibold text-slate-900">Chemical Trends</h3>
+                  <TrendingUp className="w-5 h-5 text-brand-ink" />
+                  <h3 className="text-lg font-semibold text-ink">Chemical Trends</h3>
                 </div>
                 {expandedSections.trends ?
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
-                  <ChevronDown className="w-5 h-5 text-slate-400" />
+                  <ChevronUp className="w-5 h-5 text-ink-muted" /> :
+                  <ChevronDown className="w-5 h-5 text-ink-muted" />
                 }
               </div>
 
@@ -581,14 +580,14 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <TrendIcon className={`w-4 h-4 ${config.color}`} />
-                            <span className="font-medium text-slate-900 capitalize">{trend.chemical}</span>
+                            <span className="font-medium text-ink capitalize">{trend.chemical}</span>
                           </div>
-                          <span className="text-xs text-slate-600">{Math.round(trend.confidence)}% confidence</span>
+                          <span className="text-xs text-ink-secondary">{Math.round(trend.confidence)}% confidence</span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                          <span className={`capitalize ${trend.currentStatus === 'good' ? 'text-green-600' :
-                            trend.currentStatus === 'critical' ? 'text-red-600' :
-                              'text-yellow-600'
+                          <span className={`capitalize ${trend.currentStatus === 'good' ? 'text-ok' :
+                            trend.currentStatus === 'critical' ? 'text-critical' :
+                              'text-watch'
                             }`}>
                             Current: {trend.currentStatus}
                           </span>
@@ -604,21 +603,21 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Problems */}
           {problems && problems.length > 0 && (
-            <Card className="mb-6 border border-slate-200">
+            <Card className="mb-6 border border-line">
               <div
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
                 onClick={() => toggleSection('problems')}
               >
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-orange-600" />
-                  <h3 className="text-lg font-semibold text-slate-900">Detected Issues</h3>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-orange-600">
+                  <AlertTriangle className="w-5 h-5 text-action" />
+                  <h3 className="text-lg font-semibold text-ink">Detected Issues</h3>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-surface-2 text-action">
                     {problems.length} found
                   </span>
                 </div>
                 {expandedSections.problems ?
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
-                  <ChevronDown className="w-5 h-5 text-slate-400" />
+                  <ChevronUp className="w-5 h-5 text-ink-muted" /> :
+                  <ChevronDown className="w-5 h-5 text-ink-muted" />
                 }
               </div>
 
@@ -634,13 +633,13 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                           <SeverityIcon className={`w-5 h-5 ${config.color} mt-0.5 flex-shrink-0`} />
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-medium text-slate-900 capitalize">{problem.chemical}</h4>
+                              <h4 className="font-medium text-ink capitalize">{problem.chemical}</h4>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${config.bg} ${config.color} font-medium border`}>
                                 {problem.severity}
                               </span>
                             </div>
-                            <p className="text-sm text-slate-700 mb-2">{problem.description}</p>
-                            <div className="text-xs text-slate-600">
+                            <p className="text-sm text-ink-secondary mb-2">{problem.description}</p>
+                            <div className="text-xs text-ink-secondary">
                               Occurrences: {problem.occurrences || 0}
                               {problem.firstDetected && ` • First: ${safeFormatDate(problem.firstDetected, 'MMM d')}`}
                               {problem.lastDetected && ` • Last: ${safeFormatDate(problem.lastDetected, 'MMM d')}`}
@@ -657,18 +656,18 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Recommendations */}
           {recommendations && (
-            <Card className="mb-6 border border-slate-200">
+            <Card className="mb-6 border border-line">
               <div
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
                 onClick={() => toggleSection('recommendations')}
               >
                 <div className="flex items-center gap-2">
-                  <Lightbulb className="w-5 h-5 text-yellow-600" />
-                  <h3 className="text-lg font-semibold text-slate-900">Recommendations</h3>
+                  <Lightbulb className="w-5 h-5 text-watch" />
+                  <h3 className="text-lg font-semibold text-ink">Recommendations</h3>
                 </div>
                 {expandedSections.recommendations ?
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
-                  <ChevronDown className="w-5 h-5 text-slate-400" />
+                  <ChevronUp className="w-5 h-5 text-ink-muted" /> :
+                  <ChevronDown className="w-5 h-5 text-ink-muted" />
                 }
               </div>
 
@@ -677,16 +676,16 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   {recommendations.immediate && recommendations.immediate.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <Zap className="w-4 h-4 text-red-600" />
-                        <h4 className="font-medium text-slate-900">Immediate Actions</h4>
+                        <Zap className="w-4 h-4 text-critical" />
+                        <h4 className="font-medium text-ink">Immediate Actions</h4>
                       </div>
                       <div className="space-y-2">
                         {recommendations.immediate.map((rec) => (
-                          <div key={rec.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 border-l-2 border-l-red-500">
-                            <p className="text-sm font-medium text-slate-900">{rec.action}</p>
-                            <p className="text-xs text-slate-600 mt-1">{rec.reason}</p>
+                          <div key={rec.id} className="p-3 bg-surface-2 rounded-lg border border-line border-l-2 border-l-[var(--status-critical)]">
+                            <p className="text-sm font-medium text-ink">{rec.action}</p>
+                            <p className="text-xs text-ink-secondary mt-1">{rec.reason}</p>
                             {rec.dosage && (
-                              <p className="text-xs text-red-600 mt-1 font-medium">Dosage: {rec.dosage}</p>
+                              <p className="text-xs text-critical mt-1 font-medium">Dosage: {rec.dosage}</p>
                             )}
                           </div>
                         ))}
@@ -697,16 +696,16 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   {recommendations.thisVisit && recommendations.thisVisit.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <Target className="w-4 h-4 text-orange-600" />
-                        <h4 className="font-medium text-slate-900">This Visit</h4>
+                        <Target className="w-4 h-4 text-action" />
+                        <h4 className="font-medium text-ink">This Visit</h4>
                       </div>
                       <div className="space-y-2">
                         {recommendations.thisVisit.map((rec) => (
-                          <div key={rec.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 border-l-2 border-l-orange-500">
-                            <p className="text-sm font-medium text-slate-900">{rec.action}</p>
-                            <p className="text-xs text-slate-600 mt-1">{rec.reason}</p>
+                          <div key={rec.id} className="p-3 bg-surface-2 rounded-lg border border-line border-l-2 border-l-[var(--status-action)]">
+                            <p className="text-sm font-medium text-ink">{rec.action}</p>
+                            <p className="text-xs text-ink-secondary mt-1">{rec.reason}</p>
                             {rec.dosage && (
-                              <p className="text-xs text-orange-600 mt-1 font-medium">Dosage: {rec.dosage}</p>
+                              <p className="text-xs text-action mt-1 font-medium">Dosage: {rec.dosage}</p>
                             )}
                           </div>
                         ))}
@@ -717,14 +716,14 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   {recommendations.nextVisit && recommendations.nextVisit.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <Calendar className="w-4 h-4 text-blue-600" />
-                        <h4 className="font-medium text-slate-900">Next Visit</h4>
+                        <Calendar className="w-4 h-4 text-info" />
+                        <h4 className="font-medium text-ink">Next Visit</h4>
                       </div>
                       <div className="space-y-2">
                         {recommendations.nextVisit.map((rec) => (
-                          <div key={rec.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 border-l-2 border-l-blue-500">
-                            <p className="text-sm font-medium text-slate-900">{rec.action}</p>
-                            <p className="text-xs text-slate-600 mt-1">{rec.reason}</p>
+                          <div key={rec.id} className="p-3 bg-surface-2 rounded-lg border border-line border-l-2 border-l-[var(--status-info)]">
+                            <p className="text-sm font-medium text-ink">{rec.action}</p>
+                            <p className="text-xs text-ink-secondary mt-1">{rec.reason}</p>
                           </div>
                         ))}
                       </div>
@@ -734,14 +733,14 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   {recommendations.longTerm && recommendations.longTerm.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <Clock className="w-4 h-4 text-slate-600" />
-                        <h4 className="font-medium text-slate-900">Long Term</h4>
+                        <Clock className="w-4 h-4 text-ink-secondary" />
+                        <h4 className="font-medium text-ink">Long Term</h4>
                       </div>
                       <div className="space-y-2">
                         {recommendations.longTerm.map((rec) => (
-                          <div key={rec.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                            <p className="text-sm font-medium text-slate-900">{rec.action}</p>
-                            <p className="text-xs text-slate-600 mt-1">{rec.reason}</p>
+                          <div key={rec.id} className="p-3 bg-surface-2 rounded-lg border border-line">
+                            <p className="text-sm font-medium text-ink">{rec.action}</p>
+                            <p className="text-xs text-ink-secondary mt-1">{rec.reason}</p>
                           </div>
                         ))}
                       </div>
@@ -754,21 +753,21 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Customer Report - Requirement 4.1 */}
           {customerReport && (
-            <Card className="mb-6 border border-slate-200">
+            <Card className="mb-6 border border-line">
               <div
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
                 onClick={() => toggleSection('customerReport')}
               >
                 <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-green-600" />
-                  <h3 className="text-lg font-semibold text-slate-900">Customer Report</h3>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-green-600">
+                  <FileText className="w-5 h-5 text-ok" />
+                  <h3 className="text-lg font-semibold text-ink">Customer Report</h3>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-surface-2 text-ok">
                     Ready to share
                   </span>
                 </div>
                 {expandedSections.customerReport ?
-                  <ChevronUp className="w-5 h-5 text-slate-400" /> :
-                  <ChevronDown className="w-5 h-5 text-slate-400" />
+                  <ChevronUp className="w-5 h-5 text-ink-muted" /> :
+                  <ChevronDown className="w-5 h-5 text-ink-muted" />
                 }
               </div>
 
@@ -799,7 +798,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                         </Button>
                         <Button
                           size="sm"
-                          className="gap-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                          className="gap-1 bg-brand hover:bg-brand-strong text-white"
                           onClick={() => {
                             const subject = `Pool Service Report - ${customer.full_name}`;
                             const body = customerReport.shareableText;
@@ -814,7 +813,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                       <>
                         <Button
                           size="sm"
-                          className="gap-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+                          className="gap-1 bg-brand hover:bg-brand-strong text-white"
                           onClick={() => {
                             // Save changes back to analysis object
                             customerReport.greeting = editedReport.greeting;
@@ -844,16 +843,16 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   </div>
 
                   {/* Report Content */}
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
+                  <div className="bg-surface-2 p-4 rounded-lg border border-line mb-4">
                     {!isEditingReport ? (
                       <>
-                        <p className="font-medium text-slate-900 mb-2">{customerReport.greeting}</p>
-                        <p className="text-sm text-slate-700 mb-3">{customerReport.healthSummary}</p>
+                        <p className="font-medium text-ink mb-2">{customerReport.greeting}</p>
+                        <p className="text-sm text-ink-secondary mb-3">{customerReport.healthSummary}</p>
 
                         {customerReport.whatWeDid && customerReport.whatWeDid.length > 0 && (
                           <div className="mb-3">
-                            <p className="text-sm font-medium text-slate-900 mb-1">What We Did:</p>
-                            <ul className="text-sm text-slate-700 space-y-1">
+                            <p className="text-sm font-medium text-ink mb-1">What We Did:</p>
+                            <ul className="text-sm text-ink-secondary space-y-1">
                               {customerReport.whatWeDid.map((item, idx) => (
                                 <li key={idx}>• {item}</li>
                               ))}
@@ -861,12 +860,12 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                           </div>
                         )}
 
-                        <p className="text-sm text-slate-700 mb-3">{customerReport.whatToExpect}</p>
+                        <p className="text-sm text-ink-secondary mb-3">{customerReport.whatToExpect}</p>
 
                         {customerReport.recommendations && customerReport.recommendations.length > 0 && (
                           <div className="mb-3">
-                            <p className="text-sm font-medium text-slate-900 mb-1">Recommendations:</p>
-                            <ul className="text-sm text-slate-700 space-y-1">
+                            <p className="text-sm font-medium text-ink mb-1">Recommendations:</p>
+                            <ul className="text-sm text-ink-secondary space-y-1">
                               {customerReport.recommendations.map((rec, idx) => (
                                 <li key={idx}>• {rec}</li>
                               ))}
@@ -874,67 +873,67 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                           </div>
                         )}
 
-                        <p className="text-sm text-green-700 italic">{customerReport.closingNote}</p>
+                        <p className="text-sm text-ok italic">{customerReport.closingNote}</p>
                       </>
                     ) : (
                       <>
                         <div className="mb-3">
-                          <label className="text-xs font-medium text-slate-600 mb-1 block">Greeting</label>
+                          <label className="text-xs font-medium text-ink-secondary mb-1 block">Greeting</label>
                           <input
                             type="text"
                             value={editedReport.greeting}
                             onChange={(e) => setEditedReport({ ...editedReport, greeting: e.target.value })}
-                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
 
                         <div className="mb-3">
-                          <label className="text-xs font-medium text-slate-600 mb-1 block">Health Summary</label>
+                          <label className="text-xs font-medium text-ink-secondary mb-1 block">Health Summary</label>
                           <textarea
                             value={editedReport.healthSummary}
                             onChange={(e) => setEditedReport({ ...editedReport, healthSummary: e.target.value })}
                             rows={2}
-                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
 
                         <div className="mb-3">
-                          <label className="text-xs font-medium text-slate-600 mb-1 block">What We Did (one per line)</label>
+                          <label className="text-xs font-medium text-ink-secondary mb-1 block">What We Did (one per line)</label>
                           <textarea
                             value={editedReport.whatWeDid.join('\n')}
                             onChange={(e) => setEditedReport({ ...editedReport, whatWeDid: e.target.value.split('\n').filter(Boolean) })}
                             rows={3}
-                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
 
                         <div className="mb-3">
-                          <label className="text-xs font-medium text-slate-600 mb-1 block">What to Expect</label>
+                          <label className="text-xs font-medium text-ink-secondary mb-1 block">What to Expect</label>
                           <textarea
                             value={editedReport.whatToExpect}
                             onChange={(e) => setEditedReport({ ...editedReport, whatToExpect: e.target.value })}
                             rows={2}
-                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
 
                         <div className="mb-3">
-                          <label className="text-xs font-medium text-slate-600 mb-1 block">Recommendations (one per line)</label>
+                          <label className="text-xs font-medium text-ink-secondary mb-1 block">Recommendations (one per line)</label>
                           <textarea
                             value={editedReport.recommendations.join('\n')}
                             onChange={(e) => setEditedReport({ ...editedReport, recommendations: e.target.value.split('\n').filter(Boolean) })}
                             rows={3}
-                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
 
                         <div>
-                          <label className="text-xs font-medium text-slate-600 mb-1 block">Closing Note</label>
+                          <label className="text-xs font-medium text-ink-secondary mb-1 block">Closing Note</label>
                           <input
                             type="text"
                             value={editedReport.closingNote}
                             onChange={(e) => setEditedReport({ ...editedReport, closingNote: e.target.value })}
-                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
                       </>
@@ -942,9 +941,9 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   </div>
 
                   {/* Shareable Text */}
-                  <div className="bg-slate-100 p-4 rounded-lg">
+                  <div className="bg-surface-2 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-slate-700">Shareable Text (SMS/Email)</span>
+                      <span className="text-sm font-medium text-ink-secondary">Shareable Text (SMS/Email)</span>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -955,7 +954,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                         {copied ? 'Copied!' : 'Copy'}
                       </Button>
                     </div>
-                    <p className="text-sm text-slate-600 whitespace-pre-wrap font-mono bg-white p-3 rounded border">
+                    <p className="text-sm text-ink-secondary whitespace-pre-wrap font-mono bg-white p-3 rounded border">
                       {customerReport.shareableText}
                     </p>
                   </div>
@@ -966,28 +965,28 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
 
           {/* Professional Summary */}
           {professionalSummary && (
-            <Card className="border border-slate-200">
+            <Card className="border border-line">
               <div className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <BarChart3 className="w-5 h-5 text-cyan-600" />
-                  <h3 className="text-lg font-semibold text-slate-900">Summary</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${professionalSummary.tone === 'positive' ? 'bg-slate-100 text-green-600' :
-                    professionalSummary.tone === 'neutral' ? 'bg-slate-100 text-slate-600' :
-                      professionalSummary.tone === 'concerned' ? 'bg-slate-100 text-yellow-600' :
-                        'bg-slate-100 text-red-600'
+                  <BarChart3 className="w-5 h-5 text-brand-ink" />
+                  <h3 className="text-lg font-semibold text-ink">Summary</h3>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${professionalSummary.tone === 'positive' ? 'bg-surface-2 text-ok' :
+                    professionalSummary.tone === 'neutral' ? 'bg-surface-2 text-ink-secondary' :
+                      professionalSummary.tone === 'concerned' ? 'bg-surface-2 text-watch' :
+                        'bg-surface-2 text-critical'
                     }`}>
                     {professionalSummary.tone}
                   </span>
                 </div>
 
-                <h4 className="font-medium text-slate-900 mb-2">{professionalSummary.headline}</h4>
-                <p className="text-sm text-slate-700 mb-4">{professionalSummary.paragraph}</p>
+                <h4 className="font-medium text-ink mb-2">{professionalSummary.headline}</h4>
+                <p className="text-sm text-ink-secondary mb-4">{professionalSummary.paragraph}</p>
 
                 {professionalSummary.bulletPoints && professionalSummary.bulletPoints.length > 0 && (
-                  <ul className="text-sm text-slate-700 space-y-1 mb-4">
+                  <ul className="text-sm text-ink-secondary space-y-1 mb-4">
                     {professionalSummary.bulletPoints.map((point, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-cyan-600 mt-0.5 flex-shrink-0" />
+                        <CheckCircle2 className="w-4 h-4 text-brand-ink mt-0.5 flex-shrink-0" />
                         {point}
                       </li>
                     ))}
@@ -995,8 +994,8 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                 )}
 
                 {professionalSummary.callToAction && (
-                  <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-200">
-                    <p className="text-sm font-medium text-cyan-800">{professionalSummary.callToAction}</p>
+                  <div className="p-3 bg-brand-softer rounded-lg border border-[var(--status-info-line)]">
+                    <p className="text-sm font-medium text-brand-ink">{professionalSummary.callToAction}</p>
                   </div>
                 )}
               </div>

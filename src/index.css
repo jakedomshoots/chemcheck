@@ -2,101 +2,248 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+   ChemCheck Design Tokens
+   ----------------------------------------------------------------------------
+   One brand (cyan), one semantic status ramp (ok / watch / action / critical),
+   three elevation levels, one radius scale, two type voices.
+   Every tint is derived with color-mix() from a small set of OKLCH primitives,
+   so a hue change is a one-line edit and dark mode is a lightness remap.
+   ============================================================================ */
+
 @layer base {
   :root {
-    /* Bradenton Pool Pro Theme - Clean Blues */
-    --background: 210 40% 98%; /* Soft blue-white */
-    --foreground: 222 47% 11%; /* Deep navy */
-    
+    /* ---- Primitives (OKLCH) ---- */
+    --brand: oklch(0.62 0.11 218);            /* pool-water cyan */
+    --brand-strong: oklch(0.55 0.11 220);     /* pressed / hover */
+    --brand-ink: oklch(0.42 0.09 222);        /* brand text on light */
+
+    --status-ok: oklch(0.62 0.13 165);        /* healthy water */
+    --status-watch: oklch(0.72 0.14 85);      /* drifting */
+    --status-action: oklch(0.62 0.16 55);     /* needs treatment */
+    --status-critical: oklch(0.55 0.19 25);   /* unsafe */
+    --status-info: var(--brand);
+
+    --ink: oklch(0.21 0.03 240);              /* near-navy text */
+    --ink-secondary: oklch(0.42 0.02 240);
+    --ink-muted: oklch(0.52 0.02 240);
+
+    --surface-0: oklch(0.985 0.004 220);      /* page */
+    --surface-1: oklch(1 0 0);                /* card */
+    --surface-2: oklch(0.97 0.005 220);       /* inset / muted */
+    --line: oklch(0.92 0.008 220);
+
+    /* ---- Derived tints (color-mix keeps one source of truth) ---- */
+    --brand-soft: color-mix(in oklch, var(--brand) 10%, var(--surface-1));
+    --brand-softer: color-mix(in oklch, var(--brand) 5%, var(--surface-1));
+    --status-ok-soft: color-mix(in oklch, var(--status-ok) 10%, var(--surface-1));
+    --status-ok-line: color-mix(in oklch, var(--status-ok) 32%, var(--surface-1));
+    --status-ok-ink: color-mix(in oklch, var(--status-ok) 62%, var(--ink));
+    --status-watch-soft: color-mix(in oklch, var(--status-watch) 14%, var(--surface-1));
+    --status-watch-line: color-mix(in oklch, var(--status-watch) 38%, var(--surface-1));
+    --status-watch-ink: color-mix(in oklch, var(--status-watch) 55%, var(--ink));
+    --status-action-soft: color-mix(in oklch, var(--status-action) 12%, var(--surface-1));
+    --status-action-line: color-mix(in oklch, var(--status-action) 36%, var(--surface-1));
+    --status-action-ink: color-mix(in oklch, var(--status-action) 60%, var(--ink));
+    --status-critical-soft: color-mix(in oklch, var(--status-critical) 9%, var(--surface-1));
+    --status-critical-line: color-mix(in oklch, var(--status-critical) 30%, var(--surface-1));
+    --status-critical-ink: color-mix(in oklch, var(--status-critical) 70%, var(--surface-1));
+    --status-info-soft: var(--brand-soft);
+    --status-info-line: color-mix(in oklch, var(--brand) 28%, var(--surface-1));
+    --status-info-ink: var(--brand-ink);
+
+    /* ---- shadcn-compatible tokens (HSL channel values) ---- */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
-    
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
-    
-    --primary: 199 89% 48%; /* Cyan 500 */
+    --primary: 199 89% 48%;
     --primary-foreground: 210 40% 98%;
-    
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222 47% 11%;
-    
     --muted: 210 40% 96.1%;
     --muted-foreground: 215 16% 47%;
-    
-    --accent: 199 89% 96%; /* Cyan 50 */
+    --accent: 199 89% 96%;
     --accent-foreground: 199 89% 48%;
-    
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 199 89% 48%;
-    --role-primary: 199 89% 48%;
-    --role-success: 152 76% 40%;
-    --role-warning: 39 93% 47%;
-    --role-critical: 0 72% 51%;
-    
-    --radius: 0.75rem; /* Larger radius for modern feel */
+
+    /* ---- Elevation: three levels, nothing else ---- */
+    --shadow-card: 0 1px 2px color-mix(in oklch, var(--ink) 5%, transparent),
+      0 8px 24px -16px color-mix(in oklch, var(--ink) 18%, transparent);
+    --shadow-raised: 0 2px 4px color-mix(in oklch, var(--ink) 6%, transparent),
+      0 18px 48px -24px color-mix(in oklch, var(--ink) 28%, transparent);
+    --shadow-cta: 0 12px 28px -16px color-mix(in oklch, var(--brand) 70%, transparent);
+
+    /* ---- Radius scale: concentric math baked in ----
+       sheet (24) = card (16) + p-2 (8); card (16) = control (12) + p-1 (4) */
+    --r-chip: 8px;
+    --r-control: 12px;
+    --r-card: 16px;
+    --r-raised: 20px;
+    --r-sheet: 24px;
+    --radius: 0.75rem; /* legacy shadcn alias */
+
+    /* ---- Motion ---- */
+    --ease-standard: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-spring: linear(0, 0.4021 3.6%, 0.7276 7.6%, 0.9577 12.2%, 1.0912 17.3%,
+      1.1512 23%, 1.1576 29.4%, 1.1289 36.3%, 1.0821 44%, 1.0327 52.6%,
+      0.9953 62.1%, 0.9761 72.9%, 0.9725 85%, 1);
+    --dur-fast: 140ms;
+    --dur-base: 220ms;
   }
+
+  /* ---- Designed dark theme: same hues, remapped lightness ---- */
+  .dark {
+    --brand: oklch(0.72 0.1 215);
+    --brand-strong: oklch(0.78 0.09 213);
+    --brand-ink: oklch(0.8 0.08 214);
+
+    --status-ok: oklch(0.7 0.11 165);
+    --status-watch: oklch(0.78 0.12 85);
+    --status-action: oklch(0.72 0.13 58);
+    --status-critical: oklch(0.66 0.16 28);
+
+    --ink: oklch(0.93 0.01 230);
+    --ink-secondary: oklch(0.72 0.015 235);
+    --ink-muted: oklch(0.62 0.015 235);
+
+    --surface-0: oklch(0.17 0.015 240);
+    --surface-1: oklch(0.21 0.015 240);
+    --surface-2: oklch(0.25 0.015 240);
+    --line: oklch(0.3 0.015 240);
+
+    --background: 222 30% 8%;
+    --foreground: 210 30% 94%;
+    --card: 222 26% 11%;
+    --card-foreground: 210 30% 94%;
+    --popover: 222 26% 11%;
+    --popover-foreground: 210 30% 94%;
+    --primary: 196 80% 62%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 222 20% 16%;
+    --secondary-foreground: 210 30% 94%;
+    --muted: 222 20% 16%;
+    --muted-foreground: 215 15% 62%;
+    --accent: 222 22% 16%;
+    --accent-foreground: 196 80% 62%;
+    --destructive: 0 70% 58%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 18% 20%;
+    --input: 222 18% 22%;
+    --ring: 196 80% 62%;
+
+    /* dark mode: shadows carry no weight — borders do */
+    --shadow-card: 0 0 0 1px color-mix(in oklch, var(--surface-1) 0%, transparent);
+    --shadow-raised: 0 0 0 1px var(--line);
+    --shadow-cta: none;
+  }
+}
+
+/* Animatable custom properties (registered so they interpolate) */
+@property --route-progress {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --caustic-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
 }
 
 @layer base {
   * {
     @apply border-border;
   }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-background text-foreground;
-    background-image: 
-      radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.05) 0%, transparent 20%),
-      radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 20%),
-      radial-gradient(circle at 50% 50%, rgba(20, 184, 166, 0.03) 0%, transparent 30%);
-    background-attachment: fixed;
+    background-color: var(--surface-0);
+    color: var(--ink);
   }
-  
+
   /* Ensure all form inputs have proper text contrast */
   input, textarea, select {
     color: hsl(var(--foreground));
   }
-  
+
+  .dark input, .dark textarea, .dark select {
+    color: var(--ink);
+  }
+
   input::placeholder, textarea::placeholder {
     color: hsl(var(--muted-foreground));
+  }
+
+  /* Numbers that change get tabular figures everywhere */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 }
 
 @layer utilities {
-  .role-primary {
-    color: hsl(var(--role-primary));
+  /* Data voice: lab-readout mono for readings, timers, doses */
+  .font-data {
+    font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
   }
 
-  .role-success {
-    color: hsl(var(--role-success));
+  /* Status surfaces — the ONLY way status color enters the UI */
+  .surface-ok {
+    background-color: var(--status-ok-soft);
+    border-color: var(--status-ok-line);
+    color: var(--status-ok-ink);
   }
-
-  .role-warning {
-    color: hsl(var(--role-warning));
+  .surface-watch {
+    background-color: var(--status-watch-soft);
+    border-color: var(--status-watch-line);
+    color: var(--status-watch-ink);
   }
-
-  .role-critical {
-    color: hsl(var(--role-critical));
+  .surface-action {
+    background-color: var(--status-action-soft);
+    border-color: var(--status-action-line);
+    color: var(--status-action-ink);
   }
+  .surface-critical {
+    background-color: var(--status-critical-soft);
+    border-color: var(--status-critical-line);
+    color: var(--status-critical-ink);
+  }
+  .surface-info {
+    background-color: var(--status-info-soft);
+    border-color: var(--status-info-line);
+    color: var(--status-info-ink);
+  }
+  .text-ok { color: var(--status-ok-ink); }
+  .text-watch { color: var(--status-watch-ink); }
+  .text-action { color: var(--status-action-ink); }
+  .text-critical { color: var(--status-critical-ink); }
+  .text-info { color: var(--status-info-ink); }
 }
 
-/* Chemical Gradient Animations */
-@keyframes gradient-xy {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+/* Deprecated: glass was the old default texture. Kept for legacy call sites;
+   new work uses opaque surfaces — blur is reserved for floating chrome. */
+.glass {
+  @apply bg-white/70 backdrop-blur-md border-white/20 shadow-lg;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .animate-gradient {
-    background-size: 200% 200%;
-    animation: gradient-xy 3s ease infinite;
-  }
-}
+/* ============================================================================
+   Signature motion
+   ============================================================================ */
 
-/* Beaker Fill Animation */
+/* Beaker fill (ChemicalBeakerLoader) */
 @keyframes fill-up {
   0% { transform: translateY(100%); }
   100% { transform: translateY(0%); }
@@ -108,16 +255,84 @@
   100% { transform: translateY(-20px) scale(1.5); opacity: 0; }
 }
 
-/* Glassmorphism Utilities */
-.glass {
-  @apply bg-white/70 backdrop-blur-md border-white/20 shadow-lg;
+/* Route progress bar — width animates smoothly when --route-progress changes */
+.route-progress-bar {
+  width: calc(var(--route-progress) * 1%);
+  transition: --route-progress 600ms var(--ease-standard);
+}
+
+/* CSS fallback shimmer for the caustics canvas (no WebGL) */
+@keyframes caustic-drift {
+  to { --caustic-angle: 360deg; }
+}
+
+.caustics-fallback {
+  background:
+    conic-gradient(from var(--caustic-angle) at 30% 30%,
+      color-mix(in oklch, var(--brand) 22%, transparent),
+      transparent 30%,
+      color-mix(in oklch, var(--brand) 16%, transparent) 55%,
+      transparent 80%,
+      color-mix(in oklch, var(--brand) 22%, transparent)),
+    conic-gradient(from calc(var(--caustic-angle) * -1) at 70% 65%,
+      color-mix(in oklch, var(--status-ok) 14%, transparent),
+      transparent 35%,
+      color-mix(in oklch, var(--brand) 12%, transparent) 60%,
+      transparent 85%,
+      color-mix(in oklch, var(--status-ok) 14%, transparent));
+  animation: caustic-drift 24s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caustics-fallback {
+    animation: none;
+  }
+  .route-progress-bar {
+    transition: none;
+  }
+}
+
+/* View transitions: cross-fade default; specific names morph */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: vt-fade-out 160ms var(--ease-standard) both;
+  }
+  ::view-transition-new(root) {
+    animation: vt-fade-in 200ms var(--ease-standard) both;
+  }
+}
+
+@keyframes vt-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes vt-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* Header content gently recedes as the route list scrolls (progressive
+   enhancement — browsers without scroll timelines just keep it static) */
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .scroll-recede {
+      animation: scroll-recede linear both;
+      animation-timeline: scroll(nearest block);
+      animation-range: 0 120px;
+    }
+  }
+}
+
+@keyframes scroll-recede {
+  to {
+    opacity: 0.55;
+    transform: translateY(-4px);
+  }
 }
 
 /* ============================================
    iOS / Capacitor Native App Styles
    ============================================ */
 
-/* Safe Area Padding Utilities */
 .safe-area-top {
   padding-top: env(safe-area-inset-top, 0px);
 }
@@ -136,8 +351,8 @@
 
 /* Touch Optimizations — make interactive elements feel native */
 button, a, [role="button"], input[type="submit"] {
-  -webkit-touch-callout: none; /* Disable callout menu on long-press */
-  -webkit-user-select: none;   /* Disable text selection on buttons */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 

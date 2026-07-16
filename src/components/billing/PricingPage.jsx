@@ -37,7 +37,7 @@ export function PricingPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+    <div className="relative min-h-screen overflow-hidden bg-surface-0 text-ink">
       <div
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
         aria-hidden="true"
@@ -46,13 +46,13 @@ export function PricingPage() {
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-12 text-center">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
             Pricing
           </p>
-          <h1 className="mx-auto max-w-3xl text-balance text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-5xl">
+          <h1 className="mx-auto max-w-3xl text-balance text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">
             Simple, transparent pricing
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base font-medium leading-7 text-slate-600">
+          <p className="mx-auto mt-4 max-w-2xl text-base font-medium leading-7 text-ink-secondary">
             {isNativeIos
               ? 'ChemCheck for iOS is available for existing workspaces. Plan selection is unavailable in this iOS build.'
               : 'Choose the plan that fits your pool service business. All plans include a 14-day free trial.'}
@@ -61,16 +61,16 @@ export function PricingPage() {
           {/* Billing Toggle */}
           {!isNativeIos && (
             <div className="mt-8 flex items-center justify-center gap-4">
-              <span className={cn("text-sm font-semibold", !isAnnual ? "text-slate-950" : "text-slate-500")}>
+              <span className={cn("text-sm font-semibold", !isAnnual ? "text-ink" : "text-ink-muted")}>
                 Monthly
               </span>
               <Switch
                 checked={isAnnual}
                 onCheckedChange={setIsAnnual}
               />
-              <span className={cn("text-sm font-semibold", isAnnual ? "text-slate-950" : "text-slate-500")}>
+              <span className={cn("text-sm font-semibold", isAnnual ? "text-ink" : "text-ink-muted")}>
                 Annual
-                <span className="ml-2 inline-flex items-center rounded-full bg-cyan-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-800">
+                <span className="ml-2 inline-flex items-center rounded-full bg-brand-softer px-2.5 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-ink">
                   Save 20%
                 </span>
               </span>
@@ -92,33 +92,33 @@ export function PricingPage() {
               <div
                 key={planId}
                 className={cn(
-                  "relative flex flex-col rounded-[1.5rem] border bg-white/85 p-6 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:bg-white/95",
+                  "relative flex flex-col rounded-sheet border bg-surface-1 p-6 shadow-card transition-all duration-300 hover:-translate-y-1 hover:bg-surface-1",
                   plan.popular
-                    ? "border-cyan-300/80 ring-1 ring-cyan-300/40"
-                    : "border-white/80"
+                    ? "border-[var(--status-info-line)] ring-1 ring-cyan-300/40"
+                    : "border-line"
                 )}
               >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="inline-flex items-center rounded-full bg-cyan-600 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_14px_30px_-18px_rgba(8,145,178,0.95)]">
+                    <span className="inline-flex items-center rounded-full bg-brand px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white shadow-cta">
                       Most Popular
                     </span>
                   </div>
                 )}
 
                 <div className="mb-6">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-softer text-brand-ink">
                     <Icon className="h-6 w-6" aria-hidden="true" />
                   </div>
-                  <h3 className="text-xl font-semibold tracking-[-0.025em] text-slate-950">{plan.name}</h3>
+                  <h3 className="text-xl font-semibold tracking-[-0.025em] text-ink">{plan.name}</h3>
                   <div className="mt-4 flex items-baseline gap-1">
-                    <span className="text-4xl font-semibold tracking-[-0.04em] text-slate-950">
+                    <span className="text-4xl font-semibold tracking-[-0.04em] text-ink">
                       {formatPrice(displayPrice)}
                     </span>
-                    <span className="text-sm font-medium text-slate-500">/month</span>
+                    <span className="text-sm font-medium text-ink-muted">/month</span>
                   </div>
                   {isAnnual && (
-                    <p className="mt-1 text-sm font-medium text-cyan-800">
+                    <p className="mt-1 text-sm font-medium text-brand-ink">
                       {formatPrice(getAnnualPrice(monthlyPrice))}/year billed annually
                     </p>
                   )}
@@ -126,8 +126,8 @@ export function PricingPage() {
 
                 <ul className="mb-8 flex-grow space-y-3">
                   {plan.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-start gap-3 text-sm font-medium leading-6 text-slate-700">
-                      <Check className="mt-0.5 h-5 w-5 shrink-0 text-cyan-600" aria-hidden="true" />
+                    <li key={idx} className="flex items-start gap-3 text-sm font-medium leading-6 text-ink-secondary">
+                      <Check className="mt-0.5 h-5 w-5 shrink-0 text-brand-ink" aria-hidden="true" />
                       <span>{feature}</span>
                     </li>
                   ))}
@@ -137,10 +137,10 @@ export function PricingPage() {
                   onClick={() => handleSelectPlan(planId)}
                   disabled={isNativeIos || loadingPlan || isCurrentPlan}
                   className={cn(
-                    "h-11 w-full rounded-full px-6 font-semibold shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] focus-visible:ring-2 focus-visible:ring-cyan-500",
+                    "h-11 w-full rounded-full px-6 font-semibold shadow-cta focus-visible:ring-2 focus-visible:ring-ring",
                     plan.popular
-                      ? "bg-cyan-600 text-white hover:bg-cyan-700"
-                      : "bg-slate-950 text-white hover:bg-cyan-700"
+                      ? "bg-brand text-white hover:bg-brand-strong"
+                      : "bg-ink text-surface-0 hover:bg-brand-strong"
                   )}
                 >
                   {loadingPlan === planId ? (
@@ -159,7 +159,7 @@ export function PricingPage() {
         </div>
 
         {error && (
-          <div className="mt-6 rounded-2xl border border-red-200 bg-red-50/80 p-4 text-center text-sm font-medium text-red-700 shadow-sm">
+          <div className="mt-6 rounded-2xl border border-[var(--status-critical-line)] bg-[var(--status-critical-soft)] p-4 text-center text-sm font-medium text-critical shadow-sm">
             {error}
           </div>
         )}
@@ -168,10 +168,10 @@ export function PricingPage() {
         {!isNativeIos && (
           <div className="mx-auto mt-16 max-w-3xl">
             <div className="mb-8 text-center">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
                 FAQ
               </p>
-              <h2 className="text-balance text-3xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-4xl">
+              <h2 className="text-balance text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl">
                 Frequently asked questions
               </h2>
             </div>
@@ -197,12 +197,12 @@ export function PricingPage() {
               ].map((item) => (
                 <details
                   key={item.q}
-                  className="group rounded-2xl border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-46px_rgba(8,47,73,0.55)] backdrop-blur open:shadow-[0_18px_60px_-44px_rgba(8,47,73,0.7)]"
+                  className="group rounded-2xl border border-line bg-surface-1 p-4 shadow-card open:shadow-card"
                 >
-                  <summary className="cursor-pointer list-none text-sm font-semibold tracking-[-0.02em] text-slate-950 marker:hidden">
+                  <summary className="cursor-pointer list-none text-sm font-semibold tracking-[-0.02em] text-ink marker:hidden">
                     {item.q}
                   </summary>
-                  <p className="mt-2 text-sm font-medium leading-6 text-slate-600">{item.a}</p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-ink-secondary">{item.a}</p>
                 </details>
               ))}
             </div>
@@ -211,11 +211,11 @@ export function PricingPage() {
 
         {/* Contact CTA */}
         <div className="mt-16 text-center">
-          <p className="text-sm font-medium text-slate-600">
+          <p className="text-sm font-medium text-ink-secondary">
             Need a custom plan for your enterprise?{' '}
             <a
               href="mailto:sales@chemcheck.app"
-              className="font-semibold text-cyan-700 underline-offset-4 transition-colors hover:text-cyan-800 hover:underline"
+              className="font-semibold text-brand-ink underline-offset-4 transition-colors hover:text-brand-ink hover:underline"
             >
               Contact our sales team
             </a>

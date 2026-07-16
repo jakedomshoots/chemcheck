@@ -29,13 +29,13 @@ export function SyncStatusIndicator({
       case 'syncing':
         return <RefreshCw className="h-4 w-4 animate-spin" />;
       case 'error':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
+        return <AlertCircle className="h-4 w-4 text-critical" />;
       case 'offline':
-        return <WifiOff className="h-4 w-4 text-gray-500" />;
+        return <WifiOff className="h-4 w-4 text-ink-muted" />;
       case 'idle':
         return pendingCount > 0 
-          ? <Clock className="h-4 w-4 text-yellow-500" />
-          : <CheckCircle className="h-4 w-4 text-green-500" />;
+          ? <Clock className="h-4 w-4 text-watch" />
+          : <CheckCircle className="h-4 w-4 text-ok" />;
       default:
         return <Wifi className="h-4 w-4" />;
     }
@@ -61,11 +61,11 @@ export function SyncStatusIndicator({
             disabled={isSyncButtonDisabled(status)}
             aria-label={statusText}
             title={statusText}
-            className="h-8 rounded-full border-slate-200 bg-white/90 px-3 text-slate-700 hover:bg-slate-100"
+            className="h-8 rounded-full border-line bg-surface-1 px-3 text-ink-secondary hover:bg-surface-2"
           >
             {getStatusIcon()}
             {showLabel && (
-              <span className="ml-2 text-sm text-slate-700">
+              <span className="ml-2 text-sm text-ink-secondary">
                 {statusText}
               </span>
             )}
@@ -74,17 +74,17 @@ export function SyncStatusIndicator({
         <PopoverContent align="end" className="w-72 p-3">
           <div className="space-y-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sync Status</p>
-              <p className="text-sm font-medium text-slate-900">{statusText}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Sync Status</p>
+              <p className="text-sm font-medium text-ink">{statusText}</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Pending</p>
-                <p className="text-sm font-semibold text-slate-900">{pendingCount}</p>
+              <div className="rounded-md border border-line bg-surface-2 p-2">
+                <p className="text-xs uppercase tracking-wide text-ink-muted">Pending</p>
+                <p className="text-sm font-semibold text-ink">{pendingCount}</p>
               </div>
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Last Sync</p>
-                <p className="text-xs font-medium text-slate-900">
+              <div className="rounded-md border border-line bg-surface-2 p-2">
+                <p className="text-xs uppercase tracking-wide text-ink-muted">Last Sync</p>
+                <p className="text-xs font-medium text-ink">
                   {lastSyncAt
                     ? new Date(lastSyncAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
                     : 'Not yet'}
@@ -92,7 +92,7 @@ export function SyncStatusIndicator({
               </div>
             </div>
             {error && (
-              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2 py-1">
+              <p className="text-xs text-critical bg-[var(--status-critical-soft)] border border-[var(--status-critical-line)] rounded-md px-2 py-1">
                 {error}
               </p>
             )}

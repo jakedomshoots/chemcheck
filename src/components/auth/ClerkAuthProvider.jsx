@@ -246,13 +246,13 @@ export function ClerkAuthProvider({ children }) {
   // Validate Clerk configuration
   if (!clerkPubKey || clerkPubKey === 'pk_test_placeholder') {
     return (
-      <div className="min-h-screen bg-red-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[var(--status-critical-soft)] flex items-center justify-center p-4">
         <div className="bg-white p-6 rounded-lg shadow-lg max-w-md text-center">
-          <h2 className="text-xl font-bold text-red-600 mb-4">Configuration Error</h2>
-          <p className="text-gray-700 mb-4">
+          <h2 className="text-xl font-bold text-critical mb-4">Configuration Error</h2>
+          <p className="text-ink-secondary mb-4">
             Clerk authentication is not properly configured. Please set the VITE_CLERK_PUBLISHABLE_KEY environment variable.
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ink-muted">
             Check your .env.local file and ensure you have a valid Clerk publishable key.
           </p>
         </div>
@@ -280,12 +280,12 @@ export function ClerkAuthProvider({ children }) {
         },
         elements: {
           formButtonPrimary:
-            'bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-full shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)]',
+            'bg-brand hover:bg-brand-strong text-white font-medium rounded-full shadow-cta',
           card: 'shadow-xl border-0',
-          headerTitle: 'text-xl font-bold text-slate-900',
-          headerSubtitle: 'text-slate-600',
-          socialButtonsBlockButton: 'border-2 hover:bg-slate-50 transition-colors',
-          footerActionLink: 'text-cyan-600 hover:text-cyan-700 font-medium'
+          headerTitle: 'text-xl font-bold text-ink',
+          headerSubtitle: 'text-ink-secondary',
+          socialButtonsBlockButton: 'border-2 hover:bg-surface-2 transition-colors',
+          footerActionLink: 'text-brand-ink hover:text-brand-ink font-medium'
         }
       }}
     >

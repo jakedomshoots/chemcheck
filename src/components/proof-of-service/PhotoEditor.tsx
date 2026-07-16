@@ -353,8 +353,8 @@ export function PhotoEditor({
                     type="button"
                     onClick={() => setActiveTab(activeTab === 'filters' ? null : 'filters')}
                     className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg transition-colors ${activeTab === 'filters'
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        ? 'bg-brand-softer0 text-white'
+                        : 'bg-ink text-ink-muted hover:bg-ink-secondary'
                         }`}
                 >
                     <Sun className="w-4 h-4" />
@@ -363,7 +363,7 @@ export function PhotoEditor({
                 <button
                     type="button"
                     onClick={rotateLeft}
-                    className="flex items-center justify-center gap-2 p-3 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                    className="flex items-center justify-center gap-2 p-3 rounded-lg bg-ink text-ink-muted hover:bg-ink-secondary transition-colors"
                     title="Rotate left"
                 >
                     <RotateCcw className="w-4 h-4" />
@@ -371,7 +371,7 @@ export function PhotoEditor({
                 <button
                     type="button"
                     onClick={rotateRight}
-                    className="flex items-center justify-center gap-2 p-3 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                    className="flex items-center justify-center gap-2 p-3 rounded-lg bg-ink text-ink-muted hover:bg-ink-secondary transition-colors"
                     title="Rotate right"
                 >
                     <RotateCw className="w-4 h-4" />
@@ -380,15 +380,15 @@ export function PhotoEditor({
 
             {/* Filter Controls */}
             {activeTab === 'filters' && (
-                <div className="space-y-4 p-4 bg-slate-800 rounded-lg mb-4">
+                <div className="space-y-4 p-4 bg-ink rounded-lg mb-4">
                     {/* Brightness */}
                     <div>
                         <div className="flex items-center justify-between mb-2">
-                            <label htmlFor="brightness-slider" className="text-sm text-slate-300 flex items-center gap-2">
+                            <label htmlFor="brightness-slider" className="text-sm text-ink-muted flex items-center gap-2">
                                 <Sun className="w-4 h-4" />
                                 Brightness
                             </label>
-                            <span className="text-sm text-slate-400">{previewFilters?.brightness ?? editState.filters.brightness}%</span>
+                            <span className="text-sm text-ink-muted">{previewFilters?.brightness ?? editState.filters.brightness}%</span>
                         </div>
                         <input
                             id="brightness-slider"
@@ -399,18 +399,18 @@ export function PhotoEditor({
                             onChange={(e) => handleFilterPreview('brightness', parseInt(e.target.value))}
                             onPointerUp={commitFilterChange}
                             onTouchEnd={commitFilterChange}
-                            className="w-full h-2 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-cyan-500 [&::-webkit-slider-thumb]:rounded-full"
+                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand-softer0 [&::-webkit-slider-thumb]:rounded-full"
                         />
                     </div>
 
                     {/* Contrast */}
                     <div>
                         <div className="flex items-center justify-between mb-2">
-                            <label htmlFor="contrast-slider" className="text-sm text-slate-300 flex items-center gap-2">
+                            <label htmlFor="contrast-slider" className="text-sm text-ink-muted flex items-center gap-2">
                                 <Contrast className="w-4 h-4" />
                                 Contrast
                             </label>
-                            <span className="text-sm text-slate-400">{previewFilters?.contrast ?? editState.filters.contrast}%</span>
+                            <span className="text-sm text-ink-muted">{previewFilters?.contrast ?? editState.filters.contrast}%</span>
                         </div>
                         <input
                             id="contrast-slider"
@@ -421,18 +421,18 @@ export function PhotoEditor({
                             onChange={(e) => handleFilterPreview('contrast', parseInt(e.target.value))}
                             onPointerUp={commitFilterChange}
                             onTouchEnd={commitFilterChange}
-                            className="w-full h-2 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-cyan-500 [&::-webkit-slider-thumb]:rounded-full"
+                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand-softer0 [&::-webkit-slider-thumb]:rounded-full"
                         />
                     </div>
 
                     {/* Saturation */}
                     <div>
                         <div className="flex items-center justify-between mb-2">
-                            <label htmlFor="saturation-slider" className="text-sm text-slate-300 flex items-center gap-2">
+                            <label htmlFor="saturation-slider" className="text-sm text-ink-muted flex items-center gap-2">
                                 <Palette className="w-4 h-4" />
                                 Saturation
                             </label>
-                            <span className="text-sm text-slate-400">{previewFilters?.saturation ?? editState.filters.saturation}%</span>
+                            <span className="text-sm text-ink-muted">{previewFilters?.saturation ?? editState.filters.saturation}%</span>
                         </div>
                         <input
                             id="saturation-slider"
@@ -443,7 +443,7 @@ export function PhotoEditor({
                             onChange={(e) => handleFilterPreview('saturation', parseInt(e.target.value))}
                             onPointerUp={commitFilterChange}
                             onTouchEnd={commitFilterChange}
-                            className="w-full h-2 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-cyan-500 [&::-webkit-slider-thumb]:rounded-full"
+                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand-softer0 [&::-webkit-slider-thumb]:rounded-full"
                         />
                     </div>
 
@@ -451,7 +451,7 @@ export function PhotoEditor({
                     <button
                         type="button"
                         onClick={resetFilters}
-                        className="w-full flex items-center justify-center gap-2 p-2 text-sm text-slate-400 hover:text-white transition-colors"
+                        className="w-full flex items-center justify-center gap-2 p-2 text-sm text-ink-muted hover:text-white transition-colors"
                     >
                         <RefreshCw className="w-4 h-4" />
                         Reset Adjustments
@@ -465,7 +465,7 @@ export function PhotoEditor({
                     type="button"
                     variant="outline"
                     onClick={onCancel}
-                    className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-800"
+                    className="flex-1 border-line text-ink-muted hover:bg-ink"
                 >
                     Cancel
                 </Button>
@@ -474,7 +474,7 @@ export function PhotoEditor({
                     variant="outline"
                     onClick={resetAll}
                     disabled={!hasChanges}
-                    className="border-slate-600 text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                    className="border-line text-ink-muted hover:bg-ink disabled:opacity-50"
                     aria-label="Reset all edits"
                     title="Reset all edits"
                 >
@@ -484,7 +484,7 @@ export function PhotoEditor({
                     type="button"
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white"
+                    className="flex-1 bg-brand-softer0 hover:bg-brand text-white"
                 >
                     {isSaving ? (
                         <>
@@ -500,7 +500,7 @@ export function PhotoEditor({
                 </Button>
             </div>
             {saveError && (
-                <p className="text-red-400 text-sm mt-2 text-center">{saveError}</p>
+                <p className="text-critical text-sm mt-2 text-center">{saveError}</p>
             )}
         </Card>
     );

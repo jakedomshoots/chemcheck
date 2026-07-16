@@ -154,8 +154,8 @@ export function PhotoGallery({
   if (photos.length === 0) {
     return (
       <Card className="p-6">
-        <div className="flex flex-col items-center justify-center text-slate-500 py-4">
-          <div className="p-3 bg-slate-100 rounded-full mb-3">
+        <div className="flex flex-col items-center justify-center text-ink-muted py-4">
+          <div className="p-3 bg-surface-2 rounded-full mb-3">
             <Image className="w-6 h-6" />
           </div>
           <p className="text-sm">No photos captured yet</p>
@@ -171,13 +171,13 @@ export function PhotoGallery({
         {photos.map((photo) => (
           <div
             key={photo.id}
-            className="relative group rounded-lg overflow-hidden bg-slate-100"
+            className="relative group rounded-lg overflow-hidden bg-surface-2"
           >
             {/* Photo thumbnail */}
             <button
               type="button"
               onClick={() => setLightboxIndex(photos.findIndex(p => p.id === photo.id))}
-              className="w-full aspect-square focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 rounded-lg"
+              className="w-full aspect-square focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg"
             >
               <img
                 src={photo.dataUrl}
@@ -190,8 +190,8 @@ export function PhotoGallery({
             <div className="absolute top-2 left-2">
               <span
                 className={`px-2 py-0.5 text-xs font-medium rounded-full capitalize ${photo.category === 'before'
-                  ? 'bg-amber-500 text-white'
-                  : 'bg-green-500 text-white'
+                  ? 'bg-[var(--status-watch-soft)]0 text-white'
+                  : 'bg-[var(--status-ok-soft)]0 text-white'
                   }`}
               >
                 {photo.category}
@@ -222,7 +222,7 @@ export function PhotoGallery({
                   e.stopPropagation();
                   setDeletePhotoId(photo.id);
                 }}
-                className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                className="absolute top-2 right-2 p-1.5 bg-[var(--status-critical-soft)]0 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-destructive focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
                 aria-label={`Delete ${photo.category} photo`}
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -237,7 +237,7 @@ export function PhotoGallery({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-red-500" />
+              <AlertCircle className="w-5 h-5 text-critical" />
               Delete Photo?
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -249,7 +249,7 @@ export function PhotoGallery({
               <img
                 src={photoToDelete.dataUrl}
                 alt="Photo to delete"
-                className="w-full max-h-48 object-contain rounded-lg bg-slate-100"
+                className="w-full max-h-48 object-contain rounded-lg bg-surface-2"
               />
             </div>
           )}
@@ -257,7 +257,7 @@ export function PhotoGallery({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
-              className="bg-red-500 hover:bg-red-600"
+              className="bg-[var(--status-critical-soft)]0 hover:bg-destructive"
             >
               Delete
             </AlertDialogAction>

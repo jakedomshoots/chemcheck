@@ -198,16 +198,16 @@ export default function History() {
   if (loading) {
     return (
       <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Service History">
-        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <div>
-            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Service History</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">Loading...</p>
+            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Service History</h2>
+            <p className="mt-1 text-sm font-medium text-ink-muted">Loading...</p>
           </div>
         </div>
         <div className="space-y-2">
-          <div className="h-24 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
-          <div className="h-24 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
-          <div className="h-24 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
+          <div className="h-24 rounded-raised border border-line bg-surface-1 shadow-card " />
+          <div className="h-24 rounded-raised border border-line bg-surface-1 shadow-card " />
+          <div className="h-24 rounded-raised border border-line bg-surface-1 shadow-card " />
         </div>
       </main>
     );
@@ -215,24 +215,24 @@ export default function History() {
 
   return (
     <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Service History">
-      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Service history</p>
-            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
-              <HistoryIcon className="h-7 w-7 text-cyan-700" aria-hidden="true" />
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Service history</p>
+            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
+              <HistoryIcon className="h-7 w-7 text-brand-ink" aria-hidden="true" />
               Service History
             </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">All service logs by day</p>
+            <p className="mt-1 text-sm font-medium text-ink-muted">All service logs by day</p>
           </div>
 
           {/* Proof-of-Service Filter */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" aria-hidden="true" />
+            <Filter className="w-4 h-4 text-ink-muted flex-shrink-0" aria-hidden="true" />
             <Select value={proofFilter} onValueChange={setProofFilter}>
               <SelectTrigger
                 aria-label="History Range"
-                className="w-full sm:w-[200px] h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
+                className="w-full sm:w-[200px] h-11 rounded-2xl border border-line bg-white text-ink focus:border-ring"
               >
                 <SelectValue placeholder="Filter by proof" />
               </SelectTrigger>
@@ -245,7 +245,7 @@ export default function History() {
                       <div className="flex items-center gap-2">
                         {Icon && <Icon className="w-3.5 h-3.5" />}
                         <span>{option.label}</span>
-                        <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                        <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
                           {count}
                         </Badge>
                       </div>
@@ -259,20 +259,20 @@ export default function History() {
 
         {/* Customer Filter Indicator */}
         {filteredCustomer && (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-[1.25rem] border border-cyan-100 bg-cyan-50/70 px-3 py-2.5 shadow-sm shadow-cyan-900/5">
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-raised border border-[var(--status-info-line)] bg-brand-softer px-3 py-2.5 shadow-sm shadow-cyan-900/5">
             <div className="flex items-center gap-3 min-w-0">
               <div className="min-w-0">
-                <span className="truncate block text-sm font-semibold text-slate-900">
+                <span className="truncate block text-sm font-semibold text-ink">
                   {filteredCustomer.full_name}
                 </span>
-                <p className="text-xs font-medium text-slate-600">
+                <p className="text-xs font-medium text-ink-secondary">
                   Viewing chemical history · {filteredCustomer.service_day}
                 </p>
               </div>
             </div>
             <button
               onClick={clearCustomerFilter}
-              className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-white hover:text-slate-700"
+              className="rounded-full p-1.5 text-ink-muted transition-colors hover:bg-white hover:text-ink-secondary"
               aria-label="Clear customer filter"
             >
               <X className="w-4 h-4" />
@@ -283,17 +283,17 @@ export default function History() {
         {/* Active Filter Indicator */}
         {proofFilter !== 'all' && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Showing:</span>
+            <span className="text-xs font-semibold text-ink-muted">Showing:</span>
             <Badge
               variant="outline"
-              className="rounded-full border-cyan-200 bg-cyan-50 text-xs text-cyan-700"
+              className="rounded-full border-[var(--status-info-line)] bg-brand-softer text-xs text-brand-ink"
             >
               {PROOF_OF_SERVICE_FILTER_OPTIONS.find(o => o.value === proofFilter)?.label}
-              <span className="ml-1 text-cyan-500">({filteredLogs.length} logs)</span>
+              <span className="ml-1 text-info">({filteredLogs.length} logs)</span>
             </Badge>
             <button
               onClick={() => setProofFilter('all')}
-              className="text-xs font-semibold text-slate-500 underline-offset-2 transition-colors hover:text-slate-700 hover:underline"
+              className="text-xs font-semibold text-ink-muted underline-offset-2 transition-colors hover:text-ink-secondary hover:underline"
             >
               Clear filter
             </button>
@@ -304,12 +304,12 @@ export default function History() {
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
 
         <div className="mb-5 overflow-x-auto">
-          <TabsList className="inline-flex w-full min-w-full rounded-2xl border border-white/80 bg-white/80 p-1 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur sm:w-auto sm:min-w-0">
+          <TabsList className="inline-flex w-full min-w-full rounded-2xl border border-line bg-surface-1 p-1 shadow-card sm:w-auto sm:min-w-0">
             {daysOfWeek.map((day) => (
               <TabsTrigger
                 key={day}
                 value={day}
-                className="flex-1 whitespace-nowrap rounded-xl px-3 text-slate-600 transition-colors data-[state=active]:bg-cyan-600 data-[state=active]:text-white sm:flex-none"
+                className="flex-1 whitespace-nowrap rounded-xl px-3 text-ink-secondary transition-colors data-[state=active]:bg-brand data-[state=active]:text-white sm:flex-none"
               >
                 {day.substring(0, 3)}
               </TabsTrigger>
@@ -322,14 +322,14 @@ export default function History() {
           return (
             <TabsContent key={day} value={day}>
               {dayData.length === 0 ? (
-                <Card className="rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+                <Card className="rounded-sheet border border-line bg-surface-1 px-5 py-10 text-center shadow-card ">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2 text-ink-muted shadow-inner">
                     <Calendar className="h-7 w-7" aria-hidden="true" />
                   </div>
-                  <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
+                  <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-ink">
                     No Service History for {day}
                   </h3>
-                  <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-600">
+                  <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-ink-secondary">
                     No service logs in the past month for customers scheduled on {day}
                   </p>
                 </Card>

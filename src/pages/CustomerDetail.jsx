@@ -697,18 +697,18 @@ export default function CustomerDetail() {
   if (!customer) {
     return (
       <div className="mx-auto flex max-w-3xl flex-col items-center justify-center px-3 pb-36 pt-16 font-sans sm:px-6">
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2 text-ink-muted shadow-inner">
           <Calendar className="h-7 w-7" aria-hidden="true" />
         </div>
-        <h2 className="mb-1 text-xl font-semibold tracking-[-0.035em] text-slate-950">
+        <h2 className="mb-1 text-xl font-semibold tracking-[-0.035em] text-ink">
           Customer not found
         </h2>
-        <p className="mb-5 max-w-sm text-center text-sm font-medium leading-6 text-slate-600">
+        <p className="mb-5 max-w-sm text-center text-sm font-medium leading-6 text-ink-secondary">
           We couldn't locate this client. They may have been removed or the link is out of date.
         </p>
         <Button
           onClick={() => navigate(createPageUrl("Clients"))}
-          className="h-11 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+          className="h-11 rounded-full bg-brand px-6 font-semibold text-white shadow-cta hover:bg-brand-strong"
         >
           Back to Clients
         </Button>
@@ -723,17 +723,17 @@ export default function CustomerDetail() {
         label="Back to Clients"
         variant="ghost"
         size="sm"
-        className="mb-3 -ml-2 text-slate-600 hover:text-cyan-700"
+        className="mb-3 -ml-2 text-ink-secondary hover:text-brand-ink"
       />
 
-      <Card className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <Card className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="mb-3">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Client profile</p>
-          <h2 className="text-2xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-3xl">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Client profile</p>
+          <h2 className="text-2xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-3xl">
             {customer.full_name}
           </h2>
-          <div className="mt-2 flex items-start gap-1.5 text-slate-600">
-            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+          <div className="mt-2 flex items-start gap-1.5 text-ink-secondary">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
             <p className="text-sm font-medium leading-relaxed">{customer.address}</p>
           </div>
         </div>
@@ -744,7 +744,7 @@ export default function CustomerDetail() {
               size="sm"
               onClick={() => setShowAnalysis(true)}
               variant="outline"
-              className="h-9 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+              className="h-9 rounded-full border border-line bg-surface-1 px-3 text-xs font-semibold text-ink-secondary shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink"
             >
               <BarChart3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
               Analysis
@@ -754,7 +754,7 @@ export default function CustomerDetail() {
             size="sm"
             onClick={handleOpenReportSettings}
             variant="outline"
-            className="h-9 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+            className="h-9 rounded-full border border-line bg-surface-1 px-3 text-xs font-semibold text-ink-secondary shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink"
             title="Customize what customers see on reports"
           >
             <Settings className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
@@ -763,7 +763,7 @@ export default function CustomerDetail() {
           <Button
             size="sm"
             onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
-            className="h-9 rounded-full bg-cyan-600 px-3 text-xs font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+            className="h-9 rounded-full bg-brand px-3 text-xs font-semibold text-white shadow-cta hover:bg-brand-strong"
           >
             <PoolIcon name="add" className="mr-1 h-3.5 w-3.5" />
             Log Service
@@ -775,18 +775,18 @@ export default function CustomerDetail() {
             {customer.phone && (
               <a
                 href={`tel:${customer.phone}`}
-                className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-cyan-700"
+                className="flex items-center gap-2 text-sm font-medium text-ink-secondary hover:text-brand-ink"
               >
-                <Phone className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                <Phone className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />
                 <span>{customer.phone}</span>
               </a>
             )}
             {customer.email && (
               <a
                 href={`mailto:${customer.email}`}
-                className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-cyan-700"
+                className="flex items-center gap-2 text-sm font-medium text-ink-secondary hover:text-brand-ink"
               >
-                <Mail className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                <Mail className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />
                 <span className="truncate">{customer.email}</span>
               </a>
             )}
@@ -795,24 +795,24 @@ export default function CustomerDetail() {
 
         <div className="flex flex-wrap gap-1.5">
           {customer.service_day && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-800">
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-softer px-2.5 py-1 text-xs font-semibold text-brand-ink">
               <Calendar className="h-3 w-3" aria-hidden="true" />
               {customer.service_day}
             </span>
           )}
           {customer.pool_type && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--status-info-soft)] px-2.5 py-1 text-xs font-semibold text-info">
               <Droplets className="h-3 w-3" aria-hidden="true" />
               {customer.pool_type}
             </span>
           )}
           {customer.pool_gallons && (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+            <span className="inline-flex items-center rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
               {customer.pool_gallons?.toLocaleString()} gal
             </span>
           )}
           {customer.surface_type && (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+            <span className="inline-flex items-center rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
               {customer.surface_type}
             </span>
           )}
@@ -820,11 +820,11 @@ export default function CustomerDetail() {
       </Card>
 
       {lastWeekLog && (lastWeekLog.notes || lastWeekLog.ph || lastWeekLog.chlorine) && (
-        <div className="mb-4 overflow-hidden rounded-[1.35rem] border border-amber-200/80 bg-amber-50/85 p-4 shadow-sm">
+        <div className="mb-4 overflow-hidden rounded-raised border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] p-4 shadow-sm">
           <div className="mb-2 flex items-center gap-2">
-            <FileText className="h-4 w-4 text-amber-700" aria-hidden="true" />
-            <h3 className="text-sm font-semibold text-slate-900">Last Week</h3>
-            <span className="text-[11px] font-medium text-slate-600">
+            <FileText className="h-4 w-4 text-watch" aria-hidden="true" />
+            <h3 className="text-sm font-semibold text-ink">Last Week</h3>
+            <span className="text-xs font-medium text-ink-secondary">
               ({formatServiceDate(lastWeekLog.service_date)})
             </span>
           </div>
@@ -832,17 +832,17 @@ export default function CustomerDetail() {
           {(lastWeekLog.ph || lastWeekLog.chlorine || lastWeekLog.alkalinity) && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {lastWeekLog.ph && (
-                <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                <span className="rounded-full bg-surface-1 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
                   pH: {lastWeekLog.ph}
                 </span>
               )}
               {lastWeekLog.chlorine && (
-                <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                <span className="rounded-full bg-surface-1 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
                   Cl: {lastWeekLog.chlorine}
                 </span>
               )}
               {lastWeekLog.alkalinity && (
-                <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                <span className="rounded-full bg-surface-1 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
                   Alk: {lastWeekLog.alkalinity}
                 </span>
               )}
@@ -850,8 +850,8 @@ export default function CustomerDetail() {
           )}
 
           {lastWeekLog.notes && (
-            <div className="rounded-2xl bg-white/70 p-3">
-              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-700">
+            <div className="rounded-2xl bg-surface-1 p-3">
+              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-ink-secondary">
                 {lastWeekLog.notes}
               </p>
             </div>
@@ -861,26 +861,26 @@ export default function CustomerDetail() {
 
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field log</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-[-0.025em] text-slate-950 sm:text-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Field log</p>
+          <h3 className="mt-1 text-lg font-semibold tracking-[-0.025em] text-ink sm:text-xl">
             Service History
           </h3>
         </div>
       </div>
 
       {logs.length === 0 ? (
-        <div className="mb-20 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+        <div className="mb-20 rounded-sheet border border-line bg-surface-1 px-5 py-10 text-center shadow-card ">
           <IconBadge name="report" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
-          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
+          <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-ink">
             No Service Logs Yet
           </h3>
-          <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
+          <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-ink-secondary">
             Start tracking services for {customer.full_name} to keep their pool history up to date.
           </p>
           <Button
             size="sm"
             onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
-            className="h-11 rounded-full bg-cyan-600 px-6 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+            className="h-11 rounded-full bg-brand px-6 text-sm font-semibold text-white shadow-cta hover:bg-brand-strong"
           >
             <PoolIcon name="add" className="mr-2 h-4 w-4" />
             Create First Log

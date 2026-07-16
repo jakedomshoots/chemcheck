@@ -6,13 +6,46 @@ module.exports = {
         extend: {
                 fontFamily: {
                     sans: ['Outfit', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                    /* Data voice: lab readouts, timers, dosages */
+                    mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
                 },
                 borderRadius: {
+                        chip: 'var(--r-chip)',
+                        control: 'var(--r-control)',
+                        card: 'var(--r-card)',
+                        raised: 'var(--r-raised)',
+                        sheet: 'var(--r-sheet)',
                         lg: 'var(--radius)',
                         md: 'calc(var(--radius) - 2px)',
                         sm: 'calc(var(--radius) - 4px)'
                 },
+                boxShadow: {
+                        card: 'var(--shadow-card)',
+                        raised: 'var(--shadow-raised)',
+                        cta: 'var(--shadow-cta)',
+                },
+                transitionTimingFunction: {
+                        standard: 'var(--ease-standard)',
+                        spring: 'var(--ease-spring)',
+                },
                 colors: {
+                        brand: {
+                                DEFAULT: 'var(--brand)',
+                                strong: 'var(--brand-strong)',
+                                ink: 'var(--brand-ink)',
+                                soft: 'var(--brand-soft)',
+                        },
+                        ink: {
+                                DEFAULT: 'var(--ink)',
+                                secondary: 'var(--ink-secondary)',
+                                muted: 'var(--ink-muted)',
+                        },
+                        surface: {
+                                0: 'var(--surface-0)',
+                                1: 'var(--surface-1)',
+                                2: 'var(--surface-2)',
+                        },
+                        line: 'var(--line)',
                         background: 'hsl(var(--background))',
                         foreground: 'hsl(var(--foreground))',
                         card: {

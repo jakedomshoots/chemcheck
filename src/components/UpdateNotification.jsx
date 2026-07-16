@@ -43,15 +43,15 @@ export function UpdateNotification() {
       {/* Update Available Notification */}
       {updateAvailable && (
         <div className="fixed top-4 right-4 z-50 max-w-sm pt-[calc(1rem+env(safe-area-inset-top))]">
-          <div className="bg-blue-600 text-white rounded-lg shadow-lg p-4 border border-blue-500">
+          <div className="bg-brand text-white rounded-lg shadow-lg p-4 border border-[var(--status-info-line)]">
             <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 bg-[var(--status-info-soft)]0 rounded-full flex items-center justify-center flex-shrink-0">
                 <Download className="w-4 h-4" />
               </div>
               
               <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-sm">Update Available</h3>
-                <p className="text-blue-100 text-xs mt-1">
+                <p className="text-white/80 text-xs mt-1">
                   A new version of ChemCheck is ready to install with improvements and bug fixes.
                 </p>
                 
@@ -59,7 +59,7 @@ export function UpdateNotification() {
                   <button
                     onClick={handleUpdate}
                     disabled={isUpdating}
-                    className="bg-white text-blue-600 px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    className="bg-white text-info px-3 py-1.5 rounded text-xs font-medium hover:bg-[var(--status-info-soft)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                   >
                     {isUpdating ? (
                       <>
@@ -76,7 +76,7 @@ export function UpdateNotification() {
                   
                   <button
                     onClick={dismissUpdate}
-                    className="text-blue-100 hover:text-white text-xs px-2 py-1.5"
+                    className="text-white/80 hover:text-white text-xs px-2 py-1.5"
                   >
                     Later
                   </button>
@@ -85,7 +85,7 @@ export function UpdateNotification() {
               
               <button
                 onClick={dismissUpdate}
-                className="text-blue-200 hover:text-white p-1"
+                className="text-white/70 hover:text-white p-1"
               >
                 <X className="w-4 h-4" />
               </button>

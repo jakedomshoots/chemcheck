@@ -260,7 +260,7 @@ export function SendReportDialog({
       <DialogContent className="max-w-[90%] sm:max-w-md rounded-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
-            <Send className="w-4 h-4 text-cyan-600" />
+            <Send className="w-4 h-4 text-brand-ink" />
             {isResend ? 'Resend Service Report' : 'Send Service Report'}
           </DialogTitle>
           <DialogDescription className="text-sm">
@@ -277,20 +277,20 @@ export function SendReportDialog({
             <div 
               className={`flex items-center gap-2 p-3 rounded-lg border ${
                 poolStatus === 'good' 
-                  ? 'bg-green-50 border-green-200' 
-                  : 'bg-amber-50 border-amber-200'
+                  ? 'bg-[var(--status-ok-soft)] border-[var(--status-ok-line)]' 
+                  : 'bg-[var(--status-watch-soft)] border-[var(--status-watch-line)]'
               }`}
               data-testid="pool-status-indicator"
             >
               {poolStatus === 'good' ? (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-green-700 font-medium">Pool Status: Everything is Perfect ✓</span>
+                  <div className="w-2 h-2 rounded-full bg-[var(--status-ok-soft)]0" />
+                  <span className="text-sm text-ok font-medium">Pool Status: Everything is Perfect ✓</span>
                 </>
               ) : (
                 <>
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <span className="text-sm text-amber-700 font-medium">Pool Status: Needs Attention</span>
+                  <AlertTriangle className="w-4 h-4 text-watch" />
+                  <span className="text-sm text-watch font-medium">Pool Status: Needs Attention</span>
                 </>
               )}
             </div>
@@ -302,16 +302,16 @@ export function SendReportDialog({
               <div className="flex items-center justify-between">
                 <label 
                   htmlFor="custom-note" 
-                  className="text-xs text-slate-500 font-medium"
+                  className="text-xs text-ink-muted font-medium"
                 >
                   {isNoteRequired ? (
-                    <>Technician Notes <span className="text-red-500">*</span></>
+                    <>Technician Notes <span className="text-critical">*</span></>
                   ) : (
-                    <>Custom Message <span className="text-slate-400">(optional)</span></>
+                    <>Custom Message <span className="text-ink-muted">(optional)</span></>
                   )}
                 </label>
                 <span 
-                  className={`text-xs ${isOverLimit ? 'text-red-500' : 'text-slate-400'}`}
+                  className={`text-xs ${isOverLimit ? 'text-critical' : 'text-ink-muted'}`}
                   data-testid="character-counter"
                 >
                   {characterCount}/{CUSTOM_NOTE_MAX_LENGTH}
@@ -328,7 +328,7 @@ export function SendReportDialog({
                 onChange={(e) => handleCustomNoteChange(e.target.value)}
                 className={`min-h-[100px] text-sm ${
                   noteValidationError || isOverLimit 
-                    ? 'border-red-300 focus-visible:ring-red-500' 
+                    ? 'border-[var(--status-critical-line)] focus-visible:ring-red-500' 
                     : ''
                 }`}
                 disabled={loading}
@@ -339,7 +339,7 @@ export function SendReportDialog({
               {noteValidationError && (
                 <p 
                   id="note-error" 
-                  className="text-xs text-red-500"
+                  className="text-xs text-critical"
                   data-testid="note-validation-error"
                 >
                   {noteValidationError}
@@ -351,7 +351,7 @@ export function SendReportDialog({
           {/* Delivery Method Selection */}
           {(canUseSmsChannel || canUseEmailChannel) && (
             <div className="space-y-2">
-              <div className="text-xs text-slate-500 font-medium">Delivery Method</div>
+              <div className="text-xs text-ink-muted font-medium">Delivery Method</div>
               <div className="flex gap-2">
                 {canUseSmsChannel && (
                   <Button
@@ -360,7 +360,7 @@ export function SendReportDialog({
                     size="sm"
                     disabled={loading || !availableMethods.sms}
                     onClick={() => setSelectedMethod('sms')}
-                    className={selectedMethod === 'sms' ? 'flex-1 bg-cyan-600 hover:bg-cyan-700' : 'flex-1'}
+                    className={selectedMethod === 'sms' ? 'flex-1 bg-brand hover:bg-brand-strong' : 'flex-1'}
                     data-testid="sms-method-button"
                     aria-pressed={selectedMethod === 'sms'}
                     aria-label="Send via SMS"
@@ -375,7 +375,7 @@ export function SendReportDialog({
                   size="sm"
                   disabled={loading || !availableMethods.email}
                   onClick={() => setSelectedMethod('email')}
-                  className={selectedMethod === 'email' ? 'flex-1 bg-cyan-600 hover:bg-cyan-700' : 'flex-1'}
+                  className={selectedMethod === 'email' ? 'flex-1 bg-brand hover:bg-brand-strong' : 'flex-1'}
                   data-testid="email-method-button"
                   aria-pressed={selectedMethod === 'email'}
                   aria-label="Send via Email"
@@ -388,18 +388,18 @@ export function SendReportDialog({
           )}
 
           {/* Recipient Display */}
-          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+          <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg border border-line">
             {selectedMethod === 'sms' ? (
-              <MessageSquare className="w-4 h-4 text-slate-500 flex-shrink-0" />
+              <MessageSquare className="w-4 h-4 text-ink-muted flex-shrink-0" />
             ) : (
-              <Mail className="w-4 h-4 text-slate-500 flex-shrink-0" />
+              <Mail className="w-4 h-4 text-ink-muted flex-shrink-0" />
             )}
             <div>
-              <div className="text-xs text-slate-500 font-medium">
+              <div className="text-xs text-ink-muted font-medium">
                 Sending to {selectedMethod === 'sms' ? 'phone' : 'email'}
               </div>
               <div 
-                className={`text-sm ${canSend ? 'text-slate-900' : 'text-red-600'}`}
+                className={`text-sm ${canSend ? 'text-ink' : 'text-critical'}`}
                 data-testid="recipient-display"
               >
                 {selectedRecipient || `No ${selectedMethod === 'sms' ? 'phone' : 'email'} on file`}
@@ -407,7 +407,7 @@ export function SendReportDialog({
             </div>
           </div>
           {selectedMethod === 'email' && emailValidationError && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+            <p className="text-xs text-watch bg-[var(--status-watch-soft)] border border-[var(--status-watch-line)] rounded-md px-2 py-1">
               {emailValidationError}
             </p>
           )}
@@ -415,21 +415,21 @@ export function SendReportDialog({
           {/* Pre-send photo preview */}
           {attachedPhotos.length > 0 && (
             <div className="space-y-2" data-testid="attached-photos-preview">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <div className="flex items-center gap-1.5 text-xs text-ink-muted font-medium">
                 <ImageIcon className="w-3.5 h-3.5" />
                 Attached Photos ({attachedPhotos.length})
               </div>
 
               {beforePhotos.length > 0 && (
                 <div>
-                  <div className="text-[11px] text-slate-500 mb-1">Before ({beforePhotos.length})</div>
+                  <div className="text-xs text-ink-muted mb-1">Before ({beforePhotos.length})</div>
                   <div className="grid grid-cols-3 gap-2">
                     {beforePhotos.map((photo) => (
                       <img
                         key={photo.id}
                         src={photo.url}
                         alt="Before service"
-                        className="w-full h-20 object-cover rounded-md border border-slate-200"
+                        className="w-full h-20 object-cover rounded-md border border-line"
                         loading="lazy"
                       />
                     ))}
@@ -439,14 +439,14 @@ export function SendReportDialog({
 
               {afterPhotos.length > 0 && (
                 <div>
-                  <div className="text-[11px] text-slate-500 mb-1">After ({afterPhotos.length})</div>
+                  <div className="text-xs text-ink-muted mb-1">After ({afterPhotos.length})</div>
                   <div className="grid grid-cols-3 gap-2">
                     {afterPhotos.map((photo) => (
                       <img
                         key={photo.id}
                         src={photo.url}
                         alt="After service"
-                        className="w-full h-20 object-cover rounded-md border border-slate-200"
+                        className="w-full h-20 object-cover rounded-md border border-line"
                         loading="lazy"
                       />
                     ))}
@@ -469,12 +469,12 @@ export function SendReportDialog({
           {/* Fallback preview when customer name or service date not available */}
           {(!customerName || !serviceDate) && (
             <div className="space-y-2">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <div className="flex items-center gap-1.5 text-xs text-ink-muted font-medium">
                 <Mail className="w-3.5 h-3.5" />
                 Email Preview
               </div>
               <div 
-                className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm text-slate-700"
+                className="p-3 bg-[var(--status-info-soft)] rounded-lg border border-[var(--status-info-line)] text-sm text-ink-secondary"
                 data-testid="email-preview"
               >
                 <div className="text-xs font-medium mb-1">Subject:</div>
@@ -484,9 +484,9 @@ export function SendReportDialog({
                   {messagePreview || 'Your pool service has been completed. Click the link below to view your detailed service report with chemical readings and photos.'}
                 </div>
                 {shouldShowNoteInput && customNote && customNote.trim() && (
-                  <div className="mt-2 pt-2 border-t border-blue-200">
+                  <div className="mt-2 pt-2 border-t border-[var(--status-info-line)]">
                     <div className="text-xs font-medium mb-1">Technician Notes:</div>
-                    <div className="text-xs whitespace-pre-wrap text-amber-700" data-testid="preview-custom-note">
+                    <div className="text-xs whitespace-pre-wrap text-watch" data-testid="preview-custom-note">
                       {customNote}
                     </div>
                   </div>
@@ -497,8 +497,8 @@ export function SendReportDialog({
 
           {/* Offline Queue Notice - Phase 2.5 */}
           {!isOnline && (
-            <Alert className="py-2 bg-amber-50 border-amber-200 text-amber-700">
-              <WifiOff className="h-4 w-4 text-amber-600" />
+            <Alert className="py-2 bg-[var(--status-watch-soft)] border-[var(--status-watch-line)] text-watch">
+              <WifiOff className="h-4 w-4 text-watch" />
               <AlertDescription className="text-xs" data-testid="offline-queue-notice">
                 You appear offline. Tapping Send will queue this report and it will send automatically when connectivity returns.
               </AlertDescription>
@@ -538,7 +538,7 @@ export function SendReportDialog({
           <Button
             onClick={handleConfirm}
             disabled={!canSendWithValidation || loading}
-            className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white text-sm"
+            className="bg-brand hover:bg-brand-strong text-white text-sm"
             data-testid="confirm-send-button"
           >
             {loading ? (

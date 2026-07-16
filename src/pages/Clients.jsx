@@ -380,12 +380,12 @@ export default function Clients() {
   if (loading) {
     return (
       <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
-        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
-          <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Clients</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">Loading your client list…</p>
+        <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
+          <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Clients</h2>
+          <p className="mt-1 text-sm font-medium text-ink-muted">Loading your client list…</p>
         </div>
         <div className="flex items-center justify-center py-16">
-          <div className="h-10 w-10 rounded-full border-4 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
+          <div className="h-10 w-10 rounded-full border-4 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
         </div>
       </main>
     );
@@ -395,18 +395,18 @@ export default function Clients() {
     <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
       <div
         data-testid="clients-header"
-        className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur"
+        className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card"
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Client roster</p>
-            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Client roster</p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
               Clients
             </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-ink-muted">
               {visibleCustomerCount} clients scheduled
               {orphanedCustomers.length > 0 && (
-                <span className="ml-1 text-amber-700">
+                <span className="ml-1 text-watch">
                   ({orphanedCustomers.length} not on working days)
                 </span>
               )}
@@ -419,14 +419,14 @@ export default function Clients() {
                   onClick={() => setReorderMode(true)}
                   disabled={visibleCustomerCount === 0}
                   variant="outline"
-                  className="h-11 w-full rounded-[1.15rem] border border-slate-200 bg-white/90 text-sm font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none sm:w-auto"
+                  className="h-11 w-full rounded-card border border-line bg-surface-1 text-sm font-semibold text-ink shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-2 disabled:text-ink-muted disabled:shadow-none sm:w-auto"
                 >
                   <ArrowUp className="mr-2 h-4 w-4" aria-hidden="true" />
                   Reorder
                 </Button>
                 <Button
                   onClick={() => navigate(createPageUrl("NewClient"))}
-                  className="h-11 w-full rounded-[1.15rem] bg-cyan-600 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto"
+                  className="h-11 w-full rounded-card bg-brand text-sm font-semibold text-white shadow-cta hover:bg-brand-strong sm:w-auto"
                 >
                   <PoolIcon name="add" className="mr-2 h-4 w-4" />
                   Add Client
@@ -435,7 +435,7 @@ export default function Clients() {
             ) : (
               <Button
                 onClick={() => setReorderMode(false)}
-                className="h-11 w-full rounded-[1.15rem] bg-slate-950 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700 sm:w-auto"
+                className="h-11 w-full rounded-card bg-ink text-sm font-semibold text-surface-0 shadow-sm hover:bg-brand-strong sm:w-auto"
               >
                 <Check className="mr-2 h-4 w-4" aria-hidden="true" />
                 Done Reordering
@@ -446,27 +446,27 @@ export default function Clients() {
       </div>
 
       {reorderMode && (
-        <div className="mb-4 rounded-[1.25rem] border border-cyan-200/80 bg-cyan-50/80 px-4 py-3 shadow-sm">
-          <p className="text-sm font-semibold text-cyan-900">
+        <div className="mb-4 rounded-raised border border-[var(--status-info-line)] bg-brand-softer px-4 py-3 shadow-sm">
+          <p className="text-sm font-semibold text-brand-ink">
             Reorder Mode active. Use the arrows on each client to move them up or down for the selected day.
           </p>
         </div>
       )}
 
       {orphanedCustomers.length > 0 && (
-        <div className="mb-4 overflow-hidden rounded-[1.35rem] border border-amber-200/80 bg-amber-50/85 shadow-sm">
+        <div className="mb-4 overflow-hidden rounded-raised border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] shadow-sm">
           <div className="flex items-start gap-3 px-4 py-3">
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--status-watch-soft)]0 text-white">
               <PoolIcon name="clients" className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-amber-900">
+              <p className="text-sm font-semibold text-watch">
                 {orphanedCustomers.length} customer{orphanedCustomers.length !== 1 ? 's' : ''} not scheduled on working days
               </p>
-              <p className="mt-1 text-xs font-medium text-amber-800">
+              <p className="mt-1 text-xs font-medium text-watch">
                 These customers have service days outside your current working schedule: {orphanedCustomers.map(c => c.full_name).join(', ')}
               </p>
-              <p className="mt-1 text-xs font-medium text-amber-700">
+              <p className="mt-1 text-xs font-medium text-watch">
                 Update their service days in Settings → Schedule or edit individual customers.
               </p>
             </div>
@@ -475,18 +475,18 @@ export default function Clients() {
       )}
 
       <div className="relative mb-4">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search clients by name or address..."
-          className="h-11 rounded-[1.15rem] border border-slate-200 bg-white/90 pl-9 text-sm font-medium text-slate-700 shadow-sm focus:border-cyan-400"
+          className="h-11 rounded-card border border-line bg-surface-1 pl-9 text-sm font-medium text-ink-secondary shadow-sm focus:border-[var(--status-info-line)]"
         />
       </div>
 
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
         <div className="-mx-3 mb-4 overflow-x-auto px-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0">
-          <TabsList className="inline-flex w-max min-w-full gap-1 rounded-[1.15rem] border border-white/80 bg-white/85 p-1 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.55)] backdrop-blur sm:min-w-0 sm:w-full">
+          <TabsList className="inline-flex w-max min-w-full gap-1 rounded-card border border-line bg-surface-1 p-1 shadow-card sm:min-w-0 sm:w-full">
             {validWorkingDays.map((day) => {
               const count = customerCounts[day] || 0;
               return (
@@ -496,11 +496,11 @@ export default function Clients() {
                   ref={(el) => {
                     if (el) dayTabRefs.current[day] = el;
                   }}
-                  className="group inline-flex h-9 shrink-0 min-w-[4.5rem] snap-start items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-slate-500 transition-all data-[state=active]:bg-cyan-600 data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-slate-700 sm:min-w-0 sm:flex-1"
+                  className="group inline-flex h-9 shrink-0 min-w-[4.5rem] snap-start items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-ink-muted transition-all data-[state=active]:bg-brand data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-ink-secondary sm:min-w-0 sm:flex-1"
                 >
                   <span>{day.substring(0, 3)}</span>
                   {count > 0 && (
-                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
+                    <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-xs font-bold text-ink-secondary group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
                       {count}
                     </span>
                   )}
@@ -515,12 +515,12 @@ export default function Clients() {
           return (
             <TabsContent key={day} value={day}>
               {dayCustomers.length === 0 ? (
-                <div className="mb-20 rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+                <div className="mb-20 rounded-sheet border border-line bg-surface-1 px-5 py-10 text-center shadow-card ">
                   <IconBadge name="clients" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
-                  <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
+                  <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-ink">
                     {searchQuery ? "No Matching Clients" : `No Clients for ${day}`}
                   </h3>
-                  <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
+                  <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-ink-secondary">
                     {searchQuery ? "Try adjusting your search" : "Add clients to this day's route"}
                   </p>
                 </div>
@@ -560,7 +560,7 @@ export default function Clients() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive text-white"
             >
               Delete
             </AlertDialogAction>

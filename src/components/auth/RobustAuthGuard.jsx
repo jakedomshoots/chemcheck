@@ -191,14 +191,14 @@ export function RobustAuthGuard({ children }) {
 
 function AuthLoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f6fbfc]">
+    <div className="flex min-h-screen items-center justify-center bg-surface-0">
       <div className="text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[1.25rem] bg-cyan-600 shadow-[0_18px_46px_-30px_rgba(8,145,178,0.95)]">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-raised bg-brand shadow-cta">
           <Droplets className="w-8 h-8 text-white" />
         </div>
-        <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-slate-900 font-medium">Loading ChemCheck...</p>
-        <p className="text-slate-600 text-sm mt-2">Initializing your workspace</p>
+        <div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-ink font-medium">Loading ChemCheck...</p>
+        <p className="text-ink-secondary text-sm mt-2">Initializing your workspace</p>
       </div>
     </div>
   );
@@ -206,22 +206,22 @@ function AuthLoadingScreen() {
 
 function AuthTimeoutScreen({ onRetry }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f6fbfc] p-4">
-      <div className="max-w-md rounded-[1.5rem] border border-white/80 bg-white/85 p-6 text-center shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
-        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <AlertCircle className="w-8 h-8 text-amber-600" />
+    <div className="flex min-h-screen items-center justify-center bg-surface-0 p-4">
+      <div className="max-w-md rounded-sheet border border-line bg-surface-1 p-6 text-center shadow-card ">
+        <div className="w-16 h-16 bg-[var(--status-watch-soft)] rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-8 h-8 text-watch" />
         </div>
 
-        <h2 className="text-xl font-bold text-amber-700 mb-2">Taking Longer Than Expected</h2>
+        <h2 className="text-xl font-bold text-watch mb-2">Taking Longer Than Expected</h2>
 
-        <p className="text-gray-600 mb-6">
+        <p className="text-ink-secondary mb-6">
           Authentication is having trouble loading. This can happen on first launch or with a slow connection.
         </p>
 
         <div className="flex gap-3">
           <Button
             onClick={onRetry}
-            className="flex-1 rounded-full bg-cyan-600 text-white shadow-[0_14px_30px_-22px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+            className="flex-1 rounded-full bg-brand text-white shadow-cta hover:bg-brand-strong"
           >
             <RefreshCw className="w-4 h-4 mr-2" />
             Retry
@@ -236,15 +236,15 @@ function AuthErrorScreen({ error, onRetry }) {
   const auth = useAuthContext();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[var(--status-critical-soft)] via-surface-0 to-surface-0 flex items-center justify-center p-4">
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-md text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <AlertCircle className="w-8 h-8 text-red-600" />
+        <div className="w-16 h-16 bg-[var(--status-critical-soft)] rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-8 h-8 text-critical" />
         </div>
 
-        <h2 className="text-xl font-bold text-red-600 mb-4">Authentication Error</h2>
+        <h2 className="text-xl font-bold text-critical mb-4">Authentication Error</h2>
 
-        <p className="text-gray-700 mb-6">
+        <p className="text-ink-secondary mb-6">
           {error}
         </p>
 
@@ -260,7 +260,7 @@ function AuthErrorScreen({ error, onRetry }) {
 
           <Button
             onClick={auth.logout}
-            className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+            className="flex-1 bg-destructive hover:bg-destructive text-white"
           >
             Sign Out
           </Button>

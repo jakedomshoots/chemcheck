@@ -67,30 +67,30 @@ export function getSyncStatusConfig(syncStatus: SyncStatus): {
       return {
         icon: CheckCircle2,
         label: 'Synced',
-        colorClass: 'text-green-600',
-        bgClass: 'bg-green-50',
+        colorClass: 'text-ok',
+        bgClass: 'bg-[var(--status-ok-soft)]',
       };
     case 'pending':
       return {
         icon: RefreshCw,
         label: 'Pending',
-        colorClass: 'text-amber-600',
-        bgClass: 'bg-amber-50',
+        colorClass: 'text-watch',
+        bgClass: 'bg-[var(--status-watch-soft)]',
       };
     case 'failed':
       return {
         icon: CloudOff,
         label: 'Failed',
-        colorClass: 'text-red-600',
-        bgClass: 'bg-red-50',
+        colorClass: 'text-critical',
+        bgClass: 'bg-[var(--status-critical-soft)]',
       };
     default:
       // Exhaustive check - should never reach here
       return {
         icon: Cloud,
         label: 'Unknown',
-        colorClass: 'text-slate-600',
-        bgClass: 'bg-slate-50',
+        colorClass: 'text-ink-secondary',
+        bgClass: 'bg-surface-2',
       };
   }
 }
@@ -117,8 +117,8 @@ export function ProofStatus({
         className={cn(
           'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium',
           hasPhotos
-            ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
-            : 'bg-slate-50 text-slate-500 border border-slate-200'
+            ? 'bg-brand-softer text-brand-ink border border-[var(--status-info-line)]'
+            : 'bg-surface-2 text-ink-muted border border-line'
         )}
         title={hasPhotos ? `${photoCount} photo${photoCount !== 1 ? 's' : ''} captured` : 'No photos'}
       >
@@ -131,8 +131,8 @@ export function ProofStatus({
         className={cn(
           'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium',
           hasTimeTracking
-            ? 'bg-purple-50 text-purple-700 border border-purple-200'
-            : 'bg-slate-50 text-slate-500 border border-slate-200'
+            ? 'bg-brand-softer text-brand-ink border border-[var(--status-info-line)]'
+            : 'bg-surface-2 text-ink-muted border border-line'
         )}
         title={hasTimeTracking ? `Duration: ${formatDuration(duration)}` : 'No time tracking'}
       >
@@ -146,9 +146,9 @@ export function ProofStatus({
           'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium border',
           syncConfig.bgClass,
           syncConfig.colorClass,
-          syncStatus === 'synced' && 'border-green-200',
-          syncStatus === 'pending' && 'border-amber-200',
-          syncStatus === 'failed' && 'border-red-200'
+          syncStatus === 'synced' && 'border-[var(--status-ok-line)]',
+          syncStatus === 'pending' && 'border-[var(--status-watch-line)]',
+          syncStatus === 'failed' && 'border-[var(--status-critical-line)]'
         )}
         title={`Sync status: ${syncConfig.label}`}
       >

@@ -113,22 +113,22 @@ export function ReportSettingsPanel({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-[90%] sm:max-w-md rounded-xl bg-white border-slate-200">
+      <DialogContent className="max-w-[90%] sm:max-w-md rounded-xl bg-white border-line">
         <DialogHeader>
-          <DialogTitle className="text-base flex items-center gap-2 text-slate-900">
-            <Settings className="w-4 h-4 text-cyan-600" />
+          <DialogTitle className="text-base flex items-center gap-2 text-ink">
+            <Settings className="w-4 h-4 text-brand-ink" />
             Report Settings
           </DialogTitle>
-          <DialogDescription className="text-sm text-slate-600">
+          <DialogDescription className="text-sm text-ink-secondary">
             Customize what {customerName} sees on their service reports
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
           {/* Info Alert */}
-          <Alert className="py-2 bg-blue-50 border-blue-200">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <AlertDescription className="text-xs text-blue-700">
+          <Alert className="py-2 bg-[var(--status-info-soft)] border-[var(--status-info-line)]">
+            <AlertCircle className="h-4 w-4 text-info" />
+            <AlertDescription className="text-xs text-info">
               These settings apply to all reports sent to this customer.
             </AlertDescription>
           </Alert>
@@ -138,7 +138,7 @@ export function ReportSettingsPanel({
             {Object.entries(SETTING_DESCRIPTIONS).map(([key, { label, description }]) => (
               <div
                 key={key}
-                className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors"
+                className="flex items-start gap-3 p-3 rounded-lg border border-line hover:bg-surface-2 cursor-pointer transition-colors"
               >
                 <div className="flex items-center h-5 mt-0.5">
                   <input
@@ -146,7 +146,7 @@ export function ReportSettingsPanel({
                     id={`setting-${key}`}
                     checked={settings[key]}
                     onChange={() => handleToggle(key)}
-                    className="w-4 h-4 rounded border-slate-300 text-cyan-600 cursor-pointer focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2"
+                    className="w-4 h-4 rounded border-line text-brand-ink cursor-pointer focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     data-testid={`setting-${key}`}
                     aria-describedby={`setting-${key}-description`}
                   />
@@ -154,13 +154,13 @@ export function ReportSettingsPanel({
                 <div className="flex-1 min-w-0">
                   <label 
                     htmlFor={`setting-${key}`}
-                    className="text-sm font-medium text-slate-900 cursor-pointer block"
+                    className="text-sm font-medium text-ink cursor-pointer block"
                   >
                     {label}
                   </label>
                   <p 
                     id={`setting-${key}-description`}
-                    className="text-xs text-slate-500 mt-0.5"
+                    className="text-xs text-ink-muted mt-0.5"
                   >
                     {description}
                   </p>
@@ -218,9 +218,9 @@ export function ReportSettingsPanel({
 
           {/* Error Display */}
           {(error || saveError) && (
-            <Alert variant="destructive" className="py-2 bg-red-50 border-red-200">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-xs text-red-700">
+            <Alert variant="destructive" className="py-2 bg-[var(--status-critical-soft)] border-[var(--status-critical-line)]">
+              <AlertCircle className="h-4 w-4 text-critical" />
+              <AlertDescription className="text-xs text-critical">
                 {error || saveError}
               </AlertDescription>
             </Alert>
@@ -228,9 +228,9 @@ export function ReportSettingsPanel({
 
           {/* Success Display */}
           {saveSuccess && (
-            <Alert className="py-2 bg-green-50 border-green-200">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-xs text-green-700">
+            <Alert className="py-2 bg-[var(--status-ok-soft)] border-[var(--status-ok-line)]">
+              <CheckCircle2 className="h-4 w-4 text-ok" />
+              <AlertDescription className="text-xs text-ok">
                 Settings saved successfully!
               </AlertDescription>
             </Alert>
@@ -242,14 +242,14 @@ export function ReportSettingsPanel({
             variant="outline"
             onClick={handleClose}
             disabled={isSaving}
-            className="text-sm bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+            className="text-sm bg-white border-line text-ink-secondary hover:bg-surface-2"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white text-sm"
+            className="bg-brand hover:bg-brand-strong text-white text-sm"
             data-testid="save-settings-button"
           >
             {isSaving ? (

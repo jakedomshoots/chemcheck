@@ -81,7 +81,7 @@ describe('ProofStatus Component', () => {
       );
     });
 
-    it('synced status returns green-themed configuration', () => {
+    it('synced status returns ok-themed configuration', () => {
       fc.assert(
         fc.property(
           fc.constant('synced' as SyncStatus),
@@ -89,15 +89,15 @@ describe('ProofStatus Component', () => {
             const config = getSyncStatusConfig(syncStatus);
             
             expect(config.label).toBe('Synced');
-            expect(config.colorClass).toContain('green');
-            expect(config.bgClass).toContain('green');
+            expect(config.colorClass).toContain('ok');
+            expect(config.bgClass).toContain('ok');
           }
         ),
         { numRuns: 100 }
       );
     });
 
-    it('pending status returns amber-themed configuration', () => {
+    it('pending status returns watch-themed configuration', () => {
       fc.assert(
         fc.property(
           fc.constant('pending' as SyncStatus),
@@ -105,15 +105,15 @@ describe('ProofStatus Component', () => {
             const config = getSyncStatusConfig(syncStatus);
             
             expect(config.label).toBe('Pending');
-            expect(config.colorClass).toContain('amber');
-            expect(config.bgClass).toContain('amber');
+            expect(config.colorClass).toContain('watch');
+            expect(config.bgClass).toContain('watch');
           }
         ),
         { numRuns: 100 }
       );
     });
 
-    it('failed status returns red-themed configuration', () => {
+    it('failed status returns critical-themed configuration', () => {
       fc.assert(
         fc.property(
           fc.constant('failed' as SyncStatus),
@@ -121,8 +121,8 @@ describe('ProofStatus Component', () => {
             const config = getSyncStatusConfig(syncStatus);
             
             expect(config.label).toBe('Failed');
-            expect(config.colorClass).toContain('red');
-            expect(config.bgClass).toContain('red');
+            expect(config.colorClass).toContain('critical');
+            expect(config.bgClass).toContain('critical');
           }
         ),
         { numRuns: 100 }

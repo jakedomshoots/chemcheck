@@ -119,8 +119,8 @@ export default function EditClient() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-3 pt-12">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-cyan-200 border-t-cyan-600" aria-hidden="true" />
-          <p className="text-sm font-medium text-slate-500">Loading client…</p>
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-[var(--status-info-line)] border-t-cyan-600" aria-hidden="true" />
+          <p className="text-sm font-medium text-ink-muted">Loading client…</p>
         </div>
       </div>
     );
@@ -128,25 +128,25 @@ export default function EditClient() {
 
   return (
     <div className="mx-auto max-w-2xl px-3 pb-36 pt-4 font-sans sm:px-6 lg:px-8">
-      <div className="mb-5 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="mb-5 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <BackButton
           fallback={createPageUrl("Clients")}
           label="Back to Clients"
           variant="ghost"
           size="sm"
-          className="mb-3 -ml-2 text-slate-600 hover:text-cyan-700"
+          className="mb-3 -ml-2 text-ink-secondary hover:text-brand-ink"
         />
 
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-sm">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-softer text-brand-ink shadow-sm">
             <User className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Edit client</p>
-            <h2 className="truncate text-2xl font-semibold leading-tight tracking-[-0.035em] text-slate-950 sm:text-3xl">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Edit client</p>
+            <h2 className="truncate text-2xl font-semibold leading-tight tracking-[-0.035em] text-ink sm:text-3xl">
               {formData.full_name || "Edit Client"}
             </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-ink-muted">
               Update contact info, schedule, and pool details.
             </p>
           </div>
@@ -154,17 +154,17 @@ export default function EditClient() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+        <Card className="rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
           <div className="mb-4 flex items-center gap-2">
-            <User className="h-4 w-4 text-cyan-700" aria-hidden="true" />
-            <h3 className="text-lg font-semibold tracking-[-0.025em] text-slate-950">
+            <User className="h-4 w-4 text-brand-ink" aria-hidden="true" />
+            <h3 className="text-lg font-semibold tracking-[-0.025em] text-ink">
               Basic Information
             </h3>
           </div>
 
           <div className="space-y-4">
             <div>
-              <Label htmlFor="full_name" className="text-sm font-semibold text-slate-800">
+              <Label htmlFor="full_name" className="text-sm font-semibold text-ink">
                 Full Name *
               </Label>
               <Input
@@ -173,29 +173,29 @@ export default function EditClient() {
                 onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                 required
                 placeholder="John Smith"
-                className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 focus:border-cyan-500"
+                className="mt-1.5 h-11 rounded-xl border border-line bg-white text-sm font-medium text-ink-secondary focus:border-ring"
               />
             </div>
 
             <div>
-              <Label htmlFor="address" className="text-sm font-semibold text-slate-800">
+              <Label htmlFor="address" className="text-sm font-semibold text-ink">
                 Service Address *
               </Label>
               <div className="relative">
-                <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
                 <Input
                   id="address"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   required
                   placeholder="123 Main St, City, State 12345"
-                  className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white pl-9 text-sm font-medium text-slate-700 focus:border-cyan-500"
+                  className="mt-1.5 h-11 rounded-xl border border-line bg-white pl-9 text-sm font-medium text-ink-secondary focus:border-ring"
                 />
               </div>
             </div>
 
             <div>
-              <Label htmlFor="gate_code" className="text-sm font-semibold text-slate-800">
+              <Label htmlFor="gate_code" className="text-sm font-semibold text-ink">
                 Gate Code
               </Label>
               <Input
@@ -203,17 +203,17 @@ export default function EditClient() {
                 value={formData.gate_code}
                 onChange={(e) => setFormData({ ...formData, gate_code: e.target.value })}
                 placeholder="1234#"
-                className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 focus:border-cyan-500"
+                className="mt-1.5 h-11 rounded-xl border border-line bg-white text-sm font-medium text-ink-secondary focus:border-ring"
               />
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label htmlFor="phone" className="text-sm font-semibold text-slate-800">
+                <Label htmlFor="phone" className="text-sm font-semibold text-ink">
                   Phone Number
                 </Label>
                 <div className="relative">
-                  <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                  <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
                   <Input
                     id="phone"
                     type="tel"
@@ -221,34 +221,34 @@ export default function EditClient() {
                     onChange={handlePhoneChange}
                     onBlur={handlePhoneBlur}
                     placeholder="(555) 123-4567"
-                    className={`mt-1.5 h-11 rounded-xl border bg-white pl-9 text-sm font-medium text-slate-700 ${phoneError ? 'border-red-400 focus:border-red-500' : 'border-slate-200 focus:border-cyan-500'}`}
+                    className={`mt-1.5 h-11 rounded-xl border bg-white pl-9 text-sm font-medium text-ink-secondary ${phoneError ? 'border-[var(--status-critical-line)] focus:border-[var(--status-critical)]' : 'border-line focus:border-ring'}`}
                   />
                 </div>
                 {phoneError && (
-                  <p className="mt-1 text-xs font-medium text-red-600">{phoneError}</p>
+                  <p className="mt-1 text-xs font-medium text-critical">{phoneError}</p>
                 )}
               </div>
 
               <div>
-                <Label htmlFor="email" className="text-sm font-semibold text-slate-800">
+                <Label htmlFor="email" className="text-sm font-semibold text-ink">
                   Email Address
                 </Label>
                 <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
                   <Input
                     id="email"
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="john@example.com"
-                    className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white pl-9 text-sm font-medium text-slate-700 focus:border-cyan-500"
+                    className="mt-1.5 h-11 rounded-xl border border-line bg-white pl-9 text-sm font-medium text-ink-secondary focus:border-ring"
                   />
                 </div>
               </div>
             </div>
 
             <div>
-              <Label htmlFor="service_day" className="text-sm font-semibold text-slate-800">
+              <Label htmlFor="service_day" className="text-sm font-semibold text-ink">
                 Service Day *
               </Label>
               <Select
@@ -258,7 +258,7 @@ export default function EditClient() {
                 <SelectTrigger
                   id="service_day"
                   aria-label="Service Day"
-                  className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 focus:border-cyan-500"
+                  className="mt-1.5 h-11 rounded-xl border border-line bg-white text-sm font-medium text-ink focus:border-ring"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -272,17 +272,17 @@ export default function EditClient() {
           </div>
         </Card>
 
-        <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+        <Card className="rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
           <div className="mb-4 flex items-center gap-2">
-            <Droplets className="h-4 w-4 text-cyan-700" aria-hidden="true" />
-            <h3 className="text-lg font-semibold tracking-[-0.025em] text-slate-950">
+            <Droplets className="h-4 w-4 text-brand-ink" aria-hidden="true" />
+            <h3 className="text-lg font-semibold tracking-[-0.025em] text-ink">
               Pool Details
             </h3>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <Label htmlFor="pool_type" className="text-sm font-semibold text-slate-800">
+              <Label htmlFor="pool_type" className="text-sm font-semibold text-ink">
                 Pool Type
               </Label>
               <Select
@@ -292,7 +292,7 @@ export default function EditClient() {
                 <SelectTrigger
                   id="pool_type"
                   aria-label="Pool Type"
-                  className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 focus:border-cyan-500"
+                  className="mt-1.5 h-11 rounded-xl border border-line bg-white text-sm font-medium text-ink focus:border-ring"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -304,7 +304,7 @@ export default function EditClient() {
             </div>
 
             <div>
-              <Label htmlFor="surface_type" className="text-sm font-semibold text-slate-800">
+              <Label htmlFor="surface_type" className="text-sm font-semibold text-ink">
                 Surface Type
               </Label>
               <Select
@@ -314,7 +314,7 @@ export default function EditClient() {
                 <SelectTrigger
                   id="surface_type"
                   aria-label="Surface Type"
-                  className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 focus:border-cyan-500"
+                  className="mt-1.5 h-11 rounded-xl border border-line bg-white text-sm font-medium text-ink focus:border-ring"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -328,7 +328,7 @@ export default function EditClient() {
             </div>
 
             <div>
-              <Label htmlFor="pool_gallons" className="text-sm font-semibold text-slate-800">
+              <Label htmlFor="pool_gallons" className="text-sm font-semibold text-ink">
                 Capacity (gallons)
               </Label>
               <Input
@@ -337,7 +337,7 @@ export default function EditClient() {
                 value={formData.pool_gallons}
                 onChange={(e) => setFormData({ ...formData, pool_gallons: e.target.value })}
                 placeholder="15000"
-                className="mt-1.5 h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 focus:border-cyan-500"
+                className="mt-1.5 h-11 rounded-xl border border-line bg-white text-sm font-medium text-ink-secondary focus:border-ring"
               />
             </div>
           </div>
@@ -348,12 +348,12 @@ export default function EditClient() {
             fallback={createPageUrl("Clients")}
             label="Cancel"
             variant="outline"
-            className="h-11 flex-1 rounded-[1.15rem] border border-slate-200 bg-white/90 text-sm font-semibold text-slate-800 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+            className="h-11 flex-1 rounded-card border border-line bg-surface-1 text-sm font-semibold text-ink shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink"
           />
           <Button
             type="submit"
             disabled={saving}
-            className="h-11 flex-1 rounded-[1.15rem] bg-cyan-600 text-sm font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 disabled:opacity-70"
+            className="h-11 flex-1 rounded-card bg-brand text-sm font-semibold text-white shadow-cta hover:bg-brand-strong disabled:opacity-70"
           >
             {saving ? (
               <span className="inline-flex items-center gap-2">

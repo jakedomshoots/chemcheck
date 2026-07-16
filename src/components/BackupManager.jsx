@@ -61,20 +61,20 @@ export function BackupManager({ onClose }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-line">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Shield className="w-5 h-5 text-blue-600" />
+              <div className="w-10 h-10 bg-[var(--status-info-soft)] rounded-lg flex items-center justify-center">
+                <Shield className="w-5 h-5 text-info" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Data Backup</h2>
-                <p className="text-sm text-gray-500">Protect your pool service data</p>
+                <h2 className="text-lg font-semibold text-ink">Data Backup</h2>
+                <p className="text-sm text-ink-muted">Protect your pool service data</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-xl font-semibold"
+              className="text-ink-muted hover:text-ink-secondary text-xl font-semibold"
             >
               ×
             </button>
@@ -83,25 +83,25 @@ export function BackupManager({ onClose }) {
 
         <div className="p-6 space-y-6">
           {/* Auto-backup Status */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-[var(--status-info-soft)] border border-[var(--status-info-line)] rounded-lg p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">Auto-Backup Status</span>
+              <Clock className="w-4 h-4 text-info" />
+              <span className="text-sm font-medium text-info">Auto-Backup Status</span>
             </div>
-            <p className="text-sm text-blue-700">
+            <p className="text-sm text-info">
               {lastBackup 
                 ? `Last backup: ${new Date(lastBackup).toLocaleString()}`
                 : 'No automatic backup yet'
               }
             </p>
-            <p className="text-xs text-blue-600 mt-1">
+            <p className="text-xs text-info mt-1">
               Automatic backups run every 24 hours and are stored locally for emergency recovery.
             </p>
           </div>
 
           {/* Export Section */}
           <div className="space-y-4">
-            <h3 className="font-medium text-gray-900 flex items-center gap-2">
+            <h3 className="font-medium text-ink flex items-center gap-2">
               <Download className="w-4 h-4" />
               Export Data
             </h3>
@@ -161,7 +161,7 @@ export function BackupManager({ onClose }) {
               <button
                 onClick={handleExport}
                 disabled={isExporting}
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-brand text-white py-2 px-4 rounded-lg hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isExporting ? (
                   <>
@@ -180,7 +180,7 @@ export function BackupManager({ onClose }) {
 
           {/* Import Section */}
           <div className="space-y-4">
-            <h3 className="font-medium text-gray-900 flex items-center gap-2">
+            <h3 className="font-medium text-ink flex items-center gap-2">
               <Upload className="w-4 h-4" />
               Import Data
             </h3>
@@ -197,7 +197,7 @@ export function BackupManager({ onClose }) {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isImporting}
-                className="w-full bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-surface-2 text-ink py-2 px-4 rounded-lg hover:bg-line disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isImporting ? (
                   <>
@@ -215,24 +215,24 @@ export function BackupManager({ onClose }) {
               {importResult && (
                 <div className={`p-3 rounded-lg border ${
                   importResult.success 
-                    ? 'bg-green-50 border-green-200' 
-                    : 'bg-red-50 border-red-200'
+                    ? 'bg-[var(--status-ok-soft)] border-[var(--status-ok-line)]' 
+                    : 'bg-[var(--status-critical-soft)] border-[var(--status-critical-line)]'
                 }`}>
                   <div className="flex items-center gap-2 mb-2">
                     {importResult.success ? (
-                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <CheckCircle className="w-4 h-4 text-ok" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-red-600" />
+                      <AlertCircle className="w-4 h-4 text-critical" />
                     )}
                     <span className={`text-sm font-medium ${
-                      importResult.success ? 'text-green-900' : 'text-red-900'
+                      importResult.success ? 'text-ok' : 'text-critical'
                     }`}>
                       {importResult.success ? 'Import Successful' : 'Import Failed'}
                     </span>
                   </div>
                   
                   {importResult.success && (
-                    <div className="text-sm text-green-700 space-y-1">
+                    <div className="text-sm text-ok space-y-1">
                       <p>Imported:</p>
                       <ul className="text-xs space-y-0.5 ml-4">
                         <li>• {importResult.imported.customers} customers</li>
@@ -247,7 +247,7 @@ export function BackupManager({ onClose }) {
                   )}
                   
                   {importResult.warnings?.length > 0 && (
-                    <div className="text-sm text-amber-700 mt-2">
+                    <div className="text-sm text-watch mt-2">
                       <p>Warnings:</p>
                       <ul className="text-xs space-y-0.5 ml-4">
                         {importResult.warnings.slice(0, 3).map((warning, index) => (
@@ -261,7 +261,7 @@ export function BackupManager({ onClose }) {
                   )}
                   
                   {importResult.errors.length > 0 && (
-                    <div className="text-sm text-red-700 mt-2">
+                    <div className="text-sm text-critical mt-2">
                       <p>Errors:</p>
                       <ul className="text-xs space-y-0.5 ml-4">
                         {importResult.errors.slice(0, 3).map((error, index) => (
@@ -279,10 +279,10 @@ export function BackupManager({ onClose }) {
           </div>
 
           {/* Warning */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="bg-[var(--status-watch-soft)] border border-[var(--status-watch-line)] rounded-lg p-3">
             <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-yellow-800">
+              <AlertCircle className="w-4 h-4 text-watch mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-watch">
                 <p className="font-medium mb-1">Important:</p>
                 <ul className="text-xs space-y-1">
                   <li>• Importing will add to existing data (no overwrite)</li>

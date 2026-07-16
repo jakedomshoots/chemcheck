@@ -26,7 +26,7 @@ const POOL_SCHOOL_DATA = {
       icon: 'AlertTriangle',
       description: 'Diagnose and fix common water problems',
       gradient: 'from-red-500 via-rose-500 to-pink-500',
-      bgGlow: 'bg-red-500/20',
+      bgGlow: 'bg-[var(--status-critical-soft)]0/20',
       topics: [
         {
           id: 'green-water',
@@ -204,7 +204,7 @@ const POOL_SCHOOL_DATA = {
       icon: 'Wrench',
       description: 'Get it running again without a service call',
       gradient: 'from-blue-500 via-indigo-500 to-violet-500',
-      bgGlow: 'bg-blue-500/20',
+      bgGlow: 'bg-[var(--status-info-soft)]0/20',
       topics: [
         {
           id: 'pump-issues',
@@ -348,7 +348,7 @@ const POOL_SCHOOL_DATA = {
       icon: 'ThermometerSun',
       description: 'Dealing with our unique climate challenges',
       gradient: 'from-orange-500 via-amber-500 to-yellow-500',
-      bgGlow: 'bg-orange-500/20',
+      bgGlow: 'bg-[var(--status-action-soft)]0/20',
       topics: [
         {
           id: 'uv-chlorine',
@@ -514,7 +514,7 @@ const POOL_SCHOOL_DATA = {
       icon: 'CloudRain',
       description: 'Protect your pool before and after storms',
       gradient: 'from-slate-600 via-slate-500 to-zinc-500',
-      bgGlow: 'bg-slate-500/20',
+      bgGlow: 'bg-surface-20/20',
       topics: [
         {
           id: 'before-hurricane',
@@ -622,7 +622,7 @@ const POOL_SCHOOL_DATA = {
       icon: 'Wrench',
       description: 'Complete specs for Jandy, Pentair & Hayward equipment',
       gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
-      bgGlow: 'bg-emerald-500/20',
+      bgGlow: 'bg-[var(--status-ok-soft)]0/20',
       topics: [
         {
           id: 'pool-pumps',
@@ -885,27 +885,27 @@ const iconMap = {
 
 function WarningBox({ children }) {
   return (
-    <div className="my-4 flex items-start gap-3 rounded-2xl border border-red-200/70 bg-red-50/80 p-4">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700 shadow-inner">
-        <AlertCircle className="h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+    <div className="my-4 flex items-start gap-3 rounded-2xl border border-[var(--status-critical-line)] bg-[var(--status-critical-soft)] p-4">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--status-critical-soft)] text-critical shadow-inner">
+        <AlertCircle className="h-4 w-4" aria-hidden="true" />
       </div>
-      <p className="text-sm font-medium leading-relaxed text-red-800">{children}</p>
+      <p className="text-sm font-medium leading-relaxed text-critical">{children}</p>
     </div>
   );
 }
 
 function FloridaNote({ children }) {
   return (
-    <div className="my-4 flex items-start gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/80 p-4">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 shadow-inner">
-        <ThermometerSun className="h-4 w-4 stroke-[1.75]" aria-hidden="true" />
+    <div className="my-4 flex items-start gap-3 rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] p-4">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--status-watch-soft)] text-watch shadow-inner">
+        <ThermometerSun className="h-4 w-4" aria-hidden="true" />
       </div>
       <div className="flex-1">
-        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-watch">
           <Sparkles className="h-3 w-3" aria-hidden="true" />
           Florida Factor
         </span>
-        <p className="mt-1 text-sm font-medium leading-relaxed text-amber-900">{children}</p>
+        <p className="mt-1 text-sm font-medium leading-relaxed text-watch">{children}</p>
       </div>
     </div>
   );
@@ -915,14 +915,14 @@ function StepList({ steps }) {
   return (
     <ul className="mt-3 space-y-2">
       {steps.map((step, idx) => (
-        <li key={idx} className="group flex items-start gap-3 text-sm text-slate-700">
-          <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-cyan-700 shadow-inner">
-            <CheckCircle className="h-3.5 w-3.5 stroke-[1.75]" aria-hidden="true" />
+        <li key={idx} className="group flex items-start gap-3 text-sm text-ink-secondary">
+          <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-softer text-brand-ink shadow-inner">
+            <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
           </div>
           <span
             className="leading-relaxed"
             dangerouslySetInnerHTML={{
-              __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-slate-950">$1</strong>')
+              __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-ink">$1</strong>')
             }}
           />
         </li>
@@ -934,19 +934,19 @@ function StepList({ steps }) {
 function TopicCard({ topic, isExpanded, onToggle }) {
   const severityConfig = {
     high: {
-      border: 'border-red-200/70',
-      accent: 'text-red-700',
-      chip: 'bg-red-100 text-red-700',
+      border: 'border-[var(--status-critical-line)]',
+      accent: 'text-critical',
+      chip: 'bg-[var(--status-critical-soft)] text-critical',
     },
     medium: {
-      border: 'border-amber-200/70',
-      accent: 'text-amber-700',
-      chip: 'bg-amber-100 text-amber-700',
+      border: 'border-[var(--status-watch-line)]',
+      accent: 'text-watch',
+      chip: 'bg-[var(--status-watch-soft)] text-watch',
     },
     low: {
-      border: 'border-emerald-200/70',
-      accent: 'text-emerald-700',
-      chip: 'bg-emerald-100 text-emerald-700',
+      border: 'border-[var(--status-ok-line)]',
+      accent: 'text-ok',
+      chip: 'bg-[var(--status-ok-soft)] text-ok',
     }
   };
 
@@ -954,47 +954,47 @@ function TopicCard({ topic, isExpanded, onToggle }) {
 
   return (
     <div
-      className={`overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur ${isExpanded ? config.border : ''}`}
+      className={`overflow-hidden rounded-raised border border-line bg-surface-1 shadow-card ${isExpanded ? config.border : ''}`}
     >
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={isExpanded}
-        className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-cyan-50/40 active:bg-cyan-50/60 touch-manipulation sm:p-5"
+        className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-brand-softer active:bg-brand-softer touch-manipulation sm:p-5"
       >
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold tracking-[-0.02em] text-slate-950 sm:text-lg">
+            <h3 className="text-base font-semibold tracking-[-0.02em] text-ink sm:text-lg">
               {topic.title}
             </h3>
             {topic.severity !== 'low' && (
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] ${config.chip}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-[0.16em] ${config.chip}`}>
                 {topic.severity}
               </span>
             )}
           </div>
-          <p className="line-clamp-1 text-sm font-medium leading-relaxed text-slate-500 sm:line-clamp-2">{topic.content.summary}</p>
+          <p className="line-clamp-1 text-sm font-medium leading-relaxed text-ink-muted sm:line-clamp-2">{topic.content.summary}</p>
         </div>
         <div
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/80 text-slate-500 shadow-sm transition-transform sm:h-10 sm:w-10 ${isExpanded ? 'rotate-180 bg-cyan-50 text-cyan-700' : ''}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-surface-1 text-ink-muted shadow-sm transition-transform sm:h-10 sm:w-10 ${isExpanded ? 'rotate-180 bg-brand-softer text-brand-ink' : ''}`}
         >
-          <ChevronDown className="h-5 w-5 stroke-[1.75]" aria-hidden="true" />
+          <ChevronDown className="h-5 w-5" aria-hidden="true" />
         </div>
       </button>
 
       <div
         className={`overflow-hidden transition-all duration-300 ease-out ${isExpanded ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
-        <div className="border-t border-slate-200/70 p-4 sm:p-5">
+        <div className="border-t border-line p-4 sm:p-5">
           {topic.content.floridaNote && (
             <FloridaNote>{topic.content.floridaNote}</FloridaNote>
           )}
 
           <div className="space-y-3">
             {topic.content.sections.map((section, idx) => (
-              <div key={idx} className="rounded-2xl border border-slate-200/70 bg-white/90 p-4">
-                <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" aria-hidden="true" />
+              <div key={idx} className="rounded-2xl border border-line bg-surface-1 p-4">
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-softer0" aria-hidden="true" />
                   {section.title}
                 </h4>
                 {section.warning && <WarningBox>{section.warning}</WarningBox>}
@@ -1027,16 +1027,16 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, i
   return (
     <div className={`transition-all duration-500 ${isActiveCategory ? 'opacity-100' : 'opacity-0 absolute pointer-events-none'}`}>
       <div className="mb-5 flex items-center gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 shadow-inner">
-          <IconComponent className="h-6 w-6 stroke-[1.75]" aria-hidden="true" />
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-softer text-brand-ink shadow-inner">
+          <IconComponent className="h-6 w-6" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-semibold tracking-[-0.025em] text-slate-950 sm:text-2xl">
+          <h2 className="text-xl font-semibold tracking-[-0.025em] text-ink sm:text-2xl">
             {category.title}
           </h2>
-          <p className="text-sm font-medium text-slate-500">{category.description}</p>
+          <p className="text-sm font-medium text-ink-muted">{category.description}</p>
         </div>
-        <span className="rounded-full border border-slate-200/70 bg-white/85 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
+        <span className="rounded-full border border-line bg-surface-1 px-3 py-1 text-xs font-semibold text-ink-secondary shadow-sm">
           {filteredTopics.length} {filteredTopics.length === 1 ? 'topic' : 'topics'}
         </span>
       </div>
@@ -1113,45 +1113,45 @@ export default function PoolSchool() {
 
   return (
     <main className="relative mx-auto max-w-5xl px-3 pb-32 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Pool School">
-      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
+      <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field reference</p>
-            <h1 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Field reference</p>
+            <h1 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
               Pool School
             </h1>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-ink-muted">
               Florida pool tech's complete field guide
             </p>
           </div>
           <div className="flex items-center gap-2 sm:shrink-0">
-            <span className="rounded-full border border-cyan-200/70 bg-cyan-50/70 px-3 py-1 text-xs font-semibold text-cyan-800 shadow-sm">
+            <span className="rounded-full border border-[var(--status-info-line)] bg-brand-softer px-3 py-1 text-xs font-semibold text-brand-ink shadow-sm">
               {totalTopics} Topics
             </span>
-            <span className="rounded-full border border-slate-200/70 bg-white/85 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
+            <span className="rounded-full border border-line bg-surface-1 px-3 py-1 text-xs font-semibold text-ink-secondary shadow-sm">
               {POOL_SCHOOL_DATA.categories.length} Categories
             </span>
           </div>
         </div>
       </div>
 
-      <div className="sticky top-2 z-20 mb-4 rounded-[1.35rem] border border-white/80 bg-white/85 p-2 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="sticky top-2 z-20 mb-4 rounded-raised border border-line bg-surface-1 p-2 shadow-card ">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
           <input
             type="text"
             placeholder="Search problems, equipment, brands..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             aria-label="Search topics"
-            className="w-full rounded-xl border border-transparent bg-slate-50/80 py-3 pl-12 pr-12 text-base text-slate-900 placeholder:text-slate-400 focus:border-cyan-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+            className="w-full rounded-xl border border-transparent bg-surface-2 py-3 pl-12 pr-12 text-base text-ink placeholder:text-ink-muted focus:border-ring focus:bg-white focus:outline-none focus:ring-2 focus:ring-ring"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               aria-label="Clear search"
-              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink-secondary"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -1160,21 +1160,21 @@ export default function PoolSchool() {
 
         {!searchQuery && (
           <div className="mt-2 flex items-center justify-between px-2">
-            <span className="text-xs font-medium text-slate-500">
+            <span className="text-xs font-medium text-ink-muted">
               {filteredCount} topics available
             </span>
             <div className="flex gap-1">
               <button
                 type="button"
                 onClick={expandAll}
-                className="rounded-full px-3 py-1.5 text-xs font-semibold text-cyan-700 transition-colors hover:bg-cyan-50"
+                className="rounded-full px-3 py-1.5 text-xs font-semibold text-brand-ink transition-colors hover:bg-brand-softer"
               >
                 Expand All
               </button>
               <button
                 type="button"
                 onClick={collapseAll}
-                className="rounded-full px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                className="rounded-full px-3 py-1.5 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink-secondary"
               >
                 Collapse
               </button>
@@ -1184,7 +1184,7 @@ export default function PoolSchool() {
 
         {searchQuery && (
           <div className="mt-2 px-2">
-            <span className="text-xs font-medium text-slate-500">
+            <span className="text-xs font-medium text-ink-muted">
               Found {filteredCount} {filteredCount === 1 ? 'topic' : 'topics'} matching "{searchQuery}"
             </span>
           </div>
@@ -1196,35 +1196,35 @@ export default function PoolSchool() {
           <Select value={activeCategory} onValueChange={setActiveCategory}>
             <SelectTrigger
               aria-label="Pool School category"
-              className="h-12 rounded-2xl border border-slate-200/80 bg-white/90 px-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-slate-300 focus:ring-2 focus:ring-slate-300/30"
+              className="h-12 rounded-2xl border border-line bg-surface-1 px-3 text-sm font-semibold text-ink shadow-sm focus:border-line focus:ring-2 focus:ring-slate-300/30"
             >
               <span className="flex min-w-0 flex-1 items-center gap-3">
                 {activeCategoryData && (() => {
                   const ActiveIcon = iconMap[activeCategoryData.icon] || AlertTriangle;
-                  return <ActiveIcon className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />;
+                  return <ActiveIcon className="h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" />;
                 })()}
                 <span className="min-w-0 flex-1 truncate">
                   {activeCategoryData?.title ?? "Choose a category"}
                 </span>
-                <span className="ml-auto shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                <span className="ml-auto shrink-0 rounded-md bg-surface-2 px-2 py-0.5 text-xs font-bold text-ink-secondary">
                   {activeCategoryData?.topics.length ?? 0}
                 </span>
               </span>
             </SelectTrigger>
-            <SelectContent className="rounded-2xl border-slate-200 bg-white p-1 shadow-xl">
+            <SelectContent className="rounded-2xl border-line bg-white p-1 shadow-xl">
               {POOL_SCHOOL_DATA.categories.map((cat) => {
                 const IconComponent = iconMap[cat.icon] || AlertTriangle;
                 return (
                   <SelectItem
                     key={cat.id}
                     value={cat.id}
-                    className="rounded-xl py-2.5 pr-8 text-sm text-slate-700 hover:bg-slate-50 focus:bg-transparent data-[highlighted]:bg-transparent data-[highlighted]:outline data-[highlighted]:outline-1 data-[highlighted]:outline-slate-300 data-[state=checked]:bg-transparent focus:text-slate-900"
+                    className="rounded-xl py-2.5 pr-8 text-sm text-ink-secondary hover:bg-surface-2 focus:bg-transparent data-[highlighted]:bg-transparent data-[highlighted]:outline data-[highlighted]:outline-1 data-[highlighted]:outline-slate-300 data-[state=checked]:bg-transparent focus:text-ink"
                     textValue={cat.title}
                   >
                     <span className="flex min-w-0 items-center gap-3">
-                      <IconComponent className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
+                      <IconComponent className="h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" />
                       <span className="min-w-0 flex-1 truncate">{cat.title}</span>
-                      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-500">
+                      <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-xs font-bold text-ink-muted">
                         {cat.topics.length}
                       </span>
                     </span>
@@ -1266,12 +1266,12 @@ export default function PoolSchool() {
       </div>
 
       {filteredCount === 0 && (
-        <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50/80 px-5 py-10 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-inner">
-            <Search className="h-7 w-7 stroke-[1.75]" aria-hidden="true" />
+        <div className="mt-6 rounded-sheet border border-dashed border-line bg-surface-2 px-5 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-ink-muted shadow-inner">
+            <Search className="h-7 w-7" aria-hidden="true" />
           </div>
-          <h3 className="mb-1 text-lg font-semibold tracking-[-0.025em] text-slate-950">No topics found</h3>
-          <p className="mx-auto max-w-md text-sm font-medium text-slate-500">
+          <h3 className="mb-1 text-lg font-semibold tracking-[-0.025em] text-ink">No topics found</h3>
+          <p className="mx-auto max-w-md text-sm font-medium text-ink-muted">
             Try different keywords like "pump", "algae", or brand names like "Pentair" or "Hayward".
           </p>
         </div>

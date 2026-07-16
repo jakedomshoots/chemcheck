@@ -113,7 +113,7 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
         <div>
-          <Label htmlFor="customer_id" className="text-slate-700 font-medium">
+          <Label htmlFor="customer_id" className="text-ink-secondary font-medium">
             Customer *
           </Label>
           <Select
@@ -122,7 +122,7 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
           >
             <SelectTrigger
               aria-label="Customer"
-              className="mt-1 bg-white text-slate-900 border-2 border-slate-200 focus:border-purple-500 rounded-xl h-11"
+              className="mt-1 bg-white text-ink border-2 border-line focus:border-[var(--status-info-line)] rounded-xl h-11"
             >
               <SelectValue placeholder="Select customer" />
             </SelectTrigger>
@@ -137,7 +137,7 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
         </div>
 
         <div>
-          <Label htmlFor="chemical_type" className="text-slate-700 font-medium">
+          <Label htmlFor="chemical_type" className="text-ink-secondary font-medium">
             Chemical Type *
           </Label>
           <Select
@@ -146,7 +146,7 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
           >
             <SelectTrigger
               aria-label="Chemical Type"
-              className="mt-1 bg-white text-slate-900 border-2 border-slate-200 focus:border-purple-500 rounded-xl h-11"
+              className="mt-1 bg-white text-ink border-2 border-line focus:border-[var(--status-info-line)] rounded-xl h-11"
             >
               <SelectValue />
             </SelectTrigger>
@@ -161,7 +161,7 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
         </div>
 
         <div>
-          <Label htmlFor="quantity" className="text-slate-700 font-medium">
+          <Label htmlFor="quantity" className="text-ink-secondary font-medium">
             Quantity Used *
           </Label>
           <Input
@@ -170,13 +170,13 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
             onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
             required
             placeholder="e.g., 2 gallons, 3 lbs, 5 tablets"
-            className="mt-1 border-2 focus:border-purple-500 rounded-xl"
+            className="mt-1 border-2 focus:border-[var(--status-info-line)] rounded-xl"
           />
-          <p className="text-xs text-slate-500 mt-1">Include units (gallons, lbs, tablets, etc.)</p>
+          <p className="text-xs text-ink-muted mt-1">Include units (gallons, lbs, tablets, etc.)</p>
         </div>
 
         <div>
-          <Label htmlFor="notes" className="text-slate-700 font-medium">
+          <Label htmlFor="notes" className="text-ink-secondary font-medium">
             Notes
           </Label>
           <Textarea
@@ -186,7 +186,7 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
             onFocus={keepFocusedFieldAboveKeyboard}
             placeholder="Why extra chemicals were needed..."
             rows={3}
-            className="mt-1 border-2 focus:border-purple-500 rounded-xl"
+            className="mt-1 border-2 focus:border-[var(--status-info-line)] rounded-xl"
           />
         </div>
       </div>
@@ -196,14 +196,14 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
           type="button"
           variant="outline"
           onClick={onCancel}
-          className="flex-1 border-2 rounded-xl"
+          className="flex-1 h-11 rounded-control"
         >
           Cancel
         </Button>
         <Button
           type="submit"
           disabled={saving}
-          className="flex-1 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white shadow-lg rounded-xl"
+          className="flex-1 h-11 bg-brand text-white shadow-cta hover:bg-brand-strong rounded-control"
         >
           {saving ? (
             <>Saving...</>

@@ -28,18 +28,18 @@ import { SaltCellLogSection } from "@/components/notes/SaltCellLogSection";
 const categories = ["General", "Customer", "Equipment", "Reminder", "Chemical", "Billing"];
 
 const categoryTextClass = {
-  General: "text-slate-700",
-  Customer: "text-cyan-800",
-  Equipment: "text-orange-700",
-  Reminder: "text-amber-700",
-  Chemical: "text-violet-700",
-  Billing: "text-emerald-700"
+  General: "text-ink-secondary",
+  Customer: "text-brand-ink",
+  Equipment: "text-action",
+  Reminder: "text-watch",
+  Chemical: "text-info",
+  Billing: "text-ok"
 };
 
 const priorityConfig = {
-  low: { color: "text-slate-600", bg: "bg-slate-100", icon: Circle },
-  medium: { color: "text-blue-600", bg: "bg-blue-100", icon: AlertCircle },
-  high: { color: "text-red-600", bg: "bg-red-100", icon: AlertCircle }
+  low: { color: "text-ink-secondary", bg: "bg-surface-2", icon: Circle },
+  medium: { color: "text-info", bg: "bg-[var(--status-info-soft)]", icon: AlertCircle },
+  high: { color: "text-critical", bg: "bg-[var(--status-critical-soft)]", icon: AlertCircle }
 };
 
 export default function Notes() {
@@ -135,37 +135,37 @@ export default function Notes() {
   if (loading) {
     return (
       <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Notes">
-        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <div>
-            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950">Notes &amp; Reminders</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">Loading...</p>
+            <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Notes &amp; Reminders</h2>
+            <p className="mt-1 text-sm font-medium text-ink-muted">Loading...</p>
           </div>
         </div>
         <div className="space-y-2">
-          <div className="h-20 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
-          <div className="h-20 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
-          <div className="h-20 rounded-[1.25rem] border border-white/80 bg-white/80 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur" />
+          <div className="h-20 rounded-raised border border-line bg-surface-1 shadow-card " />
+          <div className="h-20 rounded-raised border border-line bg-surface-1 shadow-card " />
+          <div className="h-20 rounded-raised border border-line bg-surface-1 shadow-card " />
         </div>
       </main>
     );
   }
   return (
     <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Notes">
-      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Operations</p>
-            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
-              <PoolIcon name="notes" className="h-7 w-7 text-cyan-700" />
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Operations</p>
+            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
+              <PoolIcon name="notes" className="h-7 w-7 text-brand-ink" />
               Notes &amp; Reminders
             </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-ink-muted">
               {activeCount} active · {completedCount} completed
             </p>
           </div>
           <Button
             onClick={() => setShowForm(!showForm)}
-            className="h-12 w-full shrink-0 rounded-full bg-cyan-600 px-6 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto"
+            className="h-12 w-full shrink-0 rounded-full bg-brand px-6 font-semibold text-white shadow-cta hover:bg-brand-strong sm:w-auto"
           >
             <PoolIcon name="add" className="mr-2 h-4 w-4" />
             {showForm ? "Cancel" : "Add Note"}
@@ -174,14 +174,14 @@ export default function Notes() {
       </div>
 
       {showForm && (
-        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+        <Card className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
           <div className="mb-4 flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-softer text-brand-ink">
               <PoolIcon name="add" className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base font-semibold tracking-[-0.025em] text-slate-950">New note</h3>
-              <p className="text-sm font-medium text-slate-500">Add a quick reminder or a detailed customer note.</p>
+              <h3 className="text-base font-semibold tracking-[-0.025em] text-ink">New note</h3>
+              <p className="text-sm font-medium text-ink-muted">Add a quick reminder or a detailed customer note.</p>
             </div>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -193,7 +193,7 @@ export default function Notes() {
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 required
                 placeholder="Quick summary..."
-                className="mt-1 rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
+                className="mt-1 rounded-2xl border border-line bg-white focus:border-ring"
               />
             </div>
 
@@ -206,7 +206,7 @@ export default function Notes() {
                 required
                 placeholder="Full details of the note or reminder..."
                 rows={3}
-                className="mt-1 rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
+                className="mt-1 rounded-2xl border border-line bg-white focus:border-ring"
               />
             </div>
 
@@ -219,7 +219,7 @@ export default function Notes() {
                 >
                   <SelectTrigger
                     aria-label="Category"
-                    className="mt-1 h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
+                    className="mt-1 h-11 rounded-2xl border border-line bg-white text-ink focus:border-ring"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -239,7 +239,7 @@ export default function Notes() {
                 >
                   <SelectTrigger
                     aria-label="Priority"
-                    className="mt-1 h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
+                    className="mt-1 h-11 rounded-2xl border border-line bg-white text-ink focus:border-ring"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -261,7 +261,7 @@ export default function Notes() {
                 >
                   <SelectTrigger
                     aria-label="Customer"
-                    className="mt-1 h-11 rounded-2xl border border-slate-200 bg-white text-slate-900 focus:border-cyan-500"
+                    className="mt-1 h-11 rounded-2xl border border-line bg-white text-ink focus:border-ring"
                   >
                     <SelectValue placeholder="Select customer (optional)" />
                   </SelectTrigger>
@@ -278,7 +278,7 @@ export default function Notes() {
 
             <Button
               type="submit"
-              className="h-12 w-full rounded-full bg-cyan-600 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 sm:w-auto sm:px-6"
+              className="h-12 w-full rounded-full bg-brand font-semibold text-white shadow-cta hover:bg-brand-strong sm:w-auto sm:px-6"
             >
               <PoolIcon name="add" className="mr-2 h-4 w-4" />
               Save Note
@@ -288,26 +288,26 @@ export default function Notes() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-5 w-full rounded-2xl border border-white/80 bg-white/80 p-1 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.65)] backdrop-blur">
-          <TabsTrigger value="active" className="flex-1 rounded-xl text-slate-600 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
+        <TabsList className="mb-5 w-full rounded-2xl border border-line bg-surface-1 p-1 shadow-card ">
+          <TabsTrigger value="active" className="flex-1 rounded-xl text-ink-secondary data-[state=active]:bg-brand data-[state=active]:text-white">
             Active ({activeCount})
           </TabsTrigger>
-          <TabsTrigger value="completed" className="flex-1 rounded-xl text-slate-600 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
+          <TabsTrigger value="completed" className="flex-1 rounded-xl text-ink-secondary data-[state=active]:bg-brand data-[state=active]:text-white">
             Completed ({completedCount})
           </TabsTrigger>
-          <TabsTrigger value="all" className="flex-1 rounded-xl text-slate-600 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
+          <TabsTrigger value="all" className="flex-1 rounded-xl text-ink-secondary data-[state=active]:bg-brand data-[state=active]:text-white">
             All ({notes.length})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab}>
           {filteredNotes.length === 0 ? (
-            <Card className="rounded-[1.75rem] border border-white/80 bg-white/80 px-5 py-10 text-center shadow-[0_24px_80px_-58px_rgba(8,47,73,0.85)] backdrop-blur">
+            <Card className="rounded-sheet border border-line bg-surface-1 px-5 py-10 text-center shadow-card ">
               <IconBadge name="notes" size="lg" tone="slate" className="mx-auto mb-4" iconClassName="h-7 w-7" />
-              <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-slate-950">
+              <h3 className="mb-2 text-xl font-semibold tracking-[-0.035em] text-ink">
                 No {activeTab === "active" ? "Active" : activeTab === "completed" ? "Completed" : ""} Notes
               </h3>
-              <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-slate-600">
+              <p className="mx-auto mb-5 max-w-sm text-sm font-medium leading-6 text-ink-secondary">
                 {activeTab === "active" ? "Add a note or reminder to get started" : "No completed notes yet"}
               </p>
             </Card>
@@ -320,10 +320,10 @@ export default function Notes() {
                 const customerName = note.customer_id ? getCustomerName(note.customer_id) : null;
 
                 return (
-                  <Card key={note.id} className="overflow-hidden rounded-[1.25rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.7)] backdrop-blur">
+                  <Card key={note.id} className="overflow-hidden rounded-raised border border-line bg-surface-1 shadow-card ">
                     <div
                       onClick={() => toggleNote(note.id)}
-                      className="flex items-start justify-between gap-3 p-4 cursor-pointer transition-colors hover:bg-slate-50/70 active:bg-slate-100"
+                      className="flex items-start justify-between gap-3 p-4 cursor-pointer transition-colors hover:bg-surface-2 active:bg-surface-2"
                     >
                       <div className="flex items-start gap-3 flex-1 min-w-0">
                         <button
@@ -332,21 +332,21 @@ export default function Notes() {
                             handleToggleComplete(note);
                           }}
                           aria-label={note.completed ? `Mark ${note.title} as active` : `Mark ${note.title} as complete`}
-                          className="mt-0.5 shrink-0 rounded-full p-1 transition-colors hover:bg-cyan-50"
+                          className="mt-0.5 shrink-0 rounded-full p-1 transition-colors hover:bg-brand-softer"
                         >
                           {note.completed ? (
-                            <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+                            <CheckCircle2 className="h-5 w-5 text-ok" aria-hidden="true" />
                           ) : (
-                            <Circle className="h-5 w-5 text-slate-400" aria-hidden="true" />
+                            <Circle className="h-5 w-5 text-ink-muted" aria-hidden="true" />
                           )}
                         </button>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <h3 className={`font-semibold text-slate-900 ${note.completed ? 'line-through text-slate-500' : ''}`}>
+                            <h3 className={`font-semibold text-ink ${note.completed ? 'line-through text-ink-muted' : ''}`}>
                               {note.title}
                             </h3>
-                            <span className={`rounded-full border border-cyan-100 bg-cyan-50 px-2 py-0.5 text-xs font-medium ${categoryTextClass[note.category]}`}>
+                            <span className={`rounded-full border border-[var(--status-info-line)] bg-brand-softer px-2 py-0.5 text-xs font-medium ${categoryTextClass[note.category]}`}>
                               {note.category}
                             </span>
                             <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${priority.bg}`}>
@@ -356,8 +356,8 @@ export default function Notes() {
                           </div>
 
                           {customerName && (
-                            <div className="flex items-center gap-2 flex-wrap text-xs text-slate-600">
-                              <span className="text-cyan-700">→ {customerName}</span>
+                            <div className="flex items-center gap-2 flex-wrap text-xs text-ink-secondary">
+                              <span className="text-brand-ink">→ {customerName}</span>
                             </div>
                           )}
                         </div>
@@ -371,21 +371,21 @@ export default function Notes() {
                               setDeleteNote(note);
                             }}
                             aria-label={`Delete ${note.title}`}
-                            className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-700"
+                            className="h-8 w-8 text-critical hover:bg-[var(--status-critical-soft)] hover:text-critical"
                           >
                             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                           </Button>
-                          <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+                          <ChevronDown className={`h-5 w-5 text-ink-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
                         </div>
                       </div>
                     </div>
 
                     {isExpanded && (
-                      <div className="border-t border-slate-200/70 bg-slate-50/70 p-4">
-                        <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+                      <div className="border-t border-line bg-surface-2 p-4">
+                        <p className="text-sm leading-relaxed text-ink-secondary whitespace-pre-wrap">
                           {note.content}
                         </p>
-                        <div className="mt-3 border-t border-slate-200/70 pt-3 text-xs text-slate-500">
+                        <div className="mt-3 border-t border-line pt-3 text-xs text-ink-muted">
                           Created {format(parseISO(note.created_date), "MMM dd, yyyy 'at' h:mm a")}
                         </div>
                       </div>
@@ -410,7 +410,7 @@ export default function Notes() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive text-white"
             >
               Delete
             </AlertDialogAction>

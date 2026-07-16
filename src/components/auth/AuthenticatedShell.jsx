@@ -10,7 +10,7 @@ export default function AuthenticatedShell() {
     <ClerkAuthProvider>
       <Suspense
         fallback={
-          <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-slate-100">
+          <div className="flex items-center justify-center min-h-screen bg-surface-0">
             <Loader className="w-12 h-12" />
           </div>
         }

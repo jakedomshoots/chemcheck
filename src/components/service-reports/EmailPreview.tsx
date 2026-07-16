@@ -57,14 +57,14 @@ export function EmailPreview({
     // Full HTML preview in an iframe for safety
     return (
       <div className="space-y-2" data-testid="email-preview-full">
-        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+        <div className="flex items-center gap-1.5 text-xs text-ink-muted font-medium">
           <Eye className="w-3.5 h-3.5" />
           Email Preview (Full)
         </div>
-        <div className="border border-slate-200 rounded-lg overflow-hidden">
-          <div className="bg-slate-100 px-3 py-2 border-b border-slate-200">
-            <div className="text-xs text-slate-500">Subject:</div>
-            <div className="text-sm font-medium text-slate-900" data-testid="email-subject">
+        <div className="border border-line rounded-lg overflow-hidden">
+          <div className="bg-surface-2 px-3 py-2 border-b border-line">
+            <div className="text-xs text-ink-muted">Subject:</div>
+            <div className="text-sm font-medium text-ink" data-testid="email-subject">
               {emailContent.subject}
             </div>
           </div>
@@ -83,16 +83,16 @@ export function EmailPreview({
   // Simplified text preview (default)
   return (
     <div className="space-y-2" data-testid="email-preview-simple">
-      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+      <div className="flex items-center gap-1.5 text-xs text-ink-muted font-medium">
         <Mail className="w-3.5 h-3.5" />
         Email Preview
       </div>
       <div 
-        className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm text-slate-700"
+        className="p-3 bg-[var(--status-info-soft)] rounded-lg border border-[var(--status-info-line)] text-sm text-ink-secondary"
         data-testid="email-preview-container"
       >
         <div className="text-xs font-medium mb-1">Subject:</div>
-        <div className="text-xs mb-3 font-medium text-slate-900" data-testid="email-subject">
+        <div className="text-xs mb-3 font-medium text-ink" data-testid="email-subject">
           {emailContent.subject}
         </div>
         <div className="text-xs font-medium mb-1">Message:</div>

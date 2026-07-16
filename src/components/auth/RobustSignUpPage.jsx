@@ -47,18 +47,18 @@ export function RobustSignUpPage() {
   // Show loading while Clerk is loading, processing OAuth, or user is signed in but context not ready
   if (!isLoaded || isProcessingAuth || (isSignedIn && !auth.isInitialized)) {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+      <div className="relative min-h-screen overflow-hidden bg-surface-0 text-ink">
         <div
           className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
           aria-hidden="true"
         />
         <div className="flex min-h-screen items-center justify-center p-4">
           <div className="text-center">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-white shadow-cta">
               <Droplets className="h-8 w-8" aria-hidden="true" />
             </div>
-            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
-            <p className="text-base font-semibold tracking-[-0.035em] text-slate-950">Loading workspace</p>
+            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
+            <p className="text-base font-semibold tracking-[-0.035em] text-ink">Loading workspace</p>
           </div>
         </div>
       </div>
@@ -68,19 +68,19 @@ export function RobustSignUpPage() {
   // If already signed in and initialized, show loading while redirecting
   if (isSignedIn) {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+      <div className="relative min-h-screen overflow-hidden bg-surface-0 text-ink">
         <div
           className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
           aria-hidden="true"
         />
         <div className="flex min-h-screen items-center justify-center p-4">
           <div className="text-center">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-white shadow-cta">
               <Droplets className="h-8 w-8" aria-hidden="true" />
             </div>
-            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
-            <p className="text-base font-semibold tracking-[-0.035em] text-slate-950">Welcome to ChemCheck</p>
-            <p className="mt-2 text-sm font-medium text-slate-600">Setting up your workspace</p>
+            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
+            <p className="text-base font-semibold tracking-[-0.035em] text-ink">Welcome to ChemCheck</p>
+            <p className="mt-2 text-sm font-medium text-ink-secondary">Setting up your workspace</p>
           </div>
         </div>
       </div>
@@ -88,7 +88,7 @@ export function RobustSignUpPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+    <div className="relative min-h-screen overflow-hidden bg-surface-0 text-ink">
       <div
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
         aria-hidden="true"
@@ -98,15 +98,15 @@ export function RobustSignUpPage() {
         {/* Left Side - Benefits */}
         <div className="hidden flex-1 lg:block">
           <div className="mb-8 flex items-center gap-3" aria-label="ChemCheck Logo">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand text-white shadow-cta">
               <Droplets className="h-5 w-5" aria-hidden="true" />
             </span>
-            <span className="text-base font-semibold tracking-tight text-slate-950">ChemCheck</span>
+            <span className="text-base font-semibold tracking-tight text-ink">ChemCheck</span>
           </div>
-          <h2 className="max-w-xl text-balance text-3xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-4xl">
+          <h2 className="max-w-xl text-balance text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl">
             Pool service management for working crews.
           </h2>
-          <p className="mt-4 max-w-xl text-sm font-medium leading-7 text-slate-600">
+          <p className="mt-4 max-w-xl text-sm font-medium leading-7 text-ink-secondary">
             Plan daily routes, capture visit proof in the field, and turn that record into reports and billing.
           </p>
 
@@ -116,25 +116,25 @@ export function RobustSignUpPage() {
                 icon: CheckCircle,
                 title: 'Complete service tracking',
                 body: 'Chemicals, equipment, photos, and customer notes in one record per visit.',
-                accent: 'bg-cyan-50 text-cyan-700',
+                accent: 'bg-brand-softer text-brand-ink',
               },
               {
                 icon: Users,
                 title: 'Customer communication',
                 body: 'Send visit reports with photos and details so customers know what you did.',
-                accent: 'bg-slate-100 text-slate-700',
+                accent: 'bg-surface-2 text-ink-secondary',
               },
               {
                 icon: Zap,
                 title: 'Route optimization',
                 body: 'Plan the day, skip stops that already moved, and keep crews moving.',
-                accent: 'bg-cyan-50 text-cyan-700',
+                accent: 'bg-brand-softer text-brand-ink',
               },
               {
                 icon: Shield,
                 title: 'Secure and reliable',
                 body: 'Data is encrypted at rest, synced through Convex, and ready when you are.',
-                accent: 'bg-slate-100 text-slate-700',
+                accent: 'bg-surface-2 text-ink-secondary',
               },
             ].map(({ icon: Icon, title, body, accent }) => (
               <li key={title} className="flex items-start gap-4">
@@ -142,8 +142,8 @@ export function RobustSignUpPage() {
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div>
-                  <p className="text-sm font-semibold tracking-[-0.02em] text-slate-950">{title}</p>
-                  <p className="mt-1 text-sm font-medium leading-6 text-slate-600">{body}</p>
+                  <p className="text-sm font-semibold tracking-[-0.02em] text-ink">{title}</p>
+                  <p className="mt-1 text-sm font-medium leading-6 text-ink-secondary">{body}</p>
                 </div>
               </li>
             ))}
@@ -154,33 +154,33 @@ export function RobustSignUpPage() {
         <div className="w-full lg:w-[26rem] lg:shrink-0">
           {/* Mobile Logo Header */}
           <div className="mb-6 text-center lg:hidden">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]" aria-label="ChemCheck Logo">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-white shadow-cta" aria-label="ChemCheck Logo">
               <Droplets className="h-8 w-8" aria-hidden="true" />
             </div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
               Pool service workspace
             </p>
-            <h1 className="text-2xl font-semibold tracking-[-0.04em] text-slate-950">Join ChemCheck</h1>
-            <p className="mt-2 text-sm font-medium text-slate-600">Start your free trial today</p>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em] text-ink">Join ChemCheck</h1>
+            <p className="mt-2 text-sm font-medium text-ink-secondary">Start your free trial today</p>
           </div>
 
           {/* Desktop Header */}
           <div className="mb-6 hidden text-center lg:block">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
               Pool service workspace
             </p>
-            <h1 className="text-2xl font-semibold tracking-[-0.04em] text-slate-950">Create your account</h1>
-            <p className="mt-2 text-sm font-medium text-slate-600">
+            <h1 className="text-2xl font-semibold tracking-[-0.04em] text-ink">Create your account</h1>
+            <p className="mt-2 text-sm font-medium text-ink-secondary">
               Start managing your pool service business today
             </p>
           </div>
 
           {/* Clerk SignUp Component */}
-          <div className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
+          <div className="rounded-sheet border border-line bg-surface-1 p-5 shadow-card sm:p-6">
             <Suspense
               fallback={
                 <div className="flex items-center justify-center py-10">
-                  <div className="h-8 w-8 rounded-full border-2 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
+                  <div className="h-8 w-8 rounded-full border-2 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
                 </div>
               }
             >
@@ -195,12 +195,12 @@ export function RobustSignUpPage() {
                     card: 'shadow-none border-0 bg-transparent p-0',
                     headerTitle: 'hidden',
                     headerSubtitle: 'hidden',
-                    socialButtonsBlockButton: 'border border-slate-200 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-200 transition-colors duration-200',
-                    formButtonPrimary: 'bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)]',
-                    footerActionLink: 'text-cyan-700 hover:text-cyan-800 font-medium transition-colors',
-                    formFieldInput: 'border-slate-300 focus:border-cyan-500 focus:ring-cyan-500',
-                    identityPreviewText: 'text-slate-700',
-                    identityPreviewEditButton: 'text-cyan-700 hover:text-cyan-800'
+                    socialButtonsBlockButton: 'border border-line bg-white text-ink-secondary hover:bg-brand-softer hover:border-[var(--status-info-line)] transition-colors duration-200',
+                    formButtonPrimary: 'bg-brand hover:bg-brand-strong text-white font-semibold transition-colors shadow-cta',
+                    footerActionLink: 'text-brand-ink hover:text-brand-ink font-medium transition-colors',
+                    formFieldInput: 'border-line focus:border-ring focus:ring-ring',
+                    identityPreviewText: 'text-ink-secondary',
+                    identityPreviewEditButton: 'text-brand-ink hover:text-brand-ink'
                   }
                 }}
               />
@@ -208,19 +208,19 @@ export function RobustSignUpPage() {
           </div>
 
           {/* Footer Links */}
-          <div className="mt-6 flex items-center justify-center gap-3 text-sm text-slate-500">
+          <div className="mt-6 flex items-center justify-center gap-3 text-sm text-ink-muted">
             <a
               href="/privacy-policy.html"
-              className="transition-colors hover:text-cyan-700"
+              className="transition-colors hover:text-brand-ink"
               target="_blank"
               rel="noopener noreferrer"
             >
               Privacy Policy
             </a>
-            <span className="h-1 w-1 rounded-full bg-slate-300" aria-hidden="true" />
+            <span className="h-1 w-1 rounded-full bg-line" aria-hidden="true" />
             <a
               href="/terms-of-service.html"
-              className="transition-colors hover:text-cyan-700"
+              className="transition-colors hover:text-brand-ink"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -229,7 +229,7 @@ export function RobustSignUpPage() {
           </div>
 
           {/* Terms Notice */}
-          <p className="mt-4 text-center text-xs font-medium text-slate-500">
+          <p className="mt-4 text-center text-xs font-medium text-ink-muted">
             By creating an account, you agree to our Terms of Service and Privacy Policy.
             Your data is encrypted and secure.
           </p>

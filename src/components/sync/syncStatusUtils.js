@@ -35,17 +35,17 @@ export function getStatusText(status, pendingCount) {
 export function getStatusColor(status, pendingCount) {
   switch (status) {
     case 'syncing':
-      return 'bg-blue-100 text-blue-800 border-blue-200';
+      return 'bg-[var(--status-info-soft)] text-info border-[var(--status-info-line)]';
     case 'error':
-      return 'bg-red-100 text-red-800 border-red-200';
+      return 'bg-[var(--status-critical-soft)] text-critical border-[var(--status-critical-line)]';
     case 'offline':
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-surface-2 text-gray-800 border-line';
     case 'idle':
       return pendingCount > 0 
-        ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-        : 'bg-green-100 text-green-800 border-green-200';
+        ? 'bg-yellow-100 text-watch border-[var(--status-watch-line)]'
+        : 'bg-[var(--status-ok-soft)] text-ok border-[var(--status-ok-line)]';
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-surface-2 text-gray-800 border-line';
   }
 }
 
@@ -87,12 +87,12 @@ export function getRecordStatusText(status) {
 export function getRecordStatusColor(status) {
   switch (status) {
     case 'synced':
-      return 'bg-green-100 text-green-800 border-green-200';
+      return 'bg-[var(--status-ok-soft)] text-ok border-[var(--status-ok-line)]';
     case 'pending':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      return 'bg-yellow-100 text-watch border-[var(--status-watch-line)]';
     case 'error':
-      return 'bg-red-100 text-red-800 border-red-200';
+      return 'bg-[var(--status-critical-soft)] text-critical border-[var(--status-critical-line)]';
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-surface-2 text-gray-800 border-line';
   }
 }

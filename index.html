@@ -34,10 +34,21 @@
   <!-- Theme Color -->
   <meta name="theme-color" content="#0891b2" />
 
-  <!-- Google Fonts: Outfit -->
+  <!-- Google Fonts: Outfit (UI voice) + IBM Plex Mono (data voice) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Apply the saved theme before first paint (no flash) -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('chemcheck-theme') || 'system';
+        var dark = stored === 'dark' || (stored === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (e) { /* theme stays light */ }
+    })();
+  </script>
 
   <title>ChemCheck - Pool Service</title>
   <meta name="description" content="ChemCheck helps pool service professionals plan routes, log service visits with photos, and manage billing and reports in one mobile app." />

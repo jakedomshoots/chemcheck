@@ -426,19 +426,19 @@ export function PhotoCapture({
   // Idle state - show capture button
   if (cameraState === 'idle' && !previewUrl) {
     return (
-      <Card className="p-4 border-2 border-dashed border-slate-300 hover:border-cyan-400 transition-colors">
+      <Card className="p-4 border-2 border-dashed border-line hover:border-[var(--status-info-line)] transition-colors">
         <button
           type="button"
           onClick={handleStartCamera}
           disabled={disabled}
-          className="w-full flex flex-col items-center justify-center gap-3 py-6 text-slate-600 hover:text-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex flex-col items-center justify-center gap-3 py-6 text-ink-secondary hover:text-brand-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="p-3 bg-slate-100 rounded-full">
+          <div className="p-3 bg-surface-2 rounded-full">
             <Camera className="w-6 h-6" />
           </div>
           <div className="text-center">
             <p className="font-medium">Capture {category} photo</p>
-            <p className="text-sm text-slate-500">Tap to open camera</p>
+            <p className="text-sm text-ink-muted">Tap to open camera</p>
           </div>
         </button>
       </Card>
@@ -448,14 +448,14 @@ export function PhotoCapture({
   // Error state
   if (cameraState === 'error' && cameraError) {
     return (
-      <Card className="p-4 border-2 border-red-200 bg-red-50">
+      <Card className="p-4 border-2 border-[var(--status-critical-line)] bg-[var(--status-critical-soft)]">
         <div className="flex flex-col items-center gap-3 py-4">
-          <div className="p-3 bg-red-100 rounded-full">
-            <AlertCircle className="w-6 h-6 text-red-600" />
+          <div className="p-3 bg-[var(--status-critical-soft)] rounded-full">
+            <AlertCircle className="w-6 h-6 text-critical" />
           </div>
           <div className="text-center">
-            <p className="font-medium text-red-700">Camera Error</p>
-            <p className="text-sm text-red-600 mt-1" data-testid="camera-error-message">{cameraError.message}</p>
+            <p className="font-medium text-critical">Camera Error</p>
+            <p className="text-sm text-critical mt-1" data-testid="camera-error-message">{cameraError.message}</p>
           </div>
           <Button
             type="button"
@@ -478,7 +478,7 @@ export function PhotoCapture({
       : null;
 
     return (
-      <Card className="p-4 border-2 border-green-200 bg-green-50">
+      <Card className="p-4 border-2 border-[var(--status-ok-line)] bg-[var(--status-ok-soft)]">
         <div className="relative">
           <img
             src={previewUrl}
@@ -486,12 +486,12 @@ export function PhotoCapture({
             className="w-full rounded-lg"
           />
           <div className="absolute top-2 right-2 flex flex-col gap-2 items-end">
-            <span className="px-2 py-1 bg-green-600 text-white text-xs font-medium rounded-full flex items-center gap-1">
+            <span className="px-2 py-1 bg-[var(--status-ok)] text-white text-xs font-medium rounded-full flex items-center gap-1">
               <Check className="w-3 h-3" />
               Captured
             </span>
             {compressionStats && compressionPercent !== null && compressionPercent > 0 && (
-              <span className="px-2 py-1 bg-cyan-600 text-white text-xs font-medium rounded-full">
+              <span className="px-2 py-1 bg-brand text-white text-xs font-medium rounded-full">
                 {formatFileSize(compressionStats.compressed)} ({compressionPercent}% smaller)
               </span>
             )}
@@ -502,7 +502,7 @@ export function PhotoCapture({
               Just now
             </span>
             <span
-              className={`px-2 py-1 text-white text-xs rounded-full flex items-center gap-1 ${locationStatus === 'success' ? 'bg-green-600' : 'bg-slate-500'
+              className={`px-2 py-1 text-white text-xs rounded-full flex items-center gap-1 ${locationStatus === 'success' ? 'bg-[var(--status-ok)]' : 'bg-surface-20'
                 }`}
             >
               <MapPin className="w-3 h-3" />
@@ -528,7 +528,7 @@ export function PhotoCapture({
 
   // Active camera state
   return (
-    <Card className="p-4 border-2 border-cyan-200 bg-cyan-50">
+    <Card className="p-4 border-2 border-[var(--status-info-line)] bg-brand-softer">
       <div className="relative">
         {/* Video preview */}
         <video
@@ -569,7 +569,7 @@ export function PhotoCapture({
         {/* Top controls bar */}
         <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
           {/* Category badge */}
-          <span className="px-2 py-1 bg-cyan-600 text-white text-xs font-medium rounded-full capitalize">
+          <span className="px-2 py-1 bg-brand text-white text-xs font-medium rounded-full capitalize">
             {category}
           </span>
 
@@ -580,7 +580,7 @@ export function PhotoCapture({
               type="button"
               onClick={() => setShowGrid(!showGrid)}
               className={`p-2 rounded-full transition-colors ${showGrid
-                ? 'bg-cyan-500 text-white'
+                ? 'bg-brand-softer0 text-white'
                 : 'bg-black/60 hover:bg-black/80 text-white'
                 }`}
               title="Toggle grid"
@@ -594,7 +594,7 @@ export function PhotoCapture({
                 type="button"
                 onClick={toggleFlash}
                 className={`p-2 rounded-full transition-colors ${flashMode === 'on'
-                  ? 'bg-yellow-500 text-white'
+                  ? 'bg-[var(--status-watch-soft)]0 text-white'
                   : 'bg-black/60 hover:bg-black/80 text-white'
                   }`}
                 title={flashMode === 'on' ? 'Turn off flash' : 'Turn on flash'}
@@ -646,10 +646,10 @@ export function PhotoCapture({
           <button
             type="button"
             onClick={switchCamera}
-            className="p-3 bg-slate-200 hover:bg-slate-300 rounded-full transition-colors"
+            className="p-3 bg-surface-2 hover:bg-line rounded-full transition-colors"
             title="Switch camera"
           >
-            <RotateCcw className="w-5 h-5 text-slate-600" />
+            <RotateCcw className="w-5 h-5 text-ink-secondary" />
           </button>
         )}
 
@@ -658,15 +658,15 @@ export function PhotoCapture({
           type="button"
           onClick={capturePhoto}
           disabled={cameraState !== 'active' || isCapturing}
-          className="w-16 h-16 bg-white border-4 border-cyan-500 rounded-full flex items-center justify-center hover:bg-cyan-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          className="w-16 h-16 bg-white border-4 border-brand rounded-full flex items-center justify-center hover:bg-brand-softer active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
-          <div className="w-12 h-12 bg-cyan-500 rounded-full" />
+          <div className="w-12 h-12 bg-brand-softer0 rounded-full" />
         </button>
 
         {/* Spacer for centering (matches switch button width) */}
         {hasMultipleCameras && <div className="w-12" />}
       </div>
-      <p className="text-center text-sm text-slate-600 mt-2">Tap to capture</p>
+      <p className="text-center text-sm text-ink-secondary mt-2">Tap to capture</p>
     </Card>
   );
 }

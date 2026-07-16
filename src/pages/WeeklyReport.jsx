@@ -321,17 +321,17 @@ export default function WeeklyReport() {
         aria-label="Weekly Report"
         className="relative mx-auto max-w-7xl px-3 pb-28 pt-4 font-sans sm:px-4 lg:px-6"
       >
-        <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+        <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
             Reporting
           </p>
-          <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">
+          <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink">
             Weekly Report
           </h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">Loading week data</p>
+          <p className="mt-1 text-sm font-medium text-ink-muted">Loading week data</p>
         </div>
         <div className="flex items-center justify-center py-16">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-200 border-t-cyan-600" aria-hidden="true" />
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--status-info-line)] border-t-cyan-600" aria-hidden="true" />
           <span className="sr-only">Loading report</span>
         </div>
       </main>
@@ -346,17 +346,17 @@ export default function WeeklyReport() {
       aria-label="Weekly Report"
       className="relative mx-auto max-w-7xl px-3 pb-28 pt-4 font-sans sm:px-4 lg:px-6"
     >
-      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
               Reporting
             </p>
-            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">
-              <PoolIcon name="report" className="h-7 w-7 text-cyan-700" />
+            <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink">
+              <PoolIcon name="report" className="h-7 w-7 text-brand-ink" />
               Weekly Report
             </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-ink-muted">
               {format(currentWeekStart, "MMM dd")} - {format(currentWeekEnd, "MMM dd, yyyy")}
             </p>
           </div>
@@ -402,7 +402,7 @@ export default function WeeklyReport() {
           <Button
             onClick={generateExpandedPDF}
             disabled={generating || logs.length === 0}
-            className="h-12 w-full rounded-[1.15rem] bg-slate-950 text-sm font-semibold text-white shadow-[0_18px_46px_-30px_rgba(15,23,42,0.95)] hover:bg-cyan-700 disabled:bg-slate-300 disabled:text-white disabled:shadow-none"
+            className="h-12 w-full rounded-card bg-ink text-sm font-semibold text-surface-0 shadow-raised hover:bg-brand-strong disabled:bg-line disabled:text-surface-0 disabled:shadow-none"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             {generating ? "Generating..." : "Download Report"}
@@ -410,30 +410,30 @@ export default function WeeklyReport() {
         </div>
       </div>
 
-      <div className="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+      <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
           Week summary
         </p>
         <div className="mt-3 flex items-end justify-between gap-3">
           <div>
-            <div className="text-4xl font-semibold tracking-[-0.045em] tabular-nums text-slate-950">
+            <div className="text-4xl font-semibold tracking-[-0.045em] tabular-nums text-ink">
               {totalServiced}
             </div>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-ink-muted">
               Total Services This Week
             </p>
           </div>
-          <p className="text-xs font-medium text-slate-500">
+          <p className="text-xs font-medium text-ink-muted">
             {daysOfWeek.filter(day => getDayLogs(day).length > 0).length} of {daysOfWeek.length} active days
           </p>
         </div>
       </div>
 
       {logs.length === 0 ? (
-        <div className="overflow-hidden rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center">
+        <div className="overflow-hidden rounded-sheet border border-dashed border-line bg-surface-2 px-6 py-10 text-center">
           <IconBadge name="report" size="md" tone="slate" className="mx-auto mb-3" iconClassName="h-6 w-6" />
-          <h3 className="text-base font-semibold text-slate-900">No Services This Week</h3>
-          <p className="mx-auto mt-1 max-w-xs text-sm font-medium text-slate-500">
+          <h3 className="text-base font-semibold text-ink">No Services This Week</h3>
+          <p className="mx-auto mt-1 max-w-xs text-sm font-medium text-ink-muted">
             Complete services to generate a report
           </p>
         </div>
@@ -448,92 +448,92 @@ export default function WeeklyReport() {
             return (
               <div
                 key={day}
-                className="overflow-hidden rounded-[1.25rem] border border-white/80 bg-white/85 shadow-[0_16px_46px_-36px_rgba(8,47,73,0.75)] backdrop-blur"
+                className="overflow-hidden rounded-raised border border-line bg-surface-1 shadow-card"
               >
                 <button
                   type="button"
                   onClick={() => toggleDay(day)}
                   aria-expanded={isExpanded}
                   aria-controls={`day-panel-${day}`}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-cyan-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-brand-softer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-white shadow-sm">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm">
                       <span className="text-xs font-semibold uppercase tracking-wide">
                         {day.substring(0, 3)}
                       </span>
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-base font-semibold text-slate-950">{day}</h3>
-                      <p className="text-xs font-medium text-slate-500">
+                      <h3 className="text-base font-semibold text-ink">{day}</h3>
+                      <p className="text-xs font-medium text-ink-muted">
                         {dayData.length} service{dayData.length !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>
                   <ChevronDown
-                    className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`h-5 w-5 shrink-0 text-ink-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     aria-hidden="true"
                   />
                 </button>
 
                 {isExpanded && (
-                  <div id={`day-panel-${day}`} className="border-t border-slate-200/70 bg-slate-50/60">
+                  <div id={`day-panel-${day}`} className="border-t border-line bg-surface-2">
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-white/80">
+                        <thead className="bg-surface-1">
                           <tr>
-                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer</th>
-                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">pH</th>
-                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cl</th>
-                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">Alk</th>
-                            <th className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">CYA</th>
-                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Notes</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">Customer</th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-ink-muted">pH</th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-ink-muted">Cl</th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-ink-muted">Alk</th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-ink-muted">CYA</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">Notes</th>
                           </tr>
                         </thead>
                         <tbody>
                           {dayData.map(({ customer, log }) => (
-                            <tr key={customer._id} className="border-t border-slate-200/70 bg-white/90 align-top">
+                            <tr key={customer._id} className="border-t border-line bg-surface-1 align-top">
                               <td className="px-3 py-2">
-                                <div className="text-sm font-semibold text-slate-900">{customer.full_name}</div>
-                                <div className="truncate text-xs text-slate-500">{customer.address}</div>
+                                <div className="text-sm font-semibold text-ink">{customer.full_name}</div>
+                                <div className="truncate text-xs text-ink-muted">{customer.address}</div>
                               </td>
                               <td className="px-2 py-2 text-center">
-                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.ph === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.ph === 'low' ? 'bg-amber-100 text-amber-700' :
-                                    log.ph === 'high' ? 'bg-orange-100 text-orange-700' :
-                                      log.ph === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-xs font-semibold ${log.ph === 'good' ? 'bg-[var(--status-ok-soft)] text-ok' :
+                                  log.ph === 'low' ? 'bg-[var(--status-watch-soft)] text-watch' :
+                                    log.ph === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
+                                      log.ph === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
                                   {log.ph || '-'}
                                 </span>
                               </td>
                               <td className="px-2 py-2 text-center">
-                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.chlorine === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.chlorine === 'low' ? 'bg-amber-100 text-amber-700' :
-                                    log.chlorine === 'high' ? 'bg-orange-100 text-orange-700' :
-                                      log.chlorine === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-xs font-semibold ${log.chlorine === 'good' ? 'bg-[var(--status-ok-soft)] text-ok' :
+                                  log.chlorine === 'low' ? 'bg-[var(--status-watch-soft)] text-watch' :
+                                    log.chlorine === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
+                                      log.chlorine === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
                                   {log.chlorine || '-'}
                                 </span>
                               </td>
                               <td className="px-2 py-2 text-center">
-                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.alkalinity === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.alkalinity === 'low' ? 'bg-amber-100 text-amber-700' :
-                                    log.alkalinity === 'high' ? 'bg-orange-100 text-orange-700' :
-                                      log.alkalinity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-xs font-semibold ${log.alkalinity === 'good' ? 'bg-[var(--status-ok-soft)] text-ok' :
+                                  log.alkalinity === 'low' ? 'bg-[var(--status-watch-soft)] text-watch' :
+                                    log.alkalinity === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
+                                      log.alkalinity === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
                                   {log.alkalinity || '-'}
                                 </span>
                               </td>
                               <td className="px-2 py-2 text-center">
-                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-[11px] font-semibold ${log.stabilizer === 'good' ? 'bg-emerald-100 text-emerald-700' :
-                                  log.stabilizer === 'low' ? 'bg-amber-100 text-amber-700' :
-                                    log.stabilizer === 'high' ? 'bg-orange-100 text-orange-700' :
-                                      log.stabilizer === 'critical' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                                <span className={`inline-block min-w-[2.25rem] rounded-md px-2 py-0.5 text-xs font-semibold ${log.stabilizer === 'good' ? 'bg-[var(--status-ok-soft)] text-ok' :
+                                  log.stabilizer === 'low' ? 'bg-[var(--status-watch-soft)] text-watch' :
+                                    log.stabilizer === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
+                                      log.stabilizer === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
                                   {log.stabilizer || '-'}
                                 </span>
                               </td>
-                              <td className="max-w-[160px] truncate px-3 py-2 text-xs text-slate-600">{log.notes || '-'}</td>
+                              <td className="max-w-[160px] truncate px-3 py-2 text-xs text-ink-secondary">{log.notes || '-'}</td>
                             </tr>
                           ))}
                         </tbody>

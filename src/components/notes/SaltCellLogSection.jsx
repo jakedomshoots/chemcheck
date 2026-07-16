@@ -31,18 +31,18 @@ import { format, parseISO } from "date-fns";
 const conditionConfig = {
   good: {
     label: "Light Buildup",
-    color: "text-emerald-600",
-    bg: "bg-emerald-100",
+    color: "text-ok",
+    bg: "bg-[var(--status-ok-soft)]",
   },
   moderate: {
     label: "Moderate Buildup",
-    color: "text-amber-600",
-    bg: "bg-amber-100",
+    color: "text-watch",
+    bg: "bg-[var(--status-watch-soft)]",
   },
   heavy: {
     label: "Heavy Buildup",
-    color: "text-red-600",
-    bg: "bg-red-100",
+    color: "text-critical",
+    bg: "bg-[var(--status-critical-soft)]",
   },
 };
 
@@ -141,14 +141,14 @@ export function SaltCellLogSection({ customers }) {
       {/* Section Divider */}
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t-2 border-cyan-200"></div>
+          <div className="w-full border-t-2 border-[var(--status-info-line)]"></div>
         </div>
         <div className="relative flex justify-center">
           <span className="bg-white px-4 flex items-center gap-2">
-            <div className="p-1.5 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg">
+            <div className="p-1.5 bg-brand rounded-lg">
               <Zap className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm font-semibold text-slate-700">Salt Cell Cleaning Log</span>
+            <span className="text-sm font-semibold text-ink-secondary">Salt Cell Cleaning Log</span>
           </span>
         </div>
       </div>
@@ -156,12 +156,12 @@ export function SaltCellLogSection({ customers }) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg">
+          <div className="p-2 bg-brand rounded-xl shadow-lg">
             <Zap className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-900">Salt Cell Cleanings</h3>
-            <p className="text-sm text-slate-600">
+            <h3 className="text-lg font-bold text-ink">Salt Cell Cleanings</h3>
+            <p className="text-sm text-ink-secondary">
               {saltPoolCustomers.length} salt pool{saltPoolCustomers.length !== 1 ? 's' : ''} • {totalLogs} cleaning{totalLogs !== 1 ? 's' : ''} logged
             </p>
           </div>
@@ -169,7 +169,7 @@ export function SaltCellLogSection({ customers }) {
         <Button
           onClick={() => setShowForm(!showForm)}
           size="sm"
-          className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
+          className="bg-brand hover:bg-brand-strong text-white shadow-lg"
         >
           <Plus className="w-4 h-4 mr-2" />
           {showForm ? "Cancel" : "Log Cleaning"}
@@ -178,7 +178,7 @@ export function SaltCellLogSection({ customers }) {
 
       {/* Add Form */}
       {showForm && (
-        <Card className="p-6 mb-4 border-2 shadow-lg bg-gradient-to-br from-cyan-50 to-blue-50">
+        <Card className="p-6 mb-4 border-2 shadow-lg bg-brand-softer">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -190,7 +190,7 @@ export function SaltCellLogSection({ customers }) {
                 >
                   <SelectTrigger
                     aria-label="Customer"
-                    className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                    className="mt-1 bg-white text-ink border border-line focus:border-ring rounded-lg h-11"
                   >
                     <SelectValue placeholder="Select salt pool customer" />
                   </SelectTrigger>
@@ -198,7 +198,7 @@ export function SaltCellLogSection({ customers }) {
                     {saltPoolCustomers.map(customer => (
                       <SelectItem key={customer.id || customer._id} value={String(customer.id || customer._id)}>
                         <div className="flex items-center gap-2">
-                          <Droplets className="w-3 h-3 text-cyan-500" />
+                          <Droplets className="w-3 h-3 text-info" />
                           {customer.full_name}
                         </div>
                       </SelectItem>
@@ -215,7 +215,7 @@ export function SaltCellLogSection({ customers }) {
                   value={formData.cleaning_date}
                   onChange={(e) => setFormData({ ...formData, cleaning_date: e.target.value })}
                   required
-                  className="mt-1 border-2 focus:border-cyan-500 rounded-xl"
+                  className="mt-1 border-2 focus:border-ring rounded-xl"
                 />
               </div>
             </div>
@@ -228,7 +228,7 @@ export function SaltCellLogSection({ customers }) {
               >
                 <SelectTrigger
                   aria-label="Scale Condition"
-                  className="mt-1 bg-white text-slate-900 border border-slate-200 focus:border-cyan-500 rounded-lg h-11"
+                  className="mt-1 bg-white text-ink border border-line focus:border-ring rounded-lg h-11"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -253,14 +253,14 @@ export function SaltCellLogSection({ customers }) {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="Any observations about the cell condition..."
                 rows={2}
-                className="mt-1 border-2 focus:border-cyan-500 rounded-xl"
+                className="mt-1 border-2 focus:border-ring rounded-xl"
               />
             </div>
 
             <Button
               type="submit"
               disabled={!formData.customer_id}
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white"
+              className="w-full bg-brand hover:bg-brand-strong text-white"
             >
               Save Cleaning Log
             </Button>
@@ -286,16 +286,16 @@ export function SaltCellLogSection({ customers }) {
                 {/* Customer Header */}
                 <div
                   onClick={() => toggleCustomer(customerId)}
-                  className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50 active:bg-slate-100"
+                  className="flex items-center justify-between p-3 cursor-pointer hover:bg-surface-2 active:bg-surface-2"
                 >
                   <div className="flex items-center gap-3 flex-1">
-                    <div className="p-2 bg-cyan-100 rounded-lg">
-                      <User className="w-4 h-4 text-cyan-600" />
+                    <div className="p-2 bg-brand-soft rounded-lg">
+                      <User className="w-4 h-4 text-brand-ink" />
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium text-slate-900">{customer.full_name}</span>
-                      <p className="text-xs text-slate-500">
+                      <span className="font-medium text-ink">{customer.full_name}</span>
+                      <p className="text-xs text-ink-muted">
                         {logCount === 0
                           ? "No cleanings logged"
                           : `${logCount} cleaning${logCount !== 1 ? 's' : ''} logged`}
@@ -305,19 +305,19 @@ export function SaltCellLogSection({ customers }) {
 
                   <div className="flex items-center gap-2">
                     {logCount > 0 && (
-                      <span className="text-xs px-2 py-1 rounded-full bg-cyan-100 text-cyan-700 font-medium">
+                      <span className="text-xs px-2 py-1 rounded-full bg-brand-soft text-brand-ink font-medium">
                         {logCount}
                       </span>
                     )}
-                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-ink-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                   </div>
                 </div>
 
                 {/* Expanded Logs */}
                 {isExpanded && (
-                  <div className="border-t border-slate-200 bg-slate-50">
+                  <div className="border-t border-line bg-surface-2">
                     {customerLogs.length > 0 ? (
-                      <div className="divide-y divide-slate-200">
+                      <div className="divide-y divide-line">
                         {customerLogs.map((log) => {
                           const condition = conditionConfig[log.condition] || conditionConfig.good;
 
@@ -329,7 +329,7 @@ export function SaltCellLogSection({ customers }) {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm font-medium text-slate-900">
+                                    <span className="text-sm font-medium text-ink">
                                       {format(parseISO(log.cleaning_date), "MMM dd, yyyy")}
                                     </span>
                                     <span className={`text-xs px-2 py-0.5 rounded-full ${condition.bg} ${condition.color}`}>
@@ -337,7 +337,7 @@ export function SaltCellLogSection({ customers }) {
                                     </span>
                                   </div>
                                   {log.notes && (
-                                    <p className="text-xs text-slate-600 mt-1">{log.notes}</p>
+                                    <p className="text-xs text-ink-secondary mt-1">{log.notes}</p>
                                   )}
                                 </div>
                               </div>
@@ -348,7 +348,7 @@ export function SaltCellLogSection({ customers }) {
                                   e.stopPropagation();
                                   setDeleteLog(log);
                                 }}
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50 h-7 w-7 flex-shrink-0"
+                                className="text-critical hover:text-critical hover:bg-[var(--status-critical-soft)] h-7 w-7 flex-shrink-0"
                               >
                                 <Trash2 className="w-3 h-3" />
                               </Button>
@@ -358,7 +358,7 @@ export function SaltCellLogSection({ customers }) {
                       </div>
                     ) : (
                       <div className="p-4 text-center">
-                        <p className="text-sm text-slate-500">No cleanings logged for this customer</p>
+                        <p className="text-sm text-ink-muted">No cleanings logged for this customer</p>
                         <Button
                           onClick={() => {
                             setFormData(prev => ({ ...prev, customer_id: customerId }));
@@ -393,7 +393,7 @@ export function SaltCellLogSection({ customers }) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive text-white"
             >
               Delete
             </AlertDialogAction>

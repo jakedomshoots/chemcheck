@@ -25,16 +25,16 @@ export const ChemicalBeakerLoader = ({ className }) => {
   return (
     <div className={`relative w-24 h-32 mx-auto ${className}`}>
       {/* Beaker Body */}
-      <div className="absolute inset-0 border-4 border-slate-300 rounded-b-3xl rounded-t-md bg-white/30 backdrop-blur-sm overflow-hidden z-10">
+      <div className="absolute inset-0 border-4 border-line rounded-b-3xl rounded-t-md bg-surface-1/30 backdrop-blur-sm overflow-hidden z-10">
         
         {/* Measurement Lines */}
-        <div className="absolute top-1/4 left-2 right-2 h-0.5 bg-slate-200/50 w-4"></div>
-        <div className="absolute top-2/4 left-2 right-2 h-0.5 bg-slate-200/50 w-6"></div>
-        <div className="absolute top-3/4 left-2 right-2 h-0.5 bg-slate-200/50 w-4"></div>
+        <div className="absolute top-1/4 left-2 right-2 h-0.5 bg-surface-2/50 w-4"></div>
+        <div className="absolute top-2/4 left-2 right-2 h-0.5 bg-surface-2/50 w-6"></div>
+        <div className="absolute top-3/4 left-2 right-2 h-0.5 bg-surface-2/50 w-4"></div>
 
         {/* Liquid */}
         <div
-          className={`absolute bottom-0 left-0 right-0 h-full bg-gradient-to-t from-cyan-500 via-blue-500 to-purple-500 opacity-80 ${
+          className={`absolute bottom-0 left-0 right-0 h-full bg-gradient-to-t from-[var(--brand-strong)] via-[var(--brand)] to-[var(--status-ok)] opacity-80 ${
             reducedMotion ? "" : "animate-[fill-up_2s_ease-in-out_infinite_alternate]"
           }`}
           style={{ transformOrigin: 'bottom' }}
@@ -54,7 +54,7 @@ export const ChemicalBeakerLoader = ({ className }) => {
       </div>
       
       {/* Lip of beaker */}
-      <div className="absolute -top-1 left-[-2px] right-[-2px] h-2 bg-slate-300 rounded-full z-20"></div>
+      <div className="absolute -top-1 left-[-2px] right-[-2px] h-2 bg-line rounded-full z-20"></div>
     </div>
   );
 };

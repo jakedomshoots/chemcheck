@@ -15,7 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import SimplifiedChemicalInput from "../components/servicelog/SimplifiedChemicalInput";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
-import confetti from "canvas-confetti";
+import { hapticSuccess } from "@/lib/haptics";
+import { CHEMICAL_CONFIGS } from "@/lib/chemStatus";
+import { transitionName } from "@/lib/viewTransitions";
 import { deleteUnlinkedPhotos, linkPhotosToServiceLog, getPhotos } from "@/lib/proof-of-service";
 import { useBusinessSettings } from "@/hooks/useBusinessSettings";
 import { PhotoCaptureSection } from "@/components/proof-of-service";
@@ -34,84 +36,6 @@ import {
   clearTimeState,
 } from "@/lib/proof-of-service/timeTrackingStorage";
 
-function usePrefersReducedMotion() {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const handleChange = () => setPrefersReducedMotion(mediaQuery.matches);
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
-const CHEMICAL_CONFIGS = {
-  ph: {
-    min: 6.8,
-    max: 8.2,
-    step: 0.1,
-    unit: "",
-    hint: "Ideal range: 6.8-8.2",
-    ranges: [
-      { status: "critical", min: -Infinity, max: 6.8 },
-      { status: "low", min: 6.8, max: 7.2 },
-      { status: "good", min: 7.2, max: 7.8 },
-      { status: "high", min: 7.8, max: 8.2 },
-      { status: "critical", min: 8.2, max: Infinity },
-    ],
-  },
-  chlorine: {
-    min: 0,
-    max: 10,
-    step: 0.5,
-    unit: "ppm",
-    hint: "Ideal range: 1-3 ppm (max 10 ppm)",
-    ranges: [
-      { status: "critical", min: -Infinity, max: 0.5 },
-      { status: "low", min: 0.5, max: 1 },
-      { status: "good", min: 1, max: 3 },
-      { status: "high", min: 3, max: 10 },
-      { status: "critical", min: 10, max: Infinity },
-    ],
-  },
-  alkalinity: {
-    min: 80,
-    max: 120,
-    step: 1,
-    unit: "ppm",
-    hint: "Ideal range: 80-120 ppm",
-    ranges: [
-      { status: "critical", min: -Infinity, max: 80 },
-      { status: "low", min: 80, max: 100 },
-      { status: "good", min: 100, max: 120 },
-      { status: "high", min: 120, max: 200 },
-      { status: "critical", min: 200, max: Infinity },
-    ],
-  },
-  stabilizer: {
-    min: 30,
-    max: 100,
-    step: 1,
-    unit: "ppm",
-    hint: "Ideal range: 30-50 ppm (max 100 ppm)",
-    ranges: [
-      { status: "critical", min: -Infinity, max: 10 },
-      { status: "low", min: 10, max: 30 },
-      { status: "good", min: 30, max: 50 },
-      { status: "high", min: 50, max: 100 },
-      { status: "critical", min: 100, max: Infinity },
-    ],
-  },
-};
-
 function formatDuration(ms) {
   if (!ms || ms < 0) return "00:00:00";
   const totalSeconds = Math.floor(ms / 1000);
@@ -124,7 +48,6 @@ function formatDuration(ms) {
 export default function NewServiceLog() {
   const navigate = useNavigate();
   const location = useLocation();
-  const prefersReducedMotion = usePrefersReducedMotion();
   // Parse URL params once per URL change, not on every render
   const { customerIdParam, customerId } = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -417,13 +340,16 @@ export default function NewServiceLog() {
         }
       }
 
-      if (!prefersReducedMotion) {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#06b6d4', '#3b82f6', '#a855f7']
-        });
+      // Tactile confirmation at the moment of commit; the visual celebration
+      // fires on the destination screen (Home), not mid-unmount here.
+      void hapticSuccess();
+      try {
+        sessionStorage.setItem(
+          'chemcheck_last_service',
+          JSON.stringify({ name: customer?.full_name || 'Service', at: Date.now() })
+        );
+      } catch {
+        /* storage unavailable — Home simply skips the arrival feedback */
       }
 
       if (draftStorageKey && typeof window !== "undefined" && window.localStorage) {
@@ -460,7 +386,7 @@ export default function NewServiceLog() {
   if (!customer && customerLookupPending) {
     return (
       <main className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8" aria-label="Service Log">
-        <div className="flex min-h-[60vh] items-center justify-center rounded-[1.5rem] border border-white/80 bg-white/85 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <div className="flex min-h-[60vh] items-center justify-center rounded-sheet border border-line bg-surface-1 shadow-card ">
           <ChemicalBeakerLoader />
         </div>
       </main>
@@ -475,16 +401,16 @@ export default function NewServiceLog() {
 
     return (
       <main className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8" aria-label="Service Log">
-        <section className="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 text-center shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+        <section className="rounded-sheet border border-line bg-surface-1 p-5 text-center shadow-card ">
           <IconBadge name="clients" size="lg" className="mx-auto mb-4" iconClassName="h-7 w-7" />
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field service</p>
-          <h2 className="text-3xl font-semibold tracking-[-0.045em] text-slate-950">{missingTitle}</h2>
-          <p className="mx-auto mt-2 max-w-sm text-sm font-medium leading-6 text-slate-600">{missingMessage}</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Field service</p>
+          <h2 className="text-3xl font-semibold tracking-[-0.045em] text-ink">{missingTitle}</h2>
+          <p className="mx-auto mt-2 max-w-sm text-sm font-medium leading-6 text-ink-secondary">{missingMessage}</p>
           <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button
               type="button"
               onClick={() => navigate(createPageUrl("Clients"))}
-              className="h-11 rounded-full bg-cyan-600 font-semibold text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700"
+              className="h-11 rounded-full bg-brand font-semibold text-white shadow-cta hover:bg-brand-strong"
             >
               <PoolIcon name="clients" className="mr-2 h-4 w-4" />
               Go to Clients
@@ -493,7 +419,7 @@ export default function NewServiceLog() {
               type="button"
               variant="outline"
               onClick={() => navigate(createPageUrl("Home"))}
-              className="h-11 rounded-full border border-slate-200 bg-white/90 font-semibold text-slate-700 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+              className="h-11 rounded-full border border-line bg-surface-1 font-semibold text-ink-secondary hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink"
             >
               <PoolIcon name="home" className="mr-2 h-4 w-4" />
               Back to Home
@@ -506,7 +432,10 @@ export default function NewServiceLog() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8">
-      <div className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
+      <div
+        className="mb-5 rounded-sheet border border-line bg-surface-1 p-4 shadow-card"
+        style={transitionName(`customer-${customerIdParam}`)}
+      >
         <BackButton
           fallback={createPageUrl("Home")}
           label={backToRouteLabel}
@@ -515,11 +444,11 @@ export default function NewServiceLog() {
 
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Field service</p>
-            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950">Service Log</h2>
-            <p className="mt-1 truncate text-sm font-medium text-slate-500">{customer.full_name}</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Field service</p>
+            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink">Service Log</h2>
+            <p className="mt-1 truncate text-sm font-medium text-ink-muted">{customer.full_name}</p>
             {formattedDraftTime && (
-              <p className="mt-2 text-xs font-medium text-slate-500">Draft saved at {formattedDraftTime}</p>
+              <p className="mt-2 text-xs font-medium text-ink-muted">Draft saved at {formattedDraftTime}</p>
             )}
           </div>
         </div>
@@ -528,33 +457,33 @@ export default function NewServiceLog() {
       <form onSubmit={handleSubmit}>
         {startTime && (
           <div
-            className="sticky top-2 z-30 mb-4 rounded-full border border-slate-200/70 bg-white/80 px-3 py-2 shadow-[0_10px_32px_-28px_rgba(8,47,73,0.65)] backdrop-blur"
+            className="sticky top-2 z-30 mb-4 rounded-full border border-line bg-surface-1 px-3 py-2 shadow-card"
             aria-label={`Checked in at ${new Date(startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. Elapsed ${formatDuration(elapsedMs)}.`}
           >
-            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-ink-muted">
               <span className="truncate">
-                <span className="text-slate-400">In</span>{" "}
-                <span className="text-slate-700">{new Date(startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                <span className="text-ink-muted">In</span>{" "}
+                <span className="text-ink-secondary">{new Date(startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
               </span>
-              <span className="tabular-nums text-slate-900">{formatDuration(elapsedMs)}</span>
+              <span className="tabular-nums text-ink">{formatDuration(elapsedMs)}</span>
             </div>
           </div>
         )}
 
-        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
+        <Card className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-slate-950">
-                <Camera className="h-5 w-5 text-cyan-700" aria-hidden="true" />
+              <h3 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-ink">
+                <Camera className="h-5 w-5 text-brand-ink" aria-hidden="true" />
                 Service Photos
               </h3>
-              <p className="mt-1 text-sm font-medium text-slate-600">
+              <p className="mt-1 text-sm font-medium text-ink-secondary">
                 Capture before and after proof in one place.
               </p>
             </div>
           </div>
-          <div className="overflow-hidden rounded-[1.35rem] border border-slate-200/70 bg-gradient-to-br from-white via-cyan-50/50 to-white shadow-sm">
-            <div className="divide-y divide-slate-200/70">
+          <div className="overflow-hidden rounded-raised border border-line bg-gradient-to-br from-surface-1 via-brand-softer to-surface-1 shadow-sm">
+            <div className="divide-y divide-line">
               <PhotoCaptureSection
                 serviceLogId={null}
                 customerId={customerIdParam || ""}
@@ -581,12 +510,12 @@ export default function NewServiceLog() {
           </div>
         </Card>
 
-        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
-          <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-slate-950">
-            <PoolIcon name="chemicals" className="h-5 w-5 text-cyan-700" />
+        <Card className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
+          <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-ink">
+            <PoolIcon name="chemicals" className="h-5 w-5 text-brand-ink" />
             Chemical Readings
           </h3>
-          <p className="mb-4 text-sm font-medium text-slate-600">Select the level for each chemical test</p>
+          <p className="mb-4 text-sm font-medium text-ink-secondary">Select the level for each chemical test</p>
 
           <div className="space-y-3">
             <SimplifiedChemicalInput
@@ -598,7 +527,7 @@ export default function NewServiceLog() {
               numericValue={formData.ph_value}
               onNumericValueChange={(val) => setFormData({ ...formData, ph_value: val })}
               config={CHEMICAL_CONFIGS.ph}
-              icon={<Activity className="w-4 h-4 stroke-[1.75]" />}
+              icon={<Activity className="w-4 h-4" />}
               testId="ph-numeric-input"
             />
 
@@ -611,7 +540,7 @@ export default function NewServiceLog() {
               numericValue={formData.chlorine_value}
               onNumericValueChange={(val) => setFormData({ ...formData, chlorine_value: val })}
               config={CHEMICAL_CONFIGS.chlorine}
-              icon={<Droplets className="w-4 h-4 stroke-[1.75]" />}
+              icon={<Droplets className="w-4 h-4" />}
               testId="chlorine-numeric-input"
             />
 
@@ -642,27 +571,27 @@ export default function NewServiceLog() {
             />
 
             {customer.pool_type === "Salt" && (
-              <div className="rounded-[1.25rem] border border-slate-200/70 bg-white/80 p-3">
+              <div className="rounded-raised border border-line bg-surface-1 p-3">
                 <div className="flex items-center gap-2">
-                  <PoolIcon name="waterLevel" className="h-4 w-4 text-cyan-700" />
-                  <Label className="text-sm font-semibold text-slate-800">Salt Level (PPM)</Label>
+                  <PoolIcon name="waterLevel" className="h-4 w-4 text-brand-ink" />
+                  <Label className="text-sm font-semibold text-ink">Salt Level (PPM)</Label>
                 </div>
                 <Input
                   type="number"
                   value={formData.salt}
                   onChange={(e) => setFormData({ ...formData, salt: e.target.value })}
                   placeholder="3200"
-                  className="mt-3 h-12 rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
+                  className="mt-3 h-12 rounded-2xl border border-line bg-white focus:border-ring"
                 />
-                <p className="mt-2 text-xs font-medium text-slate-500">Ideal range: 2700-3400 PPM</p>
+                <p className="mt-2 text-xs font-medium text-ink-muted">Ideal range: 2700-3400 PPM</p>
               </div>
             )}
           </div>
         </Card>
 
-        <Card className="mb-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur">
-          <h3 className="mb-4 text-lg font-semibold tracking-[-0.025em] text-slate-950">Service Notes</h3>
-          <Label htmlFor="notes" className="mb-2 block text-sm font-semibold text-slate-800">
+        <Card className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
+          <h3 className="mb-4 text-lg font-semibold tracking-[-0.025em] text-ink">Service Notes</h3>
+          <Label htmlFor="notes" className="mb-2 block text-sm font-semibold text-ink">
             Notes (optional)
           </Label>
           <Textarea
@@ -671,7 +600,7 @@ export default function NewServiceLog() {
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             placeholder="Dog was in yard, filter pressure high, added 2 gallons of liquid chlorine..."
             rows={4}
-            className="rounded-2xl border border-slate-200 bg-white focus:border-cyan-500"
+            className="rounded-2xl border border-line bg-white focus:border-ring"
           />
         </Card>
 
@@ -684,24 +613,20 @@ export default function NewServiceLog() {
         )}
 
         {!settingsLoading && hasAnyRequirements(proofOfServiceSettings) && (
-          <div className="mb-5 rounded-[1.25rem] border border-amber-200 bg-amber-50/90 p-4">
-            <p className="text-sm font-semibold text-amber-900">
+          <div className="mb-5 rounded-raised border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] p-4">
+            <p className="text-sm font-semibold text-watch">
               Required for completion: {getRequirementsSummary(proofOfServiceSettings).join(', ')}
             </p>
           </div>
         )}
 
-        <div className="flex gap-3 pb-2">
-          <BackButton
-            fallback={createPageUrl("Home")}
-            label="Cancel"
-            variant="outline"
-            className="flex-1 rounded-[1.15rem] border border-slate-200 bg-white/90"
-          />
+        {/* Sticky commit bar: the moment of commitment is always in thumb
+            reach — biggest button in the app, above the safe area. */}
+        <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 -mx-4 mt-6 border-t border-line bg-surface-1/90 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:bottom-0">
           <Button
             type="submit"
             disabled={saving}
-            className="flex-1 rounded-[1.15rem] bg-cyan-600 text-white shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)] hover:bg-cyan-700 disabled:opacity-70"
+            className="h-14 w-full rounded-card bg-brand text-base font-semibold text-white shadow-cta hover:bg-brand-strong disabled:opacity-70"
           >
             {saving ? (
               <div className="flex items-center gap-2">
@@ -715,6 +640,13 @@ export default function NewServiceLog() {
               </>
             )}
           </Button>
+          <BackButton
+            fallback={createPageUrl("Home")}
+            label="Cancel"
+            variant="ghost"
+            showIcon={false}
+            className="mt-1 h-11 w-full rounded-card text-ink-muted"
+          />
         </div>
       </form>
     </div>

@@ -83,18 +83,18 @@ export function RobustLoginPage() {
   // Show loading while Clerk is loading, processing OAuth, or user is signed in but context not ready
   if (!isLoaded || isProcessingAuth || (isSignedIn && !auth.isInitialized)) {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+      <div className="relative min-h-screen overflow-hidden bg-surface-0 text-ink">
         <div
           className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
           aria-hidden="true"
         />
         <div className="flex min-h-screen items-center justify-center p-4">
           <div className="text-center">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-white shadow-cta">
               <Droplets className="h-8 w-8" aria-hidden="true" />
             </div>
-            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
-            <p className="text-base font-semibold tracking-[-0.035em] text-slate-950">Loading workspace</p>
+            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
+            <p className="text-base font-semibold tracking-[-0.035em] text-ink">Loading workspace</p>
           </div>
         </div>
       </div>
@@ -104,19 +104,19 @@ export function RobustLoginPage() {
   // If already signed in and initialized, show loading while redirecting
   if (isSignedIn) {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+      <div className="relative min-h-screen overflow-hidden bg-surface-0 text-ink">
         <div
           className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
           aria-hidden="true"
         />
         <div className="flex min-h-screen items-center justify-center p-4">
           <div className="text-center">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-white shadow-cta">
               <Droplets className="h-8 w-8" aria-hidden="true" />
             </div>
-            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
-            <p className="text-base font-semibold tracking-[-0.035em] text-slate-950">Welcome back</p>
-            <p className="mt-2 text-sm font-medium text-slate-600">Redirecting to your workspace</p>
+            <div className="mx-auto mb-4 h-9 w-9 rounded-full border-2 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
+            <p className="text-base font-semibold tracking-[-0.035em] text-ink">Welcome back</p>
+            <p className="mt-2 text-sm font-medium text-ink-secondary">Redirecting to your workspace</p>
           </div>
         </div>
       </div>
@@ -124,7 +124,7 @@ export function RobustLoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f6fbfc] text-slate-950">
+    <div className="relative min-h-screen overflow-hidden bg-surface-0 text-ink">
       <div
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(8,145,178,0.16),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(14,116,144,0.12),transparent_28%),linear-gradient(180deg,#f8fdff_0%,#eef8f9_55%,#f8fbfc_100%)]"
         aria-hidden="true"
@@ -133,26 +133,26 @@ export function RobustLoginPage() {
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-4 py-12">
         {/* Logo Header */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_18px_36px_-22px_rgba(8,145,178,0.85)]">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-white shadow-cta">
             <Droplets className="h-8 w-8" aria-hidden="true" />
           </div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">
             ChemCheck workspace
           </p>
-          <h1 className="text-balance text-3xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-4xl">
+          <h1 className="text-balance text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl">
             Welcome back
           </h1>
-          <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+          <p className="mt-2 text-sm font-medium leading-6 text-ink-secondary">
             Sign in to continue your pool service workspace.
           </p>
         </div>
 
         {/* Clerk SignIn Component */}
-        <div className="w-full rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
+        <div className="w-full rounded-sheet border border-line bg-surface-1 p-5 shadow-card sm:p-6">
           <Suspense
             fallback={
               <div className="flex items-center justify-center py-10">
-                <div className="h-8 w-8 rounded-full border-2 border-cyan-200 border-t-cyan-600 animate-spin" aria-hidden="true" />
+                <div className="h-8 w-8 rounded-full border-2 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
               </div>
             }
           >
@@ -167,12 +167,12 @@ export function RobustLoginPage() {
                   card: 'shadow-none border-0 bg-transparent p-0',
                   headerTitle: 'hidden',
                   headerSubtitle: 'hidden',
-                  socialButtonsBlockButton: 'border border-slate-200 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-200 transition-colors duration-200',
-                  formButtonPrimary: 'bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors shadow-[0_18px_38px_-24px_rgba(8,145,178,0.95)]',
-                  footerActionLink: 'text-cyan-700 hover:text-cyan-800 font-medium transition-colors',
-                  formFieldInput: 'border-slate-300 focus:border-cyan-500 focus:ring-cyan-500',
-                  identityPreviewText: 'text-slate-700',
-                  identityPreviewEditButton: 'text-cyan-700 hover:text-cyan-800'
+                  socialButtonsBlockButton: 'border border-line bg-white text-ink-secondary hover:bg-brand-softer hover:border-[var(--status-info-line)] transition-colors duration-200',
+                  formButtonPrimary: 'bg-brand hover:bg-brand-strong text-white font-semibold transition-colors shadow-cta',
+                  footerActionLink: 'text-brand-ink hover:text-brand-ink font-medium transition-colors',
+                  formFieldInput: 'border-line focus:border-ring focus:ring-ring',
+                  identityPreviewText: 'text-ink-secondary',
+                  identityPreviewEditButton: 'text-brand-ink hover:text-brand-ink'
                 }
               }}
             />
@@ -180,19 +180,19 @@ export function RobustLoginPage() {
         </div>
 
         {/* Footer Links */}
-        <div className="mt-6 flex items-center justify-center gap-3 text-sm text-slate-500">
+        <div className="mt-6 flex items-center justify-center gap-3 text-sm text-ink-muted">
           <a
             href="/privacy-policy.html"
-            className="transition-colors hover:text-cyan-700"
+            className="transition-colors hover:text-brand-ink"
             target="_blank"
             rel="noopener noreferrer"
           >
             Privacy Policy
           </a>
-          <span className="h-1 w-1 rounded-full bg-slate-300" aria-hidden="true" />
+          <span className="h-1 w-1 rounded-full bg-line" aria-hidden="true" />
           <a
             href="/terms-of-service.html"
-            className="transition-colors hover:text-cyan-700"
+            className="transition-colors hover:text-brand-ink"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -201,10 +201,10 @@ export function RobustLoginPage() {
         </div>
 
         {/* Help Text */}
-        <div className="mt-4 w-full rounded-2xl border border-cyan-100 bg-cyan-50/70 p-3 text-center shadow-sm backdrop-blur">
-          <p className="text-sm font-medium text-cyan-900">
+        <div className="mt-4 w-full rounded-2xl border border-[var(--status-info-line)] bg-brand-softer p-3 text-center shadow-sm ">
+          <p className="text-sm font-medium text-brand-ink">
             New to ChemCheck?{' '}
-            <a href="/signup" className="font-semibold text-cyan-800 underline-offset-4 hover:underline">
+            <a href="/signup" className="font-semibold text-brand-ink underline-offset-4 hover:underline">
               Create an account
             </a>{' '}
             to start managing pool service visits.

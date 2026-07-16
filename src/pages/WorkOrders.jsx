@@ -114,41 +114,41 @@ function downloadCsv(filename, headers, rows) {
 function statusBadgeClass(status) {
   switch (status) {
     case "completed":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-[var(--status-ok-soft)] text-ok";
     case "in_progress":
-      return "bg-amber-100 text-amber-700";
+      return "bg-[var(--status-watch-soft)] text-watch";
     case "cancelled":
-      return "bg-rose-100 text-rose-700";
+      return "bg-[var(--status-critical-soft)] text-critical";
     default:
-      return "bg-cyan-100 text-cyan-700";
+      return "bg-brand-soft text-brand-ink";
   }
 }
 
 function invoiceStatusBadgeClass(status) {
   switch (status) {
     case "paid":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-[var(--status-ok-soft)] text-ok";
     case "sent":
-      return "bg-blue-100 text-blue-700";
+      return "bg-[var(--status-info-soft)] text-info";
     case "cancelled":
-      return "bg-rose-100 text-rose-700";
+      return "bg-[var(--status-critical-soft)] text-critical";
     default:
-      return "bg-slate-100 text-slate-700";
+      return "bg-surface-2 text-ink-secondary";
   }
 }
 
 function quoteStatusBadgeClass(status) {
   switch (status) {
     case "approved":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-[var(--status-ok-soft)] text-ok";
     case "sent":
-      return "bg-blue-100 text-blue-700";
+      return "bg-[var(--status-info-soft)] text-info";
     case "declined":
-      return "bg-rose-100 text-rose-700";
+      return "bg-[var(--status-critical-soft)] text-critical";
     case "converted":
-      return "bg-cyan-100 text-cyan-700";
+      return "bg-brand-soft text-brand-ink";
     default:
-      return "bg-slate-100 text-slate-700";
+      return "bg-surface-2 text-ink-secondary";
   }
 }
 
@@ -276,13 +276,13 @@ function getInvoicePrimaryDescription(invoice) {
 function communicationStatusBadgeClass(status) {
   switch (status) {
     case "delivered":
-      return "bg-cyan-100 text-cyan-700";
+      return "bg-brand-soft text-brand-ink";
     case "sent":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-[var(--status-ok-soft)] text-ok";
     case "failed":
-      return "bg-rose-100 text-rose-700";
+      return "bg-[var(--status-critical-soft)] text-critical";
     default:
-      return "bg-blue-100 text-blue-700";
+      return "bg-[var(--status-info-soft)] text-info";
   }
 }
 
@@ -1776,8 +1776,8 @@ function WorkOrdersContent() {
 
 const workOrderCreateForm = (
     <div className="space-y-4">
-      <div className="mb-4 border-b border-slate-200 pb-2">
-        <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950">Create Work Order</h2>
+      <div className="mb-4 border-b border-line pb-2">
+        <h2 className="text-base sm:text-lg font-bold tracking-tight text-ink">Create Work Order</h2>
       </div>
       <form className="space-y-4" onSubmit={handleCreate}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1787,7 +1787,7 @@ const workOrderCreateForm = (
               id="wo-customer"
               value={form.customer_id}
               onChange={(e) => setForm((prev) => ({ ...prev, customer_id: e.target.value }))}
-              className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
+              className="w-full h-10 border border-line rounded-md px-3 bg-white"
             >
               <option value="">Select customer...</option>
               {customers.map((customer) => (
@@ -1802,7 +1802,7 @@ const workOrderCreateForm = (
               id="wo-assignee"
               value={form.assignee_email}
               onChange={(e) => setForm((prev) => ({ ...prev, assignee_email: e.target.value }))}
-              className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
+              className="w-full h-10 border border-line rounded-md px-3 bg-white"
             >
               <option value="">Unassigned</option>
               {teamMembers.map((member) => (
@@ -1830,7 +1830,7 @@ const workOrderCreateForm = (
               id="wo-priority"
               value={form.priority}
               onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value }))}
-              className="w-full h-10 border border-slate-300 rounded-md px-3 bg-white"
+              className="w-full h-10 border border-line rounded-md px-3 bg-white"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -1846,7 +1846,7 @@ const workOrderCreateForm = (
             value={form.description}
             onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
             rows={3}
-            className="w-full border border-slate-300 rounded-md px-3 py-2"
+            className="w-full border border-line rounded-md px-3 py-2"
             placeholder="Add context, parts needed, and customer requests"
           />
         </div>
@@ -1865,7 +1865,7 @@ const workOrderCreateForm = (
             <select
               value={form.recurrence_rule}
               onChange={(e) => setForm((prev) => ({ ...prev, recurrence_rule: e.target.value }))}
-              className="h-10 border border-slate-300 rounded-md px-3 bg-white"
+              className="h-10 border border-line rounded-md px-3 bg-white"
             >
               <option value="WEEKLY">Weekly</option>
               <option value="BIWEEKLY">Every 2 weeks</option>
@@ -1889,7 +1889,7 @@ const workOrderCreateForm = (
           id="quote-customer"
           value={quoteForm.customer_id}
           onChange={(e) => setQuoteForm((prev) => ({ ...prev, customer_id: e.target.value }))}
-          className="w-full h-10 lg:h-9 border border-slate-300 rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
+          className="w-full h-10 lg:h-9 border border-line rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
         >
           <option value="">Select customer...</option>
           {customers.map((customer) => (
@@ -1897,7 +1897,7 @@ const workOrderCreateForm = (
           ))}
         </select>
         {quoteFormErrors.customer && (
-          <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.customer}</p>
+          <p className="mt-1 text-xs text-critical">{quoteFormErrors.customer}</p>
         )}
       </div>
 
@@ -1911,7 +1911,7 @@ const workOrderCreateForm = (
           placeholder="Green-to-clean package / pump replacement"
         />
         {quoteFormErrors.title && (
-          <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.title}</p>
+          <p className="mt-1 text-xs text-critical">{quoteFormErrors.title}</p>
         )}
       </div>
 
@@ -1936,7 +1936,7 @@ const workOrderCreateForm = (
             className="h-10 lg:h-9 text-sm lg:text-xs"
           />
           {quoteFormErrors.quantity && (
-            <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.quantity}</p>
+            <p className="mt-1 text-xs text-critical">{quoteFormErrors.quantity}</p>
           )}
         </div>
         <div>
@@ -1948,7 +1948,7 @@ const workOrderCreateForm = (
             className="h-10 lg:h-9 text-sm lg:text-xs"
           />
           {quoteFormErrors.unitPrice && (
-            <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.unitPrice}</p>
+            <p className="mt-1 text-xs text-critical">{quoteFormErrors.unitPrice}</p>
           )}
         </div>
       </div>
@@ -1963,7 +1963,7 @@ const workOrderCreateForm = (
             className="h-10 lg:h-9 text-sm lg:text-xs"
             placeholder="8.25 or 0.0825"
           />
-          <p className="mt-1 text-[11px] text-slate-500">Enter 8.25 for 8.25% tax.</p>
+          <p className="mt-1 text-xs text-ink-muted">Enter 8.25 for 8.25% tax.</p>
         </div>
         <div>
           <Label htmlFor="quote-deposit">Deposit $</Label>
@@ -1975,7 +1975,7 @@ const workOrderCreateForm = (
             placeholder="Optional"
           />
           {quoteFormErrors.deposit && (
-            <p className="mt-1 text-[11px] text-rose-600">{quoteFormErrors.deposit}</p>
+            <p className="mt-1 text-xs text-critical">{quoteFormErrors.deposit}</p>
           )}
         </div>
       </div>
@@ -2003,14 +2003,14 @@ const workOrderCreateForm = (
 
   const invoiceCreatePanel = (
     <div className="space-y-4">
-      <form className="space-y-3 mb-4 pb-4 border-b border-slate-200" onSubmit={handleCreateInvoiceDraft}>
+      <form className="space-y-3 mb-4 pb-4 border-b border-line" onSubmit={handleCreateInvoiceDraft}>
         <div>
           <Label htmlFor="inv-customer">Customer</Label>
           <select
             id="inv-customer"
             value={invoiceForm.customer_id}
             onChange={(e) => handleInvoiceCustomerSelect(e.target.value)}
-            className="w-full h-10 lg:h-9 border border-slate-300 rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
+            className="w-full h-10 lg:h-9 border border-line rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
           >
             <option value="">Select customer...</option>
             {customers.map((customer) => (
@@ -2018,7 +2018,7 @@ const workOrderCreateForm = (
             ))}
           </select>
           {invoiceFormErrors.customer && (
-            <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.customer}</p>
+            <p className="mt-1 text-xs text-critical">{invoiceFormErrors.customer}</p>
           )}
         </div>
 
@@ -2028,7 +2028,7 @@ const workOrderCreateForm = (
             id="inv-work-order"
             value={invoiceForm.work_order_id}
             onChange={(e) => handleInvoiceWorkOrderSelect(e.target.value)}
-            className="w-full h-10 lg:h-9 border border-slate-300 rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
+            className="w-full h-10 lg:h-9 border border-line rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
           >
             <option value="">No linked work order</option>
             {invoiceWorkOrderOptions.map((order) => (
@@ -2038,7 +2038,7 @@ const workOrderCreateForm = (
             ))}
           </select>
           {invoiceForm.customer_id && invoiceWorkOrderOptions.length === 0 && (
-            <p className="mt-1 text-[11px] text-slate-500">No work orders found for this customer yet.</p>
+            <p className="mt-1 text-xs text-ink-muted">No work orders found for this customer yet.</p>
           )}
         </div>
 
@@ -2052,7 +2052,7 @@ const workOrderCreateForm = (
             placeholder="Monthly service / repair / clean-up"
           />
           {invoiceFormErrors.description && (
-            <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.description}</p>
+            <p className="mt-1 text-xs text-critical">{invoiceFormErrors.description}</p>
           )}
         </div>
 
@@ -2066,7 +2066,7 @@ const workOrderCreateForm = (
               className="h-10 lg:h-9 text-sm lg:text-xs"
             />
             {invoiceFormErrors.quantity && (
-              <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.quantity}</p>
+              <p className="mt-1 text-xs text-critical">{invoiceFormErrors.quantity}</p>
             )}
           </div>
           <div>
@@ -2078,7 +2078,7 @@ const workOrderCreateForm = (
               className="h-10 lg:h-9 text-sm lg:text-xs"
             />
             {invoiceFormErrors.unitPrice && (
-              <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.unitPrice}</p>
+              <p className="mt-1 text-xs text-critical">{invoiceFormErrors.unitPrice}</p>
             )}
           </div>
         </div>
@@ -2093,7 +2093,7 @@ const workOrderCreateForm = (
               className="h-10 lg:h-9 text-sm lg:text-xs"
               placeholder="8.25 or 0.0825"
             />
-            <p className="mt-1 text-[11px] text-slate-500">Enter 8.25 for 8.25% tax.</p>
+            <p className="mt-1 text-xs text-ink-muted">Enter 8.25 for 8.25% tax.</p>
           </div>
           <div>
             <Label htmlFor="inv-due">Due Date</Label>
@@ -2105,7 +2105,7 @@ const workOrderCreateForm = (
               className="h-10 lg:h-9 text-sm lg:text-xs"
             />
             {invoiceFormErrors.dueDate && (
-              <p className="mt-1 text-[11px] text-rose-600">{invoiceFormErrors.dueDate}</p>
+              <p className="mt-1 text-xs text-critical">{invoiceFormErrors.dueDate}</p>
             )}
           </div>
         </div>
@@ -2119,9 +2119,9 @@ const workOrderCreateForm = (
         </Button>
       </form>
 
-      <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+      <div className="mb-4 rounded-md border border-line bg-surface-2 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Batch Invoicing</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">Batch Invoicing</p>
           <Button
             size="sm"
             className="h-8 text-xs"
@@ -2131,7 +2131,7 @@ const workOrderCreateForm = (
             {isBatchInvoicing ? "Processing..." : "Run Batch"}
           </Button>
         </div>
-        <p className="text-[11px] text-slate-600">
+        <p className="text-xs text-ink-secondary">
           Batch run always uses the Unit $, Tax Rate, and Due In Days values below.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -2184,7 +2184,7 @@ const workOrderCreateForm = (
             />
           </div>
           <div className="flex items-end">
-            <label className="flex items-center gap-2 text-xs text-slate-700">
+            <label className="flex items-center gap-2 text-xs text-ink-secondary">
               <Checkbox
                 checked={batchInvoiceForm.auto_send}
                 onCheckedChange={(checked) => setBatchInvoiceForm((prev) => ({ ...prev, auto_send: !!checked }))}
@@ -2194,25 +2194,25 @@ const workOrderCreateForm = (
           </div>
         </div>
         {batchInvoiceErrors.dateRange && (
-          <p className="text-[11px] text-rose-600">{batchInvoiceErrors.dateRange}</p>
+          <p className="text-xs text-critical">{batchInvoiceErrors.dateRange}</p>
         )}
         {batchInvoiceErrors.unitPrice && (
-          <p className="text-[11px] text-rose-600">{batchInvoiceErrors.unitPrice}</p>
+          <p className="text-xs text-critical">{batchInvoiceErrors.unitPrice}</p>
         )}
         {batchInvoiceErrors.dueDays && (
-          <p className="text-[11px] text-rose-600">{batchInvoiceErrors.dueDays}</p>
+          <p className="text-xs text-critical">{batchInvoiceErrors.dueDays}</p>
         )}
       </div>
 
-      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+      <div className="rounded-md border border-line bg-surface-2 p-3 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Reminder Autopilot</p>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">Reminder Autopilot</p>
+            <p className="text-xs text-ink-secondary">
               Auto-queues unpaid reminders on a fixed interval.
             </p>
           </div>
-          <label className="flex items-center gap-2 text-xs text-slate-700">
+          <label className="flex items-center gap-2 text-xs text-ink-secondary">
             <Checkbox
               checked={reminderAutopilotEnabled}
               onCheckedChange={(checked) => {
@@ -2254,7 +2254,7 @@ const workOrderCreateForm = (
               disabled={!reminderAutopilotEnabled}
             />
           </div>
-          <div className="text-[11px] text-slate-600">
+          <div className="text-xs text-ink-secondary">
             Next run: {reminderAutopilotEnabled
               ? (formatTimestamp(reminderAutopilotNextRunAt) || "Scheduling...")
               : "Autopilot disabled"}
@@ -2290,34 +2290,34 @@ const workOrderCreateForm = (
 
   return (
     <div className="relative mx-auto w-full max-w-7xl px-3 pb-28 pt-4 font-sans space-y-4 sm:px-6 sm:space-y-6 lg:px-8">
-      <div className="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-[0_18px_60px_-44px_rgba(8,47,73,0.75)] backdrop-blur">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Dispatch board</p>
+      <div className="overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Dispatch board</p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-4xl">
-              <PoolIcon name="workOrders" className="h-7 w-7 text-cyan-700" />
+            <h1 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
+              <PoolIcon name="workOrders" className="h-7 w-7 text-brand-ink" />
               Work Orders & Dispatch
             </h1>
-            <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">
+            <p className="mt-1 max-w-2xl text-sm font-medium text-ink-muted">
               Build dispatch, quotes, and invoicing in one flow for solo operators and small teams.
             </p>
           </div>
           {cloudEnabled ? (
-            <p className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+            <p className="rounded-full border border-[var(--status-ok-line)] bg-[var(--status-ok-soft)] px-3 py-1.5 text-xs font-semibold text-ok">
               Cloud mode active
             </p>
           ) : (
-            <p className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+            <p className="rounded-full border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-3 py-1.5 text-xs font-semibold text-watch">
               Local mode active
             </p>
           )}
         </div>
       </div>
 
-      <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-2.5 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur sm:p-4">
+      <Card className="rounded-sheet border border-line bg-surface-1 p-2.5 shadow-card sm:p-4">
         <div className="flex flex-col gap-2.5 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
           {workOrdersSplitEnabled ? (
-            <div className="inline-flex w-full overflow-x-auto rounded-full border border-slate-200 bg-white/80 p-1 lg:w-auto">
+            <div className="inline-flex w-full overflow-x-auto rounded-full border border-line bg-surface-1 p-1 lg:w-auto">
               {[
                 { id: "dispatch", label: "Dispatch" },
                 { id: "quotes", label: "Quotes" },
@@ -2330,8 +2330,8 @@ const workOrderCreateForm = (
                   onClick={() => handleSectionChange(section.id)}
                   className={`flex-1 shrink-0 rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all sm:px-3 sm:text-sm lg:flex-none ${
                     activeSection === section.id
-                      ? "bg-cyan-600 text-white shadow-[0_14px_32px_-24px_rgba(8,145,178,0.95)]"
-                      : "text-slate-600 hover:bg-cyan-50 hover:text-slate-950"
+                      ? "bg-brand text-white shadow-cta"
+                      : "text-ink-secondary hover:bg-brand-softer hover:text-ink"
                   }`}
                 >
                   {section.label}
@@ -2339,7 +2339,7 @@ const workOrderCreateForm = (
               ))}
             </div>
           ) : (
-            <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 self-start">
+            <p className="text-xs text-ink-secondary bg-surface-2 border border-line rounded-lg px-3 py-2 self-start">
               Work Orders IA split is disabled. Showing dispatch view.
             </p>
           )}
@@ -2347,7 +2347,7 @@ const workOrderCreateForm = (
       </Card>
 
       {activeSection === "dispatch" && (
-      <Card className="rounded-[1.5rem] border border-white/80 bg-white/85 p-3 shadow-[0_18px_60px_-48px_rgba(8,47,73,0.75)] backdrop-blur sm:p-6">
+      <Card className="rounded-sheet border border-line bg-surface-1 p-3 shadow-card sm:p-6">
         <div className="flex flex-col md:flex-row md:items-end gap-3 sm:gap-4">
           <div>
             <Label htmlFor="dispatch-date" className="text-xs sm:text-sm">Dispatch Date</Label>
@@ -2359,8 +2359,8 @@ const workOrderCreateForm = (
               className="w-full sm:w-[220px]"
             />
           </div>
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600">
-            <CalendarClock className="w-4 h-4 text-cyan-600" />
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-ink-secondary">
+            <CalendarClock className="w-4 h-4 text-brand-ink" />
             {workOrders.length} work order{workOrders.length === 1 ? "" : "s"} on {selectedDate}
           </div>
         </div>
@@ -2369,24 +2369,24 @@ const workOrderCreateForm = (
 
       <div className={`${hideOverviewPanelsOnMobile ? "hidden sm:grid" : "grid"} grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3`}>
         <Card className="p-2.5 sm:p-3">
-          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Open Quotes</p>
-          <p className="text-xl sm:text-2xl font-semibold text-slate-900">{dashboardMetrics.openQuotes}</p>
+          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Open Quotes</p>
+          <p className="text-xl sm:text-2xl font-semibold text-ink">{dashboardMetrics.openQuotes}</p>
         </Card>
         <Card className="p-2.5 sm:p-3">
-          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Pending Deposits</p>
-          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.pendingDeposits > 0 ? "text-amber-700" : "text-slate-900"}`}>
+          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Pending Deposits</p>
+          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.pendingDeposits > 0 ? "text-watch" : "text-ink"}`}>
             {dashboardMetrics.pendingDeposits}
           </p>
         </Card>
         <Card className="p-2.5 sm:p-3">
-          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Unpaid Invoices</p>
-          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.unpaidInvoices > 0 ? "text-blue-700" : "text-slate-900"}`}>
+          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Unpaid Invoices</p>
+          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.unpaidInvoices > 0 ? "text-info" : "text-ink"}`}>
             {dashboardMetrics.unpaidInvoices}
           </p>
         </Card>
         <Card className="p-2.5 sm:p-3">
-          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Overdue Invoices</p>
-          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.overdueInvoices > 0 ? "text-rose-700" : "text-slate-900"}`}>
+          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Overdue Invoices</p>
+          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.overdueInvoices > 0 ? "text-critical" : "text-ink"}`}>
             {dashboardMetrics.overdueInvoices}
           </p>
         </Card>
@@ -2397,90 +2397,90 @@ const workOrderCreateForm = (
           className="flex items-center justify-between gap-2 sm:gap-3 mb-0 sm:mb-3 cursor-pointer sm:cursor-default"
           onClick={() => setMobileBillingExpanded((prev) => !prev)}
         >
-          <h2 className="text-xs sm:text-base font-bold tracking-tight text-slate-950">Billing Reliability</h2>
+          <h2 className="text-xs sm:text-base font-bold tracking-tight text-ink">Billing Reliability</h2>
           <div className="flex items-center gap-2">
             <span
-              className={`text-[10px] sm:text-xs px-2 py-1 rounded-full font-medium ${
+              className={`text-xs sm:text-xs px-2 py-1 rounded-full font-medium ${
                 billingHealth.totalIssues > 0
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-emerald-100 text-emerald-700"
+                  ? "bg-[var(--status-watch-soft)] text-watch"
+                  : "bg-[var(--status-ok-soft)] text-ok"
               }`}
             >
               {billingHealth.totalIssues > 0 ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"}` : "Healthy"}
             </span>
-            <span className="sm:hidden text-xs text-slate-500">
+            <span className="sm:hidden text-xs text-ink-muted">
               {mobileBillingExpanded ? "▲" : "▼"}
             </span>
           </div>
         </div>
         <div className="hidden sm:grid grid-cols-5 gap-2">
-          <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Failed Sends</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-rose-700" : "text-slate-900"}`}>
+          <div className="rounded-md border border-line p-2">
+            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Failed Sends</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-critical" : "text-ink"}`}>
               {billingHealth.failedDeliveries}
             </p>
           </div>
-          <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Stuck Queue</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-amber-700" : "text-slate-900"}`}>
+          <div className="rounded-md border border-line p-2">
+            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Stuck Queue</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-watch" : "text-ink"}`}>
               {billingHealth.queuedStale}
             </p>
           </div>
-          <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Old Drafts</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-blue-700" : "text-slate-900"}`}>
+          <div className="rounded-md border border-line p-2">
+            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Old Drafts</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-info" : "text-ink"}`}>
               {billingHealth.staleDrafts}
             </p>
           </div>
-          <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Missing Pay Link</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-rose-700" : "text-slate-900"}`}>
+          <div className="rounded-md border border-line p-2">
+            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Missing Pay Link</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-critical" : "text-ink"}`}>
               {billingHealth.sentMissingPayLink}
             </p>
           </div>
-          <div className="rounded-md border border-slate-200 p-2">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">30+ Days Unpaid</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-rose-700" : "text-slate-900"}`}>
+          <div className="rounded-md border border-line p-2">
+            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">30+ Days Unpaid</p>
+            <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-critical" : "text-ink"}`}>
               {billingHealth.unpaidThirtyPlus}
             </p>
           </div>
         </div>
         <div className="sm:hidden">
           {!mobileBillingExpanded ? (
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-ink-secondary">
               {billingHealth.totalIssues > 0
                 ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"} - tap to expand`
                 : "All billing health checks are clear."}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-slate-200 p-2">
-                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Failed Sends</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-rose-700" : "text-slate-900"}`}>
+              <div className="rounded-md border border-line p-2">
+                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Failed Sends</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-critical" : "text-ink"}`}>
                   {billingHealth.failedDeliveries}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 p-2">
-                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Stuck Queue</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-amber-700" : "text-slate-900"}`}>
+              <div className="rounded-md border border-line p-2">
+                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Stuck Queue</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-watch" : "text-ink"}`}>
                   {billingHealth.queuedStale}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 p-2">
-                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Old Drafts</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-blue-700" : "text-slate-900"}`}>
+              <div className="rounded-md border border-line p-2">
+                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Old Drafts</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-info" : "text-ink"}`}>
                   {billingHealth.staleDrafts}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 p-2">
-                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">Missing Pay Link</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-rose-700" : "text-slate-900"}`}>
+              <div className="rounded-md border border-line p-2">
+                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Missing Pay Link</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-critical" : "text-ink"}`}>
                   {billingHealth.sentMissingPayLink}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 p-2">
-                <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500">30+ Days Unpaid</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-rose-700" : "text-slate-900"}`}>
+              <div className="rounded-md border border-line p-2">
+                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">30+ Days Unpaid</p>
+                <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-critical" : "text-ink"}`}>
                   {billingHealth.unpaidThirtyPlus}
                 </p>
               </div>
@@ -2500,14 +2500,14 @@ const workOrderCreateForm = (
 
         {activeSection === "quotes" && (
         <Card className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-200 pb-2">
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-cyan-700" />
+            <div className="flex items-center justify-between gap-3 mb-4 border-b border-line pb-2">
+              <h2 className="text-base sm:text-lg font-bold tracking-tight text-ink flex items-center gap-2">
+                <FileText className="w-4 h-4 text-brand-ink" />
                 Quotes
               </h2>
             </div>
 
-            <div className="hidden lg:block mb-4 pb-4 border-b border-slate-200">
+            <div className="hidden lg:block mb-4 pb-4 border-b border-line">
               {quoteCreateForm}
             </div>
 
@@ -2521,7 +2521,7 @@ const workOrderCreateForm = (
               <select
                 value={quoteStatusFilter}
                 onChange={(e) => setQuoteStatusFilter(e.target.value)}
-                className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[170px]"
+                className="h-10 sm:h-8 border border-line rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[170px]"
               >
                 <option value="active">Active</option>
                 <option value="all">All</option>
@@ -2535,7 +2535,7 @@ const workOrderCreateForm = (
 
             <div className="space-y-3 max-h-[360px] overflow-auto pr-1">
               {filteredQuotes.length === 0 && (
-                <p className="text-sm text-slate-500">No quotes match your filters.</p>
+                <p className="text-sm text-ink-muted">No quotes match your filters.</p>
               )}
               {filteredQuotes.slice(0, 20).map((quote) => {
                 const customer = customerById.get(String(quote.customer_id));
@@ -2551,45 +2551,45 @@ const workOrderCreateForm = (
                 const quoteAlternateKey = makeAlternateRecipientKey("quote", quote._id);
                 const isQuoteAlternateOpen = alternateRecipientEditor.key === quoteAlternateKey;
                 return (
-                  <div key={quote._id} className="rounded-lg border border-slate-200 p-3">
+                  <div key={quote._id} className="rounded-lg border border-line p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-medium text-sm text-slate-900">{quote.title}</p>
-                        <p className="text-xs text-slate-600">{customer?.full_name || "Customer"}</p>
+                        <p className="font-medium text-sm text-ink">{quote.title}</p>
+                        <p className="text-xs text-ink-secondary">{customer?.full_name || "Customer"}</p>
                       </div>
-                      <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${quoteStatusBadgeClass(quote.status)}`}>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${quoteStatusBadgeClass(quote.status)}`}>
                         {quote.status}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-600">Total: ${quote.total.toFixed(2)}</p>
+                    <p className="text-xs text-ink-secondary">Total: ${quote.total.toFixed(2)}</p>
                     {quote.deposit_required && quote.deposit_required > 0 && (
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-ink-muted">
                         Deposit: ${quote.deposit_required.toFixed(2)} ({quote.deposit_status || "pending"})
                       </p>
                     )}
                     {quote.deposit_status === "paid" && (
-                      <p className="text-xs text-emerald-700">
+                      <p className="text-xs text-ok">
                         Paid via {formatDepositSource(quote.deposit_paid_source) || "Recorded payment"}
                         {quote.deposit_paid_at ? ` on ${formatTimestamp(quote.deposit_paid_at)}` : ""}
                       </p>
                     )}
                     {quote.deposit_payment_url && (
-                      <p className="text-[11px] text-blue-700 truncate">Deposit URL: {quote.deposit_payment_url}</p>
+                      <p className="text-xs text-info truncate">Deposit URL: {quote.deposit_payment_url}</p>
                     )}
                     {!canSendToCustomer && (
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
-                        <p className="text-xs text-rose-600">Add a valid customer phone or email to send deposit links.</p>
+                        <p className="text-xs text-critical">Add a valid customer phone or email to send deposit links.</p>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                           <Button
                             variant="outline"
-                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2 w-full sm:w-auto"
+                            className="h-11 sm:h-6 text-sm sm:text-xs px-2 w-full sm:w-auto"
                             onClick={() => openAlternateRecipientEditor("quote", quote._id, customer)}
                           >
                             Use Alternate
                           </Button>
                           <Button
                             variant="outline"
-                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2 w-full sm:w-auto"
+                            className="h-11 sm:h-6 text-sm sm:text-xs px-2 w-full sm:w-auto"
                             onClick={() => handleFixCustomerContact(quote.customer_id)}
                           >
                             Fix Contact
@@ -2598,13 +2598,13 @@ const workOrderCreateForm = (
                       </div>
                     )}
                     {isQuoteAlternateOpen && (
-                      <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 space-y-2">
-                        <p className="text-[11px] text-slate-600">Send to alternate recipient</p>
+                      <div className="mt-2 rounded-md border border-line bg-surface-2 p-2 space-y-2">
+                        <p className="text-xs text-ink-secondary">Send to alternate recipient</p>
                         <div className="flex items-center gap-2">
                           <select
                             value={alternateRecipientEditor.channel}
                             onChange={(e) => setAlternateRecipientEditor((prev) => ({ ...prev, channel: e.target.value }))}
-                            className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white"
+                            className="h-10 sm:h-8 border border-line rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white"
                           >
                             <option value="email">Email</option>
                             <option value="sms">SMS</option>
@@ -2618,7 +2618,7 @@ const workOrderCreateForm = (
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <Button
-                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                            className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                             disabled={
                               quoteIsBusy
                               || !isValidRecipientForChannel(alternateRecipientEditor.channel, alternateRecipientEditor.recipient.trim())
@@ -2629,7 +2629,7 @@ const workOrderCreateForm = (
                           </Button>
                           <Button
                             variant="outline"
-                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                            className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                             onClick={closeAlternateRecipientEditor}
                           >
                             Cancel
@@ -2638,23 +2638,23 @@ const workOrderCreateForm = (
                       </div>
                     )}
                     {depositPending && (
-                      <p className="text-xs text-amber-700">Deposit required before convert or invoice.</p>
+                      <p className="text-xs text-watch">Deposit required before convert or invoice.</p>
                     )}
                     {quote.valid_until && (
-                      <p className="text-xs text-slate-500">Valid until: {quote.valid_until}</p>
+                      <p className="text-xs text-ink-muted">Valid until: {quote.valid_until}</p>
                     )}
                     {quote.converted_work_order_id && (
-                      <p className="text-xs text-emerald-700">Converted to work order.</p>
+                      <p className="text-xs text-ok">Converted to work order.</p>
                     )}
                     {linkedInvoice && (
-                      <p className="text-xs text-blue-700">
+                      <p className="text-xs text-info">
                         Invoice: {linkedInvoice.status}
                       </p>
                     )}
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
                       {quote.status === "draft" && (
                         <Button
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleQuoteStatusChange(quote, "sent")}
                         >
@@ -2664,7 +2664,7 @@ const workOrderCreateForm = (
                       {quote.status === "sent" && (
                         <>
                           <Button
-                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                            className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                             disabled={quoteIsBusy}
                             onClick={() => handleQuoteStatusChange(quote, "approved")}
                           >
@@ -2672,7 +2672,7 @@ const workOrderCreateForm = (
                           </Button>
                           <Button
                             variant="outline"
-                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                            className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                             disabled={quoteIsBusy}
                             onClick={() => handleQuoteStatusChange(quote, "declined")}
                           >
@@ -2683,7 +2683,7 @@ const workOrderCreateForm = (
                       {quote.status !== "declined" && quote.deposit_required > 0 && quote.deposit_status !== "paid" && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleMarkDepositPaid(quote)}
                         >
@@ -2693,7 +2693,7 @@ const workOrderCreateForm = (
                       {canCreateDepositLink && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={quoteIsBusy || !canSendToCustomer}
                           onClick={() => handleCreateDepositLink(quote)}
                         >
@@ -2703,7 +2703,7 @@ const workOrderCreateForm = (
                       {hasDepositLink && quote.deposit_status !== "paid" && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           onClick={() => window.open(quote.deposit_payment_url, "_blank", "noopener,noreferrer")}
                         >
                           Open Deposit Link
@@ -2711,7 +2711,7 @@ const workOrderCreateForm = (
                       )}
                       <Button
                         variant="outline"
-                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                        className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                         type="button"
                         onClick={() => handleDownloadQuotePdf(quote)}
                       >
@@ -2720,7 +2720,7 @@ const workOrderCreateForm = (
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                        className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                         type="button"
                         onClick={() => handleUseQuoteTemplate(quote)}
                       >
@@ -2728,7 +2728,7 @@ const workOrderCreateForm = (
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                        className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                         disabled={quoteIsBusy}
                         onClick={() => handleDuplicateQuote(quote)}
                       >
@@ -2737,7 +2737,7 @@ const workOrderCreateForm = (
                       {canConvert && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleConvertQuote(quote)}
                         >
@@ -2747,7 +2747,7 @@ const workOrderCreateForm = (
                       {canDraftInvoice && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={quoteIsBusy}
                           onClick={() => handleCreateInvoiceFromQuote(quote)}
                         >
@@ -2757,7 +2757,7 @@ const workOrderCreateForm = (
                       {depositPending && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled
                         >
                           Deposit Needed
@@ -2773,9 +2773,9 @@ const workOrderCreateForm = (
 
         {activeSection === "invoices" && (
         <Card className="p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-slate-200 pb-2">
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950 flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-emerald-700" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-line pb-2">
+              <h2 className="text-base sm:text-lg font-bold tracking-tight text-ink flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-ok" />
                 Invoices
               </h2>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -2807,18 +2807,18 @@ const workOrderCreateForm = (
               {invoiceCreatePanel}
             </div>
 
-            <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+            <div className="mb-4 rounded-md border border-line bg-surface-2 p-3 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Month-End Close</p>
-                  <p className="text-[11px] text-slate-600">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">Month-End Close</p>
+                  <p className="text-xs text-ink-secondary">
                     Quick close summary for invoices created in the selected month.
                   </p>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-[11px]"
+                  className="h-7 text-xs"
                   type="button"
                   onClick={handleExportMonthCloseCsv}
                   disabled={monthCloseSummary.createdInMonth.length === 0}
@@ -2836,26 +2836,26 @@ const workOrderCreateForm = (
                   onChange={(e) => setMonthCloseMonth(e.target.value)}
                   className="h-8 text-xs sm:w-44"
                 />
-                <p className="text-[11px] text-slate-600">{monthCloseSummary.label}</p>
+                <p className="text-xs text-ink-secondary">{monthCloseSummary.label}</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-md border border-slate-200 bg-white p-2">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Billed</p>
-                  <p className="text-sm font-semibold text-slate-900">${monthCloseSummary.billedTotal.toFixed(2)}</p>
+                <div className="rounded-md border border-line bg-white p-2">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Billed</p>
+                  <p className="text-sm font-semibold text-ink">${monthCloseSummary.billedTotal.toFixed(2)}</p>
                 </div>
-                <div className="rounded-md border border-slate-200 bg-white p-2">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Collected</p>
-                  <p className="text-sm font-semibold text-emerald-700">${monthCloseSummary.collectedTotal.toFixed(2)}</p>
+                <div className="rounded-md border border-line bg-white p-2">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Collected</p>
+                  <p className="text-sm font-semibold text-ok">${monthCloseSummary.collectedTotal.toFixed(2)}</p>
                 </div>
-                <div className="rounded-md border border-slate-200 bg-white p-2">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Outstanding</p>
-                  <p className={`text-sm font-semibold ${monthCloseSummary.outstandingTotal > 0 ? "text-rose-700" : "text-slate-900"}`}>
+                <div className="rounded-md border border-line bg-white p-2">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Outstanding</p>
+                  <p className={`text-sm font-semibold ${monthCloseSummary.outstandingTotal > 0 ? "text-critical" : "text-ink"}`}>
                     ${monthCloseSummary.outstandingTotal.toFixed(2)}
                   </p>
                 </div>
-                <div className="rounded-md border border-slate-200 bg-white p-2">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Invoices</p>
-                  <p className="text-sm font-semibold text-slate-900">
+                <div className="rounded-md border border-line bg-white p-2">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Invoices</p>
+                  <p className="text-sm font-semibold text-ink">
                     {monthCloseSummary.createdInMonth.length} total / {monthCloseSummary.paidInMonth.length} paid
                   </p>
                 </div>
@@ -2872,7 +2872,7 @@ const workOrderCreateForm = (
               <select
                 value={invoiceStatusFilter}
                 onChange={(e) => setInvoiceStatusFilter(e.target.value)}
-                className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[160px]"
+                className="h-10 sm:h-8 border border-line rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[160px]"
               >
                 <option value="open">Open</option>
                 <option value="all">All</option>
@@ -2884,7 +2884,7 @@ const workOrderCreateForm = (
 
             <div className="space-y-3 max-h-[360px] overflow-auto pr-1">
               {filteredOpenInvoices.length === 0 && (
-                <p className="text-sm text-slate-500">No open invoices match your filters.</p>
+                <p className="text-sm text-ink-muted">No open invoices match your filters.</p>
               )}
               {filteredOpenInvoices.slice(0, 20).map((invoice) => {
                 const customer = customerById.get(String(invoice.customer_id));
@@ -2901,35 +2901,35 @@ const workOrderCreateForm = (
                 const noteText = String(invoice.notes || "").trim();
                 const secondaryNotes = noteText && noteText !== primaryDescription ? noteText : "";
                 return (
-                  <div key={invoice._id} className="rounded-lg border border-slate-200 p-3">
+                  <div key={invoice._id} className="rounded-lg border border-line p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-sm text-slate-900">{customer?.full_name || "Customer"}</p>
-                      <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${invoiceStatusBadgeClass(invoice.status)}`}>
+                      <p className="font-medium text-sm text-ink">{customer?.full_name || "Customer"}</p>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${invoiceStatusBadgeClass(invoice.status)}`}>
                         {invoice.status}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-600">Total: ${invoice.total.toFixed(2)}</p>
+                    <p className="text-xs text-ink-secondary">Total: ${invoice.total.toFixed(2)}</p>
                     {primaryDescription && (
-                      <p className="text-xs text-slate-500 truncate">Description: {primaryDescription}</p>
+                      <p className="text-xs text-ink-muted truncate">Description: {primaryDescription}</p>
                     )}
                     {secondaryNotes && (
-                      <p className="text-[11px] text-slate-500 truncate">Notes: {secondaryNotes}</p>
+                      <p className="text-xs text-ink-muted truncate">Notes: {secondaryNotes}</p>
                     )}
                     {invoice.deposit_applied > 0 && (
-                      <p className="text-xs text-emerald-700">Deposit Applied: -${invoice.deposit_applied.toFixed(2)}</p>
+                      <p className="text-xs text-ok">Deposit Applied: -${invoice.deposit_applied.toFixed(2)}</p>
                     )}
-                    <p className="text-xs text-slate-500">Due: {invoice.due_date || "Not set"}</p>
+                    <p className="text-xs text-ink-muted">Due: {invoice.due_date || "Not set"}</p>
                     {invoice.payment_url && (
-                      <p className="text-[11px] text-blue-700 truncate">Pay URL: {invoice.payment_url}</p>
+                      <p className="text-xs text-info truncate">Pay URL: {invoice.payment_url}</p>
                     )}
                     {!canSendToCustomer && (
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
-                        <p className="text-xs text-rose-600">Add a valid customer phone or email before sending this invoice.</p>
+                        <p className="text-xs text-critical">Add a valid customer phone or email before sending this invoice.</p>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2"
+                            className="h-11 sm:h-6 text-sm sm:text-xs px-2"
                             onClick={() => openAlternateRecipientEditor("invoice", invoice._id, customer)}
                           >
                             Use Alternate
@@ -2937,7 +2937,7 @@ const workOrderCreateForm = (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-11 sm:h-6 text-sm sm:text-[10px] px-2"
+                            className="h-11 sm:h-6 text-sm sm:text-xs px-2"
                             onClick={() => handleFixCustomerContact(invoice.customer_id)}
                           >
                             Fix Contact
@@ -2946,13 +2946,13 @@ const workOrderCreateForm = (
                       </div>
                     )}
                     {isInvoiceAlternateOpen && (
-                      <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 space-y-2">
-                        <p className="text-[11px] text-slate-600">Send to alternate recipient</p>
+                      <div className="mt-2 rounded-md border border-line bg-surface-2 p-2 space-y-2">
+                        <p className="text-xs text-ink-secondary">Send to alternate recipient</p>
                         <div className="flex items-center gap-2">
                           <select
                             value={alternateRecipientEditor.channel}
                             onChange={(e) => setAlternateRecipientEditor((prev) => ({ ...prev, channel: e.target.value }))}
-                            className="h-10 sm:h-8 border border-slate-300 rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white"
+                            className="h-10 sm:h-8 border border-line rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white"
                           >
                             <option value="email">Email</option>
                             <option value="sms">SMS</option>
@@ -2967,7 +2967,7 @@ const workOrderCreateForm = (
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <Button
                             size="sm"
-                            className="h-11 sm:h-7 text-sm sm:text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-xs"
                             disabled={
                               invoiceActionId === invoice._id
                               || !isValidRecipientForChannel(alternateRecipientEditor.channel, alternateRecipientEditor.recipient.trim())
@@ -2979,7 +2979,7 @@ const workOrderCreateForm = (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-11 sm:h-7 text-sm sm:text-[11px]"
+                            className="h-11 sm:h-7 text-sm sm:text-xs"
                             onClick={closeAlternateRecipientEditor}
                           >
                             Cancel
@@ -2990,26 +2990,26 @@ const workOrderCreateForm = (
                     {(invoice.sent_at || invoice.paid_at || relatedQuote?.deposit_paid_at) && (
                       <div className="mt-1 space-y-0.5">
                         {relatedQuote?.deposit_paid_at && (
-                          <p className="text-[11px] text-slate-500">
+                          <p className="text-xs text-ink-muted">
                             Deposit Paid: {formatTimestamp(relatedQuote.deposit_paid_at)}
                             {relatedQuote.deposit_paid_source ? ` (${formatDepositSource(relatedQuote.deposit_paid_source) || relatedQuote.deposit_paid_source})` : ""}
                           </p>
                         )}
                         {invoice.sent_at && (
-                          <p className="text-[11px] text-slate-500">Sent: {formatTimestamp(invoice.sent_at)}</p>
+                          <p className="text-xs text-ink-muted">Sent: {formatTimestamp(invoice.sent_at)}</p>
                         )}
                         {invoice.paid_at && (
-                          <p className="text-[11px] text-slate-500">Paid: {formatTimestamp(invoice.paid_at)}</p>
+                          <p className="text-xs text-ink-muted">Paid: {formatTimestamp(invoice.paid_at)}</p>
                         )}
                       </div>
                     )}
                     {stripeManaged && (
-                      <p className="text-[11px] text-slate-500 mt-1">Awaiting Stripe payment confirmation.</p>
+                      <p className="text-xs text-ink-muted mt-1">Awaiting Stripe payment confirmation.</p>
                     )}
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
                       {invoice.status === "draft" && (
                         <Button
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={invoiceActionId === invoice._id || !canSendToCustomer}
                           onClick={() => handleSendInvoice(invoice._id)}
                         >
@@ -3019,7 +3019,7 @@ const workOrderCreateForm = (
                       {invoice.status === "sent" && !stripeManaged && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={invoiceActionId === invoice._id}
                           onClick={() => handleMarkPaid(invoice._id)}
                         >
@@ -3029,7 +3029,7 @@ const workOrderCreateForm = (
                       {invoice.status === "sent" && (
                         <Button
                           variant="outline"
-                          className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                          className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                           disabled={invoiceActionId === invoice._id}
                           onClick={() => handleOpenPayLink(invoice)}
                         >
@@ -3038,7 +3038,7 @@ const workOrderCreateForm = (
                       )}
                       <Button
                         variant="outline"
-                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                        className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                         type="button"
                         onClick={() => handleDownloadInvoicePdf(invoice)}
                       >
@@ -3047,7 +3047,7 @@ const workOrderCreateForm = (
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                        className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                         type="button"
                         onClick={() => handleUseInvoiceTemplate(invoice)}
                       >
@@ -3055,7 +3055,7 @@ const workOrderCreateForm = (
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                        className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                         disabled={invoiceActionId === invoice._id}
                         onClick={() => handleDuplicateInvoice(invoice)}
                       >
@@ -3067,13 +3067,13 @@ const workOrderCreateForm = (
               })}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-200">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            <div className="mt-4 pt-4 border-t border-line">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted mb-2">
                 Paid / Completed
               </p>
               <div className="space-y-3 max-h-[220px] overflow-auto pr-1">
                 {filteredPaidInvoices.length === 0 && (
-                  <p className="text-sm text-slate-500">No paid invoices match your filters.</p>
+                  <p className="text-sm text-ink-muted">No paid invoices match your filters.</p>
                 )}
                 {filteredPaidInvoices.slice(0, 20).map((invoice) => {
                   const customer = customerById.get(String(invoice.customer_id));
@@ -3086,37 +3086,37 @@ const workOrderCreateForm = (
                   const noteText = String(invoice.notes || "").trim();
                   const secondaryNotes = noteText && noteText !== primaryDescription ? noteText : "";
                   return (
-                    <div key={invoice._id} className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                    <div key={invoice._id} className="rounded-lg border border-[var(--status-ok-line)] bg-[var(--status-ok-soft)] p-3">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-sm text-slate-900">{customer?.full_name || "Customer"}</p>
-                        <span className="text-[10px] px-2 py-1 rounded-full font-medium bg-emerald-100 text-emerald-700">
+                        <p className="font-medium text-sm text-ink">{customer?.full_name || "Customer"}</p>
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-[var(--status-ok-soft)] text-ok">
                           paid
                         </span>
                       </div>
-                      <p className="text-xs text-slate-600">Total: ${invoice.total.toFixed(2)}</p>
+                      <p className="text-xs text-ink-secondary">Total: ${invoice.total.toFixed(2)}</p>
                       {primaryDescription && (
-                        <p className="text-xs text-slate-500 truncate">Description: {primaryDescription}</p>
+                        <p className="text-xs text-ink-muted truncate">Description: {primaryDescription}</p>
                       )}
                       {secondaryNotes && (
-                        <p className="text-[11px] text-slate-500 truncate">Notes: {secondaryNotes}</p>
+                        <p className="text-xs text-ink-muted truncate">Notes: {secondaryNotes}</p>
                       )}
                       {invoice.deposit_applied > 0 && (
-                        <p className="text-xs text-emerald-700">Deposit Applied: -${invoice.deposit_applied.toFixed(2)}</p>
+                        <p className="text-xs text-ok">Deposit Applied: -${invoice.deposit_applied.toFixed(2)}</p>
                       )}
                       {relatedQuote?.deposit_paid_at && (
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-xs text-ink-muted">
                           Deposit Paid: {formatTimestamp(relatedQuote.deposit_paid_at)}
                           {relatedQuote.deposit_paid_source ? ` (${formatDepositSource(relatedQuote.deposit_paid_source) || relatedQuote.deposit_paid_source})` : ""}
                         </p>
                       )}
                       {invoice.paid_at && (
-                        <p className="text-[11px] text-slate-500">Paid: {formatTimestamp(invoice.paid_at)}</p>
+                        <p className="text-xs text-ink-muted">Paid: {formatTimestamp(invoice.paid_at)}</p>
                       )}
                       <div className="mt-2">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <Button
                             variant="outline"
-                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                            className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                             type="button"
                             onClick={() => handleDownloadInvoicePdf(invoice)}
                           >
@@ -3125,7 +3125,7 @@ const workOrderCreateForm = (
                           </Button>
                           <Button
                             variant="outline"
-                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                            className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                             type="button"
                             onClick={() => handleUseInvoiceTemplate(invoice)}
                           >
@@ -3133,7 +3133,7 @@ const workOrderCreateForm = (
                           </Button>
                           <Button
                             variant="outline"
-                            className="h-11 sm:h-7 text-sm sm:text-[11px] w-full sm:w-auto"
+                            className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"
                             disabled={invoiceActionId === invoice._id}
                             onClick={() => handleDuplicateInvoice(invoice)}
                           >
@@ -3151,16 +3151,16 @@ const workOrderCreateForm = (
 
           {activeSection === "comms" && (
           <Card className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-200 pb-2">
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950">Communications</h2>
+            <div className="flex items-center justify-between gap-3 mb-4 border-b border-line pb-2">
+              <h2 className="text-base sm:text-lg font-bold tracking-tight text-ink">Communications</h2>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-ink-muted">
                   {queuedCommunications.length} queued
                 </span>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-[11px]"
+                  className="h-7 text-xs"
                   type="button"
                   disabled={!cloudEnabled || isDeliveringCommunications || queuedCommunications.length === 0}
                   onClick={() => handleDeliverQueued(25)}
@@ -3173,43 +3173,43 @@ const workOrderCreateForm = (
 
             <div className="space-y-3 max-h-[260px] overflow-auto pr-1">
               {allCommunications.length === 0 && (
-                <p className="text-sm text-slate-500">No communication events yet.</p>
+                <p className="text-sm text-ink-muted">No communication events yet.</p>
               )}
               {allCommunications.slice(0, 20).map((item) => (
-                <div key={item._id} className="rounded-lg border border-slate-200 p-3">
+                <div key={item._id} className="rounded-lg border border-line p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium text-sm text-slate-900">
+                    <p className="font-medium text-sm text-ink">
                       {(item.template_key || item.type || "event").replaceAll("_", " ")}
                     </p>
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${communicationStatusBadgeClass(item.status)}`}>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${communicationStatusBadgeClass(item.status)}`}>
                       {item.status}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-ink-secondary">
                     {item.channel?.toUpperCase?.() || item.channel || "CHANNEL"} to {item.recipient}
                   </p>
-                  <p className="text-xs text-slate-500">{item.message}</p>
+                  <p className="text-xs text-ink-muted">{item.message}</p>
                   <div className="mt-1 space-y-0.5">
                     {item.provider && (
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-xs text-ink-muted">
                         Provider: {item.provider}
                         {item.provider_message_id ? ` (${item.provider_message_id})` : ""}
                       </p>
                     )}
                     {Number.isFinite(item.attempts) && (
-                      <p className="text-[11px] text-slate-500">Attempts: {item.attempts}</p>
+                      <p className="text-xs text-ink-muted">Attempts: {item.attempts}</p>
                     )}
                     {item.last_attempt_at && (
-                      <p className="text-[11px] text-slate-500">Last Attempt: {formatTimestamp(item.last_attempt_at)}</p>
+                      <p className="text-xs text-ink-muted">Last Attempt: {formatTimestamp(item.last_attempt_at)}</p>
                     )}
                     {item.sent_at && (
-                      <p className="text-[11px] text-slate-500">Sent: {formatTimestamp(item.sent_at)}</p>
+                      <p className="text-xs text-ink-muted">Sent: {formatTimestamp(item.sent_at)}</p>
                     )}
                     {item.delivered_at && (
-                      <p className="text-[11px] text-cyan-700">Delivered: {formatTimestamp(item.delivered_at)}</p>
+                      <p className="text-xs text-brand-ink">Delivered: {formatTimestamp(item.delivered_at)}</p>
                     )}
                     {item.error && (
-                      <p className="text-[11px] text-rose-700">Error: {item.error}</p>
+                      <p className="text-xs text-critical">Error: {item.error}</p>
                     )}
                   </div>
                 </div>
@@ -3221,20 +3221,20 @@ const workOrderCreateForm = (
 
       {activeSection === "dispatch" && (
       <Card className="p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-200 pb-2">
-          <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-950 flex items-center gap-2">
-            <PoolIcon name="workOrders" className="h-4 w-4 text-cyan-700" />
+        <div className="flex items-center justify-between gap-3 mb-4 border-b border-line pb-2">
+          <h2 className="text-base sm:text-lg font-bold tracking-tight text-ink flex items-center gap-2">
+            <PoolIcon name="workOrders" className="h-4 w-4 text-brand-ink" />
             Work Orders
           </h2>
-          <span className="text-xs text-slate-500">{workOrders.length} total</span>
+          <span className="text-xs text-ink-muted">{workOrders.length} total</span>
         </div>
 
         <div className="space-y-3">
           {workOrders.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center">
+            <div className="rounded-lg border border-dashed border-line bg-surface-2 p-8 text-center">
               <IconBadge name="workOrders" size="lg" className="mx-auto mb-4" iconClassName="h-6 w-6" />
-              <h3 className="text-base font-semibold text-slate-900">No jobs scheduled</h3>
-              <p className="mt-1 text-sm text-slate-600">
+              <h3 className="text-base font-semibold text-ink">No jobs scheduled</h3>
+              <p className="mt-1 text-sm text-ink-secondary">
                 Add your first work order for {selectedDate} to start dispatching.
               </p>
               <Button
@@ -3257,41 +3257,41 @@ const workOrderCreateForm = (
             const hasInvoice = Boolean(linkedInvoice || invoicedWorkOrderIds.has(String(order._id)));
 
             return (
-              <div key={order._id} className="border border-slate-200 rounded-lg p-3 space-y-3 bg-white">
+              <div key={order._id} className="border border-line rounded-lg p-3 space-y-3 bg-white">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium text-slate-900 text-sm">{order.title}</p>
-                    <p className="text-xs text-slate-600">{customer?.full_name || "Unknown customer"}</p>
+                    <p className="font-medium text-ink text-sm">{order.title}</p>
+                    <p className="text-xs text-ink-secondary">{customer?.full_name || "Unknown customer"}</p>
                   </div>
-                  <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${statusBadgeClass(order.status)}`}>
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusBadgeClass(order.status)}`}>
                     {order.status.replace("_", " ")}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-slate-600">
+                <div className="flex items-center gap-2 text-xs text-ink-secondary">
                   <UserRound className="w-3.5 h-3.5" />
                   {order.assignee_email || "Unassigned"}
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {linkedQuote && (
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${quoteStatusBadgeClass(linkedQuote.status)}`}>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${quoteStatusBadgeClass(linkedQuote.status)}`}>
                       Quote {linkedQuote.status}
                     </span>
                   )}
                   {linkedQuote && linkedQuote.deposit_required > 0 && (
                     <span
-                      className={`text-[10px] px-2 py-1 rounded-full font-medium ${
+                      className={`text-xs px-2 py-1 rounded-full font-medium ${
                         linkedQuote.deposit_status === "paid"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-amber-100 text-amber-700"
+                          ? "bg-[var(--status-ok-soft)] text-ok"
+                          : "bg-[var(--status-watch-soft)] text-watch"
                       }`}
                     >
                       Deposit {linkedQuote.deposit_status === "paid" ? "paid" : "pending"}
                     </span>
                   )}
                   {linkedInvoice && (
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${invoiceStatusBadgeClass(linkedInvoice.status)}`}>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${invoiceStatusBadgeClass(linkedInvoice.status)}`}>
                       Invoice {linkedInvoice.status}
                     </span>
                   )}
@@ -3352,7 +3352,7 @@ const workOrderCreateForm = (
 
                   <Button
                     variant="outline"
-                    className="h-11 sm:h-8 text-sm sm:text-xs w-full sm:w-auto text-rose-600 border-rose-200 hover:bg-rose-50"
+                    className="h-11 sm:h-8 text-sm sm:text-xs w-full sm:w-auto text-critical border-[var(--status-critical-line)] hover:bg-[var(--status-critical-soft)]"
                     onClick={() => handleRemove(order._id)}
                   >
                     <Trash2 className="w-3.5 h-3.5 mr-1" />
@@ -3370,7 +3370,7 @@ const workOrderCreateForm = (
         <button
           type="button"
           onClick={() => setMobileCreateDrawerOpen(true)}
-          className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-6 z-40 lg:hidden h-14 w-14 rounded-full bg-cyan-600 text-white shadow-[0_18px_44px_-18px_rgba(8,145,178,0.95)] hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 flex items-center justify-center"
+          className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-6 z-40 lg:hidden h-14 w-14 rounded-full bg-brand text-white shadow-cta hover:bg-brand-strong focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 flex items-center justify-center"
           aria-label={mobileCreateDrawerTitle}
         >
           <Plus className="w-6 h-6" />
@@ -3402,9 +3402,9 @@ function WorkOrdersAvailability({ state, error }) {
   const loading = state === "loading";
   return (
     <div className="mx-auto flex min-h-[50vh] w-full max-w-2xl items-center px-4 sm:px-6">
-      <Card className="w-full rounded-[1.5rem] border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-950">{loading ? "Loading Work Orders" : "Work Orders is unavailable"}</h1>
-        <p className="mt-2 text-sm text-slate-600">
+      <Card className="w-full rounded-sheet border border-line bg-white p-6 text-center shadow-sm">
+        <h1 className="text-xl font-semibold text-ink">{loading ? "Loading Work Orders" : "Work Orders is unavailable"}</h1>
+        <p className="mt-2 text-sm text-ink-secondary">
           {loading
             ? "Confirming your cloud business before loading financial records."
             : error || "Connect to a cloud business to view or change work orders, invoices, quotes, communications, reminders, and payment links."}
