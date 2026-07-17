@@ -26,7 +26,8 @@ export const getCurrent = query({
       .first();
 
     if (teamMember) {
-      return await ctx.db.get(teamMember.business_id);
+      const teamBusiness = await ctx.db.get(teamMember.business_id);
+      if (teamBusiness) return teamBusiness;
     }
 
     // Check if user owns a business

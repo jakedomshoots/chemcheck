@@ -44,12 +44,17 @@ import {
 } from "@/lib/workOrderLifecycle";
 import { downloadInvoicePdf, downloadQuotePdf } from "@/lib/workOrderDocuments";
 import { normalizeTaxRateInput } from "@/lib/taxRate";
+import { useCustomers } from "@/api/dexieHooks";
+import { useLocalWorkOrders } from "@/lib/localWorkOrders";
+import { shouldUseLocalhostAuthBypass } from "@/lib/platformPolicy";
 import {
   getDefaultWorkOrdersSectionFromStorage,
   isWorkOrdersSplitEnabled,
   normalizeWorkOrdersSection,
 } from "@/lib/workOrdersNavigation";
 import { getWorkOrdersCloudState, requireWorkOrdersCloud } from "@/lib/workOrdersCloud";
+
+const CLOUD_BUSINESS_RESOLUTION_TIMEOUT_MS = 12_000;
 
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -325,6 +330,7 @@ function isValidRecipientForChannel(channel, recipient) {
 }
 
 function WorkOrdersContent() {
+  const localDevMode = shouldUseLocalhostAuthBypass();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -479,8 +485,32 @@ function WorkOrdersContent() {
   }, []);
 
   const currentBusiness = useQuery(api.businesses.getCurrent, {});
-  const workOrdersCloudState = getWorkOrdersCloudState(currentBusiness);
-  const cloudEnabled = workOrdersCloudState === "ready";
+  const localCustomers = useCustomers();
+  const localWorkOrders = useLocalWorkOrders(localDevMode);
+  const [businessResolutionTimedOut, setBusinessResolutionTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (currentBusiness !== undefined) {
+      setBusinessResolutionTimedOut(false);
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(
+      () => setBusinessResolutionTimedOut(true),
+      CLOUD_BUSINESS_RESOLUTION_TIMEOUT_MS
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [currentBusiness]);
+
+  const workOrdersCloudState = localDevMode
+    ? "ready"
+    : businessResolutionTimedOut
+      ? "unavailable"
+      : getWorkOrdersCloudState(currentBusiness);
+  const cloudBusinessError = businessResolutionTimedOut
+    ? "We could not reach your cloud business. Check the connection and cloud configuration, then try again."
+    : undefined;
+  const cloudEnabled = workOrdersCloudState === "ready" && !localDevMode;
 
   const cloudCustomersData = useQuery(api.customers.list, cloudEnabled ? {} : "skip");
   const teamMembersData = useQuery(api.businesses.getTeamMembers, cloudEnabled ? {} : "skip");
@@ -502,44 +532,76 @@ function WorkOrdersContent() {
     cloudEnabled ? { numItems: 1000 } : "skip"
   );
 
-  const createWorkOrder = useMutation(api.workOrders.create);
-  const updateWorkOrder = useMutation(api.workOrders.update);
-  const completeWorkOrder = useMutation(api.workOrders.complete);
-  const removeWorkOrder = useMutation(api.workOrders.remove);
-  const createInvoiceDraft = useMutation(api.invoices.createDraft);
-  const batchCreateFromCompletedWorkOrders = useMutation(api.invoices.batchCreateFromCompletedWorkOrders);
-  const sendInvoiceWithStripe = useAction(api.payments.sendInvoiceWithStripe);
-  const syncCheckoutSessionStatus = useAction(api.payments.syncCheckoutSessionStatus);
-  const deliverCommunication = useAction(api.communications.deliver);
-  const deliverQueuedCommunications = useAction(api.communications.deliverQueued);
-  const requeueFailedCommunications = useMutation(api.communications.requeueFailed);
-  const markInvoicePaid = useMutation(api.invoices.markPaid);
-  const queueUnpaidReminders = useMutation(api.invoices.queueUnpaidReminders);
-  const createQuote = useMutation(api.quotes.create);
-  const updateQuoteStatus = useMutation(api.quotes.updateStatus);
-  const convertQuoteToWorkOrder = useMutation(api.quotes.convertToWorkOrder);
-  const createDepositPaymentLink = useAction(api.payments.createDepositPaymentLink);
+  const createCloudWorkOrder = useMutation(api.workOrders.create);
+  const updateCloudWorkOrder = useMutation(api.workOrders.update);
+  const completeCloudWorkOrder = useMutation(api.workOrders.complete);
+  const removeCloudWorkOrder = useMutation(api.workOrders.remove);
+  const createCloudInvoiceDraft = useMutation(api.invoices.createDraft);
+  const batchCreateCloudInvoices = useMutation(api.invoices.batchCreateFromCompletedWorkOrders);
+  const sendCloudInvoiceWithStripe = useAction(api.payments.sendInvoiceWithStripe);
+  const syncCloudCheckoutSessionStatus = useAction(api.payments.syncCheckoutSessionStatus);
+  const deliverCloudCommunication = useAction(api.communications.deliver);
+  const deliverCloudQueuedCommunications = useAction(api.communications.deliverQueued);
+  const requeueCloudFailedCommunications = useMutation(api.communications.requeueFailed);
+  const markCloudInvoicePaid = useMutation(api.invoices.markPaid);
+  const queueCloudUnpaidReminders = useMutation(api.invoices.queueUnpaidReminders);
+  const createCloudQuote = useMutation(api.quotes.create);
+  const updateCloudQuoteStatus = useMutation(api.quotes.updateStatus);
+  const convertCloudQuoteToWorkOrder = useMutation(api.quotes.convertToWorkOrder);
+  const createCloudDepositPaymentLink = useAction(api.payments.createDepositPaymentLink);
 
   const cloudCustomers = useMemo(() => cloudCustomersData ?? [], [cloudCustomersData]);
-  const customers = cloudCustomers;
+  const customers = localDevMode ? localCustomers : cloudCustomers;
 
   const teamMembers = useMemo(() => teamMembersData ?? [], [teamMembersData]);
 
-  const workOrders = useMemo(() => workOrdersData?.page ?? [], [workOrdersData]);
+  const workOrders = useMemo(
+    () => localDevMode
+      ? localWorkOrders.workOrders.filter((order) => order.scheduled_date === selectedDate)
+      : workOrdersData?.page ?? [],
+    [localDevMode, localWorkOrders.workOrders, selectedDate, workOrdersData]
+  );
 
-  const allWorkOrders = useMemo(() => allWorkOrdersData?.page ?? [], [allWorkOrdersData]);
+  const allWorkOrders = useMemo(
+    () => localDevMode ? localWorkOrders.workOrders : allWorkOrdersData?.page ?? [],
+    [allWorkOrdersData, localDevMode, localWorkOrders.workOrders]
+  );
 
   const allInvoices = useMemo(
-    () => (allInvoicesData?.page ?? []).map((invoice) => normalizeInvoiceRecord(invoice)),
-    [allInvoicesData]
+    () => (localDevMode ? localWorkOrders.invoices : allInvoicesData?.page ?? []).map((invoice) => normalizeInvoiceRecord(invoice)),
+    [allInvoicesData, localDevMode, localWorkOrders.invoices]
   );
 
   const allQuotes = useMemo(
-    () => (allQuotesData ?? []).map((quote) => normalizeQuoteRecord(quote)),
-    [allQuotesData]
+    () => (localDevMode ? localWorkOrders.quotes : allQuotesData ?? []).map((quote) => normalizeQuoteRecord(quote)),
+    [allQuotesData, localDevMode, localWorkOrders.quotes]
   );
 
-  const allCommunications = useMemo(() => communicationsData?.page ?? [], [communicationsData]);
+  const allCommunications = useMemo(
+    () => localDevMode ? localWorkOrders.communications : communicationsData?.page ?? [],
+    [communicationsData, localDevMode, localWorkOrders.communications]
+  );
+
+  const localOnlyAction = async () => {
+    throw new Error("Sending messages and collecting payments require a cloud connection.");
+  };
+  const createWorkOrder = localDevMode ? localWorkOrders.createWorkOrder : createCloudWorkOrder;
+  const updateWorkOrder = localDevMode ? localWorkOrders.updateWorkOrder : updateCloudWorkOrder;
+  const completeWorkOrder = localDevMode ? localWorkOrders.completeWorkOrder : completeCloudWorkOrder;
+  const removeWorkOrder = localDevMode ? localWorkOrders.removeWorkOrder : removeCloudWorkOrder;
+  const createInvoiceDraft = localDevMode ? localWorkOrders.createInvoiceDraft : createCloudInvoiceDraft;
+  const batchCreateFromCompletedWorkOrders = localDevMode ? localWorkOrders.batchCreateFromCompletedWorkOrders : batchCreateCloudInvoices;
+  const sendInvoiceWithStripe = localDevMode ? localOnlyAction : sendCloudInvoiceWithStripe;
+  const syncCheckoutSessionStatus = localDevMode ? localOnlyAction : syncCloudCheckoutSessionStatus;
+  const deliverCommunication = localDevMode ? localOnlyAction : deliverCloudCommunication;
+  const deliverQueuedCommunications = localDevMode ? localOnlyAction : deliverCloudQueuedCommunications;
+  const requeueFailedCommunications = localDevMode ? localOnlyAction : requeueCloudFailedCommunications;
+  const markInvoicePaid = localDevMode ? localWorkOrders.markInvoicePaid : markCloudInvoicePaid;
+  const queueUnpaidReminders = localDevMode ? async () => ({ queued: 0 }) : queueCloudUnpaidReminders;
+  const createQuote = localDevMode ? localWorkOrders.createQuote : createCloudQuote;
+  const updateQuoteStatus = localDevMode ? localWorkOrders.updateQuoteStatus : updateCloudQuoteStatus;
+  const convertQuoteToWorkOrder = localDevMode ? localWorkOrders.convertQuoteToWorkOrder : convertCloudQuoteToWorkOrder;
+  const createDepositPaymentLink = localDevMode ? localOnlyAction : createCloudDepositPaymentLink;
 
   const customerById = useMemo(() => {
     const map = new Map();
@@ -1032,7 +1094,7 @@ function WorkOrdersContent() {
     const unitPrice = toFiniteNumber(batchInvoiceForm.unit_price, 120);
     const taxRate = normalizeTaxRateInput(toFiniteNumber(batchInvoiceForm.tax_rate, 0));
     const dueInDays = Math.max(0, Math.floor(toFiniteNumber(batchInvoiceForm.due_in_days, 7)));
-    const autoSend = Boolean(batchInvoiceForm.auto_send);
+    const autoSend = !localDevMode && Boolean(batchInvoiceForm.auto_send);
 
     setIsBatchInvoicing(true);
     try {
@@ -2285,7 +2347,7 @@ const workOrderCreateForm = (
   const hideOverviewPanelsOnMobile = activeSection !== "dispatch";
 
   if (workOrdersCloudState !== "ready") {
-    return <WorkOrdersAvailability state={workOrdersCloudState} />;
+    return <WorkOrdersAvailability state={workOrdersCloudState} error={cloudBusinessError} />;
   }
 
   return (

@@ -85,4 +85,3 @@ export function getAuthBypassReason(): 'disabled' | 'localhost' | 'ios-simulator
   if (shouldUseIosSimulatorAuthBypass()) return 'ios-simulator';
   return 'none';
 }
-

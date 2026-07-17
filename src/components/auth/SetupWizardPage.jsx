@@ -57,8 +57,8 @@ export function SetupWizardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Convex mutations for syncing business to cloud
-  const updateConvexBusiness = useMutation(api.businesses.update);
+  // Convex mutations for creating and configuring the cloud business.
+  const createConvexBusiness = useMutation(api.businesses.create);
   const updateConvexBusinessSettings = useMutation(api.businesses.updateSettings);
 
   const [formData, setFormData] = useState({
@@ -256,9 +256,9 @@ export function SetupWizardPage() {
       // Update business owner using service method
       await userManager.updateBusinessOwner(business.id, user.id);
 
-      // Sync business to Convex cloud (so Settings page can read it)
+      // Create the cloud tenant before saving its schedule and service settings.
       try {
-        await updateConvexBusiness({
+        await createConvexBusiness({
           name: formData.businessName.trim(),
           address: formData.businessAddress.trim() || undefined,
           phone: formData.businessPhone.trim() || undefined,
