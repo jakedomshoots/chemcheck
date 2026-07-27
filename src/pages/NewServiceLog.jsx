@@ -432,27 +432,53 @@ export default function NewServiceLog() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 pb-28 pt-4 font-sans sm:px-6 lg:px-8">
-      <div
-        className="mb-5 rounded-sheet border border-line bg-surface-1 p-4 shadow-card"
+      <section
+        aria-labelledby="service-log-title"
+        className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 shadow-card"
         style={transitionName(`customer-${customerIdParam}`)}
       >
-        <BackButton
-          fallback={createPageUrl("Home")}
-          label={backToRouteLabel}
-          className="mb-4"
-        />
+        <div className="flex min-h-12 items-center justify-between gap-2 border-b border-line bg-surface-2 px-2 py-1.5 sm:px-3">
+          <BackButton
+            fallback={createPageUrl("Home")}
+            label={backToRouteLabel}
+            className="h-10 min-w-0 justify-start rounded-full px-3 text-sm font-semibold text-ink-secondary shadow-none hover:bg-surface-1 hover:text-ink"
+          />
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Field service</p>
-            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink">Service Log</h2>
-            <p className="mt-1 truncate text-sm font-medium text-ink-muted">{customer.full_name}</p>
-            {formattedDraftTime && (
-              <p className="mt-2 text-xs font-medium text-ink-muted">Draft saved at {formattedDraftTime}</p>
-            )}
+          {formattedDraftTime && (
+            <span
+              role="status"
+              aria-live="polite"
+              aria-label={`Draft saved at ${formattedDraftTime}`}
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-[var(--status-ok-line)] bg-[var(--status-ok-soft)] px-2.5 text-[0.6875rem] font-semibold text-[var(--status-ok-ink)]"
+            >
+              <PoolIcon name="done" className="h-3.5 w-3.5" />
+              <span className="tabular-nums">Saved {formattedDraftTime}</span>
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 px-4 py-4 sm:px-5">
+          <IconBadge
+            name="ops"
+            size="md"
+            className="bg-brand-softer text-brand-ink"
+            iconClassName="h-5 w-5"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2 text-[0.6875rem] font-semibold leading-4">
+              <span className="shrink-0 uppercase tracking-[0.18em] text-brand-ink">Field service</span>
+              <span className="h-1 w-1 shrink-0 rounded-full bg-line" aria-hidden="true" />
+              <span className="truncate text-ink-secondary">{customer.full_name}</span>
+            </div>
+            <h1
+              id="service-log-title"
+              className="mt-1 text-2xl font-semibold leading-tight tracking-[-0.04em] text-ink"
+            >
+              Service Log
+            </h1>
           </div>
         </div>
-      </div>
+      </section>
 
       <form onSubmit={handleSubmit}>
         {startTime && (

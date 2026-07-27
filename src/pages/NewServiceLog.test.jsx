@@ -75,6 +75,7 @@ vi.mock('react-router-dom', async () => {
 
 beforeEach(() => {
     mockNavigate.mockReset();
+    window.localStorage.clear();
     // Default URL: no customerId param so the missing-client state applies.
     window.history.pushState({}, 'Test Page', '/newservicelog');
 });
@@ -83,8 +84,24 @@ describe('New Service Log Page', () => {
     it('renders the form', () => {
         window.history.pushState({}, 'Test Page', '/?customerId=1');
         render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
-        expect(screen.getByText(/Service Log/i)).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Service Log' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Service Log', level: 1 })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Back to Route' })).toBeInTheDocument();
         expect(screen.getByText(/Alice Smith/i)).toBeInTheDocument();
+    });
+
+    it('presents a restored draft as a compact live save status', async () => {
+        window.localStorage.setItem('serviceLogDraft_1', JSON.stringify({
+            formData: {},
+            savedAt: '2026-07-27T18:35:00.000Z',
+        }));
+        window.history.pushState({}, 'Test Page', '/?customerId=1');
+
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        const savedStatus = await screen.findByRole('status');
+        expect(savedStatus).toHaveAccessibleName(/Draft saved at/i);
+        expect(savedStatus).toHaveTextContent(/Saved/i);
     });
 
     it('allows entering readings', () => {
