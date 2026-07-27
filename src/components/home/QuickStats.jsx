@@ -21,15 +21,17 @@ const QuickStats = memo(function QuickStats({ total, completed, pending, skipped
       data-testid="quick-stats"
       role="region"
       aria-label="Quick Statistics"
-      className={`mb-4 grid gap-2 ${skipped > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}
+      className={`mb-4 grid overflow-hidden rounded-card border border-line bg-surface-1 ${skipped > 0 ? "grid-cols-4" : "grid-cols-3"}`}
     >
-      {stats.map((stat) => (
+      {stats.map((stat, index) => (
         <StatBlock
           key={stat.label}
+          dataTestId={`quick-stat-${stat.label.toLowerCase()}`}
           label={stat.label}
           value={stat.value}
           icon={stat.icon}
           tone={stat.tone}
+          className={index > 0 ? "border-l border-line" : undefined}
         />
       ))}
     </div>

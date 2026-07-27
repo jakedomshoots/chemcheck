@@ -41,16 +41,21 @@ export function CustomerCardSkeleton() {
 }
 
 /**
- * Skeleton for QuickStats - matches 3-column grid
+ * Skeleton for QuickStats - matches the connected 3-column summary strip.
  */
 export function QuickStatsSkeleton() {
   return (
-    <div className="grid grid-cols-3 gap-2 mb-4">
+    <div className="mb-4 grid grid-cols-3 overflow-hidden rounded-card border border-line bg-surface-1">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="rounded-xl bg-surface-2 p-3">
-          <Skeleton className="w-4 h-4 mb-1" />
-          <Skeleton className="h-6 w-8 mb-1" />
-          <Skeleton className="h-3 w-12" />
+        <div
+          key={i}
+          className={`flex min-h-14 items-center justify-center gap-2 px-2.5 py-2 ${i > 1 ? 'border-l border-line' : ''}`}
+        >
+          <Skeleton className="h-4 w-4 shrink-0" />
+          <div className="space-y-1">
+            <Skeleton className="h-5 w-6" />
+            <Skeleton className="h-2.5 w-10" />
+          </div>
         </div>
       ))}
     </div>

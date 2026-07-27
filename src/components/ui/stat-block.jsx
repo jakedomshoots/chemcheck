@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 const toneStyles = {
   neutral: { icon: 'text-ink-muted', value: 'text-ink' },
   brand: { icon: 'text-info', value: 'text-ink' },
+  info: { icon: 'text-brand-ink', value: 'text-brand-ink' },
   ok: { icon: 'text-ok', value: 'text-ok' },
   watch: { icon: 'text-watch', value: 'text-watch' },
   action: { icon: 'text-action', value: 'text-action' },
@@ -26,19 +27,25 @@ export function StatBlock({ label, value, icon, tone = 'neutral', suffix, classN
   return (
     <div
       data-testid={dataTestId}
+      role="group"
+      aria-label={`${label}: ${value}${suffix ? ` ${suffix}` : ''}`}
       className={cn(
-        'rounded-raised border border-line bg-surface-1 p-3 shadow-card sm:p-4',
+        'flex min-h-14 min-w-0 items-center justify-center gap-2 px-2.5 py-2 sm:px-3',
         className
       )}
     >
       {icon && (
-        <PoolIcon name={icon} className={cn('mb-2 h-4 w-4', styles.icon)} aria-hidden="true" />
+        <PoolIcon name={icon} className={cn('h-4 w-4', styles.icon)} aria-hidden="true" />
       )}
-      <div className={cn('font-data text-2xl font-semibold tracking-[-0.02em]', styles.value)}>
-        {value}
-        {suffix && <span className="ml-1 text-sm font-medium text-ink-muted">{suffix}</span>}
+      <div className="min-w-0">
+        <div className={cn('font-data text-xl font-semibold leading-none tracking-[-0.02em]', styles.value)}>
+          {value}
+          {suffix && <span className="ml-1 text-xs font-medium text-ink-muted">{suffix}</span>}
+        </div>
+        <div className="mt-0.5 truncate text-[0.6875rem] font-semibold leading-4 text-ink-muted">
+          {label}
+        </div>
       </div>
-      <div className="mt-1 text-xs font-semibold text-ink-muted">{label}</div>
     </div>
   );
 }
