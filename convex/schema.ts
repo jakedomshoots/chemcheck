@@ -380,6 +380,9 @@ export default defineSchema({
     updated_at: v.number(),
   })
     .index("by_created_by", ["created_by"])
+    .index("by_created_by_and_status", ["created_by", "status", "created_at"])
+    .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"])
+    .index("by_created_by_and_customer_and_status", ["created_by", "customer_id", "status", "created_at"])
     .index("by_customer", ["customer_id"])
     .index("by_status", ["status"])
     .index("by_converted_work_order", ["converted_work_order_id"])

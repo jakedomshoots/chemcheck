@@ -55,6 +55,7 @@ import {
 import { getWorkOrdersCloudState, requireWorkOrdersCloud } from "@/lib/workOrdersCloud";
 
 const CLOUD_BUSINESS_RESOLUTION_TIMEOUT_MS = 12_000;
+const CLOUD_PAGE_SIZE = 200;
 
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -512,24 +513,30 @@ function WorkOrdersContent() {
     : undefined;
   const cloudEnabled = workOrdersCloudState === "ready" && !localDevMode;
 
-  const cloudCustomersData = useQuery(api.customers.list, cloudEnabled ? {} : "skip");
+  const cloudCustomersData = useQuery(
+    api.customers.listPaginated,
+    cloudEnabled ? { limit: CLOUD_PAGE_SIZE } : "skip"
+  );
   const teamMembersData = useQuery(api.businesses.getTeamMembers, cloudEnabled ? {} : "skip");
   const workOrdersData = useQuery(
     api.workOrders.list,
-    cloudEnabled ? { scheduled_date: selectedDate, numItems: 1000 } : "skip"
+    cloudEnabled ? { scheduled_date: selectedDate, numItems: CLOUD_PAGE_SIZE } : "skip"
   );
   const allWorkOrdersData = useQuery(
     api.workOrders.list,
-    cloudEnabled ? { numItems: 1000 } : "skip"
+    cloudEnabled ? { numItems: CLOUD_PAGE_SIZE } : "skip"
   );
   const allInvoicesData = useQuery(
     api.invoices.list,
-    cloudEnabled ? { numItems: 1000 } : "skip"
+    cloudEnabled ? { numItems: CLOUD_PAGE_SIZE } : "skip"
   );
-  const allQuotesData = useQuery(api.quotes.list, cloudEnabled ? {} : "skip");
+  const allQuotesData = useQuery(
+    api.quotes.list,
+    cloudEnabled ? { numItems: CLOUD_PAGE_SIZE } : "skip"
+  );
   const communicationsData = useQuery(
     api.communications.list,
-    cloudEnabled ? { numItems: 1000 } : "skip"
+    cloudEnabled ? { numItems: CLOUD_PAGE_SIZE } : "skip"
   );
 
   const createCloudWorkOrder = useMutation(api.workOrders.create);
@@ -550,7 +557,7 @@ function WorkOrdersContent() {
   const convertCloudQuoteToWorkOrder = useMutation(api.quotes.convertToWorkOrder);
   const createCloudDepositPaymentLink = useAction(api.payments.createDepositPaymentLink);
 
-  const cloudCustomers = useMemo(() => cloudCustomersData ?? [], [cloudCustomersData]);
+  const cloudCustomers = useMemo(() => cloudCustomersData?.customers ?? [], [cloudCustomersData]);
   const customers = localDevMode ? localCustomers : cloudCustomers;
 
   const teamMembers = useMemo(() => teamMembersData ?? [], [teamMembersData]);
@@ -573,7 +580,7 @@ function WorkOrdersContent() {
   );
 
   const allQuotes = useMemo(
-    () => (localDevMode ? localWorkOrders.quotes : allQuotesData ?? []).map((quote) => normalizeQuoteRecord(quote)),
+    () => (localDevMode ? localWorkOrders.quotes : allQuotesData?.page ?? []).map((quote) => normalizeQuoteRecord(quote)),
     [allQuotesData, localDevMode, localWorkOrders.quotes]
   );
 
@@ -581,6 +588,14 @@ function WorkOrdersContent() {
     () => localDevMode ? localWorkOrders.communications : communicationsData?.page ?? [],
     [communicationsData, localDevMode, localWorkOrders.communications]
   );
+
+  const hasTruncatedCloudData = cloudEnabled && [
+    workOrdersData,
+    allWorkOrdersData,
+    allInvoicesData,
+    allQuotesData,
+    communicationsData,
+  ].some((result) => result?.isDone === false) || Boolean(cloudEnabled && cloudCustomersData?.hasMore);
 
   const localOnlyAction = async () => {
     throw new Error("Sending messages and collecting payments require a cloud connection.");
@@ -2375,6 +2390,15 @@ const workOrderCreateForm = (
           )}
         </div>
       </div>
+
+      {hasTruncatedCloudData && (
+        <div
+          role="status"
+          className="rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-4 py-3 text-sm font-medium text-watch"
+        >
+          Showing up to {CLOUD_PAGE_SIZE} records per data set. Totals may be incomplete; narrow the date or status filters for an exact view.
+        </div>
+      )}
 
       <Card className="rounded-sheet border border-line bg-surface-1 p-2.5 shadow-card sm:p-4">
         <div className="flex flex-col gap-2.5 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">

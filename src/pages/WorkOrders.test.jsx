@@ -18,6 +18,16 @@ vi.mock('convex/react', () => ({
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), message: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/api/dexieHooks', () => ({ useCustomers: () => useCustomersMock() }));
 vi.mock('@/lib/platformPolicy', () => ({ shouldUseLocalhostAuthBypass: () => localhostBypassMock() }));
+vi.mock('@/components/ui/checkbox', () => ({
+  Checkbox: ({ checked, onCheckedChange, ...props }) => (
+    <input
+      type="checkbox"
+      checked={Boolean(checked)}
+      onChange={(event) => onCheckedChange?.(event.target.checked)}
+      {...props}
+    />
+  ),
+}));
 
 describe('WorkOrders cloud gate', () => {
   beforeEach(() => {
@@ -58,6 +68,26 @@ describe('WorkOrders cloud gate', () => {
 
     expect(screen.getByRole('heading', { name: 'Work Orders is unavailable' })).toBeInTheDocument();
     expect(screen.getByText(/could not reach your cloud business/i)).toBeInTheDocument();
+  });
+
+  it('discloses when cloud metrics only cover a bounded data window', () => {
+    const completePage = { page: [], continueCursor: '', isDone: true };
+    const truncatedPage = { page: [], continueCursor: 'next-page', isDone: false };
+
+    useQueryMock
+      .mockReturnValueOnce({ _id: 'business-1', name: 'ChemCheck' })
+      .mockReturnValueOnce({ customers: [], cursor: 'next-customers', hasMore: true })
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce(completePage)
+      .mockReturnValueOnce(truncatedPage)
+      .mockReturnValueOnce(completePage)
+      .mockReturnValueOnce(completePage)
+      .mockReturnValueOnce(completePage);
+
+    render(<BrowserRouter><WorkOrders /></BrowserRouter>);
+
+    expect(screen.getByRole('status')).toHaveTextContent(/showing up to 200 records per data set/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/totals may be incomplete/i);
   });
 
 });

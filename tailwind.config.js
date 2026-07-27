@@ -25,8 +25,8 @@ module.exports = {
                         cta: 'var(--shadow-cta)',
                 },
                 transitionTimingFunction: {
-                        standard: 'var(--ease-standard)',
-                        spring: 'var(--ease-spring)',
+                        standard: 'var(--motion-standard)',
+                        spring: 'var(--motion-spring)',
                 },
                 colors: {
                         brand: {

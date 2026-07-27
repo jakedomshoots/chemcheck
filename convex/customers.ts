@@ -4,6 +4,7 @@ import { enforceRateLimit } from "./rateLimit";
 import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
 
 const CUSTOMER_WRITE_ROLES = new Set(["owner", "admin"]);
+const DEFAULT_LIST_LIMIT = 100;
 
 function normalizeEmail(email: any): string {
     return String(email || "").trim().toLowerCase();
@@ -47,27 +48,25 @@ async function getActiveBusinessMemberEmails(
     return emails;
 }
 
-async function listAccessibleCustomers(ctx: any, userEmail: string) {
+async function getAccessibleCustomersQuery(ctx: any, userEmail: string) {
     // Guard: if userEmail is undefined/empty (e.g. Clerk token missing email claim),
     // throw a clear error instead of silently returning an empty list.
     const normalizedEmail = normalizeEmail(userEmail);
     if (!normalizedEmail) {
-        throw new Error("listAccessibleCustomers: userEmail is empty or undefined. Check that the Clerk JWT includes an email claim.");
+        throw new Error("getAccessibleCustomersQuery: userEmail is empty or undefined. Check that the Clerk JWT includes an email claim.");
     }
 
     const business = await resolveBusinessContext(ctx, userEmail);
 
     if (business) {
-        return await ctx.db
+        return ctx.db
             .query("customers")
-            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
-            .collect();
+            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)));
     }
 
-    return await ctx.db
+    return ctx.db
         .query("customers")
-        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
-        .collect();
+        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail));
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
@@ -149,10 +148,8 @@ export const list = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        const customers = await listAccessibleCustomers(ctx, identity.email!);
-        // Default limit keeps the query bounded while remaining compatible with existing callers.
-        const DEFAULT_LIST_LIMIT = 100;
-        return customers.slice(0, DEFAULT_LIST_LIMIT);
+        const customerQuery = await getAccessibleCustomersQuery(ctx, identity.email!);
+        return await customerQuery.take(DEFAULT_LIST_LIMIT);
     },
 });
 

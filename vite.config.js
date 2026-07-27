@@ -28,7 +28,6 @@ const manualChunkGroups = {
   'vendor-validation': ['zod'],
   'vendor-dates': ['date-fns'],
   'vendor-router': ['react-router', 'react-router-dom'],
-  'vendor-stripe': ['@stripe/stripe-js'],
   'vendor-convex': ['convex'],
   'vendor-dexie-core': ['dexie'],
   'vendor-dexie-hooks': ['dexie-react-hooks'],

@@ -79,30 +79,62 @@ function resolveCommunicationDestination(
   throw new Error("Cannot send deposit request: customer needs a valid phone or email.");
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
+
+function clampPageSize(numItems: number | undefined): number {
+  return Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(numItems ?? DEFAULT_PAGE_SIZE)));
+}
+
 export const list = query({
   args: {
     status: v.optional(v.string()),
     customer_id: v.optional(v.id("customers")),
+    cursor: v.optional(v.string()),
+    numItems: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    let quotes = await ctx.db
-      .query("quotes")
-      .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
-      .collect();
+    const email = identity.email!;
+    const numItems = clampPageSize(args.numItems);
+    let quoteQuery;
 
-    if (args.status) {
-      quotes = quotes.filter((quote) => quote.status === args.status);
+    if (args.customer_id && args.status) {
+      quoteQuery = ctx.db
+        .query("quotes")
+        .withIndex("by_created_by_and_customer_and_status", (q) =>
+          q.eq("created_by", email).eq("customer_id", args.customer_id!).eq("status", args.status!)
+        );
+    } else if (args.customer_id) {
+      quoteQuery = ctx.db
+        .query("quotes")
+        .withIndex("by_created_by_and_customer", (q) =>
+          q.eq("created_by", email).eq("customer_id", args.customer_id!)
+        );
+    } else if (args.status) {
+      quoteQuery = ctx.db
+        .query("quotes")
+        .withIndex("by_created_by_and_status", (q) =>
+          q.eq("created_by", email).eq("status", args.status!)
+        );
+    } else {
+      quoteQuery = ctx.db
+        .query("quotes")
+        .withIndex("by_created_by", (q) => q.eq("created_by", email));
     }
 
-    if (args.customer_id) {
-      quotes = quotes.filter((quote) => quote.customer_id === args.customer_id);
-    }
+    const pageResult = await quoteQuery.order("desc").paginate({
+      cursor: args.cursor ?? null,
+      numItems,
+    });
 
-    quotes.sort((a, b) => b.created_at - a.created_at);
-    return quotes;
+    return {
+      page: pageResult.page,
+      continueCursor: pageResult.continueCursor,
+      isDone: pageResult.isDone,
+    };
   },
 });
 

@@ -90,8 +90,8 @@
     --radius: 0.75rem; /* legacy shadcn alias */
 
     /* ---- Motion ---- */
-    --ease-standard: cubic-bezier(0.23, 1, 0.32, 1);
-    --ease-spring: linear(0, 0.4021 3.6%, 0.7276 7.6%, 0.9577 12.2%, 1.0912 17.3%,
+    --motion-standard: cubic-bezier(0.23, 1, 0.32, 1);
+    --motion-spring: linear(0, 0.4021 3.6%, 0.7276 7.6%, 0.9577 12.2%, 1.0912 17.3%,
       1.1512 23%, 1.1576 29.4%, 1.1289 36.3%, 1.0821 44%, 1.0327 52.6%,
       0.9953 62.1%, 0.9761 72.9%, 0.9725 85%, 1);
     --dur-fast: 140ms;
@@ -258,7 +258,7 @@
 /* Route progress bar — width animates smoothly when --route-progress changes */
 .route-progress-bar {
   width: calc(var(--route-progress) * 1%);
-  transition: --route-progress 600ms var(--ease-standard);
+  transition: --route-progress 600ms var(--motion-standard);
 }
 
 /* CSS fallback shimmer for the caustics canvas (no WebGL) */
@@ -295,10 +295,10 @@
 /* View transitions: cross-fade default; specific names morph */
 @media (prefers-reduced-motion: no-preference) {
   ::view-transition-old(root) {
-    animation: vt-fade-out 160ms var(--ease-standard) both;
+    animation: vt-fade-out 160ms var(--motion-standard) both;
   }
   ::view-transition-new(root) {
-    animation: vt-fade-in 200ms var(--ease-standard) both;
+    animation: vt-fade-in 200ms var(--motion-standard) both;
   }
 }
 
