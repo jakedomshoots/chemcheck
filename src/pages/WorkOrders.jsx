@@ -55,7 +55,7 @@ import { downloadInvoicePdf, downloadQuotePdf } from "@/lib/workOrderDocuments";
 import { normalizeTaxRateInput } from "@/lib/taxRate";
 import { useCustomers } from "@/api/dexieHooks";
 import { useLocalWorkOrders } from "@/lib/localWorkOrders";
-import { shouldUseLocalhostAuthBypass } from "@/lib/platformPolicy";
+import { shouldUseDevelopmentAuthBypass } from "@/lib/platformPolicy";
 import {
   getDefaultWorkOrdersSectionFromStorage,
   isWorkOrdersSplitEnabled,
@@ -340,7 +340,7 @@ function isValidRecipientForChannel(channel, recipient) {
 }
 
 function WorkOrdersContent() {
-  const localDevMode = shouldUseLocalhostAuthBypass();
+  const localDevMode = shouldUseDevelopmentAuthBypass();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();

@@ -17,7 +17,7 @@ vi.mock('convex/react', () => ({
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), message: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/api/dexieHooks', () => ({ useCustomers: () => useCustomersMock() }));
-vi.mock('@/lib/platformPolicy', () => ({ shouldUseLocalhostAuthBypass: () => localhostBypassMock() }));
+vi.mock('@/lib/platformPolicy', () => ({ shouldUseDevelopmentAuthBypass: () => localhostBypassMock() }));
 vi.mock('@/components/ui/checkbox', () => ({
   Checkbox: ({ checked, onCheckedChange, ...props }) => (
     <input

@@ -26,8 +26,7 @@ vi.mock('@/lib/auditLog', () => ({ logLogin: vi.fn(), logLogout: vi.fn() }));
 vi.mock('@/lib/sentry', () => ({ clearUserContext: vi.fn(), setUserContext: vi.fn() }));
 vi.mock('@/lib/platformPolicy', () => ({
   getAuthBypassReason: () => null,
-  shouldUseIosSimulatorAuthBypass: () => false,
-  shouldUseLocalhostAuthBypass: () => false,
+  shouldUseDevelopmentAuthBypass: () => false,
 }));
 
 describe('ClerkAuthProvider session isolation', () => {

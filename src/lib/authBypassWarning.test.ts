@@ -15,11 +15,13 @@ describe('warnAuthBypassOnce', () => {
     warnAuthBypassOnce('Convex', 'localhost');
     warnAuthBypassOnce('Convex', 'localhost');
     warnAuthBypassOnce('Clerk', 'ios-simulator');
+    warnAuthBypassOnce('Clerk', 'local-network');
 
-    expect(warnSpy).toHaveBeenCalledTimes(3);
+    expect(warnSpy).toHaveBeenCalledTimes(4);
     expect(warnSpy).toHaveBeenNthCalledWith(1, '[AuthPolicy] Clerk bypass enabled via localhost');
     expect(warnSpy).toHaveBeenNthCalledWith(2, '[AuthPolicy] Convex bypass enabled via localhost');
     expect(warnSpy).toHaveBeenNthCalledWith(3, '[AuthPolicy] Clerk bypass enabled via ios-simulator');
+    expect(warnSpy).toHaveBeenNthCalledWith(4, '[AuthPolicy] Clerk bypass enabled via local-network');
   });
 
   it('does not log when reason is none', () => {

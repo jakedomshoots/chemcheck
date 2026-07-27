@@ -1,9 +1,6 @@
 import { ConvexReactClient } from 'convex/react';
 import { normalizeConvexUrl } from '@/lib/convexUrl';
-import {
-  shouldUseIosSimulatorAuthBypass,
-  shouldUseLocalhostAuthBypass,
-} from '@/lib/platformPolicy';
+import { shouldUseDevelopmentAuthBypass } from '@/lib/platformPolicy';
 
 const DEV_BYPASS_CONVEX_PLACEHOLDER = 'https://offline-dev-placeholder.convex.cloud';
 
@@ -11,7 +8,7 @@ export function resolveConvexUrl(): string {
   const configured = normalizeConvexUrl(import.meta.env.VITE_CONVEX_URL);
   if (configured) return configured;
 
-  if (shouldUseLocalhostAuthBypass() || shouldUseIosSimulatorAuthBypass()) {
+  if (shouldUseDevelopmentAuthBypass()) {
     return DEV_BYPASS_CONVEX_PLACEHOLDER;
   }
 

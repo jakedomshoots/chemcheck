@@ -1,4 +1,4 @@
-type AuthBypassReason = 'disabled' | 'localhost' | 'ios-simulator' | 'none';
+type AuthBypassReason = 'disabled' | 'localhost' | 'local-network' | 'ios-simulator' | 'none';
 type AuthBypassSource = 'Clerk' | 'Convex';
 
 const emittedWarnings = new Set<string>();

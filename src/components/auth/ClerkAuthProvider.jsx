@@ -8,16 +8,14 @@ import { clearChemCheckSessionData } from '@/lib/sessionCleanup';
 import { isAccountChange } from '@/lib/sessionIdentity';
 import {
   getAuthBypassReason,
-  shouldUseIosSimulatorAuthBypass,
-  shouldUseLocalhostAuthBypass,
+  shouldUseDevelopmentAuthBypass,
 } from '@/lib/platformPolicy';
 
 // Get Clerk publishable key from environment
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const clerkDomain = import.meta.env.VITE_CLERK_DOMAIN;
-const isIosSimulatorBypass = shouldUseIosSimulatorAuthBypass();
-const isDevBypass = shouldUseLocalhostAuthBypass();
+const isDevBypass = shouldUseDevelopmentAuthBypass();
 const authBypassReason = getAuthBypassReason();
 
 // Auth context for app-wide auth state
@@ -219,7 +217,7 @@ function AuthContextProvider({ children }) {
 
 // Main ClerkAuthProvider component
 export function ClerkAuthProvider({ children }) {
-  if (isIosSimulatorBypass || isDevBypass) {
+  if (isDevBypass) {
     warnAuthBypassOnce('Clerk', authBypassReason);
 
     const bypassValue = {

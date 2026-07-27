@@ -5,14 +5,12 @@ import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
 import { getSharedConvexClient } from '@/lib/convexClient';
 import {
   getAuthBypassReason,
-  shouldUseIosSimulatorAuthBypass,
-  shouldUseLocalhostAuthBypass,
+  shouldUseDevelopmentAuthBypass,
 } from '@/lib/platformPolicy';
 
 const convex = getSharedConvexClient();
 
-const isIosSimulatorBypass = shouldUseIosSimulatorAuthBypass();
-const isDevBypass = shouldUseLocalhostAuthBypass();
+const isDevBypass = shouldUseDevelopmentAuthBypass();
 const authBypassReason = getAuthBypassReason();
 
 function ConvexAuthProviderBypass({ children }) {
@@ -32,7 +30,7 @@ function ConvexAuthProviderClerk({ children }) {
 }
 
 export function ConvexAuthProvider({ children }) {
-  if (isIosSimulatorBypass || isDevBypass) {
+  if (isDevBypass) {
     warnAuthBypassOnce('Convex', authBypassReason);
 
     return <ConvexAuthProviderBypass>{children}</ConvexAuthProviderBypass>;
