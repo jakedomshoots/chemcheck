@@ -19,8 +19,17 @@ import {
   Trash2,
   RotateCcw,
   Plus,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from "lucide-react";
-import { PoolIcon, IconBadge } from "@/components/ui/iconography";
+import { PoolIcon } from "@/components/ui/iconography";
+import {
+  WorkOrdersEmptyState,
+  WorkOrdersHealthGrid,
+  WorkOrdersMetricStrip,
+  WorkOrdersSectionNav,
+} from "@/components/work-orders/WorkOrdersCommandSurface";
 import { toast } from "sonner";
 import {
   Drawer,
@@ -394,6 +403,11 @@ function WorkOrdersContent() {
   const [quoteSearchTerm, setQuoteSearchTerm] = useState("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("open");
   const [invoiceSearchTerm, setInvoiceSearchTerm] = useState("");
+  const [workOrderStatusFilter, setWorkOrderStatusFilter] = useState("active");
+  const [workOrderPriorityFilter, setWorkOrderPriorityFilter] = useState("all");
+  const [workOrderSearchTerm, setWorkOrderSearchTerm] = useState("");
+  const [quoteFormSubmitted, setQuoteFormSubmitted] = useState(false);
+  const [invoiceFormSubmitted, setInvoiceFormSubmitted] = useState(false);
   const [monthCloseMonth, setMonthCloseMonth] = useState(getMonthStringFromDate(getTodayDateString()));
   const [alternateRecipientEditor, setAlternateRecipientEditor] = useState({
     key: null,
@@ -402,9 +416,20 @@ function WorkOrdersContent() {
   });
   const [mobileCreateDrawerOpen, setMobileCreateDrawerOpen] = useState(false);
   const [mobileBillingExpanded, setMobileBillingExpanded] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() => (
+    typeof window !== "undefined" ? window.innerWidth >= 1024 : true
+  ));
   const woTitleRef = useRef(null);
+  const quoteTitleRef = useRef(null);
+  const invoiceDescriptionRef = useRef(null);
   const reminderAutopilotRunningRef = useRef(false);
   const queueRemindersRef = useRef(null);
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktopViewport(window.innerWidth >= 1024);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const activeSection = useMemo(() => {
     const pathname = location.pathname.toLowerCase();
@@ -430,6 +455,7 @@ function WorkOrdersContent() {
 
   const handleSectionChange = (section) => {
     if (!workOrdersSplitEnabled) return;
+    setMobileCreateDrawerOpen(false);
     const params = new URLSearchParams(searchParams);
     const query = params.toString();
     navigate(`/workorders/${section}${query ? `?${query}` : ""}`);
@@ -817,6 +843,79 @@ function WorkOrdersContent() {
       return matchesSearch(`${customerName} ${lineSummary} ${invoice.notes || ""}`, invoiceSearchTerm);
     });
   }, [paidInvoices, invoiceStatusFilter, invoiceSearchTerm, customerById]);
+
+  const filteredWorkOrders = useMemo(() => {
+    const priorityRank = { high: 0, medium: 1, low: 2 };
+
+    return workOrders
+      .filter((order) => {
+        if (workOrderStatusFilter === "active") {
+          return !["completed", "cancelled"].includes(order.status);
+        }
+        if (workOrderStatusFilter === "all") return true;
+        return order.status === workOrderStatusFilter;
+      })
+      .filter((order) => (
+        workOrderPriorityFilter === "all" || order.priority === workOrderPriorityFilter
+      ))
+      .filter((order) => {
+        const customerName = customerById.get(String(order.customer_id))?.full_name || "";
+        return matchesSearch(
+          `${order.title || ""} ${order.description || ""} ${order.assignee_email || ""} ${customerName}`,
+          workOrderSearchTerm
+        );
+      })
+      .sort((a, b) => {
+        const priorityDiff = (priorityRank[a.priority] ?? 3) - (priorityRank[b.priority] ?? 3);
+        if (priorityDiff !== 0) return priorityDiff;
+        return Number(a.created_at || 0) - Number(b.created_at || 0);
+      });
+  }, [customerById, workOrderPriorityFilter, workOrderSearchTerm, workOrderStatusFilter, workOrders]);
+
+  const sectionCounts = useMemo(() => ({
+    dispatch: workOrders.length,
+    quotes: dashboardMetrics.openQuotes,
+    invoices: openInvoices.length,
+    comms: queuedCommunications.length,
+  }), [dashboardMetrics.openQuotes, openInvoices.length, queuedCommunications.length, workOrders.length]);
+
+  const activeMetricItems = useMemo(() => {
+    if (activeSection === "quotes") {
+      return [
+        { label: "Drafts", value: allQuotes.filter((quote) => quote.status === "draft").length },
+        { label: "Sent", value: allQuotes.filter((quote) => quote.status === "sent").length, valueClassName: "text-info" },
+        { label: "Approved", value: allQuotes.filter((quote) => quote.status === "approved").length, valueClassName: "text-ok" },
+        { label: "Deposits due", value: dashboardMetrics.pendingDeposits, valueClassName: dashboardMetrics.pendingDeposits ? "text-watch" : "text-ink" },
+      ];
+    }
+
+    if (activeSection === "invoices") {
+      return [
+        { label: "Drafts", value: allInvoices.filter((invoice) => invoice.status === "draft").length },
+        { label: "Unpaid", value: dashboardMetrics.unpaidInvoices, valueClassName: dashboardMetrics.unpaidInvoices ? "text-info" : "text-ink" },
+        { label: "Overdue", value: dashboardMetrics.overdueInvoices, valueClassName: dashboardMetrics.overdueInvoices ? "text-critical" : "text-ink" },
+        { label: "Paid", value: paidInvoices.length, valueClassName: "text-ok" },
+      ];
+    }
+
+    if (activeSection === "comms") {
+      const deliveredCount = allCommunications.filter((item) => item.status === "delivered").length;
+      const failedCount = allCommunications.filter((item) => item.status === "failed").length;
+      return [
+        { label: "Queued", value: queuedCommunications.length, valueClassName: queuedCommunications.length ? "text-watch" : "text-ink" },
+        { label: "Delivered", value: deliveredCount, valueClassName: "text-ok" },
+        { label: "Failed", value: failedCount, valueClassName: failedCount ? "text-critical" : "text-ink" },
+        { label: "Total events", value: allCommunications.length },
+      ];
+    }
+
+    return [
+      { label: "Jobs", value: workOrders.length },
+      { label: "In progress", value: workOrders.filter((order) => order.status === "in_progress").length, valueClassName: "text-info" },
+      { label: "Completed", value: workOrders.filter((order) => order.status === "completed").length, valueClassName: "text-ok" },
+      { label: "High priority", value: workOrders.filter((order) => order.priority === "high" && !["completed", "cancelled"].includes(order.status)).length, valueClassName: "text-watch" },
+    ];
+  }, [activeSection, allCommunications, allInvoices, allQuotes, dashboardMetrics, paidInvoices.length, queuedCommunications.length, workOrders]);
 
   const failedCommunications = useMemo(() => {
     return allCommunications
@@ -1206,6 +1305,7 @@ function WorkOrdersContent() {
         title: "",
         description: "",
       }));
+      setMobileCreateDrawerOpen(false);
       toast.success("Work order created.");
     } catch (error) {
       toast.error(error?.message || "Failed to create work order.");
@@ -1250,6 +1350,11 @@ function WorkOrdersContent() {
 
   const handleRemove = async (id) => {
     requireWorkOrdersCloud(workOrdersCloudState);
+    const order = workOrders.find((item) => String(item._id) === String(id));
+    const confirmed = window.confirm(
+      `Delete ${order?.title ? `“${order.title}”` : "this work order"}? This cannot be undone.`
+    );
+    if (!confirmed) return;
     try {
       await removeWorkOrder({ id });
       toast.success("Work order deleted.");
@@ -1260,6 +1365,7 @@ function WorkOrdersContent() {
 
   const handleCreateInvoiceDraft = async (event) => {
     event.preventDefault();
+    setInvoiceFormSubmitted(true);
     requireWorkOrdersCloud(workOrdersCloudState);
     const firstError = Object.values(invoiceFormErrors).find(Boolean);
     if (firstError) {
@@ -1322,6 +1428,8 @@ function WorkOrdersContent() {
         description: "",
         quantity: "1",
       }));
+      setInvoiceFormSubmitted(false);
+      setMobileCreateDrawerOpen(false);
       toast.success("Invoice draft created.");
     } catch (error) {
       toast.error(error?.message || "Failed to create invoice draft.");
@@ -1332,6 +1440,7 @@ function WorkOrdersContent() {
 
   const handleCreateQuoteDraft = async (event) => {
     event.preventDefault();
+    setQuoteFormSubmitted(true);
     requireWorkOrdersCloud(workOrdersCloudState);
     const firstError = Object.values(quoteFormErrors).find(Boolean);
     if (firstError) {
@@ -1390,6 +1499,8 @@ function WorkOrdersContent() {
         description: "",
         quantity: "1",
       }));
+      setQuoteFormSubmitted(false);
+      setMobileCreateDrawerOpen(false);
       toast.success("Quote draft created.");
     } catch (error) {
       toast.error(error?.message || "Failed to create quote draft.");
@@ -1851,12 +1962,8 @@ function WorkOrdersContent() {
     };
   }, [reminderAutopilotEnabled, reminderAutopilotIntervalMinutes, reminderAutopilotNextRunAt]);
 
-const workOrderCreateForm = (
-    <div className="space-y-4">
-      <div className="mb-4 border-b border-line pb-2">
-        <h2 className="text-base sm:text-lg font-bold tracking-tight text-ink">Create Work Order</h2>
-      </div>
-      <form className="space-y-4" onSubmit={handleCreate}>
+  const workOrderCreateForm = (
+    <form className="space-y-4" onSubmit={handleCreate}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="wo-customer">Customer</Label>
@@ -1951,11 +2058,10 @@ const workOrderCreateForm = (
           )}
         </div>
 
-        <Button type="submit" disabled={isCreating}>
+        <Button type="submit" className="w-full sm:w-auto" disabled={isCreating}>
           {isCreating ? "Creating..." : "Create Work Order"}
         </Button>
       </form>
-    </div>
   );
 
   const quoteCreateForm = (
@@ -1966,6 +2072,7 @@ const workOrderCreateForm = (
           id="quote-customer"
           value={quoteForm.customer_id}
           onChange={(e) => setQuoteForm((prev) => ({ ...prev, customer_id: e.target.value }))}
+          aria-invalid={quoteFormSubmitted && Boolean(quoteFormErrors.customer)}
           className="w-full h-10 lg:h-9 border border-line rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
         >
           <option value="">Select customer...</option>
@@ -1973,7 +2080,7 @@ const workOrderCreateForm = (
             <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
           ))}
         </select>
-        {quoteFormErrors.customer && (
+        {quoteFormSubmitted && quoteFormErrors.customer && (
           <p className="mt-1 text-xs text-critical">{quoteFormErrors.customer}</p>
         )}
       </div>
@@ -1982,12 +2089,14 @@ const workOrderCreateForm = (
         <Label htmlFor="quote-title">Title</Label>
         <Input
           id="quote-title"
+          ref={quoteTitleRef}
           value={quoteForm.title}
           onChange={(e) => setQuoteForm((prev) => ({ ...prev, title: e.target.value }))}
+          aria-invalid={quoteFormSubmitted && Boolean(quoteFormErrors.title)}
           className="h-10 lg:h-9 text-sm lg:text-xs"
           placeholder="Green-to-clean package / pump replacement"
         />
-        {quoteFormErrors.title && (
+        {quoteFormSubmitted && quoteFormErrors.title && (
           <p className="mt-1 text-xs text-critical">{quoteFormErrors.title}</p>
         )}
       </div>
@@ -2010,9 +2119,10 @@ const workOrderCreateForm = (
             id="quote-qty"
             value={quoteForm.quantity}
             onChange={(e) => setQuoteForm((prev) => ({ ...prev, quantity: e.target.value }))}
+            aria-invalid={quoteFormSubmitted && Boolean(quoteFormErrors.quantity)}
             className="h-10 lg:h-9 text-sm lg:text-xs"
           />
-          {quoteFormErrors.quantity && (
+          {quoteFormSubmitted && quoteFormErrors.quantity && (
             <p className="mt-1 text-xs text-critical">{quoteFormErrors.quantity}</p>
           )}
         </div>
@@ -2022,9 +2132,10 @@ const workOrderCreateForm = (
             id="quote-price"
             value={quoteForm.unit_price}
             onChange={(e) => setQuoteForm((prev) => ({ ...prev, unit_price: e.target.value }))}
+            aria-invalid={quoteFormSubmitted && Boolean(quoteFormErrors.unitPrice)}
             className="h-10 lg:h-9 text-sm lg:text-xs"
           />
-          {quoteFormErrors.unitPrice && (
+          {quoteFormSubmitted && quoteFormErrors.unitPrice && (
             <p className="mt-1 text-xs text-critical">{quoteFormErrors.unitPrice}</p>
           )}
         </div>
@@ -2048,10 +2159,11 @@ const workOrderCreateForm = (
             id="quote-deposit"
             value={quoteForm.deposit_required}
             onChange={(e) => setQuoteForm((prev) => ({ ...prev, deposit_required: e.target.value }))}
+            aria-invalid={quoteFormSubmitted && Boolean(quoteFormErrors.deposit)}
             className="h-10 lg:h-9 text-sm lg:text-xs"
             placeholder="Optional"
           />
-          {quoteFormErrors.deposit && (
+          {quoteFormSubmitted && quoteFormErrors.deposit && (
             <p className="mt-1 text-xs text-critical">{quoteFormErrors.deposit}</p>
           )}
         </div>
@@ -2071,7 +2183,7 @@ const workOrderCreateForm = (
       <Button
         type="submit"
         className="w-full h-11 lg:h-8 text-sm lg:text-xs"
-        disabled={isCreatingQuote || Object.values(quoteFormErrors).some(Boolean)}
+        disabled={isCreatingQuote}
       >
         {isCreatingQuote ? "Creating..." : "Create Quote Draft"}
       </Button>
@@ -2087,6 +2199,7 @@ const workOrderCreateForm = (
             id="inv-customer"
             value={invoiceForm.customer_id}
             onChange={(e) => handleInvoiceCustomerSelect(e.target.value)}
+            aria-invalid={invoiceFormSubmitted && Boolean(invoiceFormErrors.customer)}
             className="w-full h-10 lg:h-9 border border-line rounded-md px-3 lg:px-2 bg-white text-sm lg:text-xs"
           >
             <option value="">Select customer...</option>
@@ -2094,7 +2207,7 @@ const workOrderCreateForm = (
               <option key={customer._id} value={String(customer._id)}>{customer.full_name}</option>
             ))}
           </select>
-          {invoiceFormErrors.customer && (
+          {invoiceFormSubmitted && invoiceFormErrors.customer && (
             <p className="mt-1 text-xs text-critical">{invoiceFormErrors.customer}</p>
           )}
         </div>
@@ -2123,12 +2236,14 @@ const workOrderCreateForm = (
           <Label htmlFor="inv-description">Description</Label>
           <Input
             id="inv-description"
+            ref={invoiceDescriptionRef}
             value={invoiceForm.description}
             onChange={(e) => setInvoiceForm((prev) => ({ ...prev, description: e.target.value }))}
+            aria-invalid={invoiceFormSubmitted && Boolean(invoiceFormErrors.description)}
             className="h-10 lg:h-9 text-sm lg:text-xs"
             placeholder="Monthly service / repair / clean-up"
           />
-          {invoiceFormErrors.description && (
+          {invoiceFormSubmitted && invoiceFormErrors.description && (
             <p className="mt-1 text-xs text-critical">{invoiceFormErrors.description}</p>
           )}
         </div>
@@ -2140,9 +2255,10 @@ const workOrderCreateForm = (
               id="inv-qty"
               value={invoiceForm.quantity}
               onChange={(e) => setInvoiceForm((prev) => ({ ...prev, quantity: e.target.value }))}
+              aria-invalid={invoiceFormSubmitted && Boolean(invoiceFormErrors.quantity)}
               className="h-10 lg:h-9 text-sm lg:text-xs"
             />
-            {invoiceFormErrors.quantity && (
+            {invoiceFormSubmitted && invoiceFormErrors.quantity && (
               <p className="mt-1 text-xs text-critical">{invoiceFormErrors.quantity}</p>
             )}
           </div>
@@ -2152,9 +2268,10 @@ const workOrderCreateForm = (
               id="inv-price"
               value={invoiceForm.unit_price}
               onChange={(e) => setInvoiceForm((prev) => ({ ...prev, unit_price: e.target.value }))}
+              aria-invalid={invoiceFormSubmitted && Boolean(invoiceFormErrors.unitPrice)}
               className="h-10 lg:h-9 text-sm lg:text-xs"
             />
-            {invoiceFormErrors.unitPrice && (
+            {invoiceFormSubmitted && invoiceFormErrors.unitPrice && (
               <p className="mt-1 text-xs text-critical">{invoiceFormErrors.unitPrice}</p>
             )}
           </div>
@@ -2179,9 +2296,10 @@ const workOrderCreateForm = (
               type="date"
               value={invoiceForm.due_date}
               onChange={(e) => setInvoiceForm((prev) => ({ ...prev, due_date: e.target.value }))}
+              aria-invalid={invoiceFormSubmitted && Boolean(invoiceFormErrors.dueDate)}
               className="h-10 lg:h-9 text-sm lg:text-xs"
             />
-            {invoiceFormErrors.dueDate && (
+            {invoiceFormSubmitted && invoiceFormErrors.dueDate && (
               <p className="mt-1 text-xs text-critical">{invoiceFormErrors.dueDate}</p>
             )}
           </div>
@@ -2190,7 +2308,7 @@ const workOrderCreateForm = (
         <Button
           type="submit"
           className="w-full h-11 lg:h-8 text-sm lg:text-xs"
-          disabled={isCreatingInvoice || Object.values(invoiceFormErrors).some(Boolean)}
+          disabled={isCreatingInvoice}
         >
           {isCreatingInvoice ? "Creating..." : "Create Invoice Draft"}
         </Button>
@@ -2351,45 +2469,121 @@ const workOrderCreateForm = (
     }
   }, [activeSection]);
 
-  const handleEmptyStateCreate = () => {
-    if (window.innerWidth < 1024) {
+  const handlePrimaryCreate = () => {
+    if (!isDesktopViewport) {
       setMobileCreateDrawerOpen(true);
-    } else {
-      woTitleRef.current?.focus();
+      return;
     }
+
+    if (activeSection === "dispatch") woTitleRef.current?.focus();
+    if (activeSection === "quotes") quoteTitleRef.current?.focus();
+    if (activeSection === "invoices") invoiceDescriptionRef.current?.focus();
   };
 
-  const hideOverviewPanelsOnMobile = activeSection !== "dispatch";
+  const handleDispatchDateShift = (days) => {
+    setSelectedDate((current) => getDatePlusDays(current, days));
+  };
+
+  const handleResetDispatchFilters = () => {
+    setWorkOrderSearchTerm("");
+    setWorkOrderStatusFilter("active");
+    setWorkOrderPriorityFilter("all");
+  };
+
+  const handleResetQuoteFilters = () => {
+    setQuoteSearchTerm("");
+    setQuoteStatusFilter("active");
+  };
+
+  const handleResetInvoiceFilters = () => {
+    setInvoiceSearchTerm("");
+    setInvoiceStatusFilter("open");
+  };
+
+  const activeSectionMeta = {
+    dispatch: {
+      eyebrow: "Field operations",
+      title: "Dispatch",
+      description: "Schedule work, assign the crew, and move each job through completion.",
+      action: "New work order",
+    },
+    quotes: {
+      eyebrow: "Sales pipeline",
+      title: "Quotes",
+      description: "Draft, send, approve, and convert customer work without losing the handoff.",
+      action: "New quote",
+    },
+    invoices: {
+      eyebrow: "Billing workspace",
+      title: "Invoices",
+      description: "Create drafts, collect payment, and close the month with delivery safeguards.",
+      action: "New invoice",
+    },
+    comms: {
+      eyebrow: "Delivery center",
+      title: "Communications",
+      description: "Track queued, delivered, and failed customer messages in one operational log.",
+      action: null,
+    },
+  }[activeSection];
+
+  const billingHealthItems = [
+    { label: "Failed sends", value: billingHealth.failedDeliveries, valueClassName: billingHealth.failedDeliveries ? "text-critical" : "text-ink" },
+    { label: "Stuck queue", value: billingHealth.queuedStale, valueClassName: billingHealth.queuedStale ? "text-watch" : "text-ink" },
+    { label: "Old drafts", value: billingHealth.staleDrafts, valueClassName: billingHealth.staleDrafts ? "text-info" : "text-ink" },
+    { label: "Missing pay link", value: billingHealth.sentMissingPayLink, valueClassName: billingHealth.sentMissingPayLink ? "text-critical" : "text-ink" },
+    { label: "30+ days unpaid", value: billingHealth.unpaidThirtyPlus, valueClassName: billingHealth.unpaidThirtyPlus ? "text-critical" : "text-ink" },
+  ];
 
   if (workOrdersCloudState !== "ready") {
     return <WorkOrdersAvailability state={workOrdersCloudState} error={cloudBusinessError} />;
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-7xl px-3 pb-28 pt-4 font-sans space-y-4 sm:px-6 sm:space-y-6 lg:px-8">
-      <div className="overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Dispatch board</p>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
-              <PoolIcon name="workOrders" className="h-7 w-7 text-brand-ink" />
-              Work Orders & Dispatch
+    <div className="relative mx-auto w-full max-w-7xl space-y-4 px-3 pb-36 pt-4 font-sans sm:px-6 lg:px-8">
+      <header className="overflow-hidden rounded-sheet border border-line bg-surface-1 shadow-card">
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="min-w-0">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-ink">
+                {activeSectionMeta.eyebrow}
+              </p>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                cloudEnabled
+                  ? "border-[var(--status-ok-line)] bg-[var(--status-ok-soft)] text-ok"
+                  : "border-line bg-surface-2 text-ink-secondary"
+              }`}>
+                {cloudEnabled ? "Cloud synced" : "Local workspace"}
+              </span>
+            </div>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold leading-tight tracking-[-0.035em] text-ink sm:text-3xl">
+              <PoolIcon name="workOrders" className="h-6 w-6 text-brand-ink" />
+              {activeSectionMeta.title}
             </h1>
-            <p className="mt-1 max-w-2xl text-sm font-medium text-ink-muted">
-              Build dispatch, quotes, and invoicing in one flow for solo operators and small teams.
+            <p className="mt-1 max-w-2xl text-sm leading-5 text-ink-secondary">
+              {activeSectionMeta.description}
             </p>
           </div>
-          {cloudEnabled ? (
-            <p className="rounded-full border border-[var(--status-ok-line)] bg-[var(--status-ok-soft)] px-3 py-1.5 text-xs font-semibold text-ok">
-              Cloud mode active
-            </p>
-          ) : (
-            <p className="rounded-full border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-3 py-1.5 text-xs font-semibold text-watch">
-              Local mode active
-            </p>
+          {activeSectionMeta.action && (
+            <Button type="button" className="h-11 shrink-0 sm:h-9" onClick={handlePrimaryCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              {activeSectionMeta.action}
+            </Button>
           )}
         </div>
-      </div>
+
+        <div className="border-t border-line px-3 py-2.5 sm:px-5">
+          {workOrdersSplitEnabled ? (
+            <WorkOrdersSectionNav
+              activeSection={activeSection}
+              counts={sectionCounts}
+              onChange={handleSectionChange}
+            />
+          ) : (
+            <p className="text-xs text-ink-secondary">Work Orders IA split is disabled. Showing dispatch view.</p>
+          )}
+        </div>
+      </header>
 
       {hasTruncatedCloudData && (
         <div
@@ -2400,85 +2594,97 @@ const workOrderCreateForm = (
         </div>
       )}
 
-      <Card className="rounded-sheet border border-line bg-surface-1 p-2.5 shadow-card sm:p-4">
-        <div className="flex flex-col gap-2.5 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
-          {workOrdersSplitEnabled ? (
-            <div className="inline-flex w-full overflow-x-auto rounded-full border border-line bg-surface-1 p-1 lg:w-auto">
-              {[
-                { id: "dispatch", label: "Dispatch" },
-                { id: "quotes", label: "Quotes" },
-                { id: "invoices", label: "Invoices" },
-                { id: "comms", label: "Comms" },
-              ].map((section) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => handleSectionChange(section.id)}
-                  className={`flex-1 shrink-0 rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all sm:px-3 sm:text-sm lg:flex-none ${
-                    activeSection === section.id
-                      ? "bg-brand text-white shadow-cta"
-                      : "text-ink-secondary hover:bg-brand-softer hover:text-ink"
-                  }`}
-                >
-                  {section.label}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-ink-secondary bg-surface-2 border border-line rounded-lg px-3 py-2 self-start">
-              Work Orders IA split is disabled. Showing dispatch view.
-            </p>
-          )}
-        </div>
-      </Card>
-
       {activeSection === "dispatch" && (
-      <Card className="rounded-sheet border border-line bg-surface-1 p-3 shadow-card sm:p-6">
-        <div className="flex flex-col md:flex-row md:items-end gap-3 sm:gap-4">
-          <div>
-            <Label htmlFor="dispatch-date" className="text-xs sm:text-sm">Dispatch Date</Label>
-            <Input
-              id="dispatch-date"
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full sm:w-[220px]"
-            />
+      <Card className="rounded-sheet border border-line bg-surface-1 p-3 shadow-card sm:p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <Label htmlFor="dispatch-date" className="text-xs">Dispatch date</Label>
+              <div className="mt-1 flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10"
+                  aria-label="Previous dispatch day"
+                  onClick={() => handleDispatchDateShift(-1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Input
+                  id="dispatch-date"
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="min-w-0 flex-1 sm:w-[190px] sm:flex-none"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10"
+                  aria-label="Next dispatch day"
+                  onClick={() => handleDispatchDateShift(1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                {selectedDate !== getTodayDateString() && (
+                  <Button type="button" variant="outline" className="h-10" onClick={() => setSelectedDate(getTodayDateString())}>
+                    Today
+                  </Button>
+                )}
+              </div>
+            </div>
+            <p className="flex items-center gap-2 text-xs text-ink-secondary">
+              <CalendarClock className="h-4 w-4 text-brand-ink" />
+              {workOrders.length} scheduled for {selectedDate}
+            </p>
           </div>
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-ink-secondary">
-            <CalendarClock className="w-4 h-4 text-brand-ink" />
-            {workOrders.length} work order{workOrders.length === 1 ? "" : "s"} on {selectedDate}
+
+          <div className="grid gap-2 border-t border-line pt-3 sm:grid-cols-[minmax(0,1fr)_160px_150px]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+              <Input
+                value={workOrderSearchTerm}
+                onChange={(event) => setWorkOrderSearchTerm(event.target.value)}
+                className="h-10 pl-9 text-sm"
+                placeholder="Search jobs, customers, or assignees"
+                aria-label="Search work orders"
+              />
+            </div>
+            <select
+              value={workOrderStatusFilter}
+              onChange={(event) => setWorkOrderStatusFilter(event.target.value)}
+              className="h-10 rounded-md border border-line bg-white px-3 text-sm"
+              aria-label="Filter work orders by status"
+            >
+              <option value="active">Active jobs</option>
+              <option value="all">All statuses</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="in_progress">In progress</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select
+              value={workOrderPriorityFilter}
+              onChange={(event) => setWorkOrderPriorityFilter(event.target.value)}
+              className="h-10 rounded-md border border-line bg-white px-3 text-sm"
+              aria-label="Filter work orders by priority"
+            >
+              <option value="all">All priorities</option>
+              <option value="high">High priority</option>
+              <option value="medium">Medium priority</option>
+              <option value="low">Low priority</option>
+            </select>
           </div>
         </div>
       </Card>
       )}
 
-      <div className={`${hideOverviewPanelsOnMobile ? "hidden sm:grid" : "grid"} grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3`}>
-        <Card className="p-2.5 sm:p-3">
-          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Open Quotes</p>
-          <p className="text-xl sm:text-2xl font-semibold text-ink">{dashboardMetrics.openQuotes}</p>
-        </Card>
-        <Card className="p-2.5 sm:p-3">
-          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Pending Deposits</p>
-          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.pendingDeposits > 0 ? "text-watch" : "text-ink"}`}>
-            {dashboardMetrics.pendingDeposits}
-          </p>
-        </Card>
-        <Card className="p-2.5 sm:p-3">
-          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Unpaid Invoices</p>
-          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.unpaidInvoices > 0 ? "text-info" : "text-ink"}`}>
-            {dashboardMetrics.unpaidInvoices}
-          </p>
-        </Card>
-        <Card className="p-2.5 sm:p-3">
-          <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Overdue Invoices</p>
-          <p className={`text-xl sm:text-2xl font-semibold ${dashboardMetrics.overdueInvoices > 0 ? "text-critical" : "text-ink"}`}>
-            {dashboardMetrics.overdueInvoices}
-          </p>
-        </Card>
-      </div>
+      <WorkOrdersMetricStrip items={activeMetricItems} />
 
-      <Card className={`${hideOverviewPanelsOnMobile ? "hidden sm:block" : "block"} p-3 sm:p-5`}>
+      {["dispatch", "invoices"].includes(activeSection) && (
+      <Card className="p-3 sm:p-5">
         <div
           className="flex items-center justify-between gap-2 sm:gap-3 mb-0 sm:mb-3 cursor-pointer sm:cursor-default"
           onClick={() => setMobileBillingExpanded((prev) => !prev)}
@@ -2499,86 +2705,27 @@ const workOrderCreateForm = (
             </span>
           </div>
         </div>
-        <div className="hidden sm:grid grid-cols-5 gap-2">
-          <div className="rounded-md border border-line p-2">
-            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Failed Sends</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-critical" : "text-ink"}`}>
-              {billingHealth.failedDeliveries}
-            </p>
-          </div>
-          <div className="rounded-md border border-line p-2">
-            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Stuck Queue</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-watch" : "text-ink"}`}>
-              {billingHealth.queuedStale}
-            </p>
-          </div>
-          <div className="rounded-md border border-line p-2">
-            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Old Drafts</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-info" : "text-ink"}`}>
-              {billingHealth.staleDrafts}
-            </p>
-          </div>
-          <div className="rounded-md border border-line p-2">
-            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Missing Pay Link</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-critical" : "text-ink"}`}>
-              {billingHealth.sentMissingPayLink}
-            </p>
-          </div>
-          <div className="rounded-md border border-line p-2">
-            <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">30+ Days Unpaid</p>
-            <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-critical" : "text-ink"}`}>
-              {billingHealth.unpaidThirtyPlus}
-            </p>
-          </div>
-        </div>
-        <div className="sm:hidden">
-          {!mobileBillingExpanded ? (
-            <p className="text-xs text-ink-secondary">
-              {billingHealth.totalIssues > 0
-                ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"} - tap to expand`
-                : "All billing health checks are clear."}
-            </p>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-line p-2">
-                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Failed Sends</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.failedDeliveries > 0 ? "text-critical" : "text-ink"}`}>
-                  {billingHealth.failedDeliveries}
-                </p>
-              </div>
-              <div className="rounded-md border border-line p-2">
-                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Stuck Queue</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.queuedStale > 0 ? "text-watch" : "text-ink"}`}>
-                  {billingHealth.queuedStale}
-                </p>
-              </div>
-              <div className="rounded-md border border-line p-2">
-                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Old Drafts</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.staleDrafts > 0 ? "text-info" : "text-ink"}`}>
-                  {billingHealth.staleDrafts}
-                </p>
-              </div>
-              <div className="rounded-md border border-line p-2">
-                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">Missing Pay Link</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.sentMissingPayLink > 0 ? "text-critical" : "text-ink"}`}>
-                  {billingHealth.sentMissingPayLink}
-                </p>
-              </div>
-              <div className="rounded-md border border-line p-2">
-                <p className="text-xs sm:text-xs uppercase tracking-wide text-ink-muted">30+ Days Unpaid</p>
-                <p className={`text-base sm:text-lg font-semibold ${billingHealth.unpaidThirtyPlus > 0 ? "text-critical" : "text-ink"}`}>
-                  {billingHealth.unpaidThirtyPlus}
-                </p>
-              </div>
-            </div>
-          )}
+        {!mobileBillingExpanded && (
+          <p className="text-xs text-ink-secondary sm:hidden">
+            {billingHealth.totalIssues > 0
+              ? `${billingHealth.totalIssues} issue${billingHealth.totalIssues === 1 ? "" : "s"} - tap to expand`
+              : "All billing health checks are clear."}
+          </p>
+        )}
+        <div className={`${mobileBillingExpanded ? "mt-3 block" : "hidden"} sm:block`}>
+          <WorkOrdersHealthGrid items={billingHealthItems} />
         </div>
       </Card>
+      )}
 
       <div className="space-y-6">
-        {activeSection === "dispatch" && (
-        <div className="hidden lg:block">
+        {activeSection === "dispatch" && isDesktopViewport && (
+        <div>
           <Card className="p-4 sm:p-5">
+            <div className="mb-4 border-b border-line pb-2">
+              <h2 className="text-base font-bold tracking-tight text-ink sm:text-lg">Create Work Order</h2>
+              <p className="mt-0.5 text-xs text-ink-muted">Schedule a one-time or recurring job for {selectedDate}.</p>
+            </div>
             {workOrderCreateForm}
           </Card>
         </div>
@@ -2593,9 +2740,11 @@ const workOrderCreateForm = (
               </h2>
             </div>
 
-            <div className="hidden lg:block mb-4 pb-4 border-b border-line">
+            {isDesktopViewport && (
+            <div className="mb-4 border-b border-line pb-4">
               {quoteCreateForm}
             </div>
+            )}
 
             <div className="mb-3 flex flex-col sm:flex-row sm:items-center gap-2">
               <Input
@@ -2603,11 +2752,13 @@ const workOrderCreateForm = (
                 onChange={(e) => setQuoteSearchTerm(e.target.value)}
                 className="h-10 sm:h-8 text-sm sm:text-xs"
                 placeholder="Search quotes by title, customer, or notes"
+                aria-label="Search quotes"
               />
               <select
                 value={quoteStatusFilter}
                 onChange={(e) => setQuoteStatusFilter(e.target.value)}
                 className="h-10 sm:h-8 border border-line rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[170px]"
+                aria-label="Filter quotes by status"
               >
                 <option value="active">Active</option>
                 <option value="all">All</option>
@@ -2620,8 +2771,21 @@ const workOrderCreateForm = (
             </div>
 
             <div className="space-y-3 max-h-[360px] overflow-auto pr-1">
-              {filteredQuotes.length === 0 && (
-                <p className="text-sm text-ink-muted">No quotes match your filters.</p>
+              {allQuotes.length === 0 && (
+                <WorkOrdersEmptyState
+                  title="No quotes yet"
+                  description="Create a quote to capture scope, deposits, approval, and the handoff into scheduled work."
+                  actionLabel="Create first quote"
+                  onAction={handlePrimaryCreate}
+                />
+              )}
+              {allQuotes.length > 0 && filteredQuotes.length === 0 && (
+                <WorkOrdersEmptyState
+                  title="No matching quotes"
+                  description="Nothing matches this search and status combination. Clear the filters to see the full pipeline."
+                  actionLabel="Clear filters"
+                  onAction={handleResetQuoteFilters}
+                />
               )}
               {filteredQuotes.slice(0, 20).map((quote) => {
                 const customer = customerById.get(String(quote.customer_id));
@@ -2864,11 +3028,11 @@ const workOrderCreateForm = (
                 <DollarSign className="w-4 h-4 text-ok" />
                 Invoices
               </h2>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-11 sm:h-8 text-sm sm:text-xs"
+                  className="h-10 text-xs sm:h-8"
                   onClick={handleQueueReminders}
                   disabled={isQueueingReminders}
                 >
@@ -2877,7 +3041,7 @@ const workOrderCreateForm = (
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-11 sm:h-8 text-sm sm:text-xs"
+                  className="h-10 text-xs sm:h-8"
                   onClick={handleRetryFailedCommunications}
                   disabled={isRetryingFailedCommunications || failedCommunications.length === 0}
                 >
@@ -2889,9 +3053,11 @@ const workOrderCreateForm = (
               </div>
             </div>
 
-            <div className="hidden lg:block">
+            {isDesktopViewport && (
+            <div>
               {invoiceCreatePanel}
             </div>
+            )}
 
             <div className="mb-4 rounded-md border border-line bg-surface-2 p-3 space-y-3">
               <div className="flex items-start justify-between gap-2">
@@ -2924,28 +3090,15 @@ const workOrderCreateForm = (
                 />
                 <p className="text-xs text-ink-secondary">{monthCloseSummary.label}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-md border border-line bg-white p-2">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Billed</p>
-                  <p className="text-sm font-semibold text-ink">${monthCloseSummary.billedTotal.toFixed(2)}</p>
-                </div>
-                <div className="rounded-md border border-line bg-white p-2">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Collected</p>
-                  <p className="text-sm font-semibold text-ok">${monthCloseSummary.collectedTotal.toFixed(2)}</p>
-                </div>
-                <div className="rounded-md border border-line bg-white p-2">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Outstanding</p>
-                  <p className={`text-sm font-semibold ${monthCloseSummary.outstandingTotal > 0 ? "text-critical" : "text-ink"}`}>
-                    ${monthCloseSummary.outstandingTotal.toFixed(2)}
-                  </p>
-                </div>
-                <div className="rounded-md border border-line bg-white p-2">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Invoices</p>
-                  <p className="text-sm font-semibold text-ink">
-                    {monthCloseSummary.createdInMonth.length} total / {monthCloseSummary.paidInMonth.length} paid
-                  </p>
-                </div>
-              </div>
+              <WorkOrdersMetricStrip
+                className="shadow-none"
+                items={[
+                  { label: "Billed", value: `$${monthCloseSummary.billedTotal.toFixed(2)}` },
+                  { label: "Collected", value: `$${monthCloseSummary.collectedTotal.toFixed(2)}`, valueClassName: "text-ok" },
+                  { label: "Outstanding", value: `$${monthCloseSummary.outstandingTotal.toFixed(2)}`, valueClassName: monthCloseSummary.outstandingTotal > 0 ? "text-critical" : "text-ink" },
+                  { label: "Invoices", value: `${monthCloseSummary.createdInMonth.length} / ${monthCloseSummary.paidInMonth.length} paid` },
+                ]}
+              />
             </div>
 
             <div className="mb-3 flex flex-col sm:flex-row sm:items-center gap-2">
@@ -2954,11 +3107,13 @@ const workOrderCreateForm = (
                 onChange={(e) => setInvoiceSearchTerm(e.target.value)}
                 className="h-10 sm:h-8 text-sm sm:text-xs"
                 placeholder="Search invoices by customer, notes, or line item"
+                aria-label="Search invoices"
               />
               <select
                 value={invoiceStatusFilter}
                 onChange={(e) => setInvoiceStatusFilter(e.target.value)}
                 className="h-10 sm:h-8 border border-line rounded-md px-3 sm:px-2 text-sm sm:text-xs bg-white sm:w-[160px]"
+                aria-label="Filter invoices by status"
               >
                 <option value="open">Open</option>
                 <option value="all">All</option>
@@ -2969,8 +3124,21 @@ const workOrderCreateForm = (
             </div>
 
             <div className="space-y-3 max-h-[360px] overflow-auto pr-1">
-              {filteredOpenInvoices.length === 0 && (
-                <p className="text-sm text-ink-muted">No open invoices match your filters.</p>
+              {allInvoices.length === 0 && (
+                <WorkOrdersEmptyState
+                  title="No invoices yet"
+                  description="Create an invoice draft here, or complete a work order and carry its customer and job details forward."
+                  actionLabel="Create first invoice"
+                  onAction={handlePrimaryCreate}
+                />
+              )}
+              {allInvoices.length > 0 && filteredOpenInvoices.length === 0 && filteredPaidInvoices.length === 0 && (
+                <WorkOrdersEmptyState
+                  title="No matching invoices"
+                  description="Nothing matches this search and status combination. Clear the filters to restore the billing queue."
+                  actionLabel="Clear filters"
+                  onAction={handleResetInvoiceFilters}
+                />
               )}
               {filteredOpenInvoices.slice(0, 20).map((invoice) => {
                 const customer = customerById.get(String(invoice.customer_id));
@@ -3153,14 +3321,12 @@ const workOrderCreateForm = (
               })}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-line">
+            {["all", "paid"].includes(invoiceStatusFilter) && (
+            <div className="mt-4 border-t border-line pt-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted mb-2">
                 Paid / Completed
               </p>
               <div className="space-y-3 max-h-[220px] overflow-auto pr-1">
-                {filteredPaidInvoices.length === 0 && (
-                  <p className="text-sm text-ink-muted">No paid invoices match your filters.</p>
-                )}
                 {filteredPaidInvoices.slice(0, 20).map((invoice) => {
                   const customer = customerById.get(String(invoice.customer_id));
                   const relatedQuote = invoice.source_quote_id
@@ -3232,6 +3398,7 @@ const workOrderCreateForm = (
                 })}
               </div>
             </div>
+            )}
           </Card>
         )}
 
@@ -3259,7 +3426,13 @@ const workOrderCreateForm = (
 
             <div className="space-y-3 max-h-[260px] overflow-auto pr-1">
               {allCommunications.length === 0 && (
-                <p className="text-sm text-ink-muted">No communication events yet.</p>
+                <WorkOrdersEmptyState
+                  icon="pending"
+                  title="Communication log is ready"
+                  description={cloudEnabled
+                    ? "Customer sends, reminders, delivery confirmations, and failures will appear here as the team works the billing queue."
+                    : "Communication delivery requires the cloud workspace. Local quote and invoice drafts remain available for workflow testing."}
+                />
               )}
               {allCommunications.slice(0, 20).map((item) => (
                 <div key={item._id} className="rounded-lg border border-line p-3">
@@ -3312,28 +3485,31 @@ const workOrderCreateForm = (
             <PoolIcon name="workOrders" className="h-4 w-4 text-brand-ink" />
             Work Orders
           </h2>
-          <span className="text-xs text-ink-muted">{workOrders.length} total</span>
+          <span className="text-xs text-ink-muted">
+            {filteredWorkOrders.length} of {workOrders.length}
+          </span>
         </div>
 
         <div className="space-y-3">
           {workOrders.length === 0 && (
-            <div className="rounded-lg border border-dashed border-line bg-surface-2 p-8 text-center">
-              <IconBadge name="workOrders" size="lg" className="mx-auto mb-4" iconClassName="h-6 w-6" />
-              <h3 className="text-base font-semibold text-ink">No jobs scheduled</h3>
-              <p className="mt-1 text-sm text-ink-secondary">
-                Add your first work order for {selectedDate} to start dispatching.
-              </p>
-              <Button
-                className="mt-4 h-11 sm:h-9 text-sm sm:text-xs"
-                onClick={handleEmptyStateCreate}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Create Work Order
-              </Button>
-            </div>
+            <WorkOrdersEmptyState
+              title="No jobs scheduled"
+              description={`Add the first work order for ${selectedDate} to start dispatching.`}
+              actionLabel="Create work order"
+              onAction={handlePrimaryCreate}
+            />
           )}
 
-          {workOrders.map((order) => {
+          {workOrders.length > 0 && filteredWorkOrders.length === 0 && (
+            <WorkOrdersEmptyState
+              title="No matching work orders"
+              description="No jobs match the current search, status, and priority filters. Clear them to restore the full route."
+              actionLabel="Clear filters"
+              onAction={handleResetDispatchFilters}
+            />
+          )}
+
+          {filteredWorkOrders.map((order) => {
             const customer = customerById.get(String(order.customer_id));
             const linkedQuote = quoteByWorkOrderId.get(String(order._id))
               || (order.source_quote_id ? quoteById.get(String(order.source_quote_id)) : undefined);
@@ -3349,9 +3525,18 @@ const workOrderCreateForm = (
                     <p className="font-medium text-ink text-sm">{order.title}</p>
                     <p className="text-xs text-ink-secondary">{customer?.full_name || "Unknown customer"}</p>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusBadgeClass(order.status)}`}>
-                    {order.status.replace("_", " ")}
-                  </span>
+                  <div className="flex flex-wrap justify-end gap-1.5">
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      order.priority === "high"
+                        ? "bg-[var(--status-watch-soft)] text-watch"
+                        : "bg-surface-2 text-ink-secondary"
+                    }`}>
+                      {order.priority || "normal"} priority
+                    </span>
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusBadgeClass(order.status)}`}>
+                      {order.status.replace("_", " ")}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-ink-secondary">
@@ -3452,17 +3637,7 @@ const workOrderCreateForm = (
       </Card>
       )}
 
-      {activeSection !== "comms" && !(activeSection === "dispatch" && workOrders.length === 0) && (
-        <button
-          type="button"
-          onClick={() => setMobileCreateDrawerOpen(true)}
-          className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-6 z-40 lg:hidden h-14 w-14 rounded-full bg-brand text-white shadow-cta hover:bg-brand-strong focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 flex items-center justify-center"
-          aria-label={mobileCreateDrawerTitle}
-        >
-          <Plus className="w-6 h-6" />
-        </button>
-      )}
-
+      {!isDesktopViewport && (
       <Drawer open={mobileCreateDrawerOpen} onOpenChange={setMobileCreateDrawerOpen}>
         <DrawerContent>
           <DrawerHeader>
@@ -3473,13 +3648,14 @@ const workOrderCreateForm = (
               {activeSection === "invoices" && "Create an invoice, run a batch, or configure autopilot."}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="p-4 max-h-[70vh] overflow-auto">
+          <div className="max-h-[74vh] overflow-auto p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
             {activeSection === "dispatch" && workOrderCreateForm}
             {activeSection === "quotes" && quoteCreateForm}
             {activeSection === "invoices" && invoiceCreatePanel}
           </div>
         </DrawerContent>
       </Drawer>
+      )}
     </div>
   );
 }
