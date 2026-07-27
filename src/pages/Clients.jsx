@@ -485,8 +485,12 @@ export default function Clients() {
       </div>
 
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-        <div className="-mx-3 mb-4 overflow-x-auto px-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0">
-          <TabsList className="inline-flex w-max min-w-full gap-1 rounded-card border border-line bg-surface-1 p-1 shadow-card sm:min-w-0 sm:w-full">
+        <div className="mb-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList
+            data-testid="service-day-tabs"
+            aria-label="Service day"
+            className="grid h-12 w-max min-w-full grid-flow-col auto-cols-[minmax(4rem,1fr)] gap-1 rounded-control border border-line bg-surface-2 p-1"
+          >
             {validWorkingDays.map((day) => {
               const count = customerCounts[day] || 0;
               return (
@@ -496,11 +500,11 @@ export default function Clients() {
                   ref={(el) => {
                     if (el) dayTabRefs.current[day] = el;
                   }}
-                  className="group inline-flex h-9 shrink-0 min-w-[4.5rem] snap-start items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-ink-muted transition-all data-[state=active]:bg-brand data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-ink-secondary sm:min-w-0 sm:flex-1"
+                  className="group inline-flex h-10 min-w-16 snap-start items-center justify-center !rounded-chip px-2 text-sm font-semibold text-ink-muted transition-colors duration-150 hover:bg-surface-1 hover:text-ink-secondary active:scale-[0.98] data-[state=active]:bg-brand data-[state=active]:text-white data-[state=active]:shadow-sm"
                 >
                   <span>{day.substring(0, 3)}</span>
                   {count > 0 && (
-                    <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-xs font-bold text-ink-secondary group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
+                    <span className="ml-1.5 min-w-3 text-center font-data text-xs font-semibold tabular-nums text-ink-secondary opacity-75 group-data-[state=active]:text-white group-data-[state=active]:opacity-90">
                       {count}
                     </span>
                   )}

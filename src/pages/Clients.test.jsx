@@ -61,9 +61,9 @@ vi.mock('../components/clients/ClientListItem', () => ({
 // Mock UI components that might be complex
 vi.mock('@/components/ui/tabs', () => ({
     Tabs: ({ children }) => <div>{children}</div>,
-    TabsList: ({ children }) => <div>{children}</div>,
-    TabsTrigger: React.forwardRef(function TabsTriggerMock({ children, onClick }, ref) {
-      return <button ref={ref} onClick={onClick}>{children}</button>;
+    TabsList: ({ children, ...props }) => <div {...props}>{children}</div>,
+    TabsTrigger: React.forwardRef(function TabsTriggerMock({ children, onClick, value: _value, ...props }, ref) {
+      return <button ref={ref} onClick={onClick} {...props}>{children}</button>;
     }),
     TabsContent: ({ children }) => <div>{children}</div>
 }));
@@ -98,6 +98,17 @@ describe('Clients Page', () => {
         expect(reorderButton).not.toHaveClass('flex-1');
         expect(addButton).toHaveClass('w-full');
         expect(addButton).not.toHaveClass('flex-1');
+    });
+
+    it('renders service days as one evenly shaped segmented rail', () => {
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+
+        const dayRail = screen.getByTestId('service-day-tabs');
+        const mondayTab = within(dayRail).getByRole('button', { name: 'Mon1' });
+
+        expect(dayRail).toHaveClass('grid', 'h-12', 'rounded-control', 'bg-surface-2');
+        expect(mondayTab).toHaveClass('h-10', '!rounded-chip', 'min-w-16');
+        expect(within(mondayTab).getByText('1')).not.toHaveClass('rounded-full');
     });
 
     it('keeps the empty day state free of a duplicate Add Client action', () => {

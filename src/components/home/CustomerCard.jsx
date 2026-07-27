@@ -45,7 +45,7 @@ function getChemicalReadings(log) {
 
 const cardStateClassName = {
   done: "border-[var(--status-ok-line)] bg-[var(--status-ok-soft)]",
-  skipped: "border-[var(--status-watch-line)] bg-[var(--status-watch-soft)]",
+  skipped: "border-[var(--status-ok-line)] bg-[var(--status-ok-soft)]",
   pending: "border-line bg-surface-1 hover:border-[var(--status-info-line)] active:border-[var(--status-info-line)]",
 };
 
@@ -83,7 +83,11 @@ const CustomerCard = memo(function CustomerCard({
   };
 
   return (
-    <Card className={`overflow-hidden transition-colors duration-150 border-2 ${cardStateClassName[cardState]}`}>
+    <Card
+      data-testid={`customer-card-${customer._id}`}
+      data-service-state={cardState}
+      className={`overflow-hidden border-2 transition-colors duration-150 ${cardStateClassName[cardState]}`}
+    >
       <div
         onClick={handleHeaderClick}
         className="p-3 cursor-pointer flex items-center justify-between active:bg-surface-2"
@@ -120,7 +124,11 @@ const CustomerCard = memo(function CustomerCard({
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <StatusBadge tone={serviceStateTone(cardState)} label={statusLabel} size="sm" />
+          <StatusBadge
+            tone={cardState === "skipped" ? "ok" : serviceStateTone(cardState)}
+            label={statusLabel}
+            size="sm"
+          />
           <button
             type="button"
             onClick={handleChevronClick}
@@ -167,7 +175,7 @@ const CustomerCard = memo(function CustomerCard({
               size="sm"
               className={`h-11 rounded-control border px-2 text-xs font-semibold shadow-none ${
                 isSkipped
-                  ? "surface-watch bg-surface-1 hover:bg-[var(--status-watch-soft)]"
+                  ? "surface-ok bg-surface-1 hover:bg-[var(--status-ok-soft)]"
                   : "border-line bg-surface-1 text-ink-secondary hover:border-[var(--status-watch-line)] hover:bg-[var(--status-watch-soft)] hover:text-watch"
               }`}
               onClick={(e) => {

@@ -118,6 +118,11 @@ describe("CustomerCard", () => {
     );
 
     expect(screen.getByRole("button", { name: /resume/i })).toBeInTheDocument();
+    expect(screen.getByTestId("customer-card-customer-1")).toHaveClass(
+      "border-[var(--status-ok-line)]",
+      "bg-[var(--status-ok-soft)]"
+    );
+    expect(screen.getByText("Skipped").parentElement).toHaveClass("surface-ok");
 
     fireEvent.click(screen.getByRole("button", { name: /move back/i }));
 

@@ -36,8 +36,9 @@
     /* ---- Derived tints (color-mix keeps one source of truth) ---- */
     --brand-soft: color-mix(in oklch, var(--brand) 10%, var(--surface-1));
     --brand-softer: color-mix(in oklch, var(--brand) 5%, var(--surface-1));
-    --status-ok-soft: color-mix(in oklch, var(--status-ok) 10%, var(--surface-1));
-    --status-ok-line: color-mix(in oklch, var(--status-ok) 32%, var(--surface-1));
+    /* Use sRGB when tinting with an achromatic surface so the success hue stays green. */
+    --status-ok-soft: color-mix(in srgb, var(--status-ok) 10%, var(--surface-1));
+    --status-ok-line: color-mix(in srgb, var(--status-ok) 32%, var(--surface-1));
     --status-ok-ink: color-mix(in oklch, var(--status-ok) 62%, var(--ink));
     --status-watch-soft: color-mix(in oklch, var(--status-watch) 14%, var(--surface-1));
     --status-watch-line: color-mix(in oklch, var(--status-watch) 38%, var(--surface-1));
