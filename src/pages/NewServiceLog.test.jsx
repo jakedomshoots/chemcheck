@@ -12,12 +12,22 @@ const mockCreateServiceLog = vi.fn();
 vi.mock('@/api/convexHooks', () => ({
     useCurrentUser: () => mockUser,
     useCustomers: () => mockCustomers,
+    useServiceLogsByCustomerDateRange: () => [{
+        service_date: '2026-07-20',
+        ph: 'good',
+        ph_value: 7.4,
+        chlorine: 'low',
+        alkalinity: 'good',
+        alkalinity_value: 100,
+        stabilizer: 'high',
+    }],
     useServiceLogCreate: () => mockCreateServiceLog
 }));
 
 // Mock utils
 vi.mock('@/utils', () => ({
-    createPageUrl: (page) => `/page/${page}`
+    createPageUrl: (page) => `/page/${page}`,
+    formatServiceDate: (date) => date === '2026-07-20' ? 'Jul 20' : date,
 }));
 
 // Mock toast
@@ -87,7 +97,9 @@ describe('New Service Log Page', () => {
         expect(screen.getByRole('region', { name: 'Service Log' })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'Service Log', level: 1 })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Back to Route' })).toBeInTheDocument();
-        expect(screen.getByText(/Alice Smith/i)).toBeInTheDocument();
+        expect(screen.getByTestId('service-log-customer-name')).toHaveTextContent('Alice Smith');
+        expect(screen.getByTestId('service-log-customer-name')).toHaveClass('text-base');
+        expect(screen.getByRole('region', { name: "Last week's chemistry" })).toBeInTheDocument();
     });
 
     it('presents a restored draft as a compact live save status', async () => {

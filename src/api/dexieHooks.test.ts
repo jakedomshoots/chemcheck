@@ -1,17 +1,25 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useCustomerCreate } from './dexieHooks';
+import { queryServiceLogsByCustomerDateRange, useCustomerCreate } from './dexieHooks';
 
 const mockCustomersToArray = vi.hoisted(() => vi.fn());
 const mockCustomersAdd = vi.hoisted(() => vi.fn());
 const mockValidateCustomer = vi.hoisted(() => vi.fn());
 const mockCheckRateLimit = vi.hoisted(() => vi.fn());
+const mockServiceLogsWhere = vi.hoisted(() => vi.fn());
+const mockServiceLogsBetween = vi.hoisted(() => vi.fn());
+const mockServiceLogsReverse = vi.hoisted(() => vi.fn());
+const mockServiceLogsLimit = vi.hoisted(() => vi.fn());
+const mockServiceLogsToArray = vi.hoisted(() => vi.fn());
 
 vi.mock('@/db/chemcheck-db', () => ({
   db: {
     customers: {
       toArray: mockCustomersToArray,
       add: mockCustomersAdd,
+    },
+    serviceLogs: {
+      where: mockServiceLogsWhere,
     },
   },
   getTimestamp: vi.fn(() => '2026-03-24T09:00:00.000Z'),
@@ -45,6 +53,10 @@ describe('useCustomerCreate', () => {
     vi.clearAllMocks();
     mockCheckRateLimit.mockReturnValue({ allowed: true });
     mockValidateCustomer.mockImplementation((data) => ({ success: true, data }));
+    mockServiceLogsWhere.mockReturnValue({ between: mockServiceLogsBetween });
+    mockServiceLogsBetween.mockReturnValue({ reverse: mockServiceLogsReverse });
+    mockServiceLogsReverse.mockReturnValue({ limit: mockServiceLogsLimit });
+    mockServiceLogsLimit.mockReturnValue({ toArray: mockServiceLogsToArray });
   });
 
   it('assigns a default sort_order when omitted, based on the current service day count', async () => {
@@ -121,5 +133,33 @@ describe('useCustomerCreate', () => {
         sort_order: 7,
       })
     );
+  });
+});
+
+describe('useServiceLogsByCustomerDateRange', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockServiceLogsWhere.mockReturnValue({ between: mockServiceLogsBetween });
+    mockServiceLogsBetween.mockReturnValue({ reverse: mockServiceLogsReverse });
+    mockServiceLogsReverse.mockReturnValue({ limit: mockServiceLogsLimit });
+    mockServiceLogsLimit.mockReturnValue({ toArray: mockServiceLogsToArray });
+    mockServiceLogsToArray.mockResolvedValue([
+      { id: 41, customer_id: 7, service_date: '2026-07-20', ph: 'good' },
+    ]);
+  });
+
+  it('uses the compound date index and limits the result before reading', async () => {
+    await queryServiceLogsByCustomerDateRange(7, '2026-07-20', '2026-07-26', 1);
+
+    expect(mockServiceLogsWhere).toHaveBeenCalledWith('[customer_id+service_date]');
+    expect(mockServiceLogsBetween).toHaveBeenCalledWith(
+      [7, '2026-07-20'],
+      [7, '2026-07-26'],
+      true,
+      true
+    );
+    expect(mockServiceLogsReverse).toHaveBeenCalledTimes(1);
+    expect(mockServiceLogsLimit).toHaveBeenCalledWith(1);
+    expect(mockServiceLogsToArray).toHaveBeenCalledTimes(1);
   });
 });

@@ -9,6 +9,7 @@ export {
     useServiceLogs,
     useServiceLogsFilter,
     useServiceLogsByCustomer,
+    useServiceLogsByCustomerDateRange,
     useServiceLogCreate,
     useServiceLogUpdate,
     useServiceLogDelete,

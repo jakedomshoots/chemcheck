@@ -410,6 +410,47 @@ export function useServiceLogsByCustomer(customerId: number | undefined) {
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
+export function queryServiceLogsByCustomerDateRange(
+    customerId: number,
+    startDate: string,
+    endDate: string,
+    limit: number = 1
+) {
+    const safeLimit = Math.min(25, Math.max(1, Math.trunc(limit || 1)));
+    return measureDatabaseOperation('service_logs_customer_date_range', () =>
+        db.serviceLogs
+            .where('[customer_id+service_date]')
+            .between([customerId, startDate], [customerId, endDate], true, true)
+            .reverse()
+            .limit(safeLimit)
+            .toArray()
+    );
+}
+
+/**
+ * Read a small, date-bounded slice of one customer's service history.
+ * Uses the compound index so service forms never scan an entire customer
+ * history just to show a recent comparison.
+ */
+export function useServiceLogsByCustomerDateRange(
+    customerId: number | undefined,
+    startDate: string | undefined,
+    endDate: string | undefined,
+    limit: number = 1
+) {
+    const safeLimit = Math.min(25, Math.max(1, Math.trunc(limit || 1)));
+    const data = useLiveQuery(
+        () => {
+            if (!customerId || !startDate || !endDate) return [];
+            return queryServiceLogsByCustomerDateRange(customerId, startDate, endDate, safeLimit);
+        },
+        [customerId, startDate, endDate, safeLimit],
+        []
+    );
+
+    return useMemo(() => addIdAliasToArray(data), [data]);
+}
+
 export function useServiceLogCreate() {
     return useCallback(async (data: Omit<ServiceLog, 'id' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
         const rateCheck = checkRateLimit('serviceLogs');

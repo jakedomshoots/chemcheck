@@ -358,7 +358,7 @@ export default function Home() {
       });
     } else {
       navigateWithTransition(navigate, createPageUrl("NewServiceLog") + `?customerId=${customer._id}`, {
-        state: { customer }
+        state: { customer, lastWeekLog: getLastWeekLog(customer._id) }
       });
     }
   };

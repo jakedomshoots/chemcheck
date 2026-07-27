@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useCustomers, useServiceLogCreate } from "@/api/convexHooks";
+import { useCustomers, useServiceLogCreate, useServiceLogsByCustomerDateRange } from "@/api/convexHooks";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "convex/react";
+import { endOfWeek, format, startOfWeek, subWeeks } from "date-fns";
 import { api } from "../../convex/_generated/api";
 import { createPageUrl } from "@/utils";
 import { Save, Droplets, Activity, AlertCircle, Camera } from "lucide-react";
@@ -14,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import SimplifiedChemicalInput from "../components/servicelog/SimplifiedChemicalInput";
+import LastWeekChemistry from "@/components/servicelog/LastWeekChemistry";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
 import { hapticSuccess } from "@/lib/haptics";
 import { CHEMICAL_CONFIGS } from "@/lib/chemStatus";
@@ -59,6 +61,7 @@ export default function NewServiceLog() {
   }, [window.location.search]);
 
   const navigationCustomer = location.state?.customer;
+  const navigationLastWeekLog = location.state?.lastWeekLog;
   const serviceFlow = location.state?.serviceFlow;
   const startedFromOffDayPicker = serviceFlow?.source === "home_off_day_picker";
   const backToRouteLabel = startedFromOffDayPicker
@@ -68,6 +71,20 @@ export default function NewServiceLog() {
   const customers = useCustomers();
   const createServiceLog = useServiceLogCreate();
   const convexBusiness = useQuery(api.businesses.getCurrent);
+  const lastWeekRange = useMemo(() => {
+    const lastWeek = subWeeks(new Date(), 1);
+    return {
+      start: format(startOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+      end: format(endOfWeek(lastWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+    };
+  }, []);
+  const lastWeekLogs = useServiceLogsByCustomerDateRange(
+    navigationLastWeekLog ? undefined : customerId || undefined,
+    lastWeekRange.start,
+    lastWeekRange.end,
+    1
+  );
+  const lastWeekLog = navigationLastWeekLog || lastWeekLogs[0] || null;
 
   const serviceTypes = useMemo(() => {
     const settingsTypes = convexBusiness?.settings?.service_types;
@@ -457,26 +474,33 @@ export default function NewServiceLog() {
           )}
         </div>
 
-        <div className="flex items-center gap-3 px-4 py-4 sm:px-5">
-          <IconBadge
-            name="ops"
-            size="md"
-            className="bg-brand-softer text-brand-ink"
-            iconClassName="h-5 w-5"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2 text-[0.6875rem] font-semibold leading-4">
-              <span className="shrink-0 uppercase tracking-[0.18em] text-brand-ink">Field service</span>
-              <span className="h-1 w-1 shrink-0 rounded-full bg-line" aria-hidden="true" />
-              <span className="truncate text-ink-secondary">{customer.full_name}</span>
+        <div className="px-4 py-4 sm:px-5">
+          <div className="flex items-start gap-3">
+            <IconBadge
+              name="ops"
+              size="md"
+              className="mt-0.5 bg-brand-softer text-brand-ink"
+              iconClassName="h-5 w-5"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[0.6875rem] font-semibold uppercase leading-4 tracking-[0.18em] text-brand-ink">
+                Field service
+              </p>
+              <h1
+                id="service-log-title"
+                className="mt-1 text-2xl font-semibold leading-tight tracking-[-0.04em] text-ink"
+              >
+                Service Log
+              </h1>
+              <p
+                data-testid="service-log-customer-name"
+                className="mt-0.5 truncate text-base font-semibold leading-5 text-ink-secondary"
+              >
+                {customer.full_name}
+              </p>
             </div>
-            <h1
-              id="service-log-title"
-              className="mt-1 text-2xl font-semibold leading-tight tracking-[-0.04em] text-ink"
-            >
-              Service Log
-            </h1>
           </div>
+          <LastWeekChemistry log={lastWeekLog} />
         </div>
       </section>
 
