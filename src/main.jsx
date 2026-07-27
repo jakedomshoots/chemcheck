@@ -7,6 +7,7 @@ import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
 import { initializeCacheLifecycle } from '@/api/dexieHooks';
 import { applyTheme, watchSystemTheme } from '@/lib/theme';
+import { getOrCreateReactRoot } from '@/lib/reactRoot';
 
 const AppRouterShell = lazy(() =>
     importWithRetry(() => import('@/components/routing/AppRouterShell.jsx'), 'AppRouterShell')
@@ -51,7 +52,8 @@ scheduleAnalyticsInitialization();
 
 async function initializeApp() {
     try {
-        createRoot(document.getElementById('root')).render(
+        const root = getOrCreateReactRoot(document.getElementById('root'), createRoot);
+        root.render(
             <StrictMode>
                 <ErrorBoundary>
                     <Suspense fallback={<RootLoader />}>
