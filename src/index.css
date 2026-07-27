@@ -34,9 +34,9 @@
     --line: oklch(0.92 0.008 220);
 
     /* ---- Derived tints (color-mix keeps one source of truth) ---- */
-    --brand-soft: color-mix(in oklch, var(--brand) 10%, var(--surface-1));
-    --brand-softer: color-mix(in oklch, var(--brand) 5%, var(--surface-1));
-    /* Use sRGB when tinting with an achromatic surface so the success hue stays green. */
+    /* sRGB tinting keeps brand and success hues stable against achromatic surfaces. */
+    --brand-soft: color-mix(in srgb, var(--brand) 10%, var(--surface-1));
+    --brand-softer: color-mix(in srgb, var(--brand) 5%, var(--surface-1));
     --status-ok-soft: color-mix(in srgb, var(--status-ok) 10%, var(--surface-1));
     --status-ok-line: color-mix(in srgb, var(--status-ok) 32%, var(--surface-1));
     --status-ok-ink: color-mix(in oklch, var(--status-ok) 62%, var(--ink));

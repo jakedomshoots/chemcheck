@@ -20,10 +20,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import ClientListItem from "../components/clients/ClientListItem";
+import ClientDirectory from "../components/clients/ClientDirectory";
 import { toast } from "sonner";
 import { DAY_ORDER, getEffectiveWorkingDays } from "@/lib/workingDays";
 
 const FALLBACK_SORT_ORDER = Number.MAX_SAFE_INTEGER;
+const CLIENT_VIEW_OPTIONS = Object.freeze([
+  { value: "schedule", label: "Schedule" },
+  { value: "directory", label: "Directory" },
+]);
 
 function getSortFallback(createdAt) {
   if (!createdAt) return FALLBACK_SORT_ORDER;
@@ -63,6 +68,7 @@ export default function Clients() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeDay, setActiveDay] = useState("Monday");
+  const [viewMode, setViewMode] = useState("schedule");
   const [deleteCustomer, setDeleteCustomer] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [reorderMode, setReorderMode] = useState(false);
@@ -72,6 +78,7 @@ export default function Clients() {
   const pendingReorderSortsRef = useRef(new Map());
   const pendingReorderDaysByCustomerIdRef = useRef(new Map());
   const dayTabRefs = useRef({});
+  const clientViewTabRefs = useRef({});
   const hasAutoScrolledDayRef = useRef(false);
 
   const daysOfWeek = useMemo(() => {
@@ -253,6 +260,31 @@ export default function Clients() {
     navigate(createPageUrl("EditClient") + `?id=${customer._id}`);
   }, [navigate]);
 
+  const handleViewModeChange = useCallback((nextMode) => {
+    setViewMode(nextMode);
+    if (nextMode === "directory") {
+      setReorderMode(false);
+    }
+  }, []);
+
+  const handleViewModeKeyDown = useCallback((event, currentIndex) => {
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % CLIENT_VIEW_OPTIONS.length;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + CLIENT_VIEW_OPTIONS.length) % CLIENT_VIEW_OPTIONS.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = CLIENT_VIEW_OPTIONS.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextMode = CLIENT_VIEW_OPTIONS[nextIndex].value;
+    handleViewModeChange(nextMode);
+    clientViewTabRefs.current[nextMode]?.focus();
+  }, [handleViewModeChange]);
+
+  const handleOpenCustomer = useCallback((customer) => {
+    navigate(createPageUrl("CustomerDetail") + `?id=${customer._id}`);
+  }, [navigate]);
+
   const applyReorder = useCallback(async (day, reorderedDayCustomers) => {
     const nextOrderById = new Map();
     reorderedDayCustomers.forEach((customer, index) => {
@@ -395,35 +427,70 @@ export default function Clients() {
     <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
       <div
         data-testid="clients-header"
-        className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card"
+        className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-3 shadow-card sm:p-4"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Client roster</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Client roster</p>
             <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
               Clients
             </h2>
-            <p className="mt-1 text-sm font-medium text-ink-muted">
-              {visibleCustomerCount} clients scheduled
-              {orphanedCustomers.length > 0 && (
-                <span className="ml-1 text-watch">
-                  ({orphanedCustomers.length} not on working days)
-                </span>
-              )}
-            </p>
+            {viewMode === "schedule" && (
+              <p className="mt-1 text-sm font-medium text-ink-muted">
+                {visibleCustomerCount} {visibleCustomerCount === 1 ? "client" : "clients"} scheduled
+                {orphanedCustomers.length > 0 && (
+                  <span className="ml-1 text-watch">
+                    ({orphanedCustomers.length} not on working days)
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+          <div
+            data-testid="client-view-toggle"
+            role="tablist"
+            aria-label="Client view"
+            className="grid h-12 w-full grid-cols-2 gap-1 rounded-control border border-line bg-surface-2 p-1 sm:max-w-sm"
+          >
+            {CLIENT_VIEW_OPTIONS.map((option, index) => {
+              const isActive = viewMode === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={isActive ? 0 : -1}
+                  ref={(element) => {
+                    if (element) clientViewTabRefs.current[option.value] = element;
+                  }}
+                  onClick={() => handleViewModeChange(option.value)}
+                  onKeyDown={(event) => handleViewModeKeyDown(event, index)}
+                  className={`h-10 rounded-chip text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                    isActive
+                      ? "bg-brand text-white shadow-sm"
+                      : "text-ink-secondary hover:bg-surface-1 hover:text-ink"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0 sm:flex-row">
             {!reorderMode ? (
               <>
-                <Button
-                  onClick={() => setReorderMode(true)}
-                  disabled={visibleCustomerCount === 0}
-                  variant="outline"
-                  className="h-11 w-full rounded-card border border-line bg-surface-1 text-sm font-semibold text-ink shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-2 disabled:text-ink-muted disabled:shadow-none sm:w-auto"
-                >
-                  <ArrowUp className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Reorder
-                </Button>
+                {viewMode === "schedule" && (
+                  <Button
+                    onClick={() => setReorderMode(true)}
+                    disabled={visibleCustomerCount === 0}
+                    variant="outline"
+                    className="h-11 w-full rounded-card border border-line bg-surface-1 text-sm font-semibold text-ink shadow-sm hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-2 disabled:text-ink-muted disabled:shadow-none sm:w-auto"
+                  >
+                    <ArrowUp className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Reorder
+                  </Button>
+                )}
                 <Button
                   onClick={() => navigate(createPageUrl("NewClient"))}
                   className="h-11 w-full rounded-card bg-brand text-sm font-semibold text-white shadow-cta hover:bg-brand-strong sm:w-auto"
@@ -445,7 +512,7 @@ export default function Clients() {
         </div>
       </div>
 
-      {reorderMode && (
+      {viewMode === "schedule" && reorderMode && (
         <div className="mb-4 rounded-raised border border-[var(--status-info-line)] bg-brand-softer px-4 py-3 shadow-sm">
           <p className="text-sm font-semibold text-brand-ink">
             Reorder Mode active. Use the arrows on each client to move them up or down for the selected day.
@@ -453,7 +520,7 @@ export default function Clients() {
         </div>
       )}
 
-      {orphanedCustomers.length > 0 && (
+      {viewMode === "schedule" && orphanedCustomers.length > 0 && (
         <div className="mb-4 overflow-hidden rounded-raised border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] shadow-sm">
           <div className="flex items-start gap-3 px-4 py-3">
             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--status-watch-soft)]0 text-white">
@@ -479,11 +546,15 @@ export default function Clients() {
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search clients by name or address..."
+          aria-label="Search clients"
+          placeholder={viewMode === "directory"
+            ? "Search by name, phone, or address..."
+            : "Search clients by name or address..."}
           className="h-11 rounded-card border border-line bg-surface-1 pl-9 text-sm font-medium text-ink-secondary shadow-sm focus:border-[var(--status-info-line)]"
         />
       </div>
 
+      {viewMode === "schedule" ? (
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
         <div className="mb-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <TabsList
@@ -536,7 +607,7 @@ export default function Clients() {
                       customer={customer}
                       onDelete={setDeleteCustomer}
                       onEdit={handleEdit}
-                      onClick={(c) => navigate(createPageUrl("CustomerDetail") + `?id=${c._id}`)}
+                      onClick={handleOpenCustomer}
                       reorderMode={reorderMode}
                       onMoveUp={handleMoveUp}
                       onMoveDown={handleMoveDown}
@@ -551,6 +622,13 @@ export default function Clients() {
           );
         })}
       </Tabs>
+      ) : (
+        <ClientDirectory
+          customers={customers}
+          searchQuery={searchQuery}
+          onOpen={handleOpenCustomer}
+        />
+      )}
 
       <AlertDialog open={!!deleteCustomer} onOpenChange={() => setDeleteCustomer(null)}>
         <AlertDialogContent>

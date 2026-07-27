@@ -73,8 +73,8 @@ describe('Clients Page', () => {
       mockUpdateCustomer.mockResolvedValue(undefined);
       mockUpdateCustomer.mockClear();
       setMockCustomers([
-        { _id: 'c1', full_name: 'Alice Smith', address: '123 Apple St', service_day: 'Monday', sort_order: 0 },
-        { _id: 'c2', full_name: 'Bob Jones', address: '456 Banana Ave', service_day: 'Tuesday', sort_order: 0 }
+        { _id: 'c1', full_name: 'Alice Smith', address: '123 Apple St', phone: '(555) 111-2222', service_day: 'Monday', sort_order: 0 },
+        { _id: 'c2', full_name: 'Bob Jones', address: '456 Banana Ave', phone: '(555) 333-4444', service_day: 'Tuesday', sort_order: 0 }
       ]);
     });
 
@@ -109,6 +109,34 @@ describe('Clients Page', () => {
         expect(dayRail).toHaveClass('grid', 'h-12', 'rounded-control', 'bg-surface-2');
         expect(mondayTab).toHaveClass('h-10', '!rounded-chip', 'min-w-16');
         expect(within(mondayTab).getByText('1')).not.toHaveClass('rounded-full');
+    });
+
+    it('keeps Schedule as the default and switches to the alphabetical Directory view', () => {
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+
+        const viewToggle = screen.getByTestId('client-view-toggle');
+        expect(within(viewToggle).getByRole('tab', { name: 'Schedule' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('service-day-tabs')).toBeInTheDocument();
+
+        fireEvent.keyDown(within(viewToggle).getByRole('tab', { name: 'Schedule' }), { key: 'ArrowRight' });
+
+        expect(within(viewToggle).getByRole('tab', { name: 'Directory' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.queryByTestId('service-day-tabs')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Reorder/i })).not.toBeInTheDocument();
+        expect(screen.getByTestId('client-directory')).toBeInTheDocument();
+        expect(screen.getByPlaceholderText('Search by name, phone, or address...')).toBeInTheDocument();
+    });
+
+    it('searches phone numbers while in Directory mode', () => {
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+        fireEvent.click(screen.getByRole('tab', { name: 'Directory' }));
+
+        fireEvent.change(screen.getByRole('textbox', { name: 'Search clients' }), {
+          target: { value: '333-4444' },
+        });
+
+        expect(screen.getByText('Bob Jones')).toBeInTheDocument();
+        expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
     });
 
     it('keeps the empty day state free of a duplicate Add Client action', () => {
