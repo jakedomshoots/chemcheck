@@ -6,6 +6,13 @@ import { importWithRetry } from "@/lib/chunkErrorRecovery";
 import chemcheckLogo from "@/assets/chemcheck-logo.svg";
 import { useBottomNavigation } from '@/hooks/useBottomNavigation';
 import { MOBILE_NAV_ITEMS, getMobileNavItems, getOverflowNavItems } from '@/lib/bottomNavigation';
+import { RouteScrollManager } from '@/components/navigation/RouteScrollManager';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerTitle,
+} from '@/components/ui/drawer';
 
 const SyncStatusIndicator = lazy(() =>
   importWithRetry(
@@ -49,7 +56,9 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen bg-surface-0 font-sans selection:bg-brand-soft dark:selection:bg-cyan-900">
-      <header className="lg:hidden sticky top-0 z-50 bg-surface-1/85 backdrop-blur-xl border-b border-line safe-area-top">
+      <RouteScrollManager />
+
+      <header className="relative z-40 border-b border-line bg-surface-1 safe-area-top lg:hidden">
         <div className="flex items-center justify-between px-3 h-12 sm:h-14">
           <div className="flex items-center">
             <img
@@ -85,7 +94,7 @@ export default function Layout({ children, currentPageName }) {
               <Link
                 key={item.name}
                 to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-150 group ${active
+                className={`group flex items-center gap-3 rounded-xl px-4 py-3 transition-[color,background-color,transform] duration-150 active:scale-[0.985] motion-reduce:transform-none ${active
                   ? "bg-primary text-primary-foreground"
                   : "text-ink-secondary hover:bg-surface-2"
                   }`}
@@ -118,7 +127,7 @@ export default function Layout({ children, currentPageName }) {
       </main>
 
       <nav
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-1/90 backdrop-blur-xl border-t border-line pb-[env(safe-area-inset-bottom)]"
+        className="app-chrome fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-surface-1/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
         aria-label="Primary navigation"
       >
         <div className="flex items-center justify-around h-16">
@@ -128,7 +137,7 @@ export default function Layout({ children, currentPageName }) {
               <Link
                 key={item.name}
                 to={item.path}
-                className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-colors duration-150 ${active
+                className={`mx-1 flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-[color,background-color,transform] duration-150 active:scale-[0.97] motion-reduce:transform-none ${active
                   ? "bg-primary text-primary-foreground"
                   : "text-ink-muted hover:text-ink-secondary hover:bg-surface-2"
                   }`}
@@ -145,7 +154,7 @@ export default function Layout({ children, currentPageName }) {
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
-            className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 mx-1 rounded-xl transition-colors duration-150 ${isMoreActive ? "bg-primary text-primary-foreground" : "text-ink-muted hover:text-ink-secondary hover:bg-surface-2"}`}
+            className={`mx-1 flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-[color,background-color,transform] duration-150 active:scale-[0.97] motion-reduce:transform-none ${isMoreActive ? "bg-primary text-primary-foreground" : "text-ink-muted hover:text-ink-secondary hover:bg-surface-2"}`}
             aria-label="More navigation"
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
@@ -160,56 +169,50 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </nav>
 
-      {/* More bottom sheet */}
-      {moreOpen && (
-        <div className="lg:hidden fixed inset-0 z-[60] flex items-end justify-center">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
-            onClick={() => setMoreOpen(false)}
-          />
-          <div
-            id="mobile-more-navigation"
-            className="relative w-full max-w-md mx-auto bg-surface-1 rounded-t-sheet shadow-raised p-4 pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-bottom duration-200"
-            role="dialog"
-            aria-modal="true"
-            aria-label="More options"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-semibold text-ink">More</h2>
-              <button
-                type="button"
-                onClick={() => setMoreOpen(false)}
-                className="p-2 -mr-2 hover:bg-surface-2 active:bg-surface-2 active:scale-95 rounded-lg transition-colors touch-manipulation"
-                aria-label="Close more options"
-              >
-                <PoolIcon name="close" className="h-5 w-5 text-ink-muted" />
-              </button>
+      <Drawer open={moreOpen} onOpenChange={setMoreOpen} shouldScaleBackground={false}>
+        <DrawerContent
+          id="mobile-more-navigation"
+          aria-label="More options"
+          className="mx-auto max-w-md px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:hidden"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <DrawerTitle className="text-base font-semibold text-ink">More</DrawerTitle>
+              <DrawerDescription className="sr-only">Destinations not pinned to the bottom menu.</DrawerDescription>
             </div>
-            <nav className="grid grid-cols-1 gap-1">
-              {moreItems.map((item) => {
-                const active = isActive(item.path);
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.path}
-                    onClick={() => setMoreOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-150 ${active
-                      ? "bg-primary text-primary-foreground"
-                      : "text-ink-secondary hover:bg-surface-2"
-                      }`}
-                    aria-current={active ? "page" : undefined}
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
-                      <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-primary-foreground" : "text-ink-secondary"}`} />
-                    </span>
-                    <span className="font-medium">{item.name}</span>
-                  </Link>
-                );
-              })}
-            </nav>
+            <button
+              type="button"
+              onClick={() => setMoreOpen(false)}
+              className="-mr-2 flex h-11 w-11 touch-manipulation items-center justify-center rounded-control transition-[background-color,transform] hover:bg-surface-2 active:scale-95 active:bg-surface-2 motion-reduce:transform-none"
+              aria-label="Close more options"
+            >
+              <PoolIcon name="close" className="h-5 w-5 text-ink-muted" />
+            </button>
           </div>
-        </div>
-      )}
+          <nav className="native-scroll grid max-h-[min(65dvh,32rem)] grid-cols-1 gap-1 overflow-y-auto" aria-label="More destinations">
+            {moreItems.map((item) => {
+              const active = isActive(item.path);
+              return (
+                <Link
+                  key={item.name}
+                  to={item.path}
+                  onClick={() => setMoreOpen(false)}
+                  className={`flex min-h-12 items-center gap-3 rounded-xl px-4 py-3 transition-[color,background-color,transform] duration-150 active:scale-[0.985] motion-reduce:transform-none ${active
+                    ? "bg-primary text-primary-foreground"
+                    : "text-ink-secondary hover:bg-surface-2"
+                    }`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
+                    <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-primary-foreground" : "text-ink-secondary"}`} />
+                  </span>
+                  <span className="font-medium">{item.name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

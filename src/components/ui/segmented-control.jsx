@@ -59,7 +59,7 @@ export const SegmentedControl = forwardRef(function SegmentedControl(
       {thumb && (
         <span
           aria-hidden="true"
-          className="absolute top-1 bottom-1 rounded-full bg-surface-1 shadow-sm transition-[left,width] duration-200 ease-spring"
+          className="absolute bottom-1 top-1 rounded-full bg-surface-1 shadow-sm transition-[left,width] duration-200 ease-spring motion-reduce:transition-none"
           style={{ left: thumb.left, width: thumb.width }}
         />
       )}

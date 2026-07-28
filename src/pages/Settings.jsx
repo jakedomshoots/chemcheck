@@ -816,7 +816,7 @@ export default function Settings() {
                 <button
                   key={section.id}
                   onClick={() => handleSectionChange(section.id)}
-                  className={`flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-left transition-all ${activeSection === section.id
+                  className={`flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-left transition-[color,background-color,box-shadow,transform] duration-150 active:scale-[0.985] motion-reduce:transform-none ${activeSection === section.id
                     ? 'bg-brand text-white shadow-cta'
                     : 'text-ink-secondary hover:bg-brand-softer hover:text-ink'
                     }`}
@@ -1365,7 +1365,7 @@ export default function Settings() {
                 <div className="space-y-3">
                   <button
                     onClick={() => setShowBackupManager(true)}
-                    className="flex w-full items-center justify-between rounded-raised border border-[var(--status-info-line)] bg-brand-softer p-4 text-left transition-all hover:border-[var(--status-info-line)] hover:bg-brand-softer"
+                    className="flex w-full items-center justify-between rounded-raised border border-[var(--status-info-line)] bg-brand-softer p-4 text-left transition-[border-color,background-color,transform] duration-150 active:scale-[0.99] motion-reduce:transform-none hover:border-[var(--status-info-line)] hover:bg-brand-softer"
                   >
                     <div className="flex items-center gap-3">
                       <div className="rounded-2xl bg-brand p-2 text-white shadow-cta">
@@ -1496,7 +1496,7 @@ export default function Settings() {
                       </div>
                       <div className="w-full h-2 bg-surface-2 rounded-full overflow-hidden">
                         <div
-                          className={`h-full transition-all ${photoStorage.usagePercent >= 85 ? 'bg-[var(--status-critical-soft)]0' : 'bg-brand'}`}
+                          className={`h-full transition-[width,background-color] duration-300 ease-standard motion-reduce:transition-none ${photoStorage.usagePercent >= 85 ? 'bg-[var(--status-critical)]' : 'bg-brand'}`}
                           style={{ width: `${Math.min(100, photoStorage.usagePercent)}%` }}
                         />
                       </div>

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { scrollElementIntoView } from "@/lib/scrollMotion";
 
 // Default chemical types as fallback
 const defaultChemicalTypes = [
@@ -104,8 +105,9 @@ export default function AddChemicalForm({ onSuccess, onCancel, preselectedCustom
   };
 
   const keepFocusedFieldAboveKeyboard = (event) => {
+    const field = event.currentTarget;
     window.setTimeout(() => {
-      event.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
+      scrollElementIntoView(field, { block: "center" });
     }, 250);
   };
 

@@ -976,31 +976,33 @@ function TopicCard({ topic, isExpanded, onToggle }) {
           <p className="line-clamp-1 text-sm font-medium leading-relaxed text-ink-muted sm:line-clamp-2">{topic.content.summary}</p>
         </div>
         <div
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-surface-1 text-ink-muted shadow-sm transition-transform sm:h-10 sm:w-10 ${isExpanded ? 'rotate-180 bg-brand-softer text-brand-ink' : ''}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-surface-1 text-ink-muted shadow-sm transition-[transform,color,background-color] duration-200 ease-standard motion-reduce:transition-none sm:h-10 sm:w-10 ${isExpanded ? 'rotate-180 bg-brand-softer text-brand-ink' : ''}`}
         >
           <ChevronDown className="h-5 w-5" aria-hidden="true" />
         </div>
       </button>
 
       <div
-        className={`overflow-hidden transition-all duration-300 ease-out ${isExpanded ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}`}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-standard motion-reduce:transition-none ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
       >
-        <div className="border-t border-line p-4 sm:p-5">
-          {topic.content.floridaNote && (
-            <FloridaNote>{topic.content.floridaNote}</FloridaNote>
-          )}
+        <div className="min-h-0 overflow-hidden">
+          <div className="border-t border-line p-4 sm:p-5">
+            {topic.content.floridaNote && (
+              <FloridaNote>{topic.content.floridaNote}</FloridaNote>
+            )}
 
-          <div className="space-y-3">
-            {topic.content.sections.map((section, idx) => (
-              <div key={idx} className="rounded-2xl border border-line bg-surface-1 p-4">
-                <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <span className="h-1.5 w-1.5 rounded-full bg-brand-softer0" aria-hidden="true" />
-                  {section.title}
-                </h4>
-                {section.warning && <WarningBox>{section.warning}</WarningBox>}
-                <StepList steps={section.steps} />
-              </div>
-            ))}
+            <div className="space-y-3">
+              {topic.content.sections.map((section, idx) => (
+                <div key={idx} className="rounded-2xl border border-line bg-surface-1 p-4">
+                  <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                    <span className="h-1.5 w-1.5 rounded-full bg-brand-softer0" aria-hidden="true" />
+                    {section.title}
+                  </h4>
+                  {section.warning && <WarningBox>{section.warning}</WarningBox>}
+                  <StepList steps={section.steps} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1025,7 +1027,7 @@ function CategorySection({ category, searchQuery, expandedTopics, toggleTopic, i
   if (filteredTopics.length === 0) return null;
 
   return (
-    <div className={`transition-all duration-500 ${isActiveCategory ? 'opacity-100' : 'opacity-0 absolute pointer-events-none'}`}>
+    <div className={`transition-opacity duration-200 ease-standard motion-reduce:transition-none ${isActiveCategory ? 'opacity-100' : 'pointer-events-none absolute opacity-0'}`}>
       <div className="mb-5 flex items-center gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-softer text-brand-ink shadow-inner">
           <IconComponent className="h-6 w-6" aria-hidden="true" />

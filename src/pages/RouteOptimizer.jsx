@@ -477,7 +477,7 @@ export default function RouteOptimizer() {
               {optimizedRoute.optimized_order.map((stop, index) => (
                 <div
                   key={index}
-                  className="overflow-hidden rounded-raised border border-line bg-surface-1 shadow-card transition-all hover:shadow-card"
+                  className="overflow-hidden rounded-raised border border-line bg-surface-1 shadow-card transition-[border-color,box-shadow] duration-150"
                 >
                   <div className="flex items-stretch">
                     <div className="flex shrink-0 items-center justify-center bg-ink px-5 py-4 text-surface-0 sm:px-6 sm:py-5">
@@ -591,7 +591,7 @@ function RouteRunnerView({
 
       <div className="w-full bg-surface-2 rounded-full h-2.5">
         <div
-          className="h-2.5 rounded-full bg-brand transition-all duration-300"
+          className="h-2.5 rounded-full bg-brand transition-[width] duration-300 ease-standard motion-reduce:transition-none"
           style={{ width: `${progressPercent}%` }}
         ></div>
       </div>

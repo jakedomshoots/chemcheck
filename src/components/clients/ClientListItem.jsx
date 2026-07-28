@@ -23,7 +23,7 @@ export default function ClientListItem({
   };
 
   return (
-    <div className={`bg-white rounded-xl overflow-hidden transition-all duration-200 shadow-sm ${isMoving
+    <div className={`overflow-hidden rounded-xl bg-white shadow-sm transition-[border-color,background-color,box-shadow] duration-200 ${isMoving
       ? 'border border-blue-400 bg-[var(--status-info-soft)]'
       : 'border border-line hover:shadow-md'
       }`}>

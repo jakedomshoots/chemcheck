@@ -26,6 +26,7 @@ describe('Layout', () => {
     );
 
     const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    expect(screen.getByRole('banner')).not.toHaveClass('sticky');
 
     expect(within(primaryNavigation).getByRole('link', { name: /Chemical/i })).toHaveAttribute('href', '/chemicalusage');
     expect(within(primaryNavigation).getByRole('link', { name: /Notes/i })).toHaveAttribute('href', '/notes');
@@ -34,7 +35,7 @@ describe('Layout', () => {
 
     await user.click(screen.getByRole('button', { name: 'More navigation' }));
 
-    const moreDialog = screen.getByRole('dialog', { name: 'More options' });
+    const moreDialog = screen.getByRole('dialog', { name: 'More' });
     expect(within(moreDialog).getByRole('link', { name: /Work Orders/i })).toHaveAttribute('href', '/workorders');
     expect(within(moreDialog).getByRole('link', { name: /Route Plan/i })).toHaveAttribute('href', '/routeoptimizer');
   });
@@ -58,7 +59,7 @@ describe('Layout', () => {
     await user.click(moreButton);
 
     expect(moreButton).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('dialog', { name: 'More options' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'More' })).toBeInTheDocument();
   });
 
   it('uses the saved mobile tool belt and keeps every other destination in More', async () => {
@@ -83,7 +84,7 @@ describe('Layout', () => {
 
     await user.click(screen.getByRole('button', { name: 'More navigation' }));
 
-    const moreDialog = screen.getByRole('dialog', { name: 'More options' });
+    const moreDialog = screen.getByRole('dialog', { name: 'More' });
     expect(within(moreDialog).getByRole('link', { name: /Clients/i })).toHaveAttribute('href', '/clients');
     expect(within(moreDialog).queryByRole('link', { name: /Work Orders/i })).not.toBeInTheDocument();
   });

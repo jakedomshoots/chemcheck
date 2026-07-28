@@ -10,7 +10,7 @@ export function WorkOrdersSectionNav({ activeSection, counts, onChange }) {
   ];
 
   return (
-    <nav aria-label="Work Orders sections" className="overflow-x-auto">
+    <nav aria-label="Work Orders sections" className="native-scroll overflow-x-auto">
       <div className="inline-flex min-w-full rounded-xl border border-line bg-surface-2 p-1 sm:min-w-0">
         {sections.map((section) => {
           const isActive = activeSection === section.id;

@@ -547,7 +547,7 @@ export default function Home() {
           {showOpsBrief && (
             <aside
               aria-label="Daily Ops Brief"
-              className="scroll-recede w-full rounded-2xl border border-[var(--status-info-line)] bg-[var(--status-info-soft)] px-4 py-3 sm:w-auto sm:min-w-[250px] sm:max-w-[300px] sm:shrink-0"
+              className="w-full rounded-2xl border border-[var(--status-info-line)] bg-[var(--status-info-soft)] px-4 py-3 sm:w-auto sm:min-w-[250px] sm:max-w-[300px] sm:shrink-0"
             >
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">

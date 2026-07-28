@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { format, parseISO, startOfMonth, endOfMonth, addMonths, isWithinInterval } from "date-fns";
 import AddChemicalForm from "@/components/servicelog/AddChemicalForm";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
+import { scrollElementIntoView } from "@/lib/scrollMotion";
 
 function downloadHtmlReport(filename, html) {
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -513,8 +514,9 @@ export default function ChemicalUsagePage() {
                                       value={editingNoteValue}
                                       onChange={(e) => setEditingNoteValue(e.target.value)}
                                       onFocus={(e) => {
+                                        const field = e.currentTarget;
                                         window.setTimeout(() => {
-                                          e.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
+                                          scrollElementIntoView(field, { block: "center" });
                                         }, 250);
                                       }}
                                       placeholder="Add notes..."

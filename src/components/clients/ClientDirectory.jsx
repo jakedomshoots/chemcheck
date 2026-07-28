@@ -13,6 +13,7 @@ import {
   groupClientsForDirectory,
 } from "@/lib/clientDirectory";
 import { openNavigation } from "@/lib/mapNavigation";
+import { scrollElementIntoView } from "@/lib/scrollMotion";
 
 const DirectoryAction = memo(function DirectoryAction({
   as: Element = "button",
@@ -137,7 +138,7 @@ export default function ClientDirectory({ customers, searchQuery, onOpen }) {
 
   const scrollToLetter = (letter) => {
     const section = document.getElementById(`${directoryId}-${letter === "#" ? "number" : letter}`);
-    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollElementIntoView(section, { block: "start" });
   };
 
   if (groups.length === 0) {

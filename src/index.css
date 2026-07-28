@@ -166,6 +166,8 @@
 
   html {
     -webkit-font-smoothing: antialiased;
+    scroll-behavior: auto;
+    scrollbar-gutter: stable;
     text-rendering: optimizeLegibility;
   }
 
@@ -173,6 +175,13 @@
     @apply bg-background text-foreground;
     background-color: var(--surface-0);
     color: var(--ink);
+    min-height: 100dvh;
+  }
+
+  @supports (min-height: 100dvh) {
+    .min-h-screen {
+      min-height: 100dvh;
+    }
   }
 
   /* Ensure all form inputs have proper text contrast */
@@ -291,6 +300,11 @@
   .route-progress-bar {
     transition: none;
   }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
 }
 
 /* View transitions: cross-fade default; specific names morph */
@@ -308,26 +322,7 @@
 }
 
 @keyframes vt-fade-in {
-  from { opacity: 0; transform: translateY(6px); }
-}
-
-/* Header content gently recedes as the route list scrolls (progressive
-   enhancement — browsers without scroll timelines just keep it static) */
-@supports (animation-timeline: scroll()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .scroll-recede {
-      animation: scroll-recede linear both;
-      animation-timeline: scroll(nearest block);
-      animation-range: 0 120px;
-    }
-  }
-}
-
-@keyframes scroll-recede {
-  to {
-    opacity: 0.55;
-    transform: translateY(-4px);
-  }
+  from { opacity: 0; }
 }
 
 /* ============================================
@@ -354,6 +349,7 @@
 button, a, [role="button"], input[type="submit"] {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
+  touch-action: manipulation;
   user-select: none;
 }
 
@@ -366,11 +362,27 @@ p, span, h1, h2, h3, h4, h5, h6, td, th, li, label {
 /* Native-feel scrolling */
 .native-scroll {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  overscroll-behavior: contain;
 }
 
-/* Prevent body overscroll bounce (feels more native) */
+/* Keep browser pull-to-refresh from stealing app gestures; contained lists
+   retain their own momentum through .native-scroll. */
 html, body {
-  overscroll-behavior: none;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-chrome {
+    background-color: var(--surface-1) !important;
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .app-chrome {
+    background-color: var(--surface-1) !important;
+    border-color: var(--ink-muted) !important;
+  }
 }

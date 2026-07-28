@@ -23,6 +23,7 @@ import ClientListItem from "../components/clients/ClientListItem";
 import ClientDirectory from "../components/clients/ClientDirectory";
 import { toast } from "sonner";
 import { DAY_ORDER, getEffectiveWorkingDays } from "@/lib/workingDays";
+import { getPreferredScrollBehavior } from "@/lib/scrollMotion";
 
 const FALLBACK_SORT_ORDER = Number.MAX_SAFE_INTEGER;
 const CLIENT_VIEW_OPTIONS = Object.freeze([
@@ -147,7 +148,7 @@ export default function Clients() {
 
     const rafId = window.requestAnimationFrame(() => {
       activeTab.scrollIntoView({
-        behavior: hasAutoScrolledDayRef.current ? "smooth" : "auto",
+        behavior: hasAutoScrolledDayRef.current ? getPreferredScrollBehavior() : "auto",
         block: "nearest",
         inline: "center",
       });
@@ -556,7 +557,7 @@ export default function Clients() {
 
       {viewMode === "schedule" ? (
       <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-        <div className="mb-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div className="native-scroll mb-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <TabsList
             data-testid="service-day-tabs"
             aria-label="Service day"
