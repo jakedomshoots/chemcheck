@@ -33,7 +33,8 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  Palette
+  Palette,
+  PanelBottom
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -81,6 +82,7 @@ import {
   clearAllPhotos as clearAllLocalPhotos,
   formatStorageBytes,
 } from '@/lib/proof-of-service';
+import { BottomNavigationSettings } from '@/components/settings/BottomNavigationSettings';
 
 function AppearanceSection() {
   const [theme, setThemeState] = useState(() => getTheme());
@@ -363,7 +365,13 @@ function ProviderStatusCard({ name, description, status, onTest, testing, result
 
 
 export default function Settings() {
-  const [activeSection, setActiveSection] = useState('business');
+  const [activeSection, setActiveSection] = useState(() => {
+    const requestedSection = typeof window === 'undefined' ? '' : window.location.hash.slice(1);
+    return [
+      'business', 'account', 'preferences', 'navigation', 'appearance', 'notifications',
+      'schedule', 'services', 'integrations', 'backup', 'privacy', 'support',
+    ].includes(requestedSection) ? requestedSection : 'business';
+  });
   const [showBackupManager, setShowBackupManager] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -752,6 +760,7 @@ export default function Settings() {
     { id: 'business', label: 'Business Info', icon: Building2 },
     { id: 'account', label: 'Account', icon: User },
     { id: 'preferences', label: 'Preferences', icon: Globe },
+    { id: 'navigation', label: 'Bottom Menu', icon: PanelBottom },
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'schedule', label: 'Schedule', icon: Calendar },
@@ -761,6 +770,14 @@ export default function Settings() {
     { id: 'privacy', label: 'Privacy & Data', icon: Eye },
     { id: 'support', label: 'Help & Support', icon: HelpCircle }
   ];
+
+  const handleSectionChange = (sectionId) => {
+    setActiveSection(sectionId);
+    if (typeof window !== 'undefined') {
+      const nextUrl = `${window.location.pathname}${window.location.search}#${sectionId}`;
+      window.history.replaceState(window.history.state, '', nextUrl);
+    }
+  };
 
   if (showBackupManager) {
     return <BackupManager onClose={() => setShowBackupManager(false)} />;
@@ -780,7 +797,7 @@ export default function Settings() {
         <select
           id="settings-section"
           value={activeSection}
-          onChange={(event) => setActiveSection(event.target.value)}
+          onChange={(event) => handleSectionChange(event.target.value)}
           className="h-11 w-full rounded-card border border-line bg-surface-1 px-4 text-sm font-semibold text-ink shadow-card outline-none focus:border-[var(--status-info-line)] focus:ring-2 focus:ring-ring"
         >
           {sections.map((section) => (
@@ -798,7 +815,7 @@ export default function Settings() {
               {sections.map((section) => (
                 <button
                   key={section.id}
-                  onClick={() => setActiveSection(section.id)}
+                  onClick={() => handleSectionChange(section.id)}
                   className={`flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-left transition-all ${activeSection === section.id
                     ? 'bg-brand text-white shadow-cta'
                     : 'text-ink-secondary hover:bg-brand-softer hover:text-ink'
@@ -816,6 +833,7 @@ export default function Settings() {
         <div className="lg:col-span-3">
           <Card className="rounded-sheet border border-line bg-surface-1 p-4 shadow-card sm:p-6">
             {activeSection === 'appearance' && <AppearanceSection />}
+            {activeSection === 'navigation' && <BottomNavigationSettings />}
             {activeSection === 'business' && (
               <div className="space-y-6">
                 <div>

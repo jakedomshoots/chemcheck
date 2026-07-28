@@ -2,9 +2,10 @@ import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { APP_ROUTES, getCanonicalRoute } from '@/lib/routeConfig';
 import { PoolIcon } from "@/components/ui/iconography";
-import { X } from "lucide-react";
 import { importWithRetry } from "@/lib/chunkErrorRecovery";
 import chemcheckLogo from "@/assets/chemcheck-logo.svg";
+import { useBottomNavigation } from '@/hooks/useBottomNavigation';
+import { MOBILE_NAV_ITEMS, getMobileNavItems, getOverflowNavItems } from '@/lib/bottomNavigation';
 
 const SyncStatusIndicator = lazy(() =>
   importWithRetry(
@@ -17,6 +18,7 @@ export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [renderSyncIndicator, setRenderSyncIndicator] = useState(false);
+  const { itemIds: primaryTabIds } = useBottomNavigation();
 
   // Defer sync UI hydration until idle time to keep first paint responsive.
   useEffect(() => {
@@ -29,32 +31,9 @@ export default function Layout({ children, currentPageName }) {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const navItems = [
-    { name: "Home", path: APP_ROUTES.Home, icon: "home" },
-    { name: "Clients", path: APP_ROUTES.Clients, icon: "clients" },
-    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: "workOrders" },
-    { name: "Reports", path: APP_ROUTES.WeeklyReport, icon: "report" },
-    { name: "Notes", path: APP_ROUTES.Notes, icon: "notes" },
-    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: "chemicals" },
-    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: "route" },
-    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: "poolSchool" },
-    { name: "Settings", path: APP_ROUTES.Settings, icon: "settings" },
-  ];
-
-  const primaryTabs = [
-    { name: "Home", path: APP_ROUTES.Home, icon: "home" },
-    { name: "Clients", path: APP_ROUTES.Clients, icon: "clients" },
-    { name: "Chemicals", path: APP_ROUTES.ChemicalUsage, icon: "chemicals" },
-    { name: "Notes", path: APP_ROUTES.Notes, icon: "notes" },
-  ];
-
-  const moreItems = [
-    { name: "Work Orders", path: APP_ROUTES.WorkOrders, icon: "workOrders" },
-    { name: "Route Plan", path: APP_ROUTES.RouteOptimizer, icon: "route" },
-    { name: "Reports", path: APP_ROUTES.WeeklyReport, icon: "report" },
-    { name: "Pool School", path: APP_ROUTES.PoolSchool, icon: "poolSchool" },
-    { name: "Settings", path: APP_ROUTES.Settings, icon: "settings" },
-  ];
+  const navItems = MOBILE_NAV_ITEMS;
+  const primaryTabs = getMobileNavItems(primaryTabIds);
+  const moreItems = getOverflowNavItems(primaryTabIds);
 
   const isActive = (path) => {
     const canonicalPath = getCanonicalRoute(location.pathname) === "/" ? APP_ROUTES.Home : getCanonicalRoute(location.pathname);
@@ -154,11 +133,12 @@ export default function Layout({ children, currentPageName }) {
                   : "text-ink-muted hover:text-ink-secondary hover:bg-surface-2"
                   }`}
                 aria-current={active ? "page" : undefined}
+                aria-label={item.name}
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg">
                   <PoolIcon name={item.icon} className={`h-5 w-5 ${active ? "text-primary-foreground" : ""}`} />
                 </span>
-                <span className="text-xs font-medium truncate px-1">{item.name}</span>
+                <span className="truncate px-1 text-xs font-medium">{item.shortLabel}</span>
               </Link>
             );
           })}
