@@ -995,7 +995,7 @@ function TopicCard({ topic, isExpanded, onToggle }) {
               {topic.content.sections.map((section, idx) => (
                 <div key={idx} className="rounded-2xl border border-line bg-surface-1 p-4">
                   <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
-                    <span className="h-1.5 w-1.5 rounded-full bg-brand-softer0" aria-hidden="true" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
                     {section.title}
                   </h4>
                   {section.warning && <WarningBox>{section.warning}</WarningBox>}

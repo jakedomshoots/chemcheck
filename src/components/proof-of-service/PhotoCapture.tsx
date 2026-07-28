@@ -580,7 +580,7 @@ export function PhotoCapture({
               type="button"
               onClick={() => setShowGrid(!showGrid)}
               className={`p-2 rounded-full transition-colors ${showGrid
-                ? 'bg-brand-softer0 text-white'
+                ? 'bg-brand text-white'
                 : 'bg-black/60 hover:bg-black/80 text-white'
                 }`}
               title="Toggle grid"
@@ -660,7 +660,7 @@ export function PhotoCapture({
           disabled={cameraState !== 'active' || isCapturing}
           className="w-16 h-16 bg-white border-4 border-brand rounded-full flex items-center justify-center hover:bg-brand-softer active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
-          <div className="w-12 h-12 bg-brand-softer0 rounded-full" />
+          <div className="w-12 h-12 bg-brand rounded-full" />
         </button>
 
         {/* Spacer for centering (matches switch button width) */}

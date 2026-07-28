@@ -358,7 +358,7 @@ export function PhotoLightbox({
                     <span className="text-sm font-medium">
                         {currentIndex + 1} / {photos.length}
                     </span>
-                    <span className="px-2 py-0.5 bg-brand-softer0/80 text-xs rounded-full capitalize">
+                    <span className="px-2 py-0.5 bg-brand/80 text-xs rounded-full capitalize">
                         {currentPhoto?.category}
                     </span>
                 </div>

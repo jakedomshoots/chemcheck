@@ -353,7 +353,7 @@ export function PhotoEditor({
                     type="button"
                     onClick={() => setActiveTab(activeTab === 'filters' ? null : 'filters')}
                     className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg transition-colors ${activeTab === 'filters'
-                        ? 'bg-brand-softer0 text-white'
+                        ? 'bg-brand text-white'
                         : 'bg-ink text-ink-muted hover:bg-ink-secondary'
                         }`}
                 >
@@ -399,7 +399,7 @@ export function PhotoEditor({
                             onChange={(e) => handleFilterPreview('brightness', parseInt(e.target.value))}
                             onPointerUp={commitFilterChange}
                             onTouchEnd={commitFilterChange}
-                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand-softer0 [&::-webkit-slider-thumb]:rounded-full"
+                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:rounded-full"
                         />
                     </div>
 
@@ -421,7 +421,7 @@ export function PhotoEditor({
                             onChange={(e) => handleFilterPreview('contrast', parseInt(e.target.value))}
                             onPointerUp={commitFilterChange}
                             onTouchEnd={commitFilterChange}
-                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand-softer0 [&::-webkit-slider-thumb]:rounded-full"
+                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:rounded-full"
                         />
                     </div>
 
@@ -443,7 +443,7 @@ export function PhotoEditor({
                             onChange={(e) => handleFilterPreview('saturation', parseInt(e.target.value))}
                             onPointerUp={commitFilterChange}
                             onTouchEnd={commitFilterChange}
-                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand-softer0 [&::-webkit-slider-thumb]:rounded-full"
+                            className="w-full h-2 bg-ink-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:rounded-full"
                         />
                     </div>
 
@@ -484,7 +484,7 @@ export function PhotoEditor({
                     type="button"
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="flex-1 bg-brand-softer0 hover:bg-brand text-white"
+                    className="flex-1 bg-brand hover:bg-brand-strong text-white"
                 >
                     {isSaving ? (
                         <>
