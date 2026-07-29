@@ -45,7 +45,7 @@ function getChemicalReadings(log) {
 
 const cardStateClassName = {
   done: "border-[var(--status-ok-line)] bg-[var(--status-ok-soft)]",
-  skipped: "border-[var(--status-ok-line)] bg-[var(--status-ok-soft)]",
+  skipped: "border-[var(--status-watch-line)] bg-[var(--status-watch-soft)]",
   pending: "border-line bg-surface-1 hover:border-[var(--status-info-line)] active:border-[var(--status-info-line)]",
 };
 
@@ -125,7 +125,7 @@ const CustomerCard = memo(function CustomerCard({
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <StatusBadge
-            tone={cardState === "skipped" ? "ok" : serviceStateTone(cardState)}
+            tone={serviceStateTone(cardState)}
             label={statusLabel}
             size="sm"
           />
@@ -175,7 +175,7 @@ const CustomerCard = memo(function CustomerCard({
               size="sm"
               className={`h-11 rounded-control border px-2 text-xs font-semibold shadow-none ${
                 isSkipped
-                  ? "surface-ok bg-surface-1 hover:bg-[var(--status-ok-soft)]"
+                  ? "surface-watch bg-surface-1 hover:bg-[var(--status-watch-soft)]"
                   : "border-line bg-surface-1 text-ink-secondary hover:border-[var(--status-watch-line)] hover:bg-[var(--status-watch-soft)] hover:text-watch"
               }`}
               onClick={(e) => {

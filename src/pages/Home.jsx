@@ -299,7 +299,7 @@ export default function Home() {
     const newSkipped = normalizeSkippedCustomerIds([...skippedCustomers, customerId]);
     setSkippedCustomers(newSkipped);
     saveSkippedCustomers(newSkipped);
-    toast.success(`Skipped ${customer.full_name || 'Customer'} for this week`);
+    toast.warning(`Skipped ${customer.full_name || 'Customer'} for this week`);
   };
 
   const handleUnskipCustomer = (customer, options = {}) => {
