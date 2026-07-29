@@ -100,9 +100,23 @@ describe('serviceWorkerManager', () => {
     expect(serviceWorker.getRegistration).toHaveBeenCalledTimes(1);
     expect(serviceWorker.register).toHaveBeenCalledTimes(0);
     expect(serviceWorker.getRegistration).toHaveBeenCalledWith('/');
+    expect(registration.update).toHaveBeenCalledTimes(1);
     expect(getServiceWorkerState().isRegistered).toBe(true);
     expect(registration.addEventListener).toHaveBeenCalledWith('updatefound', expect.any(Function));
     expect(serviceWorker.addEventListener).toHaveBeenCalledWith('controllerchange', expect.any(Function));
+  });
+
+  it('registers new workers without HTTP cache reuse', async () => {
+    mockedPolicy.mockReturnValue(true);
+    const { serviceWorker } = installServiceWorkerMock();
+    serviceWorker.getRegistration.mockResolvedValueOnce(null);
+
+    await registerServiceWorker();
+
+    expect(serviceWorker.register).toHaveBeenCalledWith('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
   });
 
   it('is no-op in unsupported environments and never throws', async () => {

@@ -1,9 +1,13 @@
 // ChemCheck Service Worker
 // Provides offline functionality and caching for PWA
 
-const CACHE_NAME = 'chemcheck-v1.0.0';
-const STATIC_CACHE = 'chemcheck-static-v1.0.0';
-const DYNAMIC_CACHE = 'chemcheck-dynamic-v1.0.0';
+// Replaced in dist/sw.js after every production build. A changed worker script
+// lets installed Safari PWAs discover a release even when this source is stable.
+const BUILD_ID = '__CHEMCHECK_BUILD_ID__';
+const CACHE_PREFIX = 'chemcheck';
+const CACHE_NAME = `${CACHE_PREFIX}-runtime-${BUILD_ID}`;
+const STATIC_CACHE = `${CACHE_PREFIX}-static-${BUILD_ID}`;
+const DYNAMIC_CACHE = `${CACHE_PREFIX}-dynamic-${BUILD_ID}`;
 
 // Files to cache immediately (critical app shell)
 const STATIC_FILES = [
@@ -70,10 +74,9 @@ self.addEventListener('activate', (event) => {
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            // Delete old caches
-            if (cacheName !== STATIC_CACHE && 
-                cacheName !== DYNAMIC_CACHE && 
-                cacheName !== CACHE_NAME) {
+            const isCurrentCache = [STATIC_CACHE, DYNAMIC_CACHE, CACHE_NAME].includes(cacheName);
+            // Only remove stale ChemCheck caches; leave unrelated origins/tools alone.
+            if (cacheName.startsWith(`${CACHE_PREFIX}-`) && !isCurrentCache) {
               console.log('[SW] Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
@@ -109,7 +112,9 @@ self.addEventListener('fetch', (event) => {
   }
   
   // Handle different types of requests
-  if (isNetworkFirst(request.url)) {
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirstNavigation(request));
+  } else if (isNetworkFirst(request.url)) {
     event.respondWith(networkFirst(request));
   } else if (isCacheFirst(request.url)) {
     event.respondWith(cacheFirst(request));
@@ -151,6 +156,31 @@ async function networkFirst(request) {
     }
     
     throw error;
+  }
+}
+
+/**
+ * Always revalidate the SPA shell while online. Hashed JS/CSS assets remain
+ * cache-first, and the most recent index shell remains available offline.
+ */
+async function networkFirstNavigation(request) {
+  try {
+    const networkResponse = await fetch(request, { cache: 'no-store' });
+
+    if (networkResponse.ok) {
+      const cache = await caches.open(STATIC_CACHE);
+      await cache.put('/index.html', networkResponse.clone());
+    }
+
+    return networkResponse;
+  } catch (error) {
+    console.log('[SW] Navigation network failed, using cached shell:', request.url);
+    const cachedShell =
+      await caches.match('/index.html') ||
+      await caches.match('/') ||
+      await caches.match(request);
+
+    return cachedShell || createOfflineResponse();
   }
 }
 

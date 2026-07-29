@@ -45,7 +45,7 @@ export function UpdateNotification() {
         <div className="fixed top-4 right-4 z-50 max-w-sm pt-[calc(1rem+env(safe-area-inset-top))]">
           <div className="bg-brand text-white rounded-lg shadow-lg p-4 border border-[var(--status-info-line)]">
             <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-[var(--status-info-soft)]0 rounded-full flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 bg-[var(--status-info-soft)] rounded-full flex items-center justify-center flex-shrink-0">
                 <Download className="w-4 h-4" />
               </div>
               

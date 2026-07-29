@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/ensure-main-current.js",
     "dev": "vite --host --port 5173 --strictPort",
-    "build": "vite build",
+    "build": "vite build && node scripts/stamp-service-worker.js",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "patch-clerk": "node patch_clerk.js",

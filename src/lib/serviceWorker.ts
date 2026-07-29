@@ -81,12 +81,25 @@ class ServiceWorkerManager {
     try {
       const existingRegistration = await navigator.serviceWorker.getRegistration(SW_SCOPE);
       const registration = existingRegistration ??
-        await navigator.serviceWorker.register(SW_SCRIPT_PATH, { scope: SW_SCOPE });
+        await navigator.serviceWorker.register(SW_SCRIPT_PATH, {
+          scope: SW_SCOPE,
+          updateViaCache: 'none'
+        });
 
       this.registration = registration;
       this.setupUpdateListeners();
       this.startUpdateChecks();
       this.setupNetworkListeners();
+
+      // Safari Home Screen apps can remain open for days. Check immediately on
+      // launch so a newly stamped worker is not delayed until the 30-minute poll.
+      if (existingRegistration) {
+        await this.checkForUpdates();
+      }
+
+      if (registration.waiting) {
+        this.notifyListeners({ type: 'update-available', registration });
+      }
 
       monitoring.recordMetric('service_worker_registered', performance.now(), {
         scope: SW_SCOPE,
