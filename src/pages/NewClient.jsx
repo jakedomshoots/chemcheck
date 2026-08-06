@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useCustomerCreate } from "@/api/convexHooks";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Save, User, MapPin, Phone, Mail, Droplets } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,23 +10,25 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { validatePhoneNumber } from "@/lib/phoneValidation";
+import { DAY_ORDER } from "@/lib/workingDays";
 
 export default function NewClient() {
   const navigate = useNavigate();
+  const location = useLocation();
   const createCustomer = useCustomerCreate();
   const [saving, setSaving] = useState(false);
   const [phoneError, setPhoneError] = useState("");
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     full_name: "",
     address: "",
     phone: "",
     email: "",
     gate_code: "",
-    service_day: "Monday",
+    service_day: DAY_ORDER.includes(location.state?.serviceDay) ? location.state.serviceDay : "Monday",
     pool_gallons: "",
     pool_type: "Chlorine",
     surface_type: "Plaster"
-  });
+  }));
 
   const handlePhoneChange = (e) => {
     const value = e.target.value;

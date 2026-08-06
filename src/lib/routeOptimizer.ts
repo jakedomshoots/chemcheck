@@ -14,7 +14,7 @@ export interface Location {
 }
 
 export interface Customer {
-  id: number;
+  id: number | string;
   name: string;
   address: string;
   location?: Location;
@@ -744,9 +744,14 @@ class RouteOptimizer {
   private normalizeCustomer(customer: UnknownCustomer): Customer | null {
     const customerRecord = customer as Record<string, unknown>;
     const idCandidate = customerRecord.id ?? customerRecord._id;
-    const id = Number(idCandidate);
+    const numericId = Number(idCandidate);
+    const id = Number.isFinite(numericId)
+      ? numericId
+      : typeof idCandidate === 'string' && idCandidate.trim()
+        ? idCandidate.trim()
+        : null;
 
-    if (!Number.isFinite(id)) {
+    if (id === null) {
       return null;
     }
 

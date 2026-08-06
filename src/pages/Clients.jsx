@@ -432,7 +432,6 @@ export default function Clients() {
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <div className="min-w-0">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Client roster</p>
             <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
               Clients
             </h2>
@@ -601,23 +600,28 @@ export default function Clients() {
                   </p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <ol
+                  className="divide-y divide-line border-y border-line bg-surface-1"
+                  aria-label={`${day} client order`}
+                >
                   {dayCustomers.map((customer, index) => (
-                    <ClientListItem
-                      key={customer._id}
-                      customer={customer}
-                      onDelete={setDeleteCustomer}
-                      onEdit={handleEdit}
-                      onClick={handleOpenCustomer}
-                      reorderMode={reorderMode}
-                      onMoveUp={handleMoveUp}
-                      onMoveDown={handleMoveDown}
-                      isFirst={index === 0}
-                      isLast={index === dayCustomers.length - 1}
-                      isMoving={movingCustomerId === customer._id}
-                    />
+                    <li key={customer._id}>
+                      <ClientListItem
+                        customer={customer}
+                        stopNumber={index + 1}
+                        onDelete={setDeleteCustomer}
+                        onEdit={handleEdit}
+                        onClick={handleOpenCustomer}
+                        reorderMode={reorderMode}
+                        onMoveUp={handleMoveUp}
+                        onMoveDown={handleMoveDown}
+                        isFirst={index === 0}
+                        isLast={index === dayCustomers.length - 1}
+                        isMoving={movingCustomerId === customer._id}
+                      />
+                    </li>
                   ))}
-                </div>
+                </ol>
               )}
             </TabsContent>
           );

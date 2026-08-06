@@ -535,7 +535,6 @@ export default function Home() {
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-ink">Field command</p>
             <h2 className="text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
               Today's Route
             </h2>
@@ -680,24 +679,35 @@ export default function Home() {
           </p>
         </div>
       ) : (
-        <section className="space-y-3" aria-label="Today's customers">
-          {customers.map((customer) => (
-            <div key={customer._id} style={transitionName(`customer-${customer._id}`)}>
-              <CustomerCard
-                customer={customer}
-                isCompleted={isCompleted(customer._id)}
-                isSkipped={isSkipped(customer._id)}
-                lastWeekLog={getLastWeekLog(customer._id)}
-                onClick={() => handleCustomerClick(customer)}
-                onStart={() => handleCustomerStart(customer)}
-                onSkip={() => handleSkipCustomer(customer)}
-                onUnskip={() => handleUnskipCustomer(customer)}
-                onCall={() => handleCallCustomer(customer)}
-                onMap={() => handleMapCustomer(customer)}
-                serviceConfidence={getServiceConfidence(customer._id)}
-              />
-            </div>
-          ))}
+        <section className="mb-24" aria-label="Today's customers">
+          <div className="flex items-center justify-between px-1 pb-2">
+            <h3 className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-ink-muted">
+              Stop order
+            </h3>
+            <span className="font-data text-xs font-semibold text-ink-muted">
+              {customers.length} {customers.length === 1 ? "stop" : "stops"}
+            </span>
+          </div>
+          <ol className="divide-y divide-line border-y border-line bg-surface-1">
+            {customers.map((customer, index) => (
+              <li key={customer._id} style={transitionName(`customer-${customer._id}`)}>
+                <CustomerCard
+                  customer={customer}
+                  stopNumber={index + 1}
+                  isCompleted={isCompleted(customer._id)}
+                  isSkipped={isSkipped(customer._id)}
+                  lastWeekLog={getLastWeekLog(customer._id)}
+                  onClick={() => handleCustomerClick(customer)}
+                  onStart={() => handleCustomerStart(customer)}
+                  onSkip={() => handleSkipCustomer(customer)}
+                  onUnskip={() => handleUnskipCustomer(customer)}
+                  onCall={() => handleCallCustomer(customer)}
+                  onMap={() => handleMapCustomer(customer)}
+                  serviceConfidence={getServiceConfidence(customer._id)}
+                />
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 

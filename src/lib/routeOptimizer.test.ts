@@ -108,4 +108,21 @@ describe("routeOptimizer", () => {
     expect(route.stops).toHaveLength(1);
     expect(route.totalTime).toBe(12);
   });
+
+  it("keeps customers with non-numeric synced identifiers", async () => {
+    const customers = [
+      {
+        _id: "convex-customer-abc",
+        full_name: "Synced Pool",
+        address: "800 Sync Way, Los Angeles, CA 90012",
+        service_day: "Tuesday",
+      },
+    ];
+
+    const route = await routeOptimizer.optimizeRoute(customers, "2026-02-17");
+
+    expect(route.stops).toHaveLength(1);
+    expect(route.stops[0]?.customer.id).toBe("convex-customer-abc");
+    expect(route.stops[0]?.customer.name).toBe("Synced Pool");
+  });
 });

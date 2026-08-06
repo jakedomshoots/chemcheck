@@ -40,7 +40,31 @@ describe("CustomerCard", () => {
     expect(screen.getByText("123 main")).toBeInTheDocument();
   });
 
-  it("surfaces start and skip as compact direct actions", () => {
+  it("renders as a numbered route row with compact inline telemetry", () => {
+    render(
+      <CustomerCard
+        customer={customer}
+        stopNumber={3}
+        isCompleted={false}
+        isSkipped={false}
+        lastWeekLog={{
+          ph: "good",
+          chlorine: "low",
+          alkalinity: "high",
+          stabilizer: "good",
+        }}
+      />
+    );
+
+    expect(screen.getByLabelText("Stop 3")).toHaveTextContent("03");
+    expect(screen.getByLabelText("Quick chemical view")).toHaveClass(
+      "flex",
+      "whitespace-nowrap"
+    );
+    expect(screen.getByLabelText("Service status: Pending")).toHaveClass("text-info");
+  });
+
+  it("keeps start direct while moving skip into expanded details", () => {
     const onStart = vi.fn();
     const onMap = vi.fn();
     const onSkip = vi.fn();
@@ -57,9 +81,10 @@ describe("CustomerCard", () => {
     );
 
     expect(screen.getByRole("button", { name: /start/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /skip/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /skip/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /map/i })).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: /expand details/i }));
     fireEvent.click(screen.getByRole("button", { name: /skip/i }));
 
     expect(onSkip).toHaveBeenCalledTimes(1);
@@ -119,11 +144,11 @@ describe("CustomerCard", () => {
 
     expect(screen.getByRole("button", { name: /resume/i })).toBeInTheDocument();
     expect(screen.getByTestId("customer-card-customer-1")).toHaveClass(
-      "border-[var(--status-watch-line)]",
       "bg-[var(--status-watch-soft)]"
     );
-    expect(screen.getByText("Skipped").parentElement).toHaveClass("surface-watch");
-    expect(screen.getByRole("button", { name: /move back/i })).toHaveClass("surface-watch");
+    expect(screen.getByLabelText("Service status: Skipped")).toHaveClass("text-watch");
+    fireEvent.click(screen.getByRole("button", { name: /expand details/i }));
+    expect(screen.getByRole("button", { name: /move back/i })).toHaveClass("text-watch");
 
     fireEvent.click(screen.getByRole("button", { name: /move back/i }));
 

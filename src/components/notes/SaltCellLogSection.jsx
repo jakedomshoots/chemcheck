@@ -1,20 +1,22 @@
-import { useState, useMemo } from "react";
-import { db, getTodayDate } from "@/db/chemcheck-db";
+import { useEffect, useMemo, useState } from "react";
+import { format, parseISO } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
-import {
-  Zap,
-  Plus,
-  ChevronDown,
-  Trash2,
-  Droplets,
-  User
-} from "lucide-react";
+import { ChevronDown, Droplets, Plus, Trash2, Zap } from "lucide-react";
+import { db, getTodayDate } from "@/db/chemcheck-db";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +28,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
+
+const SERVICE_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const conditionConfig = {
   good: {
@@ -46,11 +49,28 @@ const conditionConfig = {
   },
 };
 
-export function SaltCellLogSection({ customers }) {
+const getCustomerId = (customer) => String(customer?.id ?? customer?._id ?? "");
+
+const getServiceDay = (customer) => (
+  SERVICE_DAYS.find((day) => day.toLowerCase() === customer?.service_day?.trim().toLowerCase()) || "Unscheduled"
+);
+
+const formatCleaningDate = (date) => {
+  if (!date) return "Date unavailable";
+  try {
+    return format(parseISO(date), "MMM d, yyyy");
+  } catch {
+    return date;
+  }
+};
+
+export function SaltCellLogSection({ customers = [] }) {
+  const [expanded, setExpanded] = useState(false);
+  const [activeDay, setActiveDay] = useState("Monday");
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [deleteLog, setDeleteLog] = useState(null);
   const [expandedCustomers, setExpandedCustomers] = useState(new Set());
-
   const [formData, setFormData] = useState({
     customer_id: "",
     cleaning_date: getTodayDate(),
@@ -58,188 +78,357 @@ export function SaltCellLogSection({ customers }) {
     notes: "",
   });
 
-  // Get salt cell logs from Dexie
   const saltCellLogs = useLiveQuery(
-    () => db.saltCellLogs.orderBy('cleaning_date').reverse().toArray(),
+    () => db.saltCellLogs.orderBy("cleaning_date").reverse().toArray(),
+    [],
     []
   );
 
-  // Filter to only salt pool customers
-  const saltPoolCustomers = useMemo(() => {
-    return customers?.filter(c => c.pool_type === 'Salt') || [];
-  }, [customers]);
+  const saltPoolCustomers = useMemo(
+    () => customers.filter((customer) => customer.pool_type?.toLowerCase() === "salt"),
+    [customers]
+  );
 
-  // Group logs by customer
+  const saltCustomerIds = useMemo(
+    () => new Set(saltPoolCustomers.map(getCustomerId).filter(Boolean)),
+    [saltPoolCustomers]
+  );
+
+  const visibleLogs = useMemo(
+    () => saltCellLogs.filter((log) => saltCustomerIds.has(String(log.customer_id))),
+    [saltCellLogs, saltCustomerIds]
+  );
+
   const logsByCustomer = useMemo(() => {
-    if (!saltCellLogs) return {};
-    const grouped = {};
-    saltCellLogs.forEach(log => {
-      if (!grouped[log.customer_id]) {
-        grouped[log.customer_id] = [];
-      }
-      grouped[log.customer_id].push(log);
+    const grouped = new Map();
+    visibleLogs.forEach((log) => {
+      const customerId = String(log.customer_id);
+      if (!grouped.has(customerId)) grouped.set(customerId, []);
+      grouped.get(customerId).push(log);
     });
     return grouped;
-  }, [saltCellLogs]);
+  }, [visibleLogs]);
 
-  // Get total log count
-  const totalLogs = saltCellLogs?.length || 0;
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    // Store customer_id as string for consistency
-    const customerId = formData.customer_id;
-
-    await db.saltCellLogs.add({
-      customer_id: customerId,
-      cleaning_date: formData.cleaning_date,
-      condition: formData.condition,
-      notes: formData.notes || undefined,
-      sync_status: 'pending',
-      local_updated_at: Date.now(),
-      createdAt: new Date().toISOString(),
+  const customersByDay = useMemo(() => {
+    const grouped = new Map();
+    saltPoolCustomers.forEach((customer) => {
+      const day = getServiceDay(customer);
+      if (!grouped.has(day)) grouped.set(day, []);
+      grouped.get(day).push(customer);
     });
+    return grouped;
+  }, [saltPoolCustomers]);
 
-    // Auto-expand the customer we just added to
-    setExpandedCustomers(prev => new Set([...prev, customerId]));
+  const availableDays = useMemo(
+    () => [...SERVICE_DAYS, "Unscheduled"].filter((day) => customersByDay.has(day)),
+    [customersByDay]
+  );
 
-    setShowForm(false);
+  useEffect(() => {
+    if (availableDays.length > 0 && !availableDays.includes(activeDay)) {
+      setActiveDay(availableDays[0]);
+    }
+  }, [activeDay, availableDays]);
+
+  const resetForm = () => {
     setFormData({
       customer_id: "",
       cleaning_date: getTodayDate(),
       condition: "good",
       notes: "",
     });
-    toast.success("Salt cell cleaning logged");
+  };
+
+  const openCleaningForm = (customer) => {
+    setFormData({
+      customer_id: getCustomerId(customer),
+      cleaning_date: getTodayDate(),
+      condition: "good",
+      notes: "",
+    });
+    setShowForm(true);
+  };
+
+  const handleFormOpenChange = (open) => {
+    setShowForm(open);
+    if (!open && !saving) resetForm();
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!formData.customer_id) return;
+    setSaving(true);
+
+    try {
+      await db.saltCellLogs.add({
+        customer_id: formData.customer_id,
+        cleaning_date: formData.cleaning_date,
+        condition: formData.condition,
+        notes: formData.notes.trim() || undefined,
+        sync_status: "pending",
+        local_updated_at: Date.now(),
+        createdAt: new Date().toISOString(),
+      });
+
+      setExpandedCustomers((current) => new Set([...current, formData.customer_id]));
+      setShowForm(false);
+      resetForm();
+      toast.success("Salt cell cleaning logged");
+    } catch (error) {
+      console.error("[SaltCellLog] Could not save cleaning:", error);
+      toast.error("Could not save the salt cell cleaning. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    if (deleteLog) {
+    if (!deleteLog) return;
+
+    try {
       await db.saltCellLogs.delete(deleteLog.id);
       setDeleteLog(null);
-      toast.success("Log deleted");
+      toast.success("Cleaning log deleted");
+    } catch (error) {
+      console.error("[SaltCellLog] Could not delete cleaning:", error);
+      toast.error("Could not delete the cleaning log. Please try again.");
     }
   };
 
   const toggleCustomer = (customerId) => {
-    const newExpanded = new Set(expandedCustomers);
-    if (newExpanded.has(customerId)) {
-      newExpanded.delete(customerId);
-    } else {
-      newExpanded.add(customerId);
-    }
-    setExpandedCustomers(newExpanded);
+    setExpandedCustomers((current) => {
+      const next = new Set(current);
+      if (next.has(customerId)) next.delete(customerId);
+      else next.add(customerId);
+      return next;
+    });
   };
 
-  if (saltPoolCustomers.length === 0) {
-    return null; // Don't show section if no salt pool customers
-  }
+  if (saltPoolCustomers.length === 0) return null;
 
   return (
-    <div className="mt-8">
-      {/* Section Divider */}
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t-2 border-[var(--status-info-line)]"></div>
-        </div>
-        <div className="relative flex justify-center">
-          <span className="bg-white px-4 flex items-center gap-2">
-            <div className="p-1.5 bg-brand rounded-lg">
-              <Zap className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-sm font-semibold text-ink-secondary">Salt Cell Cleaning Log</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-brand rounded-xl shadow-lg">
-            <Zap className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-ink">Salt Cell Cleanings</h3>
-            <p className="text-sm text-ink-secondary">
-              {saltPoolCustomers.length} salt pool{saltPoolCustomers.length !== 1 ? 's' : ''} • {totalLogs} cleaning{totalLogs !== 1 ? 's' : ''} logged
-            </p>
-          </div>
-        </div>
-        <Button
-          onClick={() => setShowForm(!showForm)}
-          size="sm"
-          className="bg-brand hover:bg-brand-strong text-white shadow-lg"
+    <section className="mt-5 border-y border-line bg-surface-1" aria-labelledby="salt-cell-log-title">
+      <header>
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+          aria-controls="salt-cell-cleaning-list"
+          aria-label={expanded ? "Collapse salt cell cleaning log" : "Expand salt cell cleaning log"}
+          className="min-h-16 w-full px-3 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          {showForm ? "Cancel" : "Log Cleaning"}
-        </Button>
-      </div>
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Zap className="h-5 w-5 shrink-0 text-brand-ink" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <h3 id="salt-cell-log-title" className="truncate text-sm font-semibold tracking-[-0.015em] text-ink">
+                Salt Cell Cleanings
+              </h3>
+              <span className="mt-0.5 block truncate text-[0.6875rem] font-medium text-ink-muted">
+                {saltPoolCustomers.length} salt pool{saltPoolCustomers.length === 1 ? "" : "s"} · by service day
+              </span>
+            </span>
+            <span className="flex shrink-0 items-baseline gap-1" aria-label={`${visibleLogs.length} salt cell cleaning logs`}>
+              <span className="font-data text-sm font-semibold tabular-nums text-brand-ink">{visibleLogs.length}</span>
+              <span className="text-[0.625rem] font-semibold text-ink-muted">
+                {visibleLogs.length === 1 ? "log" : "logs"}
+              </span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-ink-muted transition-transform duration-150 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            />
+          </span>
+        </button>
+      </header>
 
-      {/* Add Form */}
-      {showForm && (
-        <Card className="p-6 mb-4 border-2 shadow-lg bg-brand-softer">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="salt-customer">Customer *</Label>
-                <Select
-                  value={formData.customer_id}
-                  onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
-                  required
-                >
-                  <SelectTrigger
-                    aria-label="Customer"
-                    className="mt-1 bg-white text-ink border border-line focus:border-ring rounded-lg h-11"
-                  >
-                    <SelectValue placeholder="Select salt pool customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {saltPoolCustomers.map(customer => (
-                      <SelectItem key={customer.id || customer._id} value={String(customer.id || customer._id)}>
-                        <div className="flex items-center gap-2">
-                          <Droplets className="w-3 h-3 text-info" />
-                          {customer.full_name}
+      {expanded && (
+        <div id="salt-cell-cleaning-list" className="border-t border-line">
+          <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
+            <div className="native-scroll overflow-x-auto border-b border-line p-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <TabsList
+                data-testid="salt-cell-service-day-tabs"
+                aria-label="Salt cell service day"
+                className="grid h-12 w-max min-w-full grid-flow-col auto-cols-[minmax(4rem,1fr)] gap-1 rounded-control border border-line bg-surface-2 p-1"
+              >
+                {availableDays.map((day) => {
+                  const count = customersByDay.get(day)?.length || 0;
+                  return (
+                    <TabsTrigger
+                      key={day}
+                      value={day}
+                      aria-label={`${day}, ${count} salt ${count === 1 ? "pool" : "pools"}`}
+                      className="group inline-flex h-10 min-w-16 items-center justify-center !rounded-chip px-2 text-sm font-semibold text-ink-muted transition-colors duration-150 hover:bg-surface-1 hover:text-ink-secondary active:scale-[0.98] data-[state=active]:bg-brand data-[state=active]:text-white data-[state=active]:shadow-sm"
+                    >
+                      <span>{day === "Unscheduled" ? "Other" : day.substring(0, 3)}</span>
+                      {count > 0 && (
+                        <span className="ml-1.5 min-w-3 text-center font-data text-xs font-semibold tabular-nums text-ink-secondary opacity-75 group-data-[state=active]:text-white group-data-[state=active]:opacity-90">
+                          {count}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </div>
+
+            {availableDays.map((day) => (
+              <TabsContent key={day} value={day} className="mt-0">
+                <ol className="divide-y divide-line" aria-label={`${day} salt cell cleaning list`}>
+                  {(customersByDay.get(day) || []).map((customer) => {
+                    const customerId = getCustomerId(customer);
+                    const customerLogs = logsByCustomer.get(customerId) || [];
+                    const latestLog = customerLogs[0];
+                    const latestCondition = latestLog
+                      ? conditionConfig[latestLog.condition] || conditionConfig.good
+                      : null;
+                    const customerExpanded = expandedCustomers.has(customerId);
+                    const historyId = `salt-cell-history-${customerId}`;
+
+                    return (
+                      <li key={customerId}>
+                        <div className="flex min-h-14 min-w-0 items-center gap-1.5 px-2 py-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openCleaningForm(customer)}
+                            aria-label={`Log salt cell cleaning for ${customer.full_name}`}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-brand-ink transition-colors hover:bg-brand-softer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:bg-brand-softer"
+                          >
+                            <Plus className="h-5 w-5" aria-hidden="true" />
+                          </button>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-ink">{customer.full_name || "Unnamed customer"}</p>
+                            <p className={`mt-0.5 truncate text-[0.6875rem] font-semibold ${latestCondition?.color || "text-watch"}`}>
+                              {latestLog
+                                ? `${formatCleaningDate(latestLog.cleaning_date)} · ${latestCondition.label}`
+                                : "No cleanings logged"}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleCustomer(customerId)}
+                            aria-expanded={customerExpanded}
+                            aria-controls={historyId}
+                            aria-label={`${customerExpanded ? "Hide" : "Show"} cleaning history for ${customer.full_name}`}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:bg-surface-2"
+                          >
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform duration-150 motion-reduce:transition-none ${customerExpanded ? "rotate-180" : ""}`}
+                              aria-hidden="true"
+                            />
+                          </button>
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
 
-              <div>
-                <Label htmlFor="cleaning-date">Cleaning Date *</Label>
-                <Input
-                  id="cleaning-date"
-                  type="date"
-                  value={formData.cleaning_date}
-                  onChange={(e) => setFormData({ ...formData, cleaning_date: e.target.value })}
-                  required
-                  className="mt-1 border-2 focus:border-ring rounded-xl"
-                />
-              </div>
+                        {customerExpanded && (
+                          <div id={historyId} className="border-t border-line bg-surface-2">
+                            {customerLogs.length > 0 ? (
+                              <div className="divide-y divide-line">
+                                {customerLogs.map((log) => {
+                                  const condition = conditionConfig[log.condition] || conditionConfig.good;
+                                  return (
+                                    <div key={log.id} className="flex min-h-14 items-center gap-2 px-3 py-2 pl-14">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                          <span className="truncate text-xs font-semibold text-ink">
+                                            {formatCleaningDate(log.cleaning_date)}
+                                          </span>
+                                          <span className={`shrink-0 text-[0.6875rem] font-semibold ${condition.color}`}>
+                                            {condition.label}
+                                          </span>
+                                        </div>
+                                        {log.notes && (
+                                          <p className="mt-0.5 truncate text-[0.6875rem] font-medium text-ink-muted">{log.notes}</p>
+                                        )}
+                                      </div>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setDeleteLog(log)}
+                                        aria-label={`Delete salt cell cleaning from ${formatCleaningDate(log.cleaning_date)}`}
+                                        className="h-11 w-11 shrink-0 text-critical hover:bg-[var(--status-critical-soft)] hover:text-critical"
+                                      >
+                                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                      </Button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="px-4 py-3 pl-14 text-xs font-medium text-ink-muted">
+                                No history yet. Use the plus button to log the first cleaning.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+      )}
+
+      <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
+        <DialogContent className="w-[calc(100%-1.5rem)] rounded-sheet p-5 sm:max-w-md">
+          <DialogHeader className="pr-8 text-left">
+            <DialogTitle>Log Salt Cell Cleaning</DialogTitle>
+            <DialogDescription>
+              Record the cleaning date and scale condition for the selected salt pool.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="salt-customer">Customer *</Label>
+              <Select
+                value={formData.customer_id}
+                onValueChange={(value) => setFormData((current) => ({ ...current, customer_id: value }))}
+                required
+              >
+                <SelectTrigger id="salt-customer" aria-label="Customer" className="mt-1 h-11 rounded-control border-line bg-surface-2">
+                  <SelectValue placeholder="Select salt pool customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {saltPoolCustomers.map((customer) => (
+                    <SelectItem key={getCustomerId(customer)} value={getCustomerId(customer)}>
+                      <span className="flex items-center gap-2">
+                        <Droplets className="h-3.5 w-3.5 text-info" aria-hidden="true" />
+                        {customer.full_name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="cleaning-date">Cleaning Date *</Label>
+              <Input
+                id="cleaning-date"
+                type="date"
+                value={formData.cleaning_date}
+                onChange={(event) => setFormData((current) => ({ ...current, cleaning_date: event.target.value }))}
+                required
+                className="mt-1 h-11 rounded-control border-line bg-surface-2"
+              />
             </div>
 
             <div>
               <Label htmlFor="condition">Scale Condition</Label>
               <Select
                 value={formData.condition}
-                onValueChange={(value) => setFormData({ ...formData, condition: value })}
+                onValueChange={(value) => setFormData((current) => ({ ...current, condition: value }))}
               >
-                <SelectTrigger
-                  aria-label="Scale Condition"
-                  className="mt-1 bg-white text-ink border border-line focus:border-ring rounded-lg h-11"
-                >
+                <SelectTrigger id="condition" aria-label="Scale Condition" className="mt-1 h-11 rounded-control border-line bg-surface-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(conditionConfig).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${config.bg}`}></span>
-                        {config.label}
-                      </div>
-                    </SelectItem>
+                    <SelectItem key={key} value={key}>{config.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -250,156 +439,41 @@ export function SaltCellLogSection({ customers }) {
               <Textarea
                 id="salt-notes"
                 value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Any observations about the cell condition..."
+                onChange={(event) => setFormData((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Scale, inspection, or replacement notes"
                 rows={2}
-                className="mt-1 border-2 focus:border-ring rounded-xl"
+                className="mt-1 rounded-control border-line bg-surface-2"
               />
             </div>
 
-            <Button
-              type="submit"
-              disabled={!formData.customer_id}
-              className="w-full bg-brand hover:bg-brand-strong text-white"
-            >
-              Save Cleaning Log
-            </Button>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={() => handleFormOpenChange(false)} className="h-11">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!formData.customer_id || saving} className="h-11 bg-brand text-white hover:bg-brand-strong">
+                {saving ? "Saving…" : "Save Cleaning Log"}
+              </Button>
+            </DialogFooter>
           </form>
-        </Card>
-      )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Customer-grouped Logs - Only show customers with at least one cleaning log */}
-      <div className="space-y-2">
-        {saltPoolCustomers
-          .filter((customer) => {
-            const customerId = String(customer.id || customer._id);
-            return (logsByCustomer[customerId] || []).length > 0;
-          })
-          .map((customer) => {
-            const customerId = String(customer.id || customer._id);
-            const customerLogs = logsByCustomer[customerId] || [];
-            const isExpanded = expandedCustomers.has(customerId);
-            const logCount = customerLogs.length;
-
-            return (
-              <Card key={customerId} className="overflow-hidden border shadow-sm">
-                {/* Customer Header */}
-                <div
-                  onClick={() => toggleCustomer(customerId)}
-                  className="flex items-center justify-between p-3 cursor-pointer hover:bg-surface-2 active:bg-surface-2"
-                >
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-2 bg-brand-soft rounded-lg">
-                      <User className="w-4 h-4 text-brand-ink" />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium text-ink">{customer.full_name}</span>
-                      <p className="text-xs text-ink-muted">
-                        {logCount === 0
-                          ? "No cleanings logged"
-                          : `${logCount} cleaning${logCount !== 1 ? 's' : ''} logged`}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {logCount > 0 && (
-                      <span className="text-xs px-2 py-1 rounded-full bg-brand-soft text-brand-ink font-medium">
-                        {logCount}
-                      </span>
-                    )}
-                    <ChevronDown className={`w-4 h-4 text-ink-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                  </div>
-                </div>
-
-                {/* Expanded Logs */}
-                {isExpanded && (
-                  <div className="border-t border-line bg-surface-2">
-                    {customerLogs.length > 0 ? (
-                      <div className="divide-y divide-line">
-                        {customerLogs.map((log) => {
-                          const condition = conditionConfig[log.condition] || conditionConfig.good;
-
-                          return (
-                            <div key={log.id} className="p-3 flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-3 flex-1">
-                                <div className={`p-1.5 rounded-lg ${condition.bg} mt-0.5`}>
-                                  <Zap className={`w-3 h-3 ${condition.color}`} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm font-medium text-ink">
-                                      {format(parseISO(log.cleaning_date), "MMM dd, yyyy")}
-                                    </span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${condition.bg} ${condition.color}`}>
-                                      {condition.label}
-                                    </span>
-                                  </div>
-                                  {log.notes && (
-                                    <p className="text-xs text-ink-secondary mt-1">{log.notes}</p>
-                                  )}
-                                </div>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteLog(log);
-                                }}
-                                className="text-critical hover:text-critical hover:bg-[var(--status-critical-soft)] h-7 w-7 flex-shrink-0"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="p-4 text-center">
-                        <p className="text-sm text-ink-muted">No cleanings logged for this customer</p>
-                        <Button
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, customer_id: customerId }));
-                            setShowForm(true);
-                          }}
-                          size="sm"
-                          variant="outline"
-                          className="mt-2"
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Log First Cleaning
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-      </div>
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteLog} onOpenChange={() => setDeleteLog(null)}>
+      <AlertDialog open={!!deleteLog} onOpenChange={(open) => !open && setDeleteLog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Cleaning Log?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this salt cell cleaning log? This action cannot be undone.
+              This removes the salt cell cleaning entry permanently. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive hover:bg-destructive text-white"
-            >
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-white hover:bg-destructive">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </section>
   );
 }

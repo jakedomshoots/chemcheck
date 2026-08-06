@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import NewClient from './NewClient';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter } from 'react-router-dom';
 
 // Mock stable data
 const mockUser = { email: 'test@example.com' };
@@ -54,6 +54,16 @@ describe('New Client Page', () => {
         expect(screen.getByRole('combobox', { name: 'Service Day' })).toBeInTheDocument();
         expect(screen.getByRole('combobox', { name: 'Pool Type' })).toBeInTheDocument();
         expect(screen.getByRole('combobox', { name: 'Surface Type' })).toBeInTheDocument();
+    });
+
+    it('preselects the service day handed off by the route planner', () => {
+        render(
+            <MemoryRouter initialEntries={[{ pathname: '/newclient', state: { serviceDay: 'Friday' } }]}>
+                <NewClient />
+            </MemoryRouter>
+        );
+
+        expect(screen.getByRole('combobox', { name: 'Service Day' })).toHaveTextContent('Friday');
     });
 
     it('navigates to the clients list after saving so the new client can be confirmed', async () => {
