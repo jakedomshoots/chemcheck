@@ -134,6 +134,17 @@ describe('New Service Log Page', () => {
         expect(screen.queryByRole('combobox', { name: 'Service Type' })).not.toBeInTheDocument();
     });
 
+    it('keeps the completion actions at the end of the form instead of following the viewport', () => {
+        window.history.pushState({}, 'Test Page', '/?customerId=1');
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        const serviceActions = screen.getByRole('group', { name: 'Service actions' });
+
+        expect(serviceActions).toContainElement(screen.getByRole('button', { name: 'Complete Service' }));
+        expect(serviceActions).not.toHaveClass('sticky');
+        expect(serviceActions).not.toHaveClass('fixed');
+    });
+
     it('renders an actionable missing-client state when no customerId is provided', () => {
         render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
 
