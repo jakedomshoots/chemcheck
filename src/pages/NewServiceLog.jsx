@@ -670,9 +670,13 @@ export default function NewServiceLog() {
           </div>
         )}
 
-        {/* Sticky commit bar: the moment of commitment is always in thumb
-            reach — biggest button in the app, above the safe area. */}
-        <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 -mx-4 mt-6 border-t border-line bg-surface-1/90 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:bottom-0">
+        {/* End-of-form actions stay in the document flow so they do not cover
+            service details while the technician scrolls. */}
+        <div
+          role="group"
+          aria-label="Service actions"
+          className="-mx-4 mt-6 border-t border-line bg-surface-1 px-4 pb-3 pt-3 sm:-mx-6 sm:px-6"
+        >
           <Button
             type="submit"
             disabled={saving}
