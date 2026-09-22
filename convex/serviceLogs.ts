@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { validateLsiFields, validateLsiUpdate } from "./validation";
+import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
 
 /**
  * Validates that a string is a valid ISO 8601 date format
@@ -211,8 +213,22 @@ export const create = mutation({
         salt: v.optional(v.number()),
         ph_value: v.optional(v.number()),
         chlorine_value: v.optional(v.number()),
+        total_chlorine_value: v.optional(v.number()),
+        total_bromine_value: v.optional(v.number()),
+        strip_scan_method: v.optional(v.literal("aquachek_select_photo")),
+        strip_scan_confidence: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
+        strip_scan_analysis_version: v.optional(stripScanAnalysisVersionValidator),
+        strip_scan_pad_confidence: v.optional(stripScanPadConfidenceValidator),
+        strip_scan_quality: v.optional(stripScanQualityValidator),
+        lsi_calculation_version: v.optional(v.literal("aquachek-epa-v1")),
         alkalinity_value: v.optional(v.number()),
         stabilizer_value: v.optional(v.number()),
+        hardness_value: v.optional(v.number()),
+        hardness_source: v.optional(v.union(v.literal("aquachek_total"), v.literal("calcium"))),
+        water_temperature: v.optional(v.number()),
+        water_temperature_source: v.optional(v.union(v.literal("measured"), v.literal("assumed"))),
+        tds_value: v.optional(v.number()),
+        tds_source: v.optional(v.union(v.literal("measured"), v.literal("assumed"))),
         // Proof-of-service time tracking fields
         start_time: v.optional(v.string()),
         end_time: v.optional(v.string()),
@@ -224,6 +240,8 @@ export const create = mutation({
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
+
+        validateLsiFields(args, true);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
         await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
@@ -262,8 +280,22 @@ export const create = mutation({
             salt: args.salt,
             ph_value: args.ph_value,
             chlorine_value: args.chlorine_value,
+            total_chlorine_value: args.total_chlorine_value,
+            total_bromine_value: args.total_bromine_value,
+            strip_scan_method: args.strip_scan_method,
+            strip_scan_confidence: args.strip_scan_confidence,
+            strip_scan_analysis_version: args.strip_scan_analysis_version,
+            strip_scan_pad_confidence: args.strip_scan_pad_confidence,
+            strip_scan_quality: args.strip_scan_quality,
+            lsi_calculation_version: args.lsi_calculation_version,
             alkalinity_value: args.alkalinity_value,
             stabilizer_value: args.stabilizer_value,
+            hardness_value: args.hardness_value,
+            hardness_source: args.hardness_source,
+            water_temperature: args.water_temperature,
+            water_temperature_source: args.water_temperature_source,
+            tds_value: args.tds_value,
+            tds_source: args.tds_source,
             start_time: args.start_time,
             end_time: args.end_time,
             duration_ms,
@@ -295,8 +327,22 @@ export const update = mutation({
         salt: v.optional(v.number()),
         ph_value: v.optional(v.number()),
         chlorine_value: v.optional(v.number()),
+        total_chlorine_value: v.optional(v.number()),
+        total_bromine_value: v.optional(v.number()),
+        strip_scan_method: v.optional(v.literal("aquachek_select_photo")),
+        strip_scan_confidence: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
+        strip_scan_analysis_version: v.optional(stripScanAnalysisVersionValidator),
+        strip_scan_pad_confidence: v.optional(stripScanPadConfidenceValidator),
+        strip_scan_quality: v.optional(stripScanQualityValidator),
+        lsi_calculation_version: v.optional(v.literal("aquachek-epa-v1")),
         alkalinity_value: v.optional(v.number()),
         stabilizer_value: v.optional(v.number()),
+        hardness_value: v.optional(v.number()),
+        hardness_source: v.optional(v.union(v.literal("aquachek_total"), v.literal("calcium"))),
+        water_temperature: v.optional(v.number()),
+        water_temperature_source: v.optional(v.union(v.literal("measured"), v.literal("assumed"))),
+        tds_value: v.optional(v.number()),
+        tds_source: v.optional(v.union(v.literal("measured"), v.literal("assumed"))),
         // Proof-of-service time tracking fields
         start_time: v.optional(v.string()),
         end_time: v.optional(v.string()),
@@ -317,6 +363,8 @@ export const update = mutation({
         if (!customer || customer.created_by !== identity.email) {
             throw new Error("Access denied");
         }
+
+        validateLsiUpdate(log, args);
 
         if (args.pool_id) {
             const pool = await ctx.db.get(args.pool_id);

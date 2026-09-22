@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
 
 export default defineSchema({
   customers: defineTable({
@@ -94,8 +95,22 @@ export default defineSchema({
     salt: v.optional(v.number()), // Only for salt pools
     ph_value: v.optional(v.number()),
     chlorine_value: v.optional(v.number()),
+    total_chlorine_value: v.optional(v.number()),
+    total_bromine_value: v.optional(v.number()),
+    strip_scan_method: v.optional(v.literal("aquachek_select_photo")),
+    strip_scan_confidence: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
+    strip_scan_analysis_version: v.optional(stripScanAnalysisVersionValidator),
+    strip_scan_pad_confidence: v.optional(stripScanPadConfidenceValidator),
+    strip_scan_quality: v.optional(stripScanQualityValidator),
+    lsi_calculation_version: v.optional(v.literal("aquachek-epa-v1")),
     alkalinity_value: v.optional(v.number()),
     stabilizer_value: v.optional(v.number()),
+    hardness_value: v.optional(v.number()),
+    hardness_source: v.optional(v.union(v.literal("aquachek_total"), v.literal("calcium"))),
+    water_temperature: v.optional(v.number()), // Fahrenheit
+    water_temperature_source: v.optional(v.union(v.literal("measured"), v.literal("assumed"))),
+    tds_value: v.optional(v.number()),
+    tds_source: v.optional(v.union(v.literal("measured"), v.literal("assumed"))),
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
     // Proof-of-service time tracking fields

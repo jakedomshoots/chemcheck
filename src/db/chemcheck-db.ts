@@ -85,8 +85,34 @@ export interface ServiceLog extends SyncableRecord {
     stabilizer: string;
     ph_value?: number;
     chlorine_value?: number;
+    total_chlorine_value?: number;
+    total_bromine_value?: number;
+    strip_scan_method?: 'aquachek_select_photo';
+    strip_scan_confidence?: 'low' | 'medium' | 'high';
+    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3';
+    strip_scan_pad_confidence?: {
+        totalHardness: number;
+        totalChlorine: number;
+        freeChlorine: number;
+        ph: number;
+        totalAlkalinity: number;
+        cyanuricAcid: number;
+    };
+    strip_scan_quality?: {
+        backgroundLightness: number;
+        backgroundNeutrality: number;
+        lightingUniformity: number;
+        framing: number;
+    };
+    lsi_calculation_version?: 'aquachek-epa-v1';
     alkalinity_value?: number;
     stabilizer_value?: number;
+    hardness_value?: number;
+    hardness_source?: 'aquachek_total' | 'calcium';
+    water_temperature?: number;
+    water_temperature_source?: 'measured' | 'assumed';
+    tds_value?: number;
+    tds_source?: 'measured' | 'assumed';
     salt?: number;
     start_time?: string;
     end_time?: string;

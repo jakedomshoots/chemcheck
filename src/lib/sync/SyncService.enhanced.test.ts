@@ -155,6 +155,85 @@ describe('SyncService conflict and telemetry hardening', () => {
     syncService.destroy();
   });
 
+  it('sends every LSI reading and provenance field through offline sync', async () => {
+    const syncService = new SyncService();
+    const mockConvexClient = {
+      mutation: vi.fn().mockResolvedValue({
+        success: true,
+        convex_id: 'remote-log',
+        convex_customer_id: 'remote-customer',
+        updated_at: 3000,
+      }),
+    };
+    const { db } = await import('@/db/chemcheck-db');
+    vi.mocked(db.serviceLogs.get).mockResolvedValue({
+      id: 44,
+      customer_id: 7,
+      service_date: '2026-09-18',
+      status: 'completed',
+      ph: 'good',
+      chlorine: 'good',
+      alkalinity: 'good',
+      stabilizer: 'good',
+      ph_value: 7.4,
+      alkalinity_value: 120,
+      stabilizer_value: 50,
+      hardness_value: 250,
+      hardness_source: 'aquachek_total',
+      water_temperature: 80,
+      water_temperature_source: 'assumed',
+      tds_value: 3700,
+      tds_source: 'assumed',
+      strip_scan_method: 'aquachek_select_photo',
+      strip_scan_confidence: 'medium',
+      strip_scan_analysis_version: 'aquachek-select-v2',
+      strip_scan_pad_confidence: {
+        totalHardness: 0.8,
+        totalChlorine: 0.7,
+        freeChlorine: 0.8,
+        ph: 0.9,
+        totalAlkalinity: 0.9,
+        cyanuricAcid: 0.8,
+      },
+      strip_scan_quality: {
+        backgroundLightness: 0.9,
+        backgroundNeutrality: 0.95,
+        lightingUniformity: 0.92,
+        framing: 0.9,
+      },
+      lsi_calculation_version: 'aquachek-epa-v1',
+      sync_status: 'pending',
+      local_updated_at: 2000,
+    } as any);
+    vi.mocked(db.customers.get).mockResolvedValue({
+      id: 7,
+      convex_id: 'remote-customer',
+      sync_status: 'synced',
+    } as any);
+
+    syncService.initialize(mockConvexClient);
+    const result = await syncService.syncRecord('serviceLogs', 44);
+
+    expect(result.success).toBe(true);
+    expect(mockConvexClient.mutation).toHaveBeenCalledWith('syncServiceLog', expect.objectContaining({
+      data: expect.objectContaining({
+        hardness_value: 250,
+        hardness_source: 'aquachek_total',
+        water_temperature: 80,
+        water_temperature_source: 'assumed',
+        tds_value: 3700,
+        tds_source: 'assumed',
+        strip_scan_method: 'aquachek_select_photo',
+        strip_scan_confidence: 'medium',
+        strip_scan_analysis_version: 'aquachek-select-v2',
+        strip_scan_pad_confidence: expect.objectContaining({ ph: 0.9 }),
+        strip_scan_quality: expect.objectContaining({ framing: 0.9 }),
+        lsi_calculation_version: 'aquachek-epa-v1',
+      }),
+    }));
+    syncService.destroy();
+  });
+
   it('retries local-conflict resolution within bounds and emits conflict metrics and terminal failure', async () => {
     vi.useFakeTimers();
 

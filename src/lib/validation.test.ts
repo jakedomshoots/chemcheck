@@ -193,6 +193,73 @@ describe('Service Log Validation', () => {
     }
   });
 
+  it('preserves validated LSI scan provenance fields', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      ph_value: 7.4,
+      alkalinity_value: 120,
+      stabilizer_value: 50,
+      hardness_value: 250,
+      hardness_source: 'aquachek_total',
+      water_temperature: 80,
+      water_temperature_source: 'assumed',
+      tds_value: 3700,
+      tds_source: 'assumed',
+      strip_scan_method: 'aquachek_select_photo',
+      strip_scan_confidence: 'medium',
+      strip_scan_analysis_version: 'aquachek-select-v3',
+      strip_scan_pad_confidence: {
+        totalHardness: 0.8,
+        totalChlorine: 0.7,
+        freeChlorine: 0.8,
+        ph: 0.9,
+        totalAlkalinity: 0.9,
+        cyanuricAcid: 0.8,
+      },
+      strip_scan_quality: {
+        backgroundLightness: 0.9,
+        backgroundNeutrality: 0.95,
+        lightingUniformity: 0.92,
+        framing: 0.9,
+      },
+      lsi_calculation_version: 'aquachek-epa-v1',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.water_temperature_source).toBe('assumed');
+      expect(result.data.strip_scan_confidence).toBe('medium');
+      expect(result.data.strip_scan_analysis_version).toBe('aquachek-select-v3');
+      expect(result.data.strip_scan_pad_confidence?.ph).toBe(0.9);
+      expect(result.data.strip_scan_quality?.framing).toBe(0.9);
+      expect(result.data.lsi_calculation_version).toBe('aquachek-epa-v1');
+    }
+  });
+
+  it('rejects an incomplete v2 strip scan before local storage', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      strip_scan_method: 'aquachek_select_photo',
+      strip_scan_confidence: 'medium',
+      strip_scan_analysis_version: 'aquachek-select-v2',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects LSI provenance without the corresponding local reading', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      water_temperature_source: 'measured',
+      tds_source: 'assumed',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors.join(' ')).toMatch(/temperature.*reading|TDS.*reading/i);
+    }
+  });
+
   it('should sanitize notes', () => {
     const logWithHtml = {
       ...validServiceLog,
