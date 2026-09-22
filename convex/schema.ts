@@ -256,6 +256,18 @@ export default defineSchema({
     .index("by_business", ["business_id"])
     .index("by_user_email", ["user_email"]),
 
+  // Existing production route state. Keep this table in the release schema so
+  // the LSI deployment cannot delete live skipped-stop indexes.
+  skippedStops: defineTable({
+    business_id: v.id("businesses"),
+    customer_key: v.string(),
+    week_start: v.string(), // YYYY-MM-DD, Monday of the route week
+    created_by: v.string(), // user email
+    created_at: v.number(),
+  })
+    .index("by_business_and_week", ["business_id", "week_start"])
+    .index("by_business_week_customer", ["business_id", "week_start", "customer_key"]),
+
   // Salt cell cleaning logs for salt pool maintenance tracking
   saltCellLogs: defineTable({
     customer_id: v.id("customers"),
