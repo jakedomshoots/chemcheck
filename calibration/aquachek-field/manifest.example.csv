@@ -1,0 +1,2 @@
+sample_id,image,device,strip_lot,seconds_after_dip,lighting,cohort,truth_method,truth_instrument,total_hardness,total_chlorine,free_chlorine,ph,total_alkalinity,cyanuric_acid
+route-2026-09-22-001,photos/route-2026-09-22-001.jpg,iPhone 15,LOT-A,15,outdoor-shade,validation,drop-test,Taylor K-2006,250,3,3,7.4,100,50
