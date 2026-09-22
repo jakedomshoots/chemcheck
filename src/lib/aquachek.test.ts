@@ -26,6 +26,23 @@ describe('AquaChek Select mapping', () => {
     });
   });
 
+  it('derives report statuses from the numeric strip readings', () => {
+    expect(readingsToServiceLogPatch({
+      totalHardness: 250,
+      totalChlorine: 10,
+      totalBromine: 20,
+      freeChlorine: 0,
+      ph: 6.2,
+      totalAlkalinity: 40,
+      cyanuricAcid: 300,
+    })).toMatchObject({
+      ph: 'critical',
+      chlorine: 'critical',
+      alkalinity: 'critical',
+      stabilizer: 'critical',
+    });
+  });
+
   it('requires the sanitizer-specific reading', () => {
     expect(isCompleteAquaChekReading({ ...fullReading, totalChlorine: undefined }, 'chlorine')).toBe(false);
     expect(isCompleteAquaChekReading({ ...fullReading, totalChlorine: undefined }, 'bromine')).toBe(true);

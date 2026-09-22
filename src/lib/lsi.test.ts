@@ -62,6 +62,22 @@ describe('LSI calculator', () => {
     expect(assumedTds).toBe(1000);
   });
 
+  it('does not promote readings with unknown temperature or TDS provenance to detailed', () => {
+    const output = calculateServiceLogLsi({
+      ph_value: 7.6,
+      alkalinity_value: 90,
+      stabilizer_value: 60,
+      hardness_value: 300,
+      hardness_source: 'calcium',
+      water_temperature: 84,
+      tds_value: 1200,
+    });
+
+    expect(output.result?.confidence).toBe('estimated');
+    expect(output.assumedTemperature).toBe(84);
+    expect(output.assumedTds).toBe(1200);
+  });
+
   it('reports missing readings instead of fabricating a result', () => {
     const output = calculateServiceLogLsi({ ph_value: 7.5 });
     expect(output.result).toBeNull();

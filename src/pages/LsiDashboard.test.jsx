@@ -23,7 +23,9 @@ const logs = [{
   hardness_value: 300,
   hardness_source: 'calcium',
   water_temperature: 84,
+  water_temperature_source: 'measured',
   tds_value: 1000,
+  tds_source: 'measured',
 }];
 
 vi.mock('@/api/convexHooks', () => ({

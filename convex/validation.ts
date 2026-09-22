@@ -443,16 +443,36 @@ export function validateLsiFields(data: {
         validatePositiveNumber(data.strip_scan_quality.framing, 'Framing quality', true, 0, 1);
     }
 
+    const hasStripScanData = [
+        data.strip_scan_method,
+        data.strip_scan_confidence,
+        data.strip_scan_analysis_version,
+        data.strip_scan_pad_confidence,
+        data.strip_scan_quality,
+        data.lsi_calculation_version,
+    ].some((value) => value !== undefined);
     if (
         requireSourceValues
-        && data.strip_scan_analysis_version?.startsWith('aquachek-select-v')
-        && (!data.strip_scan_method || !data.strip_scan_confidence || !data.strip_scan_pad_confidence || !data.strip_scan_quality)
+        && hasStripScanData
+        && (!data.strip_scan_method || !data.strip_scan_confidence || !data.strip_scan_analysis_version || !data.strip_scan_pad_confidence || !data.strip_scan_quality || !data.lsi_calculation_version)
     ) {
-        throw new Error('A versioned AquaChek scan requires complete scan audit data');
+        throw new Error('An AquaChek scan requires complete scan audit data');
     }
 
+    if (requireSourceValues && data.hardness_value !== undefined && !data.hardness_source) {
+        throw new Error('Hardness value requires a hardness source');
+    }
+    if (requireSourceValues && data.hardness_source && data.hardness_value === undefined) {
+        throw new Error('Hardness source requires a hardness value');
+    }
+    if (requireSourceValues && data.water_temperature !== undefined && !data.water_temperature_source) {
+        throw new Error('Water temperature requires a water temperature source');
+    }
     if (requireSourceValues && data.water_temperature_source && data.water_temperature === undefined) {
         throw new Error('Water temperature source requires a water temperature');
+    }
+    if (requireSourceValues && data.tds_value !== undefined && !data.tds_source) {
+        throw new Error('TDS value requires a TDS source');
     }
     if (requireSourceValues && data.tds_source && data.tds_value === undefined) {
         throw new Error('TDS source requires a TDS value');

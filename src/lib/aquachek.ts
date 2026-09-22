@@ -1,3 +1,5 @@
+import { CHEMICAL_CONFIGS, mapNumericValueToStatus } from './chemStatus';
+
 export const AQUACHEK_SELECT_LIMITS = {
   totalHardness: { min: 0, max: 1000, unit: 'ppm' },
   totalChlorine: { min: 0, max: 10, unit: 'ppm' },
@@ -30,8 +32,16 @@ export interface AquaChekReadings {
   cyanuricAcid?: number;
 }
 
+function statusForReading(key: keyof typeof CHEMICAL_CONFIGS, value?: number) {
+  return value === undefined ? undefined : mapNumericValueToStatus(value, CHEMICAL_CONFIGS[key].ranges);
+}
+
 export function readingsToServiceLogPatch(readings: AquaChekReadings) {
   return {
+    ph: statusForReading('ph', readings.ph),
+    chlorine: statusForReading('chlorine', readings.freeChlorine),
+    alkalinity: statusForReading('alkalinity', readings.totalAlkalinity),
+    stabilizer: statusForReading('stabilizer', readings.cyanuricAcid),
     hardness_value: readings.totalHardness ?? '',
     hardness_source: 'aquachek_total' as const,
     total_chlorine_value: readings.totalChlorine ?? '',

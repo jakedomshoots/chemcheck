@@ -171,31 +171,29 @@ export function calculateServiceLogLsi(log: ServiceLogForLsi): ServiceLogLsiResu
   if (!Number.isFinite(log.hardness_value)) missing.push('hardness');
   const isStripScan = log.strip_scan_method === 'aquachek_select_photo';
   const hasTemperature = Number.isFinite(log.water_temperature);
-  const assumedTemperature = hasTemperature
-    ? (log.water_temperature_source === 'assumed' ? log.water_temperature : undefined)
-    : (isStripScan ? 80 : undefined);
-  if (!hasTemperature && assumedTemperature === undefined) missing.push('temperature');
+  const temperature = hasTemperature ? log.water_temperature! : (isStripScan ? 80 : undefined);
+  const temperatureIsAssumed = !hasTemperature || log.water_temperature_source !== 'measured';
+  const assumedTemperature = temperatureIsAssumed ? temperature : undefined;
+  if (temperature === undefined) missing.push('temperature');
   if (Number.isFinite(log.hardness_value) && log.hardness_value! <= 0) missing.push('hardness above 0 ppm');
   if (Number.isFinite(log.alkalinity_value) && log.alkalinity_value! <= 0) missing.push('alkalinity above 0 ppm');
   if (missing.length > 0) return { result: null, missing };
 
   const hasTds = Number.isFinite(log.tds_value) && (log.tds_value ?? 0) > 0;
-  const tdsIsAssumed = !hasTds || log.tds_source === 'assumed';
-  const assumedTds = hasTds
-    ? (log.tds_source === 'assumed' ? log.tds_value : undefined)
-    : ((log.salt ?? 0) > 0 ? (log.salt ?? 0) + 500 : 1000);
-  const tds = hasTds ? log.tds_value! : assumedTds!;
-  const temperature = hasTemperature ? log.water_temperature! : assumedTemperature!;
+  const fallbackTds = (log.salt ?? 0) > 0 ? (log.salt ?? 0) + 500 : 1000;
+  const tds = hasTds ? log.tds_value! : fallbackTds;
+  const tdsIsAssumed = !hasTds || log.tds_source !== 'measured';
+  const assumedTds = tdsIsAssumed ? tds : undefined;
   const result = calculateLsi({
     ph: log.ph_value!,
     totalAlkalinity: log.alkalinity_value!,
     cyanuricAcid: log.stabilizer_value!,
     hardness: log.hardness_value!,
-    waterTemperatureF: temperature,
+    waterTemperatureF: temperature!,
     tds,
     hardnessSource: log.hardness_source ?? 'aquachek_total',
     tdsEstimated: tdsIsAssumed,
-    temperatureEstimated: !hasTemperature || log.water_temperature_source === 'assumed',
+    temperatureEstimated: temperatureIsAssumed,
   });
 
   return {

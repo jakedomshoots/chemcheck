@@ -607,11 +607,11 @@ export default function NewServiceLog() {
             <SimplifiedChemicalInput
               label="pH Balance"
               value={formData.ph}
-              onChange={(val) => setFormData({ ...formData, ph: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, ph: val }))}
               mode={formData.ph_mode}
-              onModeChange={(mode) => setFormData({ ...formData, ph_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, ph_mode: mode }))}
               numericValue={formData.ph_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, ph_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, ph_value: val }))}
               config={CHEMICAL_CONFIGS.ph}
               icon={<Activity className="w-4 h-4" />}
               testId="ph-numeric-input"
@@ -620,11 +620,11 @@ export default function NewServiceLog() {
             <SimplifiedChemicalInput
               label="Chlorine Level"
               value={formData.chlorine}
-              onChange={(val) => setFormData({ ...formData, chlorine: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, chlorine: val }))}
               mode={formData.chlorine_mode}
-              onModeChange={(mode) => setFormData({ ...formData, chlorine_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, chlorine_mode: mode }))}
               numericValue={formData.chlorine_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, chlorine_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, chlorine_value: val }))}
               config={CHEMICAL_CONFIGS.chlorine}
               icon={<Droplets className="w-4 h-4" />}
               testId="chlorine-numeric-input"
@@ -633,11 +633,11 @@ export default function NewServiceLog() {
             <SimplifiedChemicalInput
               label="Total Alkalinity"
               value={formData.alkalinity}
-              onChange={(val) => setFormData({ ...formData, alkalinity: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, alkalinity: val }))}
               mode={formData.alkalinity_mode}
-              onModeChange={(mode) => setFormData({ ...formData, alkalinity_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, alkalinity_mode: mode }))}
               numericValue={formData.alkalinity_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, alkalinity_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, alkalinity_value: val }))}
               config={CHEMICAL_CONFIGS.alkalinity}
               icon={<PoolIcon name="chemicals" className="h-4 w-4" />}
               testId="alkalinity-numeric-input"
@@ -646,11 +646,11 @@ export default function NewServiceLog() {
             <SimplifiedChemicalInput
               label="Stabilizer (Cyanuric Acid)"
               value={formData.stabilizer}
-              onChange={(val) => setFormData({ ...formData, stabilizer: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, stabilizer: val }))}
               mode={formData.stabilizer_mode}
-              onModeChange={(mode) => setFormData({ ...formData, stabilizer_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, stabilizer_mode: mode }))}
               numericValue={formData.stabilizer_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, stabilizer_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, stabilizer_value: val }))}
               config={CHEMICAL_CONFIGS.stabilizer}
               icon={<PoolIcon name="chemicals" className="h-4 w-4" />}
               testId="stabilizer-numeric-input"

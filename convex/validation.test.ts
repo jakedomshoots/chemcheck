@@ -56,6 +56,20 @@ describe("LSI service log validation", () => {
       .toThrow("TDS source requires a TDS value");
   });
 
+  it("rejects readings without their corresponding provenance source", () => {
+    expect(() => validateLsiFields({
+      hardness_value: 300,
+      water_temperature: 84,
+      tds_value: 1200,
+    }, true)).toThrow(/requires a .*source/i);
+  });
+
+  it("rejects a strip scan method without its complete audit package", () => {
+    expect(() => validateLsiFields({
+      strip_scan_method: "aquachek_select_photo",
+    }, true)).toThrow(/complete scan audit data/i);
+  });
+
   it("rejects an out-of-range water temperature", () => {
     expect(() => validateLsiFields({ water_temperature: 180 }))
       .toThrow(/Water temperature/);
@@ -85,6 +99,7 @@ describe("LSI service log validation", () => {
       strip_scan_method: "aquachek_select_photo" as const,
       strip_scan_confidence: "medium" as const,
       strip_scan_analysis_version: "aquachek-select-v3" as const,
+      lsi_calculation_version: "aquachek-epa-v1" as const,
       strip_scan_pad_confidence: {
         totalHardness: 0.8,
         totalChlorine: 0.7,

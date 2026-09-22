@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AquaChekStripScanner from './AquaChekStripScanner';
+import { calculateLsi, formatLsi } from '@/lib/lsi';
 
 const analysis = {
   readings: {
@@ -70,8 +71,12 @@ describe('AquaChekStripScanner', () => {
     const updater = setFormData.mock.calls[0][0];
     expect(updater({})).toMatchObject({
       ph_value: 7.4,
+      ph: 'good',
       hardness_value: 250,
       chlorine_value: 3,
+      chlorine: 'high',
+      alkalinity: 'high',
+      stabilizer: 'high',
       water_temperature: 80,
       water_temperature_source: 'assumed',
       tds_value: 1000,
@@ -108,6 +113,41 @@ describe('AquaChekStripScanner', () => {
       tds_value: '1450',
       tds_source: 'measured',
     });
+  });
+
+  it('uses current detailed temperature and TDS in the preview instead of mount-time assumptions', async () => {
+    const analyzePhoto = vi.fn().mockResolvedValue(analysis);
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:strip') });
+    const formData = {
+      salt: '',
+      water_temperature: 84,
+      water_temperature_source: 'measured',
+      tds_value: 1200,
+      tds_source: 'measured',
+    };
+    const { rerender } = render(
+      <AquaChekStripScanner formData={formData} setFormData={vi.fn()} analyzePhoto={analyzePhoto} />,
+    );
+    expandScanner();
+
+    fireEvent.change(screen.getByLabelText(/take strip photo/i), {
+      target: { files: [new File(['strip'], 'strip.jpg', { type: 'image/jpeg' })] },
+    });
+
+    expect(await screen.findByText('Most probable LSI')).toBeInTheDocument();
+    expect(screen.queryByText(/80°F water/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1,000 ppm TDS/i)).not.toBeInTheDocument();
+
+    rerender(
+      <AquaChekStripScanner
+        formData={{ ...formData, water_temperature: 86, tds_value: 1450 }}
+        setFormData={vi.fn()}
+        analyzePhoto={analyzePhoto}
+      />,
+    );
+    expect(screen.getByText('Most probable LSI')).toBeInTheDocument();
+    expect(screen.queryByText(/80°F water/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1,000 ppm TDS/i)).not.toBeInTheDocument();
   });
 
   it('returns to explicit assumptions when optional accuracy inputs are cleared', async () => {
@@ -178,6 +218,18 @@ describe('AquaChekStripScanner', () => {
       target: { files: [new File(['strip'], 'strip.jpg', { type: 'image/jpeg' })] },
     });
     await screen.findByText('Most probable LSI');
+    const expectedLsi = calculateLsi({
+      ph: 7.5,
+      totalAlkalinity: 90,
+      cyanuricAcid: 40,
+      hardness: 325,
+      waterTemperatureF: 84,
+      tds: 1200,
+      hardnessSource: 'calcium',
+    });
+    expect(expectedLsi).not.toBeNull();
+    expect(screen.getByText(formatLsi(expectedLsi.value))).toBeInTheDocument();
+    expect(screen.getByText(/Calculated with calcium hardness/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /use probable readings/i }));
 
     const updater = setFormData.mock.calls[0][0];
@@ -195,6 +247,47 @@ describe('AquaChekStripScanner', () => {
       total_chlorine_value: 3,
       strip_scan_method: 'aquachek_select_photo',
     });
+  });
+
+  it('preserves ordinary numeric chemistry entered before a scan', async () => {
+    const setFormData = vi.fn();
+    const analyzePhoto = vi.fn().mockResolvedValue(analysis);
+    const manualLog = {
+      ph_value: 7.5,
+      chlorine_value: 2.5,
+      alkalinity_value: 90,
+      stabilizer_value: 40,
+      water_temperature: 84,
+      water_temperature_source: 'measured',
+      tds_value: 1200,
+      tds_source: 'measured',
+      salt: '',
+    };
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:strip') });
+    render(<AquaChekStripScanner formData={manualLog} setFormData={setFormData} analyzePhoto={analyzePhoto} />);
+    expandScanner();
+
+    fireEvent.change(screen.getByLabelText(/take strip photo/i), {
+      target: { files: [new File(['strip'], 'strip.jpg', { type: 'image/jpeg' })] },
+    });
+    await screen.findByText('Most probable LSI');
+    fireEvent.click(screen.getByRole('button', { name: /use probable readings/i }));
+
+    const updater = setFormData.mock.calls[0][0];
+    expect(updater(manualLog)).toMatchObject({
+      ph_value: 7.5,
+      ph: 'good',
+      chlorine_value: 2.5,
+      chlorine: 'good',
+      alkalinity_value: 90,
+      alkalinity: 'low',
+      stabilizer_value: 40,
+      stabilizer: 'good',
+      hardness_value: 250,
+      hardness_source: 'aquachek_total',
+      strip_scan_method: 'aquachek_select_photo',
+    });
+    await waitFor(() => expect(screen.getByText(/manual readings were kept/i)).toBeInTheDocument());
   });
 
   it('shows a usable result instead of a blank card when the strip cannot produce an LSI', async () => {

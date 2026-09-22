@@ -247,6 +247,18 @@ describe('Service Log Validation', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects a strip scan method without its complete audit package', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      strip_scan_method: 'aquachek_select_photo',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors.join(' ')).toMatch(/complete scan audit data/i);
+    }
+  });
+
   it('rejects LSI provenance without the corresponding local reading', () => {
     const result = validateServiceLog({
       ...validServiceLog,
@@ -257,6 +269,20 @@ describe('Service Log Validation', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors.join(' ')).toMatch(/temperature.*reading|TDS.*reading/i);
+    }
+  });
+
+  it('rejects LSI readings that are missing their provenance source', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      hardness_value: 300,
+      water_temperature: 84,
+      tds_value: 1200,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors.join(' ')).toMatch(/hardness.*source|temperature.*source|TDS.*source/i);
     }
   });
 

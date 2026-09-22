@@ -157,14 +157,43 @@ export const serviceLogSchema = z.object({
 
   service_type: z.string().optional(),
 }).superRefine((data, context) => {
+  const hasStripScanData = [
+    data.strip_scan_method,
+    data.strip_scan_confidence,
+    data.strip_scan_analysis_version,
+    data.strip_scan_pad_confidence,
+    data.strip_scan_quality,
+    data.lsi_calculation_version,
+  ].some((value) => value !== undefined);
   if (
-    data.strip_scan_analysis_version?.startsWith('aquachek-select-v')
-    && (!data.strip_scan_method || !data.strip_scan_confidence || !data.strip_scan_pad_confidence || !data.strip_scan_quality)
+    hasStripScanData
+    && (!data.strip_scan_method || !data.strip_scan_confidence || !data.strip_scan_analysis_version || !data.strip_scan_pad_confidence || !data.strip_scan_quality || !data.lsi_calculation_version)
   ) {
     context.addIssue({
       code: 'custom',
-      message: 'A versioned AquaChek scan requires complete scan audit data',
+      message: 'An AquaChek scan requires complete scan audit data',
       path: ['strip_scan_analysis_version'],
+    });
+  }
+  if (data.hardness_value !== undefined && !data.hardness_source) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Hardness value requires a hardness source',
+      path: ['hardness_source'],
+    });
+  }
+  if (data.hardness_source && data.hardness_value === undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Hardness source requires a hardness reading',
+      path: ['hardness_value'],
+    });
+  }
+  if (data.water_temperature !== undefined && !data.water_temperature_source) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Water temperature reading requires a source',
+      path: ['water_temperature_source'],
     });
   }
   if (data.water_temperature_source && data.water_temperature === undefined) {
@@ -172,6 +201,13 @@ export const serviceLogSchema = z.object({
       code: 'custom',
       message: 'Water temperature source requires a temperature reading',
       path: ['water_temperature_source'],
+    });
+  }
+  if (data.tds_value !== undefined && !data.tds_source) {
+    context.addIssue({
+      code: 'custom',
+      message: 'TDS reading requires a source',
+      path: ['tds_source'],
     });
   }
   if (data.tds_source && data.tds_value === undefined) {
