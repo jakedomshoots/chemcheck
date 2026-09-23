@@ -16,6 +16,25 @@ function normalizeEmail(value: unknown): string {
 }
 
 const SYNC_RECEIPT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const SYNC_TABLE_ORDER = [
+  "customers",
+  "pools",
+  "equipment",
+  "serviceLogs",
+  "chemicalUsage",
+  "notes",
+  "saltCellLogs",
+] as const;
+
+type SyncTableName = (typeof SYNC_TABLE_ORDER)[number];
+
+/**
+ * Convex allows only one paginated query in a function execution. Select the
+ * first table that has not been exhausted and advance only that table.
+ */
+export function getNextSyncTable(state: Record<string, unknown>): SyncTableName | null {
+  return SYNC_TABLE_ORDER.find((table) => state[table] !== null) ?? null;
+}
 
 export const cleanupSyncOperations = internalMutation({
   args: {},
@@ -179,43 +198,53 @@ export const pull = query({
       };
     };
 
-    const deferredPage = (): { rows: any[]; next: string | null; done: boolean } => ({
-      rows: [],
-      next: undefined as any,
-      done: false,
+    const queries: Record<SyncTableName, any> = {
+      customers: customerQuery,
+      pools: poolQuery,
+      equipment: equipmentQuery,
+      serviceLogs: childQuery("serviceLogs"),
+      chemicalUsage: childQuery("chemicalUsage"),
+      notes: childQuery("notes"),
+      saltCellLogs: childQuery("saltCellLogs"),
+    };
+    const makeDeferredResult = (table: SyncTableName) => ({
+      rows: [] as any[],
+      next: state[table] as string | null | undefined,
+      done: state[table] === null,
     });
-    const customers = await page("customers", customerQuery);
-    const customersDone = customers.done;
-    const pools = customersDone ? await page("pools", poolQuery) : deferredPage();
-    const poolsDone = customersDone && pools.done;
-    const equipment = poolsDone ? await page("equipment", equipmentQuery) : deferredPage();
-    const equipmentDone = poolsDone && equipment.done;
-    const serviceLogs = equipmentDone ? await page("serviceLogs", childQuery("serviceLogs")) : deferredPage();
-    const chemicalUsage = equipmentDone ? await page("chemicalUsage", childQuery("chemicalUsage")) : deferredPage();
-    const notes = equipmentDone ? await page("notes", childQuery("notes")) : deferredPage();
-    const saltCellLogs = equipmentDone ? await page("saltCellLogs", childQuery("saltCellLogs")) : deferredPage();
+    const results: Record<
+      SyncTableName,
+      { rows: any[]; next: string | null | undefined; done: boolean }
+    > = {
+      customers: makeDeferredResult("customers"),
+      pools: makeDeferredResult("pools"),
+      equipment: makeDeferredResult("equipment"),
+      serviceLogs: makeDeferredResult("serviceLogs"),
+      chemicalUsage: makeDeferredResult("chemicalUsage"),
+      notes: makeDeferredResult("notes"),
+      saltCellLogs: makeDeferredResult("saltCellLogs"),
+    };
+
+    const activeTable = getNextSyncTable(state);
+    if (activeTable) {
+      results[activeTable] = await page(activeTable, queries[activeTable]);
+    }
 
     const nextState: any = {
       since,
       watermark,
-      customers: customers.next,
-      pools: pools.next,
-      equipment: equipment.next,
-      serviceLogs: serviceLogs.next,
-      chemicalUsage: chemicalUsage.next,
-      notes: notes.next,
-      saltCellLogs: saltCellLogs.next,
+      ...Object.fromEntries(SYNC_TABLE_ORDER.map((table) => [table, results[table].next])),
     };
-    const isDone = [customers, pools, equipment, serviceLogs, chemicalUsage, notes, saltCellLogs].every((result) => result.done);
+    const isDone = SYNC_TABLE_ORDER.every((table) => nextState[table] === null);
 
     return {
-      customers: customers.rows,
-      pools: pools.rows,
-      equipment: equipment.rows,
-      serviceLogs: serviceLogs.rows,
-      chemicalUsage: chemicalUsage.rows,
-      notes: notes.rows,
-      saltCellLogs: saltCellLogs.rows,
+      customers: results.customers.rows,
+      pools: results.pools.rows,
+      equipment: results.equipment.rows,
+      serviceLogs: results.serviceLogs.rows,
+      chemicalUsage: results.chemicalUsage.rows,
+      notes: results.notes.rows,
+      saltCellLogs: results.saltCellLogs.rows,
       cursor: isDone ? null : JSON.stringify(nextState),
       hasMore: !isDone,
       watermark,
