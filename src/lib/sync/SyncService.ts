@@ -35,6 +35,18 @@ interface RemotePullPage {
   watermark?: number;
 }
 
+const REMOTE_PULL_TABLES = [
+  'customers',
+  'pools',
+  'equipment',
+  'serviceLogs',
+  'chemicalUsage',
+  'notes',
+  'saltCellLogs',
+] as const;
+
+type RemotePullTable = typeof REMOTE_PULL_TABLES[number];
+
 export interface RecordSyncStatus {
   status: 'synced' | 'pending' | 'error';
   error?: string;
@@ -65,6 +77,7 @@ export class SyncService {
   private readonly PULL_PAGE_SIZE = 100;
   private readonly PULL_STATE_KEY = 'chemcheck_sync_pull_state_v1';
   private readonly PULL_REHYDRATE_KEY = 'chemcheck_sync_rehydrate_v1';
+  private readonly PULL_RECONCILE_KEY = 'chemcheck_sync_full_reconcile_v1';
   private pullScope = 'anonymous';
   private lastPullCount = 0;
   private lastConflictCount = 0;
@@ -226,10 +239,16 @@ export class SyncService {
     let cursor = persisted.cursor || undefined;
     let since = persisted.since || 0;
     let forcedRehydrate = false;
-    if (!cursor && since > 0 && await this.shouldRehydrateEmptyCache(since)) {
+    const shouldReconcileFullSnapshot = !cursor && this.shouldRunFullReconciliation();
+    if (shouldReconcileFullSnapshot) {
+      since = 0;
+    } else if (!cursor && since > 0 && await this.shouldRehydrateEmptyCache(since)) {
       forcedRehydrate = true;
       since = 0;
     }
+    const seenRemoteIds = new Map<RemotePullTable, Set<string>>(
+      REMOTE_PULL_TABLES.map((table) => [table, new Set<string>()]),
+    );
     let pulledCount = 0;
     let conflictCount = 0;
     let watermark = persisted.since || 0;
@@ -242,6 +261,7 @@ export class SyncService {
           since: cursor ? undefined : since,
           limit: this.PULL_PAGE_SIZE,
         });
+        if (shouldReconcileFullSnapshot) this.recordSeenRemoteIds(page, seenRemoteIds);
         const counts = await this.applyRemotePullPage(page);
         pulledCount += counts.pulledCount;
         conflictCount += counts.conflictCount;
@@ -253,10 +273,15 @@ export class SyncService {
         }
       } while (cursor);
 
+      if (shouldReconcileFullSnapshot) {
+        await this.reconcileFullSnapshot(seenRemoteIds);
+      }
+
       // Advance the watermark only after every table cursor has been applied.
       if (watermark > 0) {
         this.writePullState({ since: watermark, cursor: null });
         if (forcedRehydrate) this.markRehydrateAttempt(watermark);
+        if (shouldReconcileFullSnapshot) this.markFullReconciliation(watermark);
       }
       monitoring.recordMetric('sync_pull_complete', pulledCount, { conflictCount, watermark });
       this.lastPullCount = pulledCount;
@@ -325,6 +350,68 @@ export class SyncService {
       localStorage.setItem(`${this.PULL_REHYDRATE_KEY}:${this.pullScope}`, String(watermark));
     } catch {
       // Recovery remains safe if storage is unavailable; the next run may retry.
+    }
+  }
+
+  private shouldRunFullReconciliation(): boolean {
+    if (typeof localStorage === 'undefined') return true;
+    try {
+      return !localStorage.getItem(`${this.PULL_RECONCILE_KEY}:${this.pullScope}`);
+    } catch {
+      return true;
+    }
+  }
+
+  private markFullReconciliation(watermark: number): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(`${this.PULL_RECONCILE_KEY}:${this.pullScope}`, String(watermark));
+    } catch {
+      // If storage is unavailable, retrying a safe full reconciliation later
+      // is preferable to permanently retaining stale local rows.
+    }
+  }
+
+  private recordSeenRemoteIds(
+    page: RemotePullPage,
+    seenRemoteIds: Map<RemotePullTable, Set<string>>,
+  ): void {
+    for (const table of REMOTE_PULL_TABLES) {
+      const seen = seenRemoteIds.get(table)!;
+      for (const record of page[table] || []) {
+        const convexId = String(record?._id || record?.convex_id || '');
+        if (convexId) seen.add(convexId);
+      }
+    }
+  }
+
+  private async reconcileFullSnapshot(
+    seenRemoteIds: Map<RemotePullTable, Set<string>>,
+  ): Promise<void> {
+    let prunedCount = 0;
+    const childFirstTables = [...REMOTE_PULL_TABLES].reverse();
+
+    await this.withoutSyncHooks(async () => {
+      for (const table of childFirstTables) {
+        const localTable = this.getTable(table);
+        if (!localTable?.toCollection || typeof localTable.delete !== 'function') continue;
+        const seen = seenRemoteIds.get(table)!;
+        const localRecords = await localTable.toCollection().toArray();
+
+        for (const local of localRecords) {
+          const convexId = String(local?.convex_id || '');
+          const isSyncedRemoteRecord = convexId && local?.sync_status === 'synced';
+          if (!isSyncedRemoteRecord || seen.has(convexId) || local?.id === undefined) continue;
+          await localTable.delete(local.id);
+          prunedCount += 1;
+        }
+      }
+    });
+
+    if (prunedCount > 0) {
+      monitoring.recordMetric('sync_pull_stale_local_rows_pruned', prunedCount, {
+        scope: this.pullScope,
+      });
     }
   }
 

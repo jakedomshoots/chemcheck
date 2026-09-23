@@ -23,6 +23,10 @@ function table(name: string) {
       const index = stores[name].findIndex((record) => record.id === id);
       if (index >= 0) stores[name][index] = { ...stores[name][index], ...update };
     }),
+    delete: vi.fn(async (id: number) => {
+      const index = stores[name].findIndex((record) => record.id === id);
+      if (index >= 0) stores[name].splice(index, 1);
+    }),
     where: vi.fn((field: string) => ({
       equals: vi.fn((value: any) => ({
         first: vi.fn(async () => stores[name].find((record) => record[field] === value)),
@@ -136,6 +140,42 @@ describe('SyncService remote pull', () => {
     expect(result.pulledCount).toBe(1);
     expect(stores.customers).toHaveLength(1);
     expect(stores.customers[0]).toMatchObject({ full_name: 'Recovered customer' });
+    service.destroy();
+  });
+
+  it('reconciles a full cloud snapshot without deleting unsynced local customers', async () => {
+    stores.customers.push(
+      {
+        id: 1,
+        convex_id: 'stale-customer',
+        full_name: 'Old cached customer',
+        local_updated_at: 10,
+        remote_updated_at: 10,
+        sync_status: 'synced',
+      },
+      {
+        id: 2,
+        full_name: 'Offline customer awaiting upload',
+        local_updated_at: 30,
+        sync_status: 'pending',
+      },
+    );
+
+    const { SyncService } = await import('./SyncService');
+    const service = new SyncService();
+    const query = vi.fn().mockResolvedValue({
+      customers: [{ _id: 'current-customer', full_name: 'Current production customer', updated_at: 40 }],
+      pools: [], equipment: [], serviceLogs: [], chemicalUsage: [], notes: [], saltCellLogs: [],
+      cursor: null, hasMore: false, watermark: 40,
+    });
+
+    service.initialize({ query, mutation: vi.fn() } as any, 'owner@example.com');
+    await service.pullRemoteChanges();
+
+    expect(stores.customers.map((customer) => customer.full_name)).toEqual([
+      'Offline customer awaiting upload',
+      'Current production customer',
+    ]);
     service.destroy();
   });
 });
