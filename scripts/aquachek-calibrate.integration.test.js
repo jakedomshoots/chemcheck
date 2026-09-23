@@ -42,7 +42,7 @@ describe('AquaChek calibration command', () => {
     expect(result.stdout).toContain('synthetic-001: high');
     expect(result.stdout).toContain('Calibration decision: needs-data');
     const json = JSON.parse(await fs.readFile(path.join(directory, 'reports/latest.json'), 'utf8'));
-    expect(json.analyzerVersion).toBe('aquachek-select-v3');
+    expect(json.analyzerVersion).toBe('aquachek-select-v4');
     expect(json.report.summary.acceptedValidationPhotos).toBe(1);
     expect(json.report.analytes.ph.exactLevelRate).toBe(1);
     await expect(fs.readFile(path.join(directory, 'reports/latest.md'), 'utf8')).resolves.toContain('Held-out validation accuracy');

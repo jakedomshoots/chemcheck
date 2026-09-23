@@ -96,7 +96,7 @@ test.describe('AquaChek daily-log dogfood', () => {
 
     expect(savedLog).toMatchObject({
       strip_scan_method: 'aquachek_select_photo',
-      strip_scan_analysis_version: 'aquachek-select-v3',
+      strip_scan_analysis_version: 'aquachek-select-v4',
       hardness_source: 'aquachek_total',
       hardness_value: 250,
       total_chlorine_value: 3,

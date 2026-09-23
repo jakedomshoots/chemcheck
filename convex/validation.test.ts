@@ -32,7 +32,7 @@ describe("LSI service log validation", () => {
       tds_source: "assumed",
       strip_scan_method: "aquachek_select_photo",
       strip_scan_confidence: "medium",
-      strip_scan_analysis_version: "aquachek-select-v3",
+      strip_scan_analysis_version: "aquachek-select-v4",
       strip_scan_pad_confidence: {
         totalHardness: 0.8,
         totalChlorine: 0.7,

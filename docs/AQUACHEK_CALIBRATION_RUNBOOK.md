@@ -16,7 +16,7 @@ This creates `manifest.csv` and a `photos/` directory. Keep this field corpus ou
 
 1. Take a clean water sample before adding chemicals.
 2. Dip a fresh AquaChek Select 7-in-1 strip according to its package directions.
-3. Photograph the full strip on a plain white or light-gray surface, with the handle on the right, in even light without glare.
+3. Photograph the full strip on any reasonably uncluttered surface, with the handle on the right. Keep the strip itself evenly lit and avoid flash, glare, or a heavy shadow crossing the pads. The decoder uses the strip's pale backing for color correction, so a perfect white background is not required.
 4. Record the actual number of seconds between removing the strip and taking the photo. AquaChek's product insert says to hold the strip level, pad side up, for 15 seconds and then compare immediately. The calibration gate allows 14–16 seconds for human capture variance; the app does not impose a countdown.
 5. Immediately test the same water using the best independent method available. A well-performed drop test is the practical route baseline. Use a calibrated photometer or laboratory result when available.
 6. Record the camera model, strip lot printed on the container, and lighting condition.

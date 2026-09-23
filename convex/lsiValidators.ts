@@ -3,6 +3,7 @@ import { v } from "convex/values";
 export const stripScanAnalysisVersionValidator = v.union(
   v.literal("aquachek-select-v2"),
   v.literal("aquachek-select-v3"),
+  v.literal("aquachek-select-v4"),
 );
 
 export const stripScanPadConfidenceValidator = v.object({

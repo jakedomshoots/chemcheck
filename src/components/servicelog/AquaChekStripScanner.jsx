@@ -209,7 +209,7 @@ export default function AquaChekStripScanner({ formData, setFormData, sanitizer 
           </div>
         </div>
         <div className="mt-3 rounded-control bg-surface-2 px-3 py-2 text-[0.6875rem] leading-4 text-ink-muted">
-          Dip and remove immediately. Hold level, pads up, for 15 seconds—do not shake—then photograph immediately. Lay the strip flat on plain white or light gray, fill the frame horizontally, and keep the handle on the right. Avoid flash, glare, and shadows.
+          Dip and remove immediately. Hold level, pads up, for 15 seconds—do not shake—then photograph immediately. Lay the strip flat on any reasonably uncluttered surface, fill the guide horizontally, and keep the handle on the right. A perfect white background is not required; avoid flash, glare, and heavy shadows across the strip itself.
         </div>
         <Input ref={inputRef} id="aquachek-photo" type="file" accept="image/*" capture="environment" onChange={handlePhoto} className="peer sr-only" />
         <Label htmlFor="aquachek-photo" className="mt-3 flex h-11 cursor-pointer items-center justify-center rounded-card bg-brand text-sm font-semibold text-white shadow-sm transition-[background-color,transform] hover:bg-brand-strong active:scale-[0.98] peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2">

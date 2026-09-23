@@ -371,7 +371,7 @@ export interface ValidatedServiceLogData {
     total_bromine_value?: number;
     strip_scan_method?: 'aquachek_select_photo';
     strip_scan_confidence?: 'low' | 'medium' | 'high';
-    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3';
+    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3' | 'aquachek-select-v4';
     strip_scan_pad_confidence?: StripScanPadConfidence;
     strip_scan_quality?: StripScanQuality;
     lsi_calculation_version?: 'aquachek-epa-v1';
@@ -425,7 +425,7 @@ export function validateLsiFields(data: {
     validateEnum(data.tds_source, ['measured', 'assumed'] as const, 'TDS source', false);
     validateEnum(data.strip_scan_method, ['aquachek_select_photo'] as const, 'Strip scan method', false);
     validateEnum(data.strip_scan_confidence, ['low', 'medium', 'high'] as const, 'Strip scan confidence', false);
-    validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3'] as const, 'Strip scan analysis version', false);
+    validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3', 'aquachek-select-v4'] as const, 'Strip scan analysis version', false);
     validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1'] as const, 'LSI calculation version', false);
 
     if (data.strip_scan_pad_confidence) {
@@ -502,7 +502,7 @@ export function validateServiceLogCreate(data: {
     total_bromine_value?: number;
     strip_scan_method?: 'aquachek_select_photo';
     strip_scan_confidence?: 'low' | 'medium' | 'high';
-    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3';
+    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3' | 'aquachek-select-v4';
     strip_scan_pad_confidence?: StripScanPadConfidence;
     strip_scan_quality?: StripScanQuality;
     lsi_calculation_version?: 'aquachek-epa-v1';
@@ -542,7 +542,7 @@ export function validateServiceLogCreate(data: {
         total_bromine_value: validatePositiveNumber(data.total_bromine_value, 'Total bromine value', false, 0, 20),
         strip_scan_method: validateEnum(data.strip_scan_method, ['aquachek_select_photo'] as const, 'Strip scan method', false),
         strip_scan_confidence: validateEnum(data.strip_scan_confidence, ['low', 'medium', 'high'] as const, 'Strip scan confidence', false),
-        strip_scan_analysis_version: validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3'] as const, 'Strip scan analysis version', false),
+        strip_scan_analysis_version: validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3', 'aquachek-select-v4'] as const, 'Strip scan analysis version', false),
         strip_scan_pad_confidence: data.strip_scan_pad_confidence,
         strip_scan_quality: data.strip_scan_quality,
         lsi_calculation_version: validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1'] as const, 'LSI calculation version', false),
