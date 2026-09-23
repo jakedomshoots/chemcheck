@@ -89,7 +89,7 @@ export interface ServiceLog extends SyncableRecord {
     total_bromine_value?: number;
     strip_scan_method?: 'aquachek_select_photo';
     strip_scan_confidence?: 'low' | 'medium' | 'high';
-    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3';
+    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3' | 'aquachek-select-v4';
     strip_scan_pad_confidence?: {
         totalHardness: number;
         totalChlorine: number;

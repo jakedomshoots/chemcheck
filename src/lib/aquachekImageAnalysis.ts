@@ -12,7 +12,7 @@ export type AquaChekPhotoErrorCode =
   | 'uneven-lighting'
   | 'uncertain-pad';
 
-export const AQUACHEK_ANALYSIS_VERSION = 'aquachek-select-v3';
+export const AQUACHEK_ANALYSIS_VERSION = 'aquachek-select-v4';
 
 export interface AquaChekImageQuality {
   backgroundLightness: number;
@@ -144,14 +144,14 @@ function samplePad(data: Uint8ClampedArray, width: number, height: number, cente
   return [median(reds), median(greens), median(blues)];
 }
 
-function normalizeAgainstBackground(color: Rgb, background: Rgb): Rgb {
-  // Map the photographed neutral surface to a consistent light reference.
-  // Using the photographed average only corrected tint; it left ordinary
-  // underexposure in place and could shift a chemically valid pad by a bin.
-  const targetNeutral = 242;
+function normalizeAgainstStripReference(color: Rgb, stripReference: Rgb): Rgb {
+  // Map the photographed strip substrate back to its known warm-white color.
+  // A per-channel target preserves camera cast correction without forcing the
+  // slightly warm strip material to an artificial neutral gray.
+  const targetStrip: Rgb = [253, 252, 244];
   return color.map((channel, index) => {
-    const reference = Math.max(1, background[index]);
-    return Math.round(clamp(channel * (targetNeutral / reference), 0, 255));
+    const reference = Math.max(1, stripReference[index]);
+    return Math.round(clamp(channel * (targetStrip[index] / reference), 0, 255));
   }) as Rgb;
 }
 
@@ -165,33 +165,44 @@ const PAD_LABELS: Record<(typeof PAD_KEYS)[number], string> = {
   totalAlkalinity: 'alkalinity',
   cyanuricAcid: 'CYA',
 };
+const ALL_PAD_REFERENCES = Object.values(AQUACHEK_COLOR_REFERENCES).flat();
 
-function inspectBackground(data: Uint8ClampedArray, width: number, height: number) {
-  const points = [
-    [0.1, 0.12], [0.5, 0.12], [0.9, 0.12],
-    [0.1, 0.88], [0.5, 0.88], [0.9, 0.88],
-  ];
+function inspectStripReference(data: Uint8ClampedArray, width: number, height: number) {
+  // Color-correct against the strip's own pale substrate, not the surface it
+  // happens to be lying on. Field techs may photograph on concrete, truck
+  // beds, equipment lids, or coping; those surroundings should not decide
+  // whether otherwise clear pads are readable.
+  // Probe exposed backing in the horizontal gaps between pads. These points
+  // stay on even a thin strip; probes above or below the pads can accidentally
+  // land on the field surface when the strip appears small in the frame.
+  const gapPositions = PAD_POSITIONS.slice(0, -1).map((position, index) => (
+    (position + PAD_POSITIONS[index + 1]) / 2
+  ));
+  const points = [PAD_POSITIONS[0] - 0.055, ...gapPositions, PAD_POSITIONS.at(-1)! + 0.055]
+    .map((x) => [width * x, height / 2]);
   const samples = points.map(([x, y]) => samplePad(
     data,
     width,
     height,
-    Math.round(width * x),
-    Math.round(height * y),
+    Math.round(x),
+    Math.round(y),
   ));
-  const background: Rgb = [
+  const stripReference: Rgb = [
     median(samples.map((sample) => sample[0])),
     median(samples.map((sample) => sample[1])),
     median(samples.map((sample) => sample[2])),
   ];
-  const lightness = luminance(background) / 255;
-  const channelSpread = Math.max(...background) - Math.min(...background);
+  const lightness = luminance(stripReference) / 255;
+  const channelSpread = Math.max(...stripReference) - Math.min(...stripReference);
   const luminances = samples.map(luminance);
   const lightingSpread = Math.max(...luminances) - Math.min(...luminances);
+  const clippedChannels = samples.flat().filter((channel) => channel >= 254).length;
   return {
-    background,
+    stripReference,
     lightness,
     neutrality: clamp(1 - (channelSpread / 90)),
     uniformity: clamp(1 - (lightingSpread / 80)),
+    clipping: clippedChannels / (samples.length * 3),
   };
 }
 
@@ -200,27 +211,29 @@ function locatePad(
   width: number,
   height: number,
   expectedX: number,
-  background: Rgb,
+  stripReference: Rgb,
 ) {
   const xWindow = Math.max(4, Math.round(width * 0.025));
-  const yWindow = Math.max(4, Math.round(height * 0.055));
+  const yWindow = Math.max(4, Math.round(Math.min(width, height) * 0.055));
   const step = Math.max(2, Math.round(Math.min(width, height) * 0.008));
   const baseX = Math.round(width * expectedX);
   const baseY = Math.round(height * 0.5);
-  const neutralBackground = normalizeAgainstBackground(background, background);
-  let best = { x: baseX, y: baseY, score: -1, rank: -1, proximity: Number.POSITIVE_INFINITY };
+  let best = { x: baseX, y: baseY, score: Number.NEGATIVE_INFINITY, rank: Number.NEGATIVE_INFINITY, proximity: Number.POSITIVE_INFINITY };
 
   for (let y = baseY - yWindow; y <= baseY + yWindow; y += step) {
     for (let x = baseX - xWindow; x <= baseX + xWindow; x += step) {
       const sampled = samplePad(data, width, height, x, y);
-      const normalized = normalizeAgainstBackground(sampled, background);
-      const score = colorDistance(normalized, neutralBackground);
+      const normalized = normalizeAgainstStripReference(sampled, stripReference);
+      const nearestPadDistance = Math.min(...ALL_PAD_REFERENCES.map((reference) => (
+        colorDistance(normalized, reference.color)
+      )));
+      const score = 60 - nearestPadDistance;
       const proximity = Math.hypot(x - baseX, y - baseY);
       // JPEG ringing and antialiased corners can be marginally darker than the
       // pad center. Without a proximity cost those edge pixels win the search,
       // then correctly fail the glare/uniformity gate. Prefer the expected pad
       // center unless a displaced candidate is materially more pad-like.
-      const rank = score - ((proximity / Math.max(xWindow, yWindow)) * 4);
+      const rank = score - ((proximity / Math.max(xWindow, yWindow)) * 2);
       if (rank > best.rank + 0.01 || (Math.abs(rank - best.rank) <= 0.01 && proximity < best.proximity)) {
         best = { x, y, score, rank, proximity };
       }
@@ -235,15 +248,15 @@ function inspectPadUniformity(
   height: number,
   centerX: number,
   centerY: number,
-  background: Rgb,
+  stripReference: Rgb,
 ) {
   const offset = Math.max(5, Math.round(Math.min(width, height) * 0.02));
   const samples = [
     [0, 0], [-offset, 0], [offset, 0], [0, -offset], [0, offset],
     [-offset, -offset], [offset, -offset], [-offset, offset], [offset, offset],
-  ].map(([x, y]) => normalizeAgainstBackground(
+  ].map(([x, y]) => normalizeAgainstStripReference(
     samplePad(data, width, height, centerX + x, centerY + y),
-    background,
+    stripReference,
   ));
   const center = samples[0];
   const maxDistance = Math.max(...samples.slice(1).map((sample) => colorDistance(center, sample)));
@@ -255,19 +268,19 @@ export function analyzeAquaChekPixels(
   width: number,
   height: number,
 ): AquaChekPhotoAnalysis {
-  if (width < 320 || height < 160 || width / height < 1.35 || data.length < width * height * 4) {
-    throw new AquaChekPhotoError('bad-framing', 'Use a horizontal photo and fill the frame with the full strip.');
+  if (width < 320 || height < 160 || data.length < width * height * 4) {
+    throw new AquaChekPhotoError('bad-framing', 'Keep the strip horizontal inside the guide and fill most of its width.');
   }
 
-  const background = inspectBackground(data, width, height);
-  if (background.lightness < 0.52 || background.lightness > 0.99 || background.neutrality < 0.22) {
-    throw new AquaChekPhotoError('bad-background', 'Place the strip on a plain white or light gray surface.');
+  const stripReference = inspectStripReference(data, width, height);
+  if (stripReference.lightness < 0.52 || stripReference.neutrality < 0.22 || stripReference.clipping > 0.8) {
+    throw new AquaChekPhotoError('bad-background', 'Keep the full strip inside the guide so ChemCheck can use its pale backing for color correction.');
   }
-  if (background.uniformity < 0.5) {
+  if (stripReference.uniformity < 0.5) {
     throw new AquaChekPhotoError('uneven-lighting', 'Move out of shadows or glare and retake in even light.');
   }
 
-  const detectedPads = PAD_POSITIONS.map((position) => locatePad(data, width, height, position, background.background));
+  const detectedPads = PAD_POSITIONS.map((position) => locatePad(data, width, height, position, stripReference.stripReference));
   const meanOffset = detectedPads.reduce((sum, pad, index) => {
     const expectedX = width * PAD_POSITIONS[index];
     const expectedY = height * 0.5;
@@ -278,9 +291,9 @@ export function analyzeAquaChekPixels(
     throw new AquaChekPhotoError('bad-framing', 'Center the strip in the guide with the handle on the right.');
   }
 
-  const colors = detectedPads.map(({ x, y }) => normalizeAgainstBackground(
+  const colors = detectedPads.map(({ x, y }) => normalizeAgainstStripReference(
     samplePad(data, width, height, x, y),
-    background.background,
+    stripReference.stripReference,
   ));
   const padUniformity = detectedPads.map(({ x, y }) => inspectPadUniformity(
     data,
@@ -288,7 +301,7 @@ export function analyzeAquaChekPixels(
     height,
     x,
     y,
-    background.background,
+    stripReference.stripReference,
   ));
   const forwardResults = PAD_KEYS.map((key, index) => matchReferenceColor(colors[index], AQUACHEK_COLOR_REFERENCES[key]));
   const reversedResults = PAD_KEYS.map((key, index) => matchReferenceColor(colors[colors.length - 1 - index], AQUACHEK_COLOR_REFERENCES[key]));
@@ -340,9 +353,11 @@ export function analyzeAquaChekPixels(
     analysisVersion: AQUACHEK_ANALYSIS_VERSION,
     padConfidence,
     quality: {
-      backgroundLightness: roundMetric(background.lightness),
-      backgroundNeutrality: roundMetric(background.neutrality),
-      lightingUniformity: roundMetric(background.uniformity),
+      // Backward-compatible audit field names. In analyzer v4 these describe
+      // the strip substrate rather than the surrounding surface.
+      backgroundLightness: roundMetric(stripReference.lightness),
+      backgroundNeutrality: roundMetric(stripReference.neutrality),
+      lightingUniformity: roundMetric(stripReference.uniformity),
       framing: roundMetric(framing),
     },
   };

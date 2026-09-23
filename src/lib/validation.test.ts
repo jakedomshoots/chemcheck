@@ -207,7 +207,7 @@ describe('Service Log Validation', () => {
       tds_source: 'assumed',
       strip_scan_method: 'aquachek_select_photo',
       strip_scan_confidence: 'medium',
-      strip_scan_analysis_version: 'aquachek-select-v3',
+      strip_scan_analysis_version: 'aquachek-select-v4',
       strip_scan_pad_confidence: {
         totalHardness: 0.8,
         totalChlorine: 0.7,
@@ -229,7 +229,7 @@ describe('Service Log Validation', () => {
     if (result.success) {
       expect(result.data.water_temperature_source).toBe('assumed');
       expect(result.data.strip_scan_confidence).toBe('medium');
-      expect(result.data.strip_scan_analysis_version).toBe('aquachek-select-v3');
+      expect(result.data.strip_scan_analysis_version).toBe('aquachek-select-v4');
       expect(result.data.strip_scan_pad_confidence?.ph).toBe(0.9);
       expect(result.data.strip_scan_quality?.framing).toBe(0.9);
       expect(result.data.lsi_calculation_version).toBe('aquachek-epa-v1');

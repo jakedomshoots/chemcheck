@@ -15,7 +15,7 @@ const analysis = {
   },
   confidence: 'medium',
   reliable: true,
-  analysisVersion: 'aquachek-select-v3',
+  analysisVersion: 'aquachek-select-v4',
   padConfidence: {
     totalHardness: 0.8,
     totalChlorine: 0.7,
@@ -82,7 +82,7 @@ describe('AquaChekStripScanner', () => {
       tds_value: 1000,
       tds_source: 'assumed',
       strip_scan_confidence: 'medium',
-      strip_scan_analysis_version: 'aquachek-select-v3',
+      strip_scan_analysis_version: 'aquachek-select-v4',
       strip_scan_pad_confidence: analysis.padConfidence,
       strip_scan_quality: analysis.quality,
       lsi_calculation_version: 'aquachek-epa-v1',

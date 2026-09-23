@@ -117,7 +117,7 @@ export const serviceLogSchema = z.object({
   total_bromine_value: z.number().min(0).max(20).optional(),
   strip_scan_method: z.literal('aquachek_select_photo').optional(),
   strip_scan_confidence: z.enum(['low', 'medium', 'high']).optional(),
-  strip_scan_analysis_version: z.enum(['aquachek-select-v2', 'aquachek-select-v3']).optional(),
+  strip_scan_analysis_version: z.enum(['aquachek-select-v2', 'aquachek-select-v3', 'aquachek-select-v4']).optional(),
   strip_scan_pad_confidence: stripScanPadConfidenceSchema.optional(),
   strip_scan_quality: stripScanQualitySchema.optional(),
   lsi_calculation_version: z.literal('aquachek-epa-v1').optional(),

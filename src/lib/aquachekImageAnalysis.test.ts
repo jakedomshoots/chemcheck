@@ -19,9 +19,14 @@ function createStripFrame(options: {
   glarePadIndex?: number;
   unevenLighting?: boolean;
   reversed?: boolean;
+  backgroundColor?: Rgb;
+  texturedBackground?: boolean;
+  portrait?: boolean;
+  compactStrip?: boolean;
+  verticalOffset?: number;
 } = {}) {
-  const width = 1200;
-  const height = 600;
+  const width = options.portrait ? 600 : 1200;
+  const height = options.portrait ? 1200 : 600;
   const pixels = new Uint8ClampedArray(width * height * 4);
   const cast = options.cast ?? [1, 1, 1];
   const brightness = options.brightness ?? 1;
@@ -38,19 +43,32 @@ function createStripFrame(options: {
     }
   };
 
-  paint(0, 0, width, height, [238, 243, 241]);
-  paint(170, 245, 1030, 355, [253, 252, 244]);
+  paint(0, 0, width, height, options.backgroundColor ?? [238, 243, 241]);
+  if (options.texturedBackground) {
+    const base = options.backgroundColor ?? [95, 105, 110];
+    const stripeWidth = Math.max(30, Math.round(width / 15));
+    for (let x = 0; x < width; x += stripeWidth) {
+      const shift = (Math.floor(x / stripeWidth) % 2 === 0) ? 18 : -18;
+      const stripe = base.map((channel) => Math.max(0, Math.min(255, channel + shift))) as Rgb;
+      paint(x, 0, Math.min(width, x + Math.round(stripeWidth / 2)), height, stripe);
+    }
+  }
+  const unit = Math.min(width, height);
+  const centerY = Math.round((height / 2) + (options.verticalOffset ?? 0));
+  const stripHalfHeight = Math.round(unit * ((options.compactStrip ? 28 : 55) / 600));
+  const padHalfSize = Math.round(width * ((options.compactStrip ? 26 : 33) / 1200));
+  paint(Math.round(width * (170 / 1200)), centerY - stripHalfHeight, Math.round(width * (1030 / 1200)), centerY + stripHalfHeight, [253, 252, 244]);
   const keys: AquaChekPadKey[] = ['totalHardness', 'totalChlorine', 'freeChlorine', 'ph', 'totalAlkalinity', 'cyanuricAcid'];
   const referenceIndexes = [2, 3, 3, 2, 3, 1];
-  const centers = [264, 384, 504, 624, 744, 864];
+  const centers = [0.22, 0.32, 0.42, 0.52, 0.62, 0.72].map((position) => Math.round(width * position));
   keys.forEach((key, index) => {
     const sourceIndex = options.reversed ? keys.length - 1 - index : index;
     const color = options.overridePad?.index === sourceIndex
       ? options.overridePad.color
       : AQUACHEK_COLOR_REFERENCES[keys[sourceIndex]][referenceIndexes[sourceIndex]].color;
-    paint(centers[index] - 33, 267, centers[index] + 33, 333, color);
+    paint(centers[index] - padHalfSize, centerY - padHalfSize, centers[index] + padHalfSize, centerY + padHalfSize, color);
     if (options.glarePadIndex === index) {
-      paint(centers[index] + 5, 285, centers[index] + 24, 304, [255, 255, 255]);
+      paint(centers[index] + Math.round(padHalfSize * 0.15), centerY - Math.round(padHalfSize * 0.45), centers[index] + Math.round(padHalfSize * 0.73), centerY + Math.round(padHalfSize * 0.12), [255, 255, 255]);
     }
   });
   return { pixels, width, height };
@@ -117,6 +135,61 @@ describe('AquaChek photo color matching', () => {
 
   it('normalizes ordinary underexposure before matching pads', () => {
     const frame = createStripFrame({ brightness: 0.78 });
+    const result = analyzeAquaChekPixels(frame.pixels, frame.width, frame.height);
+
+    expect(result.readings).toMatchObject({
+      totalHardness: 250,
+      totalChlorine: 3,
+      freeChlorine: 3,
+      ph: 7.2,
+      totalAlkalinity: 120,
+      cyanuricAcid: 50,
+    });
+  });
+
+  it('reads a clear strip on a dark, textured truck-bed background', () => {
+    const frame = createStripFrame({ backgroundColor: [66, 72, 78], texturedBackground: true });
+    const result = analyzeAquaChekPixels(frame.pixels, frame.width, frame.height);
+
+    expect(result.readings).toMatchObject({
+      totalHardness: 250,
+      totalChlorine: 3,
+      freeChlorine: 3,
+      ph: 7.2,
+      totalAlkalinity: 120,
+      cyanuricAcid: 50,
+    });
+  });
+
+  it('reads a clear strip on a colored pool-deck background', () => {
+    const frame = createStripFrame({ backgroundColor: [48, 112, 154] });
+    const result = analyzeAquaChekPixels(frame.pixels, frame.width, frame.height);
+
+    expect(result.readings.ph).toBe(7.2);
+    expect(result.readings.totalAlkalinity).toBe(120);
+  });
+
+  it('reads a horizontal strip captured in a portrait phone photo', () => {
+    const frame = createStripFrame({ portrait: true, backgroundColor: [82, 88, 92], texturedBackground: true });
+    const result = analyzeAquaChekPixels(frame.pixels, frame.width, frame.height);
+
+    expect(result.readings).toMatchObject({
+      totalHardness: 250,
+      totalChlorine: 3,
+      freeChlorine: 3,
+      ph: 7.2,
+      totalAlkalinity: 120,
+      cyanuricAcid: 50,
+    });
+  });
+
+  it('reads a thin, slightly off-center strip without sampling the field surface', () => {
+    const frame = createStripFrame({
+      backgroundColor: [66, 72, 78],
+      texturedBackground: true,
+      compactStrip: true,
+      verticalOffset: 12,
+    });
     const result = analyzeAquaChekPixels(frame.pixels, frame.width, frame.height);
 
     expect(result.readings).toMatchObject({
@@ -204,6 +277,10 @@ describe('AquaChek photo color matching', () => {
       { name: 'warm cast', options: { cast: [1.04, 0.96, 1] as Rgb } },
       { name: 'dim cool cast', options: { brightness: 0.82, cast: [0.94, 1, 1.04] as Rgb } },
       { name: 'dim warm cast', options: { brightness: 0.9, cast: [1.03, 0.97, 1] as Rgb } },
+      { name: 'truck bed', options: { backgroundColor: [66, 72, 78] as Rgb, texturedBackground: true } },
+      { name: 'pool deck', options: { backgroundColor: [48, 112, 154] as Rgb } },
+      { name: 'portrait field photo', options: { portrait: true, backgroundColor: [82, 88, 92] as Rgb, texturedBackground: true } },
+      { name: 'compact off-center strip', options: { compactStrip: true, verticalOffset: 12, backgroundColor: [66, 72, 78] as Rgb, texturedBackground: true } },
     ];
     const invalidCases = [
       { brightness: 0.45 },
