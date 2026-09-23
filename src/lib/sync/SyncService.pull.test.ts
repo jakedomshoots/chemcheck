@@ -12,6 +12,7 @@ const stores: Record<string, any[]> = {
 
 function table(name: string) {
   return {
+    count: vi.fn(async () => stores[name].length),
     get: vi.fn(async (id: number) => stores[name].find((record) => record.id === id)),
     add: vi.fn(async (record: any) => {
       const id = record.id ?? stores[name].length + 1;
@@ -111,6 +112,30 @@ describe('SyncService remote pull', () => {
     expect(stores.customers[0]).toMatchObject({ full_name: 'Remote name', sync_status: 'synced', remote_updated_at: 20 });
     expect(JSON.parse(localStorage.getItem('chemcheck_sync_pull_state_v1:anonymous') || '{}')).toMatchObject({ since: 20, cursor: null });
 
+    service.destroy();
+  });
+
+  it('fully rehydrates when the local customer cache is empty but a stale watermark exists', async () => {
+    localStorage.setItem(
+      'chemcheck_sync_pull_state_v1:owner@example.com',
+      JSON.stringify({ since: 999, cursor: null }),
+    );
+
+    const { SyncService } = await import('./SyncService');
+    const service = new SyncService();
+    const query = vi.fn().mockResolvedValue({
+      customers: [{ _id: 'customer-1', full_name: 'Recovered customer', updated_at: 1000 }],
+      pools: [], equipment: [], serviceLogs: [], chemicalUsage: [], notes: [], saltCellLogs: [],
+      cursor: null, hasMore: false, watermark: 1000,
+    });
+
+    service.initialize({ query, mutation: vi.fn() } as any, 'owner@example.com');
+    const result = await service.pullRemoteChanges();
+
+    expect(query).toHaveBeenCalledWith('sync.pull', expect.objectContaining({ since: 0 }));
+    expect(result.pulledCount).toBe(1);
+    expect(stores.customers).toHaveLength(1);
+    expect(stores.customers[0]).toMatchObject({ full_name: 'Recovered customer' });
     service.destroy();
   });
 });

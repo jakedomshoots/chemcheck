@@ -64,6 +64,7 @@ export class SyncService {
   private readonly AUTO_SYNC_INTERVAL_MS = 30_000;
   private readonly PULL_PAGE_SIZE = 100;
   private readonly PULL_STATE_KEY = 'chemcheck_sync_pull_state_v1';
+  private readonly PULL_REHYDRATE_KEY = 'chemcheck_sync_rehydrate_v1';
   private pullScope = 'anonymous';
   private lastPullCount = 0;
   private lastConflictCount = 0;
@@ -223,7 +224,12 @@ export class SyncService {
 
     const persisted = this.readPullState();
     let cursor = persisted.cursor || undefined;
-    const since = persisted.since || 0;
+    let since = persisted.since || 0;
+    let forcedRehydrate = false;
+    if (!cursor && since > 0 && await this.shouldRehydrateEmptyCache(since)) {
+      forcedRehydrate = true;
+      since = 0;
+    }
     let pulledCount = 0;
     let conflictCount = 0;
     let watermark = persisted.since || 0;
@@ -248,7 +254,10 @@ export class SyncService {
       } while (cursor);
 
       // Advance the watermark only after every table cursor has been applied.
-      if (watermark > 0) this.writePullState({ since: watermark, cursor: null });
+      if (watermark > 0) {
+        this.writePullState({ since: watermark, cursor: null });
+        if (forcedRehydrate) this.markRehydrateAttempt(watermark);
+      }
       monitoring.recordMetric('sync_pull_complete', pulledCount, { conflictCount, watermark });
       this.lastPullCount = pulledCount;
       this.lastConflictCount = conflictCount;
@@ -294,6 +303,28 @@ export class SyncService {
     } catch {
       // Storage can be unavailable in private browsing; pull remains correct
       // for the current process and will simply restart next launch.
+    }
+  }
+
+  private async shouldRehydrateEmptyCache(staleSince: number): Promise<boolean> {
+    try {
+      const customerTable: any = this.getTable('customers');
+      if (!customerTable || typeof customerTable.count !== 'function') return false;
+      if (await customerTable.count() > 0) return false;
+      if (typeof localStorage === 'undefined') return true;
+      const key = `${this.PULL_REHYDRATE_KEY}:${this.pullScope}`;
+      return Number(localStorage.getItem(key) || 0) !== staleSince;
+    } catch {
+      return false;
+    }
+  }
+
+  private markRehydrateAttempt(watermark: number): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(`${this.PULL_REHYDRATE_KEY}:${this.pullScope}`, String(watermark));
+    } catch {
+      // Recovery remains safe if storage is unavailable; the next run may retry.
     }
   }
 
