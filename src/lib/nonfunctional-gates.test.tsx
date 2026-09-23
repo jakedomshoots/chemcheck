@@ -36,6 +36,7 @@ vi.mock('@/pages/History', () => ({ default: () => <div>History Page</div> }));
 vi.mock('@/pages/Settings', () => ({ default: () => <div>Settings Page</div> }));
 vi.mock('@/pages/PoolSchool', () => ({ default: () => <div>Pool School Page</div> }));
 vi.mock('@/pages/WorkOrders', () => ({ default: () => <div>Work Orders Page</div> }));
+vi.mock('@/pages/Billing', () => ({ default: () => <div>Billing Page</div> }));
 vi.mock('@/components/billing/BillingDashboard', () => ({
   BillingDashboard: () => <div>Billing Dashboard Page</div>,
 }));
@@ -118,7 +119,8 @@ describe('Non-functional gates', () => {
       ['/clients', 'Clients Page'],
       ['/newclient', 'New Client Page'],
       ['/history', 'History Page'],
-      ['/billing', 'Billing Dashboard Page'],
+      ['/billing', 'Billing Page'],
+      ['/plan', 'Billing Dashboard Page'],
       ['/notes', 'Notes Page'],
     ];
 

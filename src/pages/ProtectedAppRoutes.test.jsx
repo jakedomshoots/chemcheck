@@ -31,6 +31,7 @@ vi.mock('./History', () => ({ default: () => <div>History Page</div> }));
 vi.mock('./Settings', () => ({ default: () => <div>Settings Page</div> }));
 vi.mock('./PoolSchool', () => ({ default: () => <div>Pool School Page</div> }));
 vi.mock('./WorkOrders', () => ({ default: () => <div>Work Orders Page</div> }));
+vi.mock('./Billing', () => ({ default: () => <div>Billing Page</div> }));
 vi.mock('@/components/billing/BillingDashboard', () => ({
   BillingDashboard: () => <div>Billing Dashboard Page</div>,
 }));

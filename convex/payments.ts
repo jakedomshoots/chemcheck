@@ -62,7 +62,7 @@ function normalizeSendDestinationOverride(
   throw new Error("Alternate channel must be either sms or email.");
 }
 
-async function createStripeCheckoutSession(args: {
+export async function createStripeCheckoutSession(args: {
   stripeSecretKey: string;
   amountCents: number;
   customerEmail?: string;
@@ -214,8 +214,8 @@ export const sendInvoiceWithStripe = action({
         customMessage: customer.full_name ? `Paying invoice for ${customer.full_name}` : undefined,
         lineItemName: `ChemCheck Invoice ${String(invoice._id).slice(-8)}`,
         lineItemDescription: invoice.line_items[0]?.description || invoice.notes || "Pool service invoice",
-        successUrl: `${baseUrl}/workorders?stripe_payment=invoice_success&invoice_id=${invoice._id}&session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${baseUrl}/workorders?stripe_payment=invoice_cancel&invoice_id=${invoice._id}`,
+        successUrl: `${baseUrl}/billing?stripe_payment=invoice_success&invoice_id=${invoice._id}&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${baseUrl}/billing?stripe_payment=invoice_cancel&invoice_id=${invoice._id}`,
         clientReferenceId: String(invoice._id),
         metadata: {
           payment_type: "invoice",
@@ -226,7 +226,7 @@ export const sendInvoiceWithStripe = action({
       paymentUrl = session.url;
       stripeCheckoutSessionId = session.id;
     } else {
-      paymentUrl = `${baseUrl}/workorders?invoice_id=${invoice._id}`;
+      paymentUrl = `${baseUrl}/billing?invoice_id=${invoice._id}`;
     }
 
     return await ctx.runMutation(internal.invoices.finalizeSend, {

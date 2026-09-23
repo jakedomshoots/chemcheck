@@ -12,6 +12,19 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+function PaymentStandingDot({ standing }) {
+  if (standing !== "overdue" && standing !== "due_soon") return null;
+  const label = standing === "overdue" ? "Payment overdue" : "Payment due soon";
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={`h-2 w-2 shrink-0 rounded-full ${standing === "overdue" ? "bg-[var(--status-critical)]" : "bg-[var(--status-watch)]"}`}
+    />
+  );
+}
+
 export default function ClientListItem({
   customer,
   onDelete,
@@ -24,6 +37,7 @@ export default function ClientListItem({
   isLast,
   isMoving,
   stopNumber,
+  paymentStanding,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const displayStopNumber = String(stopNumber ?? 1).padStart(2, "0");
@@ -54,7 +68,10 @@ export default function ClientListItem({
         {reorderMode ? (
           <div className="flex min-w-0 flex-1 items-center gap-2 pl-2">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-ink">{customer.full_name}</p>
+              <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink">
+                <PaymentStandingDot standing={paymentStanding} />
+                <span className="truncate">{customer.full_name}</span>
+              </p>
               <p className="truncate text-xs text-ink-muted">{customer.address}</p>
             </div>
 
@@ -89,7 +106,10 @@ export default function ClientListItem({
             aria-label={`${isExpanded ? "Collapse" : "Expand"} details for ${customer.full_name}`}
           >
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-ink">{customer.full_name}</span>
+              <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink">
+                <PaymentStandingDot standing={paymentStanding} />
+                <span className="truncate">{customer.full_name}</span>
+              </span>
               <span className="block truncate text-xs text-ink-muted">{customer.address}</span>
             </span>
             <ChevronDown

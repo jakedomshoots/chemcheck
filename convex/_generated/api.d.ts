@@ -29,6 +29,7 @@ import type * as quotes from "../quotes.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as serviceLogs from "../serviceLogs.js";
 import type * as servicePhotos from "../servicePhotos.js";
+import type * as servicePlans from "../servicePlans.js";
 import type * as serviceReports from "../serviceReports.js";
 import type * as skippedStops from "../skippedStops.js";
 import type * as stripeEvents from "../stripeEvents.js";
@@ -68,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   rateLimit: typeof rateLimit;
   serviceLogs: typeof serviceLogs;
   servicePhotos: typeof servicePhotos;
+  servicePlans: typeof servicePlans;
   serviceReports: typeof serviceReports;
   skippedStops: typeof skippedStops;
   stripeEvents: typeof stripeEvents;

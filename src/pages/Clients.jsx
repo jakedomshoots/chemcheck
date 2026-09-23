@@ -61,6 +61,15 @@ export default function Clients() {
   const user = useCurrentUser();
 
   const convexBusiness = useQuery(api.businesses.getCurrent);
+  const billingOverview = useQuery(api.invoices.getBillingOverview);
+
+  const paymentStandingByCustomerId = useMemo(() => {
+    const map = new Map();
+    for (const row of billingOverview?.standings ?? []) {
+      map.set(String(row.customer_id), row.standing);
+    }
+    return map;
+  }, [billingOverview]);
 
   const allCustomers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
   const updateCustomer = useCustomerUpdate();
@@ -609,6 +618,7 @@ export default function Clients() {
                       <ClientListItem
                         customer={customer}
                         stopNumber={index + 1}
+                        paymentStanding={paymentStandingByCustomerId.get(String(customer._id))}
                         onDelete={setDeleteCustomer}
                         onEdit={handleEdit}
                         onClick={handleOpenCustomer}

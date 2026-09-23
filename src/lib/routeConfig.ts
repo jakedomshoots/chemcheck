@@ -18,6 +18,7 @@ export const APP_ROUTES = {
   PoolSchool: createPageUrl('PoolSchool'),
   WorkOrders: createPageUrl('WorkOrders'),
   Billing: createPageUrl('Billing'),
+  Plan: createPageUrl('Plan'),
   Landing: createPageUrl('Landing'),
   Support: createPageUrl('Support'),
 }
@@ -88,6 +89,7 @@ export const APP_ROUTE_ALIAS_MAP: Record<string, string> = (() => {
     '/poolschool': APP_ROUTES.PoolSchool,
     '/workorders': APP_ROUTES.WorkOrders,
     '/billing': APP_ROUTES.Billing,
+    '/plan': APP_ROUTES.Plan,
     '/history': APP_ROUTES.History,
     '/health': HEALTH_ROUTE,
     '/ready': READY_ROUTE,

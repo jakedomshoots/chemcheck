@@ -26,4 +26,12 @@ crons.daily(
   {}
 );
 
+// Generate recurring-billing invoices every morning (7 AM ET).
+crons.daily(
+  "generate-recurring-invoices",
+  { hourUTC: 11, minuteUTC: 0 },
+  internal.servicePlans.runDueBilling,
+  {}
+);
+
 export default crons;

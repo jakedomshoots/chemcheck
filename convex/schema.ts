@@ -415,6 +415,25 @@ export default defineSchema({
     .index("by_converted_work_order", ["converted_work_order_id"])
     .index("by_deposit_checkout_session", ["deposit_checkout_session_id"]),
 
+  // Recurring billing: monthly plans that auto-generate invoices for a customer
+  servicePlans: defineTable({
+    customer_id: v.id("customers"),
+    created_by: v.string(),
+    business_id: v.optional(v.id("businesses")),
+    label: v.string(), // e.g. "Weekly pool service"
+    amount: v.number(), // charge per cycle, USD
+    day_of_month: v.number(), // billing day, clamped 1-28
+    auto_send: v.boolean(), // send with a Stripe payment link when generated
+    status: v.string(), // active, paused
+    next_run_date: v.string(), // YYYY-MM-DD of the next invoice generation
+    last_invoice_id: v.optional(v.id("invoices")),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_created_by", ["created_by"])
+    .index("by_customer", ["customer_id"])
+    .index("by_status_and_next_run", ["status", "next_run_date"]),
+
   // Month 1 roadmap: service-text infrastructure and communication events
   communications: defineTable({
     type: v.string(), // service_text, reminder, system

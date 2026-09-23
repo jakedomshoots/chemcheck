@@ -30,13 +30,13 @@ describe('Layout', () => {
 
     expect(within(primaryNavigation).getByRole('link', { name: /Chemical/i })).toHaveAttribute('href', '/chemicalusage');
     expect(within(primaryNavigation).getByRole('link', { name: /Notes/i })).toHaveAttribute('href', '/notes');
-    expect(within(primaryNavigation).queryByRole('link', { name: /Work Orders/i })).not.toBeInTheDocument();
+    expect(within(primaryNavigation).queryByRole('link', { name: /Billing/i })).not.toBeInTheDocument();
     expect(within(primaryNavigation).queryByRole('link', { name: /Route Plan/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'More navigation' }));
 
     const moreDialog = screen.getByRole('dialog', { name: 'More' });
-    expect(within(moreDialog).getByRole('link', { name: /Work Orders/i })).toHaveAttribute('href', '/workorders');
+    expect(within(moreDialog).getByRole('link', { name: /Billing/i })).toHaveAttribute('href', '/billing');
     expect(within(moreDialog).getByRole('link', { name: /Route Plan/i })).toHaveAttribute('href', '/routeoptimizer');
   });
 
@@ -66,19 +66,19 @@ describe('Layout', () => {
     const user = userEvent.setup();
     localStorage.setItem(BOTTOM_NAV_STORAGE_KEY, JSON.stringify({
       version: 1,
-      items: ['workOrders', 'route', 'reports'],
+      items: ['billing', 'route', 'reports'],
     }));
 
     render(
-      <MemoryRouter initialEntries={['/workorders']}>
-        <Layout currentPageName="WorkOrders">
-          <div>Work orders content</div>
+      <MemoryRouter initialEntries={['/billing']}>
+        <Layout currentPageName="Billing">
+          <div>Billing content</div>
         </Layout>
       </MemoryRouter>
     );
 
     const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(within(primaryNavigation).getByRole('link', { name: /Work Orders/i })).toHaveAttribute('href', '/workorders');
+    expect(within(primaryNavigation).getByRole('link', { name: /Billing/i })).toHaveAttribute('href', '/billing');
     expect(within(primaryNavigation).getByRole('link', { name: /Route Plan/i })).toHaveAttribute('href', '/routeoptimizer');
     expect(within(primaryNavigation).queryByRole('link', { name: /Clients/i })).not.toBeInTheDocument();
 
@@ -86,6 +86,6 @@ describe('Layout', () => {
 
     const moreDialog = screen.getByRole('dialog', { name: 'More' });
     expect(within(moreDialog).getByRole('link', { name: /Clients/i })).toHaveAttribute('href', '/clients');
-    expect(within(moreDialog).queryByRole('link', { name: /Work Orders/i })).not.toBeInTheDocument();
+    expect(within(moreDialog).queryByRole('link', { name: /Billing/i })).not.toBeInTheDocument();
   });
 });

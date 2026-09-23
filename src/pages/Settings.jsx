@@ -1327,6 +1327,15 @@ export default function Settings() {
                       testing={testingProvider === 'stripe'}
                       result={providerTestResults.stripe}
                     />
+                    <div className="rounded-lg border border-line bg-surface-1 p-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-ink">ChemCheck subscription</p>
+                        <p className="text-xs text-ink-secondary">Manage your own plan, payment method, and invoices.</p>
+                      </div>
+                      <Link to={APP_ROUTES.Plan} className="text-sm font-semibold text-brand-ink hover:underline shrink-0">
+                        Manage plan
+                      </Link>
+                    </div>
                     <ProviderStatusCard
                       name="Mailersend email"
                       description="Customer service reports, invoices, and payment notifications."

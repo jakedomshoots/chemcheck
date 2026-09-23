@@ -125,6 +125,141 @@ function clampPageSize(numItems: number | undefined): number {
   return Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(numItems ?? DEFAULT_PAGE_SIZE)));
 }
 
+export type PaymentStanding = "current" | "due_soon" | "overdue";
+
+const DUE_SOON_WINDOW_DAYS = 7;
+
+function daysBetween(fromDate: string, toDate: string): number {
+  const from = new Date(`${fromDate}T00:00:00Z`).getTime();
+  const to = new Date(`${toDate}T00:00:00Z`).getTime();
+  return Math.round((to - from) / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * Derive a customer's payment standing from their open (sent, unpaid) invoices.
+ * overdue  — at least one open invoice past its due date
+ * due_soon — an open invoice is due within the next week
+ * current  — nothing overdue (including customers with no open balance)
+ */
+export function computeStanding(
+  openInvoices: Array<{ total: number; due_date?: string }>,
+  today: string
+): { standing: PaymentStanding; openBalance: number; overdueDays: number } {
+  let openBalance = 0;
+  let overdueDays = 0;
+  let dueSoon = false;
+
+  for (const invoice of openInvoices) {
+    openBalance += invoice.total;
+    if (!invoice.due_date) continue;
+
+    const daysUntilDue = daysBetween(today, invoice.due_date);
+    if (daysUntilDue < 0) {
+      overdueDays = Math.max(overdueDays, -daysUntilDue);
+    } else if (daysUntilDue <= DUE_SOON_WINDOW_DAYS) {
+      dueSoon = true;
+    }
+  }
+
+  openBalance = Number(openBalance.toFixed(2));
+  if (openBalance <= 0) return { standing: "current", openBalance: 0, overdueDays: 0 };
+  if (overdueDays > 0) return { standing: "overdue", openBalance, overdueDays };
+  if (dueSoon) return { standing: "due_soon", openBalance, overdueDays: 0 };
+  return { standing: "current", openBalance, overdueDays: 0 };
+}
+
+const BILLING_OVERVIEW_SCAN_LIMIT = 1000;
+
+/**
+ * One-shot billing dashboard payload: money stats plus a payment-standing
+ * row for every customer. Powers the Billing page and client badges.
+ */
+export const getBillingOverview = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const email = identity.email!;
+    const today = new Date().toISOString().slice(0, 10);
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    const [invoices, customers, plans] = await Promise.all([
+      ctx.db
+        .query("invoices")
+        .withIndex("by_created_by", (q) => q.eq("created_by", email))
+        .take(BILLING_OVERVIEW_SCAN_LIMIT),
+      ctx.db
+        .query("customers")
+        .withIndex("by_created_by", (q) => q.eq("created_by", email))
+        .collect(),
+      ctx.db
+        .query("servicePlans")
+        .withIndex("by_created_by", (q) => q.eq("created_by", email))
+        .collect(),
+    ]);
+
+    const openByCustomer = new Map<string, Array<{ total: number; due_date?: string }>>();
+    let outstandingTotal = 0;
+    let overdueTotal = 0;
+    let overdueCount = 0;
+    let collectedLast30Days = 0;
+    let draftCount = 0;
+
+    for (const invoice of invoices) {
+      if (invoice.status === "draft") {
+        draftCount += 1;
+        continue;
+      }
+      if (invoice.status === "sent") {
+        outstandingTotal += invoice.total;
+        const key = String(invoice.customer_id);
+        const listForCustomer = openByCustomer.get(key) ?? [];
+        listForCustomer.push({ total: invoice.total, due_date: invoice.due_date });
+        openByCustomer.set(key, listForCustomer);
+
+        if (invoice.due_date && invoice.due_date < today) {
+          overdueTotal += invoice.total;
+          overdueCount += 1;
+        }
+      } else if (invoice.status === "paid" && invoice.paid_at && invoice.paid_at >= thirtyDaysAgo) {
+        collectedLast30Days += invoice.total;
+      }
+    }
+
+    const standingRank: Record<PaymentStanding, number> = { overdue: 0, due_soon: 1, current: 2 };
+    const standings = customers
+      .map((customer) => {
+        const result = computeStanding(openByCustomer.get(String(customer._id)) ?? [], today);
+        return {
+          customer_id: customer._id,
+          customer_name: customer.full_name,
+          standing: result.standing,
+          open_balance: result.openBalance,
+          overdue_days: result.overdueDays,
+        };
+      })
+      .sort((a, b) => {
+        const rankDiff = standingRank[a.standing] - standingRank[b.standing];
+        if (rankDiff !== 0) return rankDiff;
+        if (b.open_balance !== a.open_balance) return b.open_balance - a.open_balance;
+        return a.customer_name.localeCompare(b.customer_name);
+      });
+
+    return {
+      stats: {
+        outstanding_total: Number(outstandingTotal.toFixed(2)),
+        overdue_total: Number(overdueTotal.toFixed(2)),
+        overdue_count: overdueCount,
+        collected_last_30_days: Number(collectedLast30Days.toFixed(2)),
+        draft_count: draftCount,
+        active_plans: plans.filter((plan) => plan.status === "active").length,
+      },
+      standings,
+    };
+  },
+});
+
 export const list = query({
   args: {
     status: v.optional(v.string()),

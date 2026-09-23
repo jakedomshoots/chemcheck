@@ -27,20 +27,20 @@ describe('BottomNavigationSettings', () => {
     const user = userEvent.setup();
     render(<BottomNavigationSettings />);
 
-    expect(screen.getByRole('button', { name: 'Pin Work Orders' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Pin Billing' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'Move Notes to More' }));
-    await user.click(screen.getByRole('button', { name: 'Pin Work Orders' }));
+    await user.click(screen.getByRole('button', { name: 'Pin Billing' }));
 
-    expect(storedItems()).toEqual(['home', 'clients', 'chemicals', 'workOrders']);
-    expect(screen.getByRole('button', { name: 'Move Work Orders to More' })).toBeInTheDocument();
+    expect(storedItems()).toEqual(['home', 'clients', 'chemicals', 'billing']);
+    expect(screen.getByRole('button', { name: 'Move Billing to More' })).toBeInTheDocument();
   });
 
   it('restores the default tool belt', async () => {
     const user = userEvent.setup();
     localStorage.setItem(BOTTOM_NAV_STORAGE_KEY, JSON.stringify({
       version: 1,
-      items: ['workOrders', 'route'],
+      items: ['billing', 'route'],
     }));
     render(<BottomNavigationSettings />);
 

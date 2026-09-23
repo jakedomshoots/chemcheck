@@ -8,7 +8,7 @@ export const BOTTOM_NAV_MAX_ITEMS = 4;
 export const MOBILE_NAV_ITEMS = [
   { id: 'home', name: 'Home', shortLabel: 'Home', path: APP_ROUTES.Home, icon: 'home' },
   { id: 'clients', name: 'Clients', shortLabel: 'Clients', path: APP_ROUTES.Clients, icon: 'clients' },
-  { id: 'workOrders', name: 'Work Orders', shortLabel: 'Work', path: APP_ROUTES.WorkOrders, icon: 'workOrders' },
+  { id: 'billing', name: 'Billing', shortLabel: 'Billing', path: APP_ROUTES.Billing, icon: 'billing' },
   { id: 'reports', name: 'Reports', shortLabel: 'Reports', path: APP_ROUTES.WeeklyReport, icon: 'report' },
   { id: 'notes', name: 'Notes', shortLabel: 'Notes', path: APP_ROUTES.Notes, icon: 'notes' },
   { id: 'chemicals', name: 'Chemicals', shortLabel: 'Chemicals', path: APP_ROUTES.ChemicalUsage, icon: 'chemicals' },
@@ -26,6 +26,11 @@ export const DEFAULT_BOTTOM_NAV_IDS: MobileNavId[] = ['home', 'clients', 'chemic
 const validIds = new Set<MobileNavId>(MOBILE_NAV_ITEMS.map((item) => item.id));
 let lastKnownNavigation: MobileNavId[] | null = null;
 let usingMemoryFallback = false;
+
+// Renamed destinations keep their pins instead of silently dropping out.
+const LEGACY_ID_MAP: Record<string, MobileNavId> = {
+  workOrders: 'billing',
+};
 
 function getStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
@@ -52,12 +57,13 @@ export function normalizeBottomNavigation(value: unknown): MobileNavId[] {
 
   const normalized: MobileNavId[] = [];
   for (const candidate of rawItems) {
+    const resolved = typeof candidate === 'string' ? (LEGACY_ID_MAP[candidate] ?? candidate) : candidate;
     if (
-      typeof candidate === 'string'
-      && validIds.has(candidate as MobileNavId)
-      && !normalized.includes(candidate as MobileNavId)
+      typeof resolved === 'string'
+      && validIds.has(resolved as MobileNavId)
+      && !normalized.includes(resolved as MobileNavId)
     ) {
-      normalized.push(candidate as MobileNavId);
+      normalized.push(resolved as MobileNavId);
     }
     if (normalized.length === BOTTOM_NAV_MAX_ITEMS) break;
   }

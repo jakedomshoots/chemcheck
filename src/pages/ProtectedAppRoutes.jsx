@@ -24,6 +24,7 @@ const History = lazy(() => importWithRetry(() => import('./History'), 'History')
 const Settings = lazy(() => importWithRetry(() => import('./Settings'), 'Settings'));
 const PoolSchool = lazy(() => importWithRetry(() => import('./PoolSchool'), 'PoolSchool'));
 const WorkOrders = lazy(() => importWithRetry(() => import('./WorkOrders'), 'WorkOrders'));
+const Billing = lazy(() => importWithRetry(() => import('./Billing'), 'Billing'));
 const BillingDashboard = lazy(() =>
   importWithRetry(
     () => import('@/components/billing/BillingDashboard').then((m) => ({ default: m.BillingDashboard })),
@@ -48,7 +49,7 @@ function PageLoader() {
 function LegacyInvoicePayRedirect() {
   const { invoiceId } = useParams();
   const encodedId = invoiceId ? encodeURIComponent(invoiceId) : "";
-  return <Navigate to={`${APP_ROUTES.WorkOrders}/invoices${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
+  return <Navigate to={`${APP_ROUTES.Billing}${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
 }
 
 function WorkOrdersRootRedirect() {
@@ -72,7 +73,8 @@ const ROUTES = [
   { path: APP_ROUTES.History, element: <History /> },
   { path: APP_ROUTES.Settings, element: <Settings /> },
   { path: APP_ROUTES.PoolSchool, element: <PoolSchool /> },
-  { path: APP_ROUTES.Billing, element: <BillingDashboard /> },
+  { path: APP_ROUTES.Billing, element: <Billing /> },
+  { path: APP_ROUTES.Plan, element: <BillingDashboard /> },
   { path: APP_ROUTES.WorkOrders, element: <WorkOrdersRootRedirect /> },
 ];
 

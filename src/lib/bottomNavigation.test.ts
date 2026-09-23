@@ -20,8 +20,8 @@ describe('bottom navigation preferences', () => {
   });
 
   it('deduplicates, bounds, and repairs user-provided destinations', () => {
-    expect(normalizeBottomNavigation(['workOrders', 'workOrders', 'bogus', 'reports'])).toEqual([
-      'workOrders',
+    expect(normalizeBottomNavigation(['billing', 'billing', 'bogus', 'reports'])).toEqual([
+      'billing',
       'reports',
     ]);
 
@@ -34,18 +34,22 @@ describe('bottom navigation preferences', () => {
     ]);
   });
 
+  it('migrates the retired Work Orders pin to Billing', () => {
+    expect(normalizeBottomNavigation(['workOrders', 'route'])).toEqual(['billing', 'route']);
+  });
+
   it('persists valid choices and announces same-tab changes', () => {
     const listener = vi.fn();
     window.addEventListener('chemcheck:bottom-navigation-change', listener);
 
-    expect(setBottomNavigation(['workOrders', 'route', 'clients'])).toEqual([
-      'workOrders',
+    expect(setBottomNavigation(['billing', 'route', 'clients'])).toEqual([
+      'billing',
       'route',
       'clients',
     ]);
     expect(JSON.parse(localStorage.getItem(BOTTOM_NAV_STORAGE_KEY) || '{}')).toMatchObject({
       version: 1,
-      items: ['workOrders', 'route', 'clients'],
+      items: ['billing', 'route', 'clients'],
     });
     expect(listener).toHaveBeenCalledTimes(1);
 

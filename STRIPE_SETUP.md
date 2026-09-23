@@ -93,7 +93,7 @@ This guide walks you through setting up Stripe for ChemCheck billing.
   - Customer invoice payment (`payment_type=invoice`)
   - Quote deposit payment (`payment_type=quote_deposit`)
 - Success redirects include `session_id` and return to:
-  - `/workorders?stripe_payment=invoice_success...`
+  - `/billing?stripe_payment=invoice_success...`
   - `/workorders?stripe_payment=deposit_success...`
 - On return, the app verifies the Checkout Session with Stripe and syncs payment status as a fallback if webhook delivery is delayed.
 
