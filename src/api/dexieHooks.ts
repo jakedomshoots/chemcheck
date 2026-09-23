@@ -693,14 +693,9 @@ export function useCurrentUser() {
 
             if (userData) {
                 const user = JSON.parse(userData);
-                if (process.env.NODE_ENV === 'development') {
-                    console.debug(
-                        '[SECURITY] Using DEFAULT_USER for data queries. ' +
-                        'In production, use authenticated user email for proper tenant isolation.'
-                    );
-                }
+                const email = typeof user.email === 'string' ? user.email.trim() : '';
                 return {
-                    email: DEFAULT_USER,
+                    email: email || DEFAULT_USER,
                     name: user.name || 'Local User'
                 };
             }

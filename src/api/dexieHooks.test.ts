@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { queryServiceLogsByCustomerDateRange, useCustomerCreate } from './dexieHooks';
+import { queryServiceLogsByCustomerDateRange, useCurrentUser, useCustomerCreate } from './dexieHooks';
 
 const mockCustomersToArray = vi.hoisted(() => vi.fn());
 const mockCustomersAdd = vi.hoisted(() => vi.fn());
@@ -39,6 +39,30 @@ vi.mock('@/lib/monitoring', () => ({
   measureDatabaseOperation: (name, fn) => fn(),
   reportError: vi.fn(),
 }));
+
+describe('useCurrentUser', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  it('returns the authenticated account email used to scope restored customer data', () => {
+    localStorage.setItem(
+      'chemcheck_current_user',
+      JSON.stringify({
+        email: 'dominick.pool.solutions@gmail.com',
+        name: 'Dominick Pool Solutions',
+      })
+    );
+
+    const { result } = renderHook(() => useCurrentUser());
+
+    expect(result.current).toEqual({
+      email: 'dominick.pool.solutions@gmail.com',
+      name: 'Dominick Pool Solutions',
+    });
+  });
+});
 
 describe('useCustomerCreate', () => {
   const baseCustomer = {
