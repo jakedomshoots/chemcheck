@@ -58,6 +58,12 @@ function todayString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function datePlusDays(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function isInvoiceOverdue(invoice, today) {
   return invoice.status === "sent" && Boolean(invoice.due_date) && invoice.due_date < today;
 }
@@ -138,6 +144,7 @@ export default function Billing() {
   const overview = useQuery(api.invoices.getBillingOverview);
   const invoicePage = useQuery(api.invoices.list, { numItems: 200 });
   const plans = useQuery(api.servicePlans.list);
+  const providerStatus = useQuery(api.providerConfig.getStatus);
   const customers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined) ?? [];
 
   const createInvoiceDraft = useMutation(api.invoices.createDraft);
@@ -236,6 +243,7 @@ export default function Billing() {
   }, [overview, customerSearch]);
 
   const stats = overview?.stats;
+  const billingReady = Boolean(providerStatus?.stripe?.ready && providerStatus?.mailersend?.ready);
 
   const handleCreateInvoice = async ({ customerId, description, amount, dueDate, send }) => {
     setBusyAction("create-invoice");
@@ -389,6 +397,16 @@ export default function Billing() {
         </div>
       </div>
 
+      {providerStatus && !billingReady && (
+        <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950" role="status">
+          <p className="text-sm font-semibold">Billing setup needs attention</p>
+          <p className="mt-1 text-xs font-medium leading-5">
+            Drafts are available, but sending and auto-send stay off until Stripe and invoice email are configured.
+            {providerStatus.stripe?.missing?.length ? ` Missing: ${providerStatus.stripe.missing.join(", ")}.` : ""}
+          </p>
+        </div>
+      )}
+
       <div className="mb-6 grid grid-cols-2 gap-2 lg:grid-cols-4 lg:gap-3">
         <div className="rounded-2xl border border-line bg-surface-1">
           <StatBlock label="Outstanding" value={stats ? formatMoney(stats.outstanding_total) : "—"} icon="pending" tone="brand" />
@@ -450,7 +468,7 @@ export default function Billing() {
             <ul className="space-y-2">
               {filteredInvoices.map((invoice) => {
                 const customerName = customerNameById.get(String(invoice.customer_id)) || "Customer";
-                const canRecordPayment = invoice.status === "sent" && !invoice.stripe_checkout_session_id;
+                const canRecordPayment = invoice.status === "sent" && !invoice.stripe_checkout_session_id && !invoice.stripe_invoice_id;
                 const canSend = invoice.status === "draft" || invoice.status === "sent";
                 return (
                   <li
@@ -472,7 +490,7 @@ export default function Billing() {
                     </div>
                     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                       {invoice.status === "draft" && (
-                        <Button size="sm" onClick={() => handleSendInvoice(invoice)} disabled={busyAction !== null}>
+                        <Button size="sm" onClick={() => handleSendInvoice(invoice)} disabled={busyAction !== null || !billingReady}>
                           <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                           Send
                         </Button>
@@ -484,7 +502,7 @@ export default function Billing() {
                         </Button>
                       )}
                       {invoice.status === "sent" && !invoice.payment_url?.includes("stripe") && canSend && (
-                        <Button size="sm" variant="outline" onClick={() => handleSendInvoice(invoice)} disabled={busyAction !== null}>
+                        <Button size="sm" variant="outline" onClick={() => handleSendInvoice(invoice)} disabled={busyAction !== null || !billingReady}>
                           <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                           Get Stripe link
                         </Button>
@@ -537,6 +555,11 @@ export default function Billing() {
                         {plan.label} · Bills on the {ordinalDay(plan.day_of_month)}
                         {plan.status === "active" ? ` · Next ${formatDate(plan.next_run_date)}` : ""}
                       </p>
+                      {plan.last_run_status === "failed" && (
+                        <p className="mt-1 text-xs font-semibold text-critical">
+                          Last run failed{plan.last_error ? `: ${plan.last_error}` : ""}
+                        </p>
+                      )}
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <span className="font-data text-sm font-bold text-ink">
@@ -619,6 +642,7 @@ export default function Billing() {
         customers={customers}
         onCreate={handleCreateInvoice}
         busy={busyAction !== null}
+        billingReady={billingReady}
       />
       <NewPlanDialog
         open={planDialogOpen}
@@ -626,6 +650,7 @@ export default function Billing() {
         customers={customers}
         onCreate={handleCreatePlan}
         busy={busyAction !== null}
+        billingReady={billingReady}
       />
       <AlertDialog open={Boolean(planPendingDelete)} onOpenChange={(open) => { if (!open) setPlanPendingDelete(null); }}>
         <AlertDialogContent>
@@ -647,7 +672,7 @@ export default function Billing() {
   );
 }
 
-function NewInvoiceDialog({ open, onOpenChange, customers, onCreate, busy }) {
+function NewInvoiceDialog({ open, onOpenChange, customers, onCreate, busy, billingReady }) {
   const [customerId, setCustomerId] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -658,7 +683,7 @@ function NewInvoiceDialog({ open, onOpenChange, customers, onCreate, busy }) {
       setCustomerId("");
       setDescription("");
       setAmount("");
-      setDueDate("");
+      setDueDate(datePlusDays(14));
     }
   }, [open]);
 
@@ -729,7 +754,7 @@ function NewInvoiceDialog({ open, onOpenChange, customers, onCreate, busy }) {
           <Button variant="outline" disabled={!canSubmit} onClick={() => onCreate({ customerId, description, amount: parsedAmount, dueDate, send: false })}>
             Save draft
           </Button>
-          <Button disabled={!canSubmit} onClick={() => onCreate({ customerId, description, amount: parsedAmount, dueDate, send: true })}>
+          <Button disabled={!canSubmit || !billingReady} onClick={() => onCreate({ customerId, description, amount: parsedAmount, dueDate, send: true })}>
             <Send className="mr-2 h-4 w-4" aria-hidden="true" />
             Create & send
           </Button>
@@ -739,7 +764,7 @@ function NewInvoiceDialog({ open, onOpenChange, customers, onCreate, busy }) {
   );
 }
 
-function NewPlanDialog({ open, onOpenChange, customers, onCreate, busy }) {
+function NewPlanDialog({ open, onOpenChange, customers, onCreate, busy, billingReady }) {
   const [customerId, setCustomerId] = useState("");
   const [label, setLabel] = useState("Monthly pool service");
   const [amount, setAmount] = useState("");
@@ -752,9 +777,9 @@ function NewPlanDialog({ open, onOpenChange, customers, onCreate, busy }) {
       setLabel("Monthly pool service");
       setAmount("");
       setDayOfMonth("1");
-      setAutoSend(true);
+      setAutoSend(billingReady);
     }
-  }, [open]);
+  }, [open, billingReady]);
 
   const parsedAmount = Number(amount);
   const parsedDay = Number(dayOfMonth);
@@ -769,7 +794,7 @@ function NewPlanDialog({ open, onOpenChange, customers, onCreate, busy }) {
           <DialogTitle>New recurring plan</DialogTitle>
           <DialogDescription>
             ChemCheck creates the invoice every month on the billing day and, with auto-send on,
-            emails or texts the customer a Stripe payment link.
+            emails the customer a secure Stripe-hosted invoice.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -826,7 +851,7 @@ function NewPlanDialog({ open, onOpenChange, customers, onCreate, busy }) {
           </div>
           <label className="flex items-center justify-between gap-3 rounded-control border border-line bg-surface-2 px-3 py-2.5">
             <span className="text-sm font-medium text-ink">Auto-send invoice with payment link</span>
-            <Switch checked={autoSend} onCheckedChange={setAutoSend} aria-label="Auto-send invoice" />
+            <Switch checked={autoSend} onCheckedChange={setAutoSend} disabled={!billingReady} aria-label="Auto-send invoice" />
           </label>
         </div>
         <DialogFooter>

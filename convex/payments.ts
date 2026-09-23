@@ -11,9 +11,100 @@ type StripeLinkResult = {
   success: boolean;
   payment_url?: string;
   stripe_checkout_session_id?: string;
+  stripe_invoice_id?: string;
+  delivery_status?: string;
   communication_id?: string;
   reused?: boolean;
 };
+
+async function stripePost(
+  stripeSecretKey: string,
+  path: string,
+  values: Record<string, string>,
+): Promise<any> {
+  const response = await fetchProvider(`${STRIPE_API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(values).toString(),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      typeof data?.error?.message === "string"
+        ? data.error.message
+        : `Stripe request failed (${response.status})`,
+    );
+  }
+  return data;
+}
+
+function invoiceDueDays(dueDate?: string): number {
+  if (!dueDate) return 14;
+  const today = new Date().toISOString().slice(0, 10);
+  const delta = Math.ceil(
+    (new Date(`${dueDate}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime())
+      / (24 * 60 * 60 * 1000),
+  );
+  return Math.max(1, Math.min(90, delta));
+}
+
+export async function createStripeHostedInvoice(args: {
+  stripeSecretKey: string;
+  stripeCustomerId?: string;
+  customerEmail: string;
+  customerName?: string;
+  amountCents: number;
+  description: string;
+  dueDate?: string;
+  invoiceId: string;
+}): Promise<{ stripeInvoiceId: string; paymentUrl: string; stripeCustomerId: string }> {
+  let stripeCustomerId = args.stripeCustomerId;
+  if (!stripeCustomerId) {
+    const customer = await stripePost(args.stripeSecretKey, "/customers", {
+      email: args.customerEmail,
+      name: args.customerName || args.customerEmail,
+      "metadata[chemcheck_customer]": "true",
+    });
+    if (!customer?.id) throw new Error("Stripe customer response is missing an ID");
+    stripeCustomerId = customer.id;
+  }
+  const resolvedCustomerId = stripeCustomerId as string;
+
+  const invoice = await stripePost(args.stripeSecretKey, "/invoices", {
+    customer: resolvedCustomerId,
+    collection_method: "send_invoice",
+    days_until_due: String(invoiceDueDays(args.dueDate)),
+    auto_advance: "false",
+    "metadata[payment_type]": "invoice",
+    "metadata[invoice_id]": args.invoiceId,
+  });
+  if (!invoice?.id) throw new Error("Stripe invoice response is missing an ID");
+
+  await stripePost(args.stripeSecretKey, "/invoiceitems", {
+    customer: resolvedCustomerId,
+    invoice: invoice.id,
+    amount: String(args.amountCents),
+    currency: "usd",
+    description: args.description,
+  });
+
+  const finalized = await stripePost(
+    args.stripeSecretKey,
+    `/invoices/${encodeURIComponent(invoice.id)}/finalize`,
+    {},
+  );
+  if (!finalized?.hosted_invoice_url) {
+    throw new Error("Stripe did not return a hosted invoice URL");
+  }
+  return {
+    stripeInvoiceId: invoice.id as string,
+    paymentUrl: finalized.hosted_invoice_url as string,
+    stripeCustomerId: resolvedCustomerId,
+  };
+}
 
 function normalizeBaseUrl(baseUrl?: string): string {
   void baseUrl;
@@ -172,18 +263,29 @@ export const sendInvoiceWithStripe = action({
     }
 
     const hasReusableStripeLink =
-      invoice.status === "sent"
-      && Boolean(invoice.stripe_checkout_session_id)
+      Boolean(invoice.stripe_invoice_id)
       && Boolean(invoice.payment_url)
-      && /^https:\/\/(checkout|pay)\.stripe\.com\//i.test(invoice.payment_url || "");
+      && /^https:\/\/invoice\.stripe\.com\//i.test(invoice.payment_url || "");
 
     if (!args.force_new_session && hasReusableStripeLink && !destinationOverride) {
-      return {
-        success: true,
+      const result: any = await ctx.runMutation(internal.invoices.finalizeSend, {
+        id: args.id,
+        user_email: identity.email!,
         payment_url: invoice.payment_url,
-        stripe_checkout_session_id: invoice.stripe_checkout_session_id,
-        reused: true,
-      };
+        stripe_invoice_id: invoice.stripe_invoice_id,
+      });
+      const delivery: any = await ctx.runAction(internal.communications.deliverInternal, {
+        id: result.communication_id,
+        user_email: identity.email!,
+      });
+      if (!delivery.success) {
+        await ctx.runMutation(internal.invoices.markSendFailed, {
+          id: args.id,
+          user_email: identity.email!,
+        });
+        throw new Error(`Invoice email delivery failed: ${delivery.error || "unknown error"}`);
+      }
+      return { ...result, reused: true, delivery_status: delivery.status };
     }
 
     if (invoice.total <= 0) {
@@ -197,46 +299,54 @@ export const sendInvoiceWithStripe = action({
       };
     }
 
-    const baseUrl = normalizeBaseUrl(args.base_url);
+    void normalizeBaseUrl(args.base_url);
     const amountCents = toUsdCents(invoice.total);
-    let paymentUrl: string;
-    let stripeCheckoutSessionId: string | undefined;
+    const { secretKey: stripeSecretKey } = requireStripeConfig();
 
-    if (amountCents > 0) {
-      const { secretKey: stripeSecretKey } = requireStripeConfig();
-
-      const session = await createStripeCheckoutSession({
-        stripeSecretKey,
-        amountCents,
-        customerEmail: destinationOverride?.channel === "email"
-          ? destinationOverride.recipient
-          : customer.email || undefined,
-        customMessage: customer.full_name ? `Paying invoice for ${customer.full_name}` : undefined,
-        lineItemName: `ChemCheck Invoice ${String(invoice._id).slice(-8)}`,
-        lineItemDescription: invoice.line_items[0]?.description || invoice.notes || "Pool service invoice",
-        successUrl: `${baseUrl}/billing?stripe_payment=invoice_success&invoice_id=${invoice._id}&session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${baseUrl}/billing?stripe_payment=invoice_cancel&invoice_id=${invoice._id}`,
-        clientReferenceId: String(invoice._id),
-        metadata: {
-          payment_type: "invoice",
-          invoice_id: String(invoice._id),
-        },
+    const recipientEmail = destinationOverride?.channel === "email"
+      ? destinationOverride.recipient
+      : validateEmail(customer.email);
+    if (!recipientEmail) {
+      throw new Error("Cannot send invoice: customer needs a valid email address.");
+    }
+    const hostedInvoice = await createStripeHostedInvoice({
+      stripeSecretKey,
+      amountCents,
+      stripeCustomerId: customer.stripe_customer_id,
+      customerEmail: recipientEmail,
+      customerName: customer.full_name,
+      description: invoice.line_items[0]?.description || invoice.notes || "Pool service invoice",
+      dueDate: invoice.due_date,
+      invoiceId: String(invoice._id),
+    });
+    if (!customer.stripe_customer_id) {
+      await ctx.runMutation(internal.invoices.saveStripeCustomerId, {
+        customer_id: customer._id,
+        user_email: identity.email!,
+        stripe_customer_id: hostedInvoice.stripeCustomerId,
       });
-
-      paymentUrl = session.url;
-      stripeCheckoutSessionId = session.id;
-    } else {
-      paymentUrl = `${baseUrl}/billing?invoice_id=${invoice._id}`;
     }
 
-    return await ctx.runMutation(internal.invoices.finalizeSend, {
+    const result: any = await ctx.runMutation(internal.invoices.finalizeSend, {
       id: args.id,
       user_email: identity.email!,
-      payment_url: paymentUrl,
-      stripe_checkout_session_id: stripeCheckoutSessionId,
+      payment_url: hostedInvoice.paymentUrl,
+      stripe_invoice_id: hostedInvoice.stripeInvoiceId,
       channel_override: destinationOverride?.channel,
       recipient_override: destinationOverride?.recipient,
     });
+    const delivery: any = await ctx.runAction(internal.communications.deliverInternal, {
+      id: result.communication_id,
+      user_email: identity.email!,
+    });
+    if (!delivery.success) {
+      await ctx.runMutation(internal.invoices.markSendFailed, {
+        id: args.id,
+        user_email: identity.email!,
+      });
+      throw new Error(`Invoice created, but email delivery failed: ${delivery.error || "unknown error"}`);
+    }
+    return { ...result, delivery_status: delivery.status };
   },
 });
 

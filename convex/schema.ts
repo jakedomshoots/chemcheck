@@ -16,6 +16,7 @@ export default defineSchema({
     sort_order: v.optional(v.number()),
     created_by: v.string(), // User email
     business_id: v.optional(v.string()), // For multi-tenant support
+    stripe_customer_id: v.optional(v.string()),
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
     // Report customization settings
@@ -365,6 +366,7 @@ export default defineSchema({
     paid_at: v.optional(v.number()),
     payment_url: v.optional(v.string()),
     stripe_checkout_session_id: v.optional(v.string()),
+    stripe_invoice_id: v.optional(v.string()),
     stripe_payment_intent_id: v.optional(v.string()),
     notes: v.optional(v.string()),
     created_at: v.number(),
@@ -419,7 +421,7 @@ export default defineSchema({
   servicePlans: defineTable({
     customer_id: v.id("customers"),
     created_by: v.string(),
-    business_id: v.optional(v.id("businesses")),
+    business_id: v.optional(v.string()),
     label: v.string(), // e.g. "Weekly pool service"
     amount: v.number(), // charge per cycle, USD
     day_of_month: v.number(), // billing day, clamped 1-28
@@ -427,6 +429,9 @@ export default defineSchema({
     status: v.string(), // active, paused
     next_run_date: v.string(), // YYYY-MM-DD of the next invoice generation
     last_invoice_id: v.optional(v.id("invoices")),
+    last_run_at: v.optional(v.number()),
+    last_run_status: v.optional(v.string()), // drafted, sent, failed
+    last_error: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
   })

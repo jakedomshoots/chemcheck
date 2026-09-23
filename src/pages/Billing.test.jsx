@@ -69,9 +69,14 @@ const PLANS = [
 describe('Billing page', () => {
   beforeEach(() => {
     useQueryMock.mockReset();
-    // Billing.jsx queries in fixed order: overview, invoices, service plans.
+    // Billing.jsx queries in fixed order: overview, invoices, service plans, providers.
     // Cycle so re-renders keep returning the same data.
-    const responses = [OVERVIEW, INVOICES, PLANS];
+    const responses = [
+      OVERVIEW,
+      INVOICES,
+      PLANS,
+      { stripe: { ready: true, missing: [] }, mailersend: { ready: true, missing: [] } },
+    ];
     let call = 0;
     useQueryMock.mockImplementation(() => responses[call++ % responses.length]);
   });

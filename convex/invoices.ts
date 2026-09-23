@@ -9,7 +9,7 @@ const DEFAULT_BACKFILL_BATCH_SIZE = 100;
 const MAX_BACKFILL_BATCH_SIZE = 500;
 
 export function canManuallyMarkInvoicePaid(invoice: { stripe_checkout_session_id?: string }): boolean {
-  return !invoice.stripe_checkout_session_id;
+  return !invoice.stripe_checkout_session_id && !(invoice as any).stripe_invoice_id;
 }
 
 function validateStatus(status: string): void {
@@ -60,11 +60,11 @@ function resolveCommunicationDestination(
     validEmail = undefined;
   }
 
-  if (validPhone) {
-    return { recipient: validPhone, channel: "sms" };
-  }
   if (validEmail) {
     return { recipient: validEmail, channel: "email" };
+  }
+  if (validPhone) {
+    return { recipient: validPhone, channel: "sms" };
   }
 
   throw new Error("Cannot send invoice: customer needs a valid phone or email.");
@@ -192,11 +192,11 @@ export const getBillingOverview = query({
       ctx.db
         .query("customers")
         .withIndex("by_created_by", (q) => q.eq("created_by", email))
-        .collect(),
+        .take(BILLING_OVERVIEW_SCAN_LIMIT),
       ctx.db
         .query("servicePlans")
         .withIndex("by_created_by", (q) => q.eq("created_by", email))
-        .collect(),
+        .take(BILLING_OVERVIEW_SCAN_LIMIT),
     ]);
 
     const openByCustomer = new Map<string, Array<{ total: number; due_date?: string }>>();
@@ -349,6 +349,24 @@ export const getForPayment = internalQuery({
     }
 
     return { invoice, customer };
+  },
+});
+
+export const saveStripeCustomerId = internalMutation({
+  args: {
+    customer_id: v.id("customers"),
+    user_email: v.string(),
+    stripe_customer_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const customer = await ctx.db.get(args.customer_id);
+    if (!customer || customer.created_by !== args.user_email) {
+      throw new Error("Customer not found or access denied");
+    }
+    await ctx.db.patch(args.customer_id, {
+      stripe_customer_id: args.stripe_customer_id,
+      updated_at: Date.now(),
+    });
   },
 });
 
@@ -841,6 +859,7 @@ export const finalizeSend = internalMutation({
     user_email: v.string(),
     payment_url: v.string(),
     stripe_checkout_session_id: v.optional(v.string()),
+    stripe_invoice_id: v.optional(v.string()),
     channel_override: v.optional(v.string()),
     recipient_override: v.optional(v.string()),
   },
@@ -865,6 +884,7 @@ export const finalizeSend = internalMutation({
       sent_at: now,
       payment_url: args.payment_url,
       stripe_checkout_session_id: args.stripe_checkout_session_id ?? invoice.stripe_checkout_session_id,
+      stripe_invoice_id: args.stripe_invoice_id ?? invoice.stripe_invoice_id,
       updated_at: now,
     });
 
@@ -900,8 +920,25 @@ export const finalizeSend = internalMutation({
       success: true,
       payment_url: args.payment_url,
       stripe_checkout_session_id: args.stripe_checkout_session_id,
+      stripe_invoice_id: args.stripe_invoice_id,
       communication_id: communicationId,
     };
+  },
+});
+
+export const markSendFailed = internalMutation({
+  args: {
+    id: v.id("invoices"),
+    user_email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const invoice = await ctx.db.get(args.id);
+    if (!invoice || invoice.created_by !== args.user_email) {
+      throw new Error("Invoice not found or access denied");
+    }
+    if (invoice.status === "sent") {
+      await ctx.db.patch(args.id, { status: "draft", updated_at: Date.now() });
+    }
   },
 });
 
@@ -933,6 +970,7 @@ export const markPaidFromStripe = internalMutation({
   args: {
     invoice_id: v.id("invoices"),
     stripe_checkout_session_id: v.optional(v.string()),
+    stripe_invoice_id: v.optional(v.string()),
     stripe_payment_intent_id: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -944,6 +982,7 @@ export const markPaidFromStripe = internalMutation({
       status: "paid",
       paid_at: invoice.paid_at ?? now,
       stripe_checkout_session_id: args.stripe_checkout_session_id ?? invoice.stripe_checkout_session_id,
+      stripe_invoice_id: args.stripe_invoice_id ?? invoice.stripe_invoice_id,
       stripe_payment_intent_id: args.stripe_payment_intent_id ?? invoice.stripe_payment_intent_id,
       updated_at: now,
     });

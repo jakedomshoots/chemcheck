@@ -426,8 +426,21 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
         break;
       }
 
+      case "invoice.paid":
       case "invoice.payment_succeeded": {
         const invoice = event.data.object;
+        const paymentType = getMetadataValue(invoice?.metadata, "payment_type");
+        const chemCheckInvoiceId = getMetadataValue(invoice?.metadata, "invoice_id");
+        if (paymentType === "invoice" && chemCheckInvoiceId) {
+          await ctx.runMutation(internal.invoices.markPaidFromStripe, {
+            invoice_id: chemCheckInvoiceId as any,
+            stripe_invoice_id: typeof invoice?.id === "string" ? invoice.id : undefined,
+            stripe_payment_intent_id:
+              typeof invoice?.payment_intent === "string" ? invoice.payment_intent : undefined,
+          });
+          console.log("[Webhook] Marked ChemCheck invoice paid:", invoice.id);
+          break;
+        }
         const stripeSubscriptionId =
           typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
         if (stripeSubscriptionId) {

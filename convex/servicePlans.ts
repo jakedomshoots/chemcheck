@@ -7,12 +7,13 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { createStripeCheckoutSession } from "./payments";
+import { createStripeHostedInvoice } from "./payments";
 import { requireStripeConfig } from "./providerConfig";
 
 const PLAN_STATUSES = ["active", "paused"] as const;
 const RECURRING_INVOICE_DUE_DAYS = 14;
 const DEFAULT_APP_URL = "https://app.chemcheck.app";
+const DUE_PLAN_BATCH_SIZE = 50;
 
 function toDateString(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -79,7 +80,7 @@ export const list = query({
       .query("servicePlans")
       .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
       .order("desc")
-      .collect();
+      .take(500);
 
     return await Promise.all(
       plans.map(async (plan) => {
@@ -199,6 +200,7 @@ export const setStatus = mutation({
 
     if (args.status === "active") {
       const plan = await ctx.db.get(args.id);
+      if (!plan) throw new Error("Plan not found");
       patch.next_run_date = computeNextRunDate(todayDateString(now), plan.day_of_month);
     }
 
@@ -228,7 +230,23 @@ export const listDuePlans = internalQuery({
       .withIndex("by_status_and_next_run", (q) =>
         q.eq("status", "active").lte("next_run_date", args.today)
       )
-      .collect();
+      .take(DUE_PLAN_BATCH_SIZE);
+  },
+});
+
+export const recordRunResult = internalMutation({
+  args: {
+    plan_id: v.id("servicePlans"),
+    status: v.string(),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.plan_id, {
+      last_run_at: Date.now(),
+      last_run_status: args.status,
+      last_error: args.error,
+      updated_at: Date.now(),
+    });
   },
 });
 
@@ -298,13 +316,7 @@ export const runDueBilling = internalAction({
     const today = args.today ?? todayDateString();
     const duePlans: any[] = await ctx.runQuery(internal.servicePlans.listDuePlans, { today });
 
-    const appUrl = (process.env.APP_URL || DEFAULT_APP_URL).trim().replace(/\/+$/, "");
-    let stripeSecretKey: string | undefined;
-    try {
-      stripeSecretKey = requireStripeConfig().secretKey;
-    } catch {
-      stripeSecretKey = undefined;
-    }
+    void DEFAULT_APP_URL;
 
     const summary = { generated: 0, sent: 0, failed: 0 };
 
@@ -317,44 +329,69 @@ export const runDueBilling = internalAction({
         if (!result.created || !result.invoiceId) continue;
         summary.generated += 1;
 
-        if (!plan.auto_send) continue;
-
-        let paymentUrl = `${appUrl}/billing?invoice_id=${result.invoiceId}`;
-        let sessionId: string | undefined;
-
-        if (stripeSecretKey) {
-          const session = await createStripeCheckoutSession({
-            stripeSecretKey,
-            amountCents: Math.round(plan.amount * 100),
-            customerEmail: result.customer?.email || undefined,
-            customMessage: result.customer?.full_name
-              ? `Paying invoice for ${result.customer.full_name}`
-              : undefined,
-            lineItemName: plan.label,
-            lineItemDescription: `Recurring billing — ${monthLabel(today)}`,
-            successUrl: `${appUrl}/billing?stripe_payment=invoice_success&invoice_id=${result.invoiceId}&session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${appUrl}/billing?stripe_payment=invoice_cancel&invoice_id=${result.invoiceId}`,
-            clientReferenceId: String(result.invoiceId),
-            metadata: {
-              payment_type: "invoice",
-              invoice_id: String(result.invoiceId),
-            },
+        if (!plan.auto_send) {
+          await ctx.runMutation(internal.servicePlans.recordRunResult, {
+            plan_id: plan._id,
+            status: "drafted",
           });
-          paymentUrl = session.url;
-          sessionId = session.id;
+          continue;
         }
 
-        await ctx.runMutation(internal.invoices.finalizeSend, {
+        const customerEmail = result.customer?.email;
+        if (!customerEmail) throw new Error("Customer needs an email address for automatic billing");
+        const { secretKey } = requireStripeConfig();
+        const hostedInvoice = await createStripeHostedInvoice({
+          stripeSecretKey: secretKey,
+          stripeCustomerId: result.customer?.stripe_customer_id,
+          customerEmail,
+          customerName: result.customer?.full_name,
+          amountCents: Math.round(plan.amount * 100),
+          description: `${plan.label} — ${monthLabel(today)}`,
+          dueDate: getDatePlusDays(today, RECURRING_INVOICE_DUE_DAYS),
+          invoiceId: String(result.invoiceId),
+        });
+        if (!result.customer?.stripe_customer_id) {
+          await ctx.runMutation(internal.invoices.saveStripeCustomerId, {
+            customer_id: result.customer._id,
+            user_email: result.created_by,
+            stripe_customer_id: hostedInvoice.stripeCustomerId,
+          });
+        }
+        const finalized: any = await ctx.runMutation(internal.invoices.finalizeSend, {
           id: result.invoiceId,
           user_email: result.created_by,
-          payment_url: paymentUrl,
-          stripe_checkout_session_id: sessionId,
+          payment_url: hostedInvoice.paymentUrl,
+          stripe_invoice_id: hostedInvoice.stripeInvoiceId,
+        });
+        const delivery: any = await ctx.runAction(internal.communications.deliverInternal, {
+          id: finalized.communication_id,
+          user_email: result.created_by,
+        });
+        if (!delivery.success) {
+          await ctx.runMutation(internal.invoices.markSendFailed, {
+            id: result.invoiceId,
+            user_email: result.created_by,
+          });
+          throw new Error(delivery.error || "Invoice email delivery failed");
+        }
+        await ctx.runMutation(internal.servicePlans.recordRunResult, {
+          plan_id: plan._id,
+          status: "sent",
         });
         summary.sent += 1;
       } catch (error) {
         summary.failed += 1;
+        await ctx.runMutation(internal.servicePlans.recordRunResult, {
+          plan_id: plan._id,
+          status: "failed",
+          error: error instanceof Error ? error.message.slice(0, 500) : "Unknown billing error",
+        });
         console.error("runDueBilling failed for plan", plan._id, error);
       }
+    }
+
+    if (duePlans.length === DUE_PLAN_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(1_000, internal.servicePlans.runDueBilling, { today });
     }
 
     return summary;

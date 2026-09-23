@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
@@ -533,6 +533,32 @@ export const deliver = action({
       provider_message_id: result.providerMessageId,
       error: result.error,
     };
+  },
+});
+
+export const deliverInternal = internalAction({
+  args: {
+    id: v.id("communications"),
+    user_email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const payload: any = await ctx.runQuery(internal.communications.getForDelivery, {
+      id: args.id,
+      user_email: args.user_email,
+    });
+    if (payload.item.status === "sent" || payload.item.status === "delivered") {
+      return { success: true, skipped: true, status: payload.item.status };
+    }
+    const result = await deliverCommunication(payload.item, payload.business_name);
+    await ctx.runMutation(internal.communications.recordDeliveryAttempt, {
+      id: payload.item._id,
+      user_email: args.user_email,
+      status: result.status,
+      error: result.success ? undefined : result.error,
+      provider: result.provider,
+      provider_message_id: result.providerMessageId,
+    });
+    return result;
   },
 });
 
