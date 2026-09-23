@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import SimplifiedChemicalInput from "../components/servicelog/SimplifiedChemicalInput";
 import LastWeekChemistry from "@/components/servicelog/LastWeekChemistry";
+import LsiReadingFields from "@/components/servicelog/LsiReadingFields";
+import AquaChekStripScanner from "@/components/servicelog/AquaChekStripScanner";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
 import { hapticSuccess } from "@/lib/haptics";
 import { CHEMICAL_CONFIGS } from "@/lib/chemStatus";
@@ -104,12 +106,26 @@ export default function NewServiceLog() {
     chlorine: existingLog?.chlorine || "good",
     chlorine_mode: existingLog?.chlorine_value !== undefined ? "numeric" : "quick",
     chlorine_value: existingLog?.chlorine_value ?? "",
+    total_chlorine_value: existingLog?.total_chlorine_value ?? "",
+    total_bromine_value: existingLog?.total_bromine_value ?? "",
+    strip_scan_method: existingLog?.strip_scan_method ?? "",
+    strip_scan_confidence: existingLog?.strip_scan_confidence ?? "",
+    strip_scan_analysis_version: existingLog?.strip_scan_analysis_version ?? "",
+    strip_scan_pad_confidence: existingLog?.strip_scan_pad_confidence,
+    strip_scan_quality: existingLog?.strip_scan_quality,
+    lsi_calculation_version: existingLog?.lsi_calculation_version ?? "",
     alkalinity: existingLog?.alkalinity || "good",
     alkalinity_mode: existingLog?.alkalinity_value !== undefined ? "numeric" : "quick",
     alkalinity_value: existingLog?.alkalinity_value ?? "",
     stabilizer: existingLog?.stabilizer || "good",
     stabilizer_mode: existingLog?.stabilizer_value !== undefined ? "numeric" : "quick",
     stabilizer_value: existingLog?.stabilizer_value ?? "",
+    hardness_value: existingLog?.hardness_value ?? "",
+    hardness_source: existingLog?.hardness_source ?? "",
+    water_temperature: existingLog?.water_temperature ?? "",
+    water_temperature_source: existingLog?.water_temperature_source ?? "",
+    tds_value: existingLog?.tds_value ?? "",
+    tds_source: existingLog?.tds_source ?? "",
     salt: existingLog?.salt ?? "",
     notes: existingLog?.notes || ""
   });
@@ -326,8 +342,22 @@ export default function NewServiceLog() {
       stabilizer: formData.stabilizer,
       ph_value: formData.ph_value !== "" ? parseFloat(formData.ph_value) : undefined,
       chlorine_value: formData.chlorine_value !== "" ? parseFloat(formData.chlorine_value) : undefined,
+      total_chlorine_value: formData.total_chlorine_value !== "" ? parseFloat(formData.total_chlorine_value) : undefined,
+      total_bromine_value: formData.total_bromine_value !== "" ? parseFloat(formData.total_bromine_value) : undefined,
+      strip_scan_method: formData.strip_scan_method || undefined,
+      strip_scan_confidence: formData.strip_scan_confidence || undefined,
+      strip_scan_analysis_version: formData.strip_scan_analysis_version || undefined,
+      strip_scan_pad_confidence: formData.strip_scan_pad_confidence || undefined,
+      strip_scan_quality: formData.strip_scan_quality || undefined,
+      lsi_calculation_version: formData.lsi_calculation_version || undefined,
       alkalinity_value: formData.alkalinity_value !== "" ? parseFloat(formData.alkalinity_value) : undefined,
       stabilizer_value: formData.stabilizer_value !== "" ? parseFloat(formData.stabilizer_value) : undefined,
+      hardness_value: formData.hardness_value !== "" ? parseFloat(formData.hardness_value) : undefined,
+      hardness_source: formData.hardness_source || undefined,
+      water_temperature: formData.water_temperature !== "" ? parseFloat(formData.water_temperature) : undefined,
+      water_temperature_source: formData.water_temperature_source || undefined,
+      tds_value: formData.tds_value !== "" ? parseFloat(formData.tds_value) : undefined,
+      tds_source: formData.tds_source || undefined,
       photo_count: actualBeforeCount + actualAfterCount,
       has_before_photos: actualBeforeCount > 0,
       has_after_photos: actualAfterCount > 0,
@@ -567,15 +597,21 @@ export default function NewServiceLog() {
           </h3>
           <p className="mb-4 text-sm font-medium text-ink-secondary">Select the level for each chemical test</p>
 
+          <AquaChekStripScanner
+            formData={formData}
+            setFormData={setFormData}
+            sanitizer={String(customer.pool_type || '').toLowerCase().includes('bromine') ? 'bromine' : 'chlorine'}
+          />
+
           <div className="space-y-3">
             <SimplifiedChemicalInput
               label="pH Balance"
               value={formData.ph}
-              onChange={(val) => setFormData({ ...formData, ph: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, ph: val }))}
               mode={formData.ph_mode}
-              onModeChange={(mode) => setFormData({ ...formData, ph_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, ph_mode: mode }))}
               numericValue={formData.ph_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, ph_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, ph_value: val }))}
               config={CHEMICAL_CONFIGS.ph}
               icon={<Activity className="w-4 h-4" />}
               testId="ph-numeric-input"
@@ -584,11 +620,11 @@ export default function NewServiceLog() {
             <SimplifiedChemicalInput
               label="Chlorine Level"
               value={formData.chlorine}
-              onChange={(val) => setFormData({ ...formData, chlorine: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, chlorine: val }))}
               mode={formData.chlorine_mode}
-              onModeChange={(mode) => setFormData({ ...formData, chlorine_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, chlorine_mode: mode }))}
               numericValue={formData.chlorine_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, chlorine_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, chlorine_value: val }))}
               config={CHEMICAL_CONFIGS.chlorine}
               icon={<Droplets className="w-4 h-4" />}
               testId="chlorine-numeric-input"
@@ -597,11 +633,11 @@ export default function NewServiceLog() {
             <SimplifiedChemicalInput
               label="Total Alkalinity"
               value={formData.alkalinity}
-              onChange={(val) => setFormData({ ...formData, alkalinity: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, alkalinity: val }))}
               mode={formData.alkalinity_mode}
-              onModeChange={(mode) => setFormData({ ...formData, alkalinity_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, alkalinity_mode: mode }))}
               numericValue={formData.alkalinity_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, alkalinity_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, alkalinity_value: val }))}
               config={CHEMICAL_CONFIGS.alkalinity}
               icon={<PoolIcon name="chemicals" className="h-4 w-4" />}
               testId="alkalinity-numeric-input"
@@ -610,11 +646,11 @@ export default function NewServiceLog() {
             <SimplifiedChemicalInput
               label="Stabilizer (Cyanuric Acid)"
               value={formData.stabilizer}
-              onChange={(val) => setFormData({ ...formData, stabilizer: val })}
+              onChange={(val) => setFormData((current) => ({ ...current, stabilizer: val }))}
               mode={formData.stabilizer_mode}
-              onModeChange={(mode) => setFormData({ ...formData, stabilizer_mode: mode })}
+              onModeChange={(mode) => setFormData((current) => ({ ...current, stabilizer_mode: mode }))}
               numericValue={formData.stabilizer_value}
-              onNumericValueChange={(val) => setFormData({ ...formData, stabilizer_value: val })}
+              onNumericValueChange={(val) => setFormData((current) => ({ ...current, stabilizer_value: val }))}
               config={CHEMICAL_CONFIGS.stabilizer}
               icon={<PoolIcon name="chemicals" className="h-4 w-4" />}
               testId="stabilizer-numeric-input"
@@ -637,6 +673,7 @@ export default function NewServiceLog() {
               </div>
             )}
           </div>
+          <LsiReadingFields formData={formData} setFormData={setFormData} />
         </Card>
 
         <Card className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">

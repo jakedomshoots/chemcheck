@@ -339,6 +339,22 @@ export function validateCustomerUpdate(data: {
 /**
  * Validate service log data
  */
+export interface StripScanPadConfidence {
+    totalHardness: number;
+    totalChlorine: number;
+    freeChlorine: number;
+    ph: number;
+    totalAlkalinity: number;
+    cyanuricAcid: number;
+}
+
+export interface StripScanQuality {
+    backgroundLightness: number;
+    backgroundNeutrality: number;
+    lightingUniformity: number;
+    framing: number;
+}
+
 export interface ValidatedServiceLogData {
     customer_id: any; // Convex ID type
     service_date: string;
@@ -351,11 +367,123 @@ export interface ValidatedServiceLogData {
     salt?: number;
     ph_value?: number;
     chlorine_value?: number;
+    total_chlorine_value?: number;
+    total_bromine_value?: number;
+    strip_scan_method?: 'aquachek_select_photo';
+    strip_scan_confidence?: 'low' | 'medium' | 'high';
+    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3';
+    strip_scan_pad_confidence?: StripScanPadConfidence;
+    strip_scan_quality?: StripScanQuality;
+    lsi_calculation_version?: 'aquachek-epa-v1';
     alkalinity_value?: number;
     stabilizer_value?: number;
+    hardness_value?: number;
+    hardness_source?: string;
+    water_temperature?: number;
+    water_temperature_source?: 'measured' | 'assumed';
+    tds_value?: number;
+    tds_source?: 'measured' | 'assumed';
     start_time?: string;
     end_time?: string;
     duration_ms?: number;
+}
+
+/**
+ * Validate the optional numeric inputs and provenance used by the LSI feature.
+ * This is shared by direct mutations and offline sync so neither path can
+ * bypass the same data-integrity rules.
+ */
+export function validateLsiFields(data: {
+    ph_value?: number;
+    total_chlorine_value?: number;
+    total_bromine_value?: number;
+    alkalinity_value?: number;
+    stabilizer_value?: number;
+    hardness_value?: number;
+    hardness_source?: string;
+    water_temperature?: number;
+    water_temperature_source?: string;
+    tds_value?: number;
+    tds_source?: string;
+    strip_scan_method?: string;
+    strip_scan_confidence?: string;
+    strip_scan_analysis_version?: string;
+    strip_scan_pad_confidence?: StripScanPadConfidence;
+    strip_scan_quality?: StripScanQuality;
+    lsi_calculation_version?: string;
+}, requireSourceValues = false): void {
+    validatePositiveNumber(data.ph_value, 'pH value', false, 0, 14);
+    validatePositiveNumber(data.total_chlorine_value, 'Total chlorine value', false, 0, 10);
+    validatePositiveNumber(data.total_bromine_value, 'Total bromine value', false, 0, 20);
+    validatePositiveNumber(data.alkalinity_value, 'Alkalinity value', false, 0, 1000);
+    validatePositiveNumber(data.stabilizer_value, 'Stabilizer value', false, 0, 1000);
+    validatePositiveNumber(data.hardness_value, 'Hardness value', false, 0, 2000);
+    validateEnum(data.hardness_source, ['aquachek_total', 'calcium'] as const, 'Hardness source', false);
+    validatePositiveNumber(data.water_temperature, 'Water temperature', false, 32, 140);
+    validateEnum(data.water_temperature_source, ['measured', 'assumed'] as const, 'Water temperature source', false);
+    validatePositiveNumber(data.tds_value, 'TDS value', false, 1, 20000);
+    validateEnum(data.tds_source, ['measured', 'assumed'] as const, 'TDS source', false);
+    validateEnum(data.strip_scan_method, ['aquachek_select_photo'] as const, 'Strip scan method', false);
+    validateEnum(data.strip_scan_confidence, ['low', 'medium', 'high'] as const, 'Strip scan confidence', false);
+    validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3'] as const, 'Strip scan analysis version', false);
+    validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1'] as const, 'LSI calculation version', false);
+
+    if (data.strip_scan_pad_confidence) {
+        validatePositiveNumber(data.strip_scan_pad_confidence.totalHardness, 'Hardness pad confidence', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_pad_confidence.totalChlorine, 'Total chlorine pad confidence', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_pad_confidence.freeChlorine, 'Free chlorine pad confidence', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_pad_confidence.ph, 'pH pad confidence', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_pad_confidence.totalAlkalinity, 'Alkalinity pad confidence', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_pad_confidence.cyanuricAcid, 'CYA pad confidence', true, 0, 1);
+    }
+    if (data.strip_scan_quality) {
+        validatePositiveNumber(data.strip_scan_quality.backgroundLightness, 'Background lightness', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_quality.backgroundNeutrality, 'Background neutrality', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_quality.lightingUniformity, 'Lighting uniformity', true, 0, 1);
+        validatePositiveNumber(data.strip_scan_quality.framing, 'Framing quality', true, 0, 1);
+    }
+
+    const hasStripScanData = [
+        data.strip_scan_method,
+        data.strip_scan_confidence,
+        data.strip_scan_analysis_version,
+        data.strip_scan_pad_confidence,
+        data.strip_scan_quality,
+        data.lsi_calculation_version,
+    ].some((value) => value !== undefined);
+    if (
+        requireSourceValues
+        && hasStripScanData
+        && (!data.strip_scan_method || !data.strip_scan_confidence || !data.strip_scan_analysis_version || !data.strip_scan_pad_confidence || !data.strip_scan_quality || !data.lsi_calculation_version)
+    ) {
+        throw new Error('An AquaChek scan requires complete scan audit data');
+    }
+
+    if (requireSourceValues && data.hardness_value !== undefined && !data.hardness_source) {
+        throw new Error('Hardness value requires a hardness source');
+    }
+    if (requireSourceValues && data.hardness_source && data.hardness_value === undefined) {
+        throw new Error('Hardness source requires a hardness value');
+    }
+    if (requireSourceValues && data.water_temperature !== undefined && !data.water_temperature_source) {
+        throw new Error('Water temperature requires a water temperature source');
+    }
+    if (requireSourceValues && data.water_temperature_source && data.water_temperature === undefined) {
+        throw new Error('Water temperature source requires a water temperature');
+    }
+    if (requireSourceValues && data.tds_value !== undefined && !data.tds_source) {
+        throw new Error('TDS value requires a TDS source');
+    }
+    if (requireSourceValues && data.tds_source && data.tds_value === undefined) {
+        throw new Error('TDS source requires a TDS value');
+    }
+}
+
+export function validateLsiUpdate(
+    existing: Parameters<typeof validateLsiFields>[0],
+    updates: Parameters<typeof validateLsiFields>[0],
+): void {
+    validateLsiFields({ ...existing, ...updates }, true);
 }
 
 export function validateServiceLogCreate(data: {
@@ -370,8 +498,22 @@ export function validateServiceLogCreate(data: {
     salt?: number;
     ph_value?: number;
     chlorine_value?: number;
+    total_chlorine_value?: number;
+    total_bromine_value?: number;
+    strip_scan_method?: 'aquachek_select_photo';
+    strip_scan_confidence?: 'low' | 'medium' | 'high';
+    strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3';
+    strip_scan_pad_confidence?: StripScanPadConfidence;
+    strip_scan_quality?: StripScanQuality;
+    lsi_calculation_version?: 'aquachek-epa-v1';
     alkalinity_value?: number;
     stabilizer_value?: number;
+    hardness_value?: number;
+    hardness_source?: string;
+    water_temperature?: number;
+    water_temperature_source?: 'measured' | 'assumed';
+    tds_value?: number;
+    tds_source?: 'measured' | 'assumed';
     start_time?: string;
     end_time?: string;
     duration_ms?: number;
@@ -381,6 +523,8 @@ export function validateServiceLogCreate(data: {
     if (!data.service_date || !dateRegex.test(data.service_date)) {
         throw new Error('Service date must be in YYYY-MM-DD format');
     }
+
+    validateLsiFields(data, true);
 
     return {
         customer_id: data.customer_id,
@@ -394,8 +538,22 @@ export function validateServiceLogCreate(data: {
         salt: validatePositiveNumber(data.salt, 'Salt level', false, 0, 10000),
         ph_value: validatePositiveNumber(data.ph_value, 'pH value', false, 0, 14),
         chlorine_value: validatePositiveNumber(data.chlorine_value, 'Chlorine value', false, 0, 100),
+        total_chlorine_value: validatePositiveNumber(data.total_chlorine_value, 'Total chlorine value', false, 0, 10),
+        total_bromine_value: validatePositiveNumber(data.total_bromine_value, 'Total bromine value', false, 0, 20),
+        strip_scan_method: validateEnum(data.strip_scan_method, ['aquachek_select_photo'] as const, 'Strip scan method', false),
+        strip_scan_confidence: validateEnum(data.strip_scan_confidence, ['low', 'medium', 'high'] as const, 'Strip scan confidence', false),
+        strip_scan_analysis_version: validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3'] as const, 'Strip scan analysis version', false),
+        strip_scan_pad_confidence: data.strip_scan_pad_confidence,
+        strip_scan_quality: data.strip_scan_quality,
+        lsi_calculation_version: validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1'] as const, 'LSI calculation version', false),
         alkalinity_value: validatePositiveNumber(data.alkalinity_value, 'Alkalinity value', false, 0, 1000),
         stabilizer_value: validatePositiveNumber(data.stabilizer_value, 'Stabilizer value', false, 0, 1000),
+        hardness_value: validatePositiveNumber(data.hardness_value, 'Hardness value', false, 0, 2000),
+        hardness_source: validateEnum(data.hardness_source, ['aquachek_total', 'calcium'] as const, 'Hardness source', false),
+        water_temperature: validatePositiveNumber(data.water_temperature, 'Water temperature', false, 32, 140),
+        water_temperature_source: validateEnum(data.water_temperature_source, ['measured', 'assumed'] as const, 'Water temperature source', false),
+        tds_value: validatePositiveNumber(data.tds_value, 'TDS value', false, 1, 20000),
+        tds_source: validateEnum(data.tds_source, ['measured', 'assumed'] as const, 'TDS source', false),
         start_time: validateOptionalString(data.start_time, 'Start time', 30),
         end_time: validateOptionalString(data.end_time, 'End time', 30),
         duration_ms: validatePositiveNumber(data.duration_ms, 'Duration', false, 0, 86400000), // Max 24 hours

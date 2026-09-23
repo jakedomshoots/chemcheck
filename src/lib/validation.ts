@@ -1,5 +1,21 @@
 import { z } from 'zod';
 
+const scanScoreSchema = z.number().min(0).max(1);
+const stripScanPadConfidenceSchema = z.object({
+  totalHardness: scanScoreSchema,
+  totalChlorine: scanScoreSchema,
+  freeChlorine: scanScoreSchema,
+  ph: scanScoreSchema,
+  totalAlkalinity: scanScoreSchema,
+  cyanuricAcid: scanScoreSchema,
+});
+const stripScanQualitySchema = z.object({
+  backgroundLightness: scanScoreSchema,
+  backgroundNeutrality: scanScoreSchema,
+  lightingUniformity: scanScoreSchema,
+  framing: scanScoreSchema,
+});
+
 /**
  * Sanitize HTML to prevent XSS attacks
  */
@@ -97,6 +113,14 @@ export const serviceLogSchema = z.object({
     .min(0, 'Chlorine value must be positive')
     .max(100, 'Chlorine value seems unrealistic (max 100 ppm)')
     .optional(),
+  total_chlorine_value: z.number().min(0).max(10).optional(),
+  total_bromine_value: z.number().min(0).max(20).optional(),
+  strip_scan_method: z.literal('aquachek_select_photo').optional(),
+  strip_scan_confidence: z.enum(['low', 'medium', 'high']).optional(),
+  strip_scan_analysis_version: z.enum(['aquachek-select-v2', 'aquachek-select-v3']).optional(),
+  strip_scan_pad_confidence: stripScanPadConfidenceSchema.optional(),
+  strip_scan_quality: stripScanQualitySchema.optional(),
+  lsi_calculation_version: z.literal('aquachek-epa-v1').optional(),
   alkalinity_value: z.number()
     .min(0, 'Alkalinity value must be positive')
     .max(1000, 'Alkalinity value seems unrealistic (max 1000 ppm)')
@@ -105,6 +129,22 @@ export const serviceLogSchema = z.object({
     .min(0, 'Stabilizer value must be positive')
     .max(1000, 'Stabilizer value seems unrealistic (max 1000 ppm)')
     .optional(),
+
+  hardness_value: z.number()
+    .min(0, 'Hardness cannot be negative')
+    .max(2000, 'Hardness seems unrealistic (max 2,000 ppm)')
+    .optional(),
+  hardness_source: z.enum(['aquachek_total', 'calcium']).optional(),
+  water_temperature: z.number()
+    .min(32, 'Water temperature must be at least 32°F')
+    .max(140, 'Water temperature must be at most 140°F')
+    .optional(),
+  water_temperature_source: z.enum(['measured', 'assumed']).optional(),
+  tds_value: z.number()
+    .min(1, 'TDS must be greater than zero')
+    .max(20000, 'TDS seems unrealistic (max 20,000 ppm)')
+    .optional(),
+  tds_source: z.enum(['measured', 'assumed']).optional(),
 
   salt: z.number()
     .min(0, 'Salt level must be positive')
@@ -116,6 +156,67 @@ export const serviceLogSchema = z.object({
   duration_ms: z.number().min(0).optional(),
 
   service_type: z.string().optional(),
+}).superRefine((data, context) => {
+  const hasStripScanData = [
+    data.strip_scan_method,
+    data.strip_scan_confidence,
+    data.strip_scan_analysis_version,
+    data.strip_scan_pad_confidence,
+    data.strip_scan_quality,
+    data.lsi_calculation_version,
+  ].some((value) => value !== undefined);
+  if (
+    hasStripScanData
+    && (!data.strip_scan_method || !data.strip_scan_confidence || !data.strip_scan_analysis_version || !data.strip_scan_pad_confidence || !data.strip_scan_quality || !data.lsi_calculation_version)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'An AquaChek scan requires complete scan audit data',
+      path: ['strip_scan_analysis_version'],
+    });
+  }
+  if (data.hardness_value !== undefined && !data.hardness_source) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Hardness value requires a hardness source',
+      path: ['hardness_source'],
+    });
+  }
+  if (data.hardness_source && data.hardness_value === undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Hardness source requires a hardness reading',
+      path: ['hardness_value'],
+    });
+  }
+  if (data.water_temperature !== undefined && !data.water_temperature_source) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Water temperature reading requires a source',
+      path: ['water_temperature_source'],
+    });
+  }
+  if (data.water_temperature_source && data.water_temperature === undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Water temperature source requires a temperature reading',
+      path: ['water_temperature_source'],
+    });
+  }
+  if (data.tds_value !== undefined && !data.tds_source) {
+    context.addIssue({
+      code: 'custom',
+      message: 'TDS reading requires a source',
+      path: ['tds_source'],
+    });
+  }
+  if (data.tds_source && data.tds_value === undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'TDS source requires a TDS reading',
+      path: ['tds_source'],
+    });
+  }
 });
 
 export const chemicalUsageSchema = z.object({

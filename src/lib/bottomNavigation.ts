@@ -12,6 +12,7 @@ export const MOBILE_NAV_ITEMS = [
   { id: 'reports', name: 'Reports', shortLabel: 'Reports', path: APP_ROUTES.WeeklyReport, icon: 'report' },
   { id: 'notes', name: 'Notes', shortLabel: 'Notes', path: APP_ROUTES.Notes, icon: 'notes' },
   { id: 'chemicals', name: 'Chemicals', shortLabel: 'Chemicals', path: APP_ROUTES.ChemicalUsage, icon: 'chemicals' },
+  { id: 'lsi', name: 'LSI History', shortLabel: 'LSI', path: APP_ROUTES.LSI, icon: 'lsi' },
   { id: 'route', name: 'Route Plan', shortLabel: 'Route', path: APP_ROUTES.RouteOptimizer, icon: 'route' },
   { id: 'poolSchool', name: 'Pool School', shortLabel: 'School', path: APP_ROUTES.PoolSchool, icon: 'poolSchool' },
   { id: 'settings', name: 'Settings', shortLabel: 'Settings', path: APP_ROUTES.Settings, icon: 'settings' },

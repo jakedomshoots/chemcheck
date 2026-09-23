@@ -17,6 +17,7 @@ const WeeklyReport = lazy(() => importWithRetry(() => import('./WeeklyReport'), 
 const RouteOptimizer = lazy(() => importWithRetry(() => import('./RouteOptimizer'), 'RouteOptimizer'));
 const EditClient = lazy(() => importWithRetry(() => import('./EditClient'), 'EditClient'));
 const ChemicalUsage = lazy(() => importWithRetry(() => import('./ChemicalUsage'), 'ChemicalUsage'));
+const LsiDashboard = lazy(() => importWithRetry(() => import('./LsiDashboard'), 'LsiDashboard'));
 const NewChemicalUsage = lazy(() => importWithRetry(() => import('./NewChemicalUsage'), 'NewChemicalUsage'));
 const Notes = lazy(() => importWithRetry(() => import('./Notes'), 'Notes'));
 const History = lazy(() => importWithRetry(() => import('./History'), 'History'));
@@ -65,6 +66,7 @@ const ROUTES = [
   { path: APP_ROUTES.RouteOptimizer, element: <RouteOptimizer /> },
   { path: APP_ROUTES.EditClient, element: <EditClient /> },
   { path: APP_ROUTES.ChemicalUsage, element: <ChemicalUsage /> },
+  { path: APP_ROUTES.LSI, element: <LsiDashboard /> },
   { path: APP_ROUTES.NewChemicalUsage, element: <NewChemicalUsage /> },
   { path: APP_ROUTES.Notes, element: <Notes /> },
   { path: APP_ROUTES.History, element: <History /> },
