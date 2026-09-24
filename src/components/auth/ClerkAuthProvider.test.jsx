@@ -84,6 +84,27 @@ describe('ClerkAuthProvider session isolation', () => {
     expect(mocks.bootstrapFromConvex).toHaveBeenCalledWith(convexBusiness, 'second@example.com');
   });
 
+  it('repairs a same-email local profile that points to the wrong business', async () => {
+    const orphanUser = { email: 'second@example.com', businessId: 'local-orphan' };
+    const convexBusiness = { _id: 'business-existing', name: 'Existing Business' };
+    mocks.getCurrentUser.mockReturnValue(orphanUser);
+    mocks.convexQuery.mockResolvedValue(convexBusiness);
+    mocks.bootstrapFromConvex.mockResolvedValue({
+      user: { email: 'second@example.com', businessId: 'business-existing' },
+      business: convexBusiness,
+    });
+    const { ClerkAuthProvider, useAuthContext } = await import('./ClerkAuthProvider');
+    function BusinessId() {
+      return <div>{useAuthContext().localUser?.businessId}</div>;
+    }
+
+    render(<ClerkAuthProvider><BusinessId /></ClerkAuthProvider>);
+
+    await screen.findByText('business-existing');
+    expect(mocks.bootstrapFromConvex).toHaveBeenCalledWith(convexBusiness, 'second@example.com');
+    expect(mocks.clearSession).not.toHaveBeenCalled();
+  });
+
   it('purges offline data before a different account is restored', async () => {
     mocks.getCurrentUser.mockReturnValue({ email: 'first@example.com', businessId: 'business_1' });
     const { ClerkAuthProvider } = await import('./ClerkAuthProvider');

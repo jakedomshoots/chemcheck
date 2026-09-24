@@ -132,27 +132,30 @@ function AuthContextProvider({ children }) {
             existingUser = await userManager.loginUser(email);
           }
 
-          // If still no user, check Convex for existing business
-          if (!existingUser) {
-            console.log('User not found in localStorage, checking Convex...');
-            try {
-              const convexBusiness = await getCurrentBusinessFromConvex(getToken, tokenAudience);
+          // Reconcile local state with the authenticated cloud tenant on every
+          // fresh auth initialization. This also repairs browsers where the
+          // earlier unauthenticated lookup created an orphan local business.
+          try {
+            const convexBusiness = await getCurrentBusinessFromConvex(getToken, tokenAudience);
+            const localBusinessId = existingUser?.businessId;
+            const cloudBusinessId = convexBusiness?._id;
 
-              if (convexBusiness) {
-                console.log('Business found in Convex, bootstrapping local state...');
-                const { user: bootstrappedUser } = await userManager.bootstrapFromConvex(convexBusiness, email);
-                setLocalUser(bootstrappedUser);
-                existingUser = bootstrappedUser;
-              } else {
-                console.log('New user detected, will need setup');
-                setLocalUser(null);
-              }
-            } catch (convexError) {
-              console.error('Failed to check Convex for existing business:', convexError);
+            if (convexBusiness && String(localBusinessId || '') !== String(cloudBusinessId)) {
+              console.log('Business found in Convex, reconciling local state...');
+              const { user: bootstrappedUser } = await userManager.bootstrapFromConvex(convexBusiness, email);
+              setLocalUser(bootstrappedUser);
+              existingUser = bootstrappedUser;
+            } else if (existingUser) {
+              setLocalUser(existingUser);
+            } else {
+              console.log('New user detected, will need setup');
               setLocalUser(null);
             }
-          } else {
-            setLocalUser(existingUser);
+          } catch (convexError) {
+            console.error('Failed to check Convex for existing business:', convexError);
+            // Preserve a valid offline account when the cloud is temporarily
+            // unreachable. Only a truly uninitialized browser remains in setup.
+            setLocalUser(existingUser || null);
           }
 
           // Only log successful login and set context if we have a valid user
