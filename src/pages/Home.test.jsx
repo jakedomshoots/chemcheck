@@ -19,7 +19,10 @@ const FIXED_WEEKDAY_DATE = new Date('2026-06-08T12:00:00.000-04:00');
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
 
 // Mock hooks - must be defined inline due to vi.mock hoisting
-vi.mock('@/api/convexHooks', () => ({
+vi.mock('@/api/convexHooks', () => {
+  const activePoolCustomerIds = { has: () => true };
+  return ({
+  useActivePoolCustomerIds: vi.fn(() => activePoolCustomerIds),
   useCustomersFilter: vi.fn(() => []),
   useServiceLogs: vi.fn(() => []),
   useCustomers: vi.fn(() => []),
@@ -30,7 +33,8 @@ vi.mock('@/api/convexHooks', () => ({
   useAddCustomer: vi.fn(() => vi.fn()),
   useUpdateCustomer: vi.fn(() => vi.fn()),
   useDeleteCustomer: vi.fn(() => vi.fn()),
-}));
+  });
+});
 
 vi.mock('convex/react', () => ({
   useQuery: vi.fn(() => ({ settings: { working_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] } })),

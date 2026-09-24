@@ -14,12 +14,16 @@ const setMockCustomers = (customers) => {
 };
 
 // Mock hooks
-vi.mock('@/api/convexHooks', () => ({
+vi.mock('@/api/convexHooks', () => {
+    const activePoolCustomerIds = { has: () => true };
+    return ({
+    useActivePoolCustomerIds: () => activePoolCustomerIds,
     useCurrentUser: () => mockUser,
     useCustomersFilter: () => mockCustomers,
     useCustomerUpdate: () => mockUpdateCustomer,
     useCustomerDelete: () => mockDeleteCustomer
-}));
+    });
+});
 
 vi.mock('convex/react', () => ({
     useQuery: () => undefined

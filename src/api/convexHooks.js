@@ -31,6 +31,7 @@ export {
 
 export {
   usePoolsByCustomer,
+  useActivePoolCustomerIds,
   usePool,
   usePoolCreate,
   usePoolUpdate,

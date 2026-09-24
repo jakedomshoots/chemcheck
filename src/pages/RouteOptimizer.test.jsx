@@ -15,11 +15,15 @@ const toastSuccessMock = vi.fn();
 let mockCustomers = [];
 let mockBusiness;
 
-vi.mock("@/api/convexHooks", () => ({
+vi.mock("@/api/convexHooks", () => {
+  const activePoolCustomerIds = { has: () => true };
+  return ({
+  useActivePoolCustomerIds: () => activePoolCustomerIds,
   useCurrentUser: () => ({ email: "tech@example.com" }),
   useCustomersFilter: () => mockCustomers,
   useServiceLogs: () => [],
-}));
+  });
+});
 
 vi.mock("convex/react", () => ({
   useQuery: () => mockBusiness,

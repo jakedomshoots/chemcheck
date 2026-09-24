@@ -22,11 +22,15 @@ const logs = [
   { _id: "log-1", customer_id: 202, service_date: todayDate },
 ];
 
-vi.mock("@/api/convexHooks", () => ({
+vi.mock("@/api/convexHooks", () => {
+  const activePoolCustomerIds = { has: () => true };
+  return ({
+  useActivePoolCustomerIds: () => activePoolCustomerIds,
   useCurrentUser: () => ({ email: "tester@example.com", preferences: {} }),
   useCustomersFilter: () => customers,
   useServiceLogs: () => logs,
-}));
+  });
+});
 
 vi.mock("convex/react", () => ({
   useQuery: () => ({ settings: { working_days: [todayName, alternateDay] } }),

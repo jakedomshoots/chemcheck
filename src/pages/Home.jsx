@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
+import { useActivePoolCustomerIds, useCustomersFilter, useServiceLogs, useCurrentUser } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -79,7 +79,13 @@ export default function Home() {
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
   const allCustomersData = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
+  const activePoolCustomerIds = useActivePoolCustomerIds();
   const allLogsData = useServiceLogs("-service_date", 100);
+
+  const activeCustomersData = useMemo(
+    () => allCustomersData.filter((customer) => activePoolCustomerIds.has(Number(customer._id))),
+    [activePoolCustomerIds, allCustomersData]
+  );
 
   const [allCustomers, setAllCustomers] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -173,13 +179,13 @@ export default function Home() {
   }, [user, navigate, hasCheckedDefaultView]);
 
   useEffect(() => {
-    if (allCustomersData && allLogsData) {
+    if (activeCustomersData && allLogsData) {
       try {
-        setAllCustomers(allCustomersData);
+        setAllCustomers(activeCustomersData);
 
         let todaysCustomers = [];
         if (dayOfWeek !== "Sunday" && dayOfWeek !== "Saturday") {
-          todaysCustomers = allCustomersData
+          todaysCustomers = activeCustomersData
             .filter((c) => c.service_day === dayOfWeek)
             .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
         }
@@ -220,7 +226,7 @@ export default function Home() {
         setLoading(false);
       }
     }
-  }, [allCustomersData, allLogsData, today, dayOfWeek]);
+  }, [activeCustomersData, allLogsData, today, dayOfWeek]);
 
   const missedServices = useMemo(() => {
     const currentDayIndex = daysOrder.indexOf(dayOfWeek);

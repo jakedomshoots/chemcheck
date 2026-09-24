@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useCustomersFilter, useCurrentUser, useServiceLogs } from "@/api/convexHooks";
+import { useActivePoolCustomerIds, useCustomersFilter, useCurrentUser, useServiceLogs } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useNavigate } from "react-router-dom";
@@ -121,6 +121,11 @@ export default function RouteOptimizer() {
   const navigate = useNavigate();
   const user = useCurrentUser();
   const allCustomers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
+  const activePoolCustomerIds = useActivePoolCustomerIds();
+  const activeCustomers = useMemo(
+    () => allCustomers.filter((customer) => activePoolCustomerIds.has(Number(customer._id))),
+    [activePoolCustomerIds, allCustomers]
+  );
   const recentServiceLogs = useServiceLogs("-service_date", 1500);
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
@@ -168,11 +173,11 @@ export default function RouteOptimizer() {
   }, []);
 
   useEffect(() => {
-    if (allCustomers !== undefined) {
-      setCustomers(allCustomers || []);
+    if (activeCustomers !== undefined) {
+      setCustomers(activeCustomers || []);
       setLoading(false);
     }
-  }, [allCustomers]);
+  }, [activeCustomers]);
 
   useEffect(() => {
     if (daysOfWeek.length === 0) return;
