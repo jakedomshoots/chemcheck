@@ -7,11 +7,22 @@ const mocks = vi.hoisted(() => ({
   loginUser: vi.fn(),
   logoutUser: vi.fn(),
   signOut: vi.fn(),
+  getToken: vi.fn(),
+  bootstrapFromConvex: vi.fn(),
+  convexSetAuth: vi.fn(),
+  convexQuery: vi.fn(),
 }));
 
 vi.mock('@clerk/clerk-react', () => ({
   ClerkProvider: ({ children }) => children,
-  useAuth: () => ({ isLoaded: true, isSignedIn: true, userId: 'clerk-user', signOut: mocks.signOut }),
+  useAuth: () => ({
+    isLoaded: true,
+    isSignedIn: true,
+    userId: 'clerk-user',
+    signOut: mocks.signOut,
+    getToken: mocks.getToken,
+    sessionClaims: null,
+  }),
   useUser: () => ({ user: { primaryEmailAddress: { emailAddress: 'second@example.com' }, fullName: 'Second User' } }),
 }));
 vi.mock('@/lib/sessionCleanup', () => ({ clearChemCheckSessionData: mocks.clearSession }));
@@ -20,7 +31,17 @@ vi.mock('@/lib/userManager', () => ({
     getCurrentUser: mocks.getCurrentUser,
     loginUser: mocks.loginUser,
     logoutUser: mocks.logoutUser,
+    bootstrapFromConvex: mocks.bootstrapFromConvex,
   },
+}));
+vi.mock('convex/browser', () => ({
+  ConvexHttpClient: class {
+    setAuth = mocks.convexSetAuth;
+    query = mocks.convexQuery;
+  },
+}));
+vi.mock('../../../convex/_generated/api', () => ({
+  api: { businesses: { getCurrent: 'businesses:getCurrent' } },
 }));
 vi.mock('@/lib/auditLog', () => ({ logLogin: vi.fn(), logLogout: vi.fn() }));
 vi.mock('@/lib/sentry', () => ({ clearUserContext: vi.fn(), setUserContext: vi.fn() }));
@@ -33,8 +54,34 @@ describe('ClerkAuthProvider session isolation', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv('VITE_CLERK_PUBLISHABLE_KEY', 'pk_test_session_isolation');
+    vi.stubEnv('VITE_CONVEX_URL', 'https://test-deployment.convex.cloud');
     Object.values(mocks).forEach((mock) => mock.mockReset());
     mocks.loginUser.mockResolvedValue({ email: 'second@example.com', businessId: 'business_2' });
+    mocks.getToken.mockResolvedValue('convex-token');
+    mocks.convexQuery.mockResolvedValue(null);
+  });
+
+  it('uses the Clerk token to restore an existing Convex business on a fresh browser', async () => {
+    const convexBusiness = { _id: 'business-existing', name: 'Existing Business' };
+    mocks.getCurrentUser.mockReturnValue(null);
+    mocks.loginUser.mockResolvedValue(null);
+    mocks.convexQuery.mockResolvedValue(convexBusiness);
+    mocks.bootstrapFromConvex.mockResolvedValue({
+      user: { email: 'second@example.com', businessId: 'business-existing' },
+      business: convexBusiness,
+    });
+    const { ClerkAuthProvider, useAuthContext } = await import('./ClerkAuthProvider');
+    function SetupState() {
+      return <div>{useAuthContext().hasCompletedSetup ? 'restored' : 'new account'}</div>;
+    }
+
+    render(<ClerkAuthProvider><SetupState /></ClerkAuthProvider>);
+
+    await screen.findByText('restored');
+    expect(mocks.getToken).toHaveBeenCalledWith({ template: 'convex', skipCache: true });
+    expect(mocks.convexSetAuth).toHaveBeenCalledWith('convex-token');
+    expect(mocks.convexQuery).toHaveBeenCalledWith('businesses:getCurrent');
+    expect(mocks.bootstrapFromConvex).toHaveBeenCalledWith(convexBusiness, 'second@example.com');
   });
 
   it('purges offline data before a different account is restored', async () => {

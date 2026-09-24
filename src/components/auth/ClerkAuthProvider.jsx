@@ -47,24 +47,37 @@ async function getApi() {
   return api;
 }
 
-let convexClientPromise = null;
-async function getConvexClient() {
-  if (!convexClientPromise) {
-    convexClientPromise = import('convex/react').then(({ ConvexReactClient }) => {
-      const convexUrl = normalizeConvexUrl(import.meta.env.VITE_CONVEX_URL);
-      if (!convexUrl) {
-        throw new Error('VITE_CONVEX_URL is not configured');
-      }
-      return new ConvexReactClient(convexUrl);
-    });
+async function getCurrentBusinessFromConvex(getToken, tokenAudience) {
+  const convexUrl = normalizeConvexUrl(import.meta.env.VITE_CONVEX_URL);
+  if (!convexUrl) {
+    throw new Error('VITE_CONVEX_URL is not configured');
   }
-  return convexClientPromise;
+
+  const tokenOptions = tokenAudience === 'convex'
+    ? { skipCache: true }
+    : { template: 'convex', skipCache: true };
+  const token = await getToken(tokenOptions);
+  if (!token) {
+    throw new Error('Unable to authenticate the Convex business lookup');
+  }
+
+  // Use a one-shot authenticated client here. The app-wide React client is
+  // owned by ConvexProviderWithClerk and should not be reconfigured during
+  // local account bootstrap.
+  const [{ ConvexHttpClient }, api] = await Promise.all([
+    import('convex/browser'),
+    getApi(),
+  ]);
+  const convexClient = new ConvexHttpClient(convexUrl);
+  convexClient.setAuth(token);
+  return convexClient.query(api.businesses.getCurrent);
 }
 
 // Inner provider that has access to Clerk hooks
 function AuthContextProvider({ children }) {
-  const { isLoaded, isSignedIn, userId, signOut } = useAuth();
+  const { isLoaded, isSignedIn, userId, signOut, getToken, sessionClaims } = useAuth();
   const { user } = useUser();
+  const tokenAudience = sessionClaims?.aud;
   const [localUser, setLocalUser] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [authError, setAuthError] = useState(null);
@@ -123,9 +136,7 @@ function AuthContextProvider({ children }) {
           if (!existingUser) {
             console.log('User not found in localStorage, checking Convex...');
             try {
-              const convexClient = await getConvexClient();
-              const api = await getApi();
-              const convexBusiness = await convexClient.query(api.businesses.getCurrent);
+              const convexBusiness = await getCurrentBusinessFromConvex(getToken, tokenAudience);
 
               if (convexBusiness) {
                 console.log('Business found in Convex, bootstrapping local state...');
@@ -171,7 +182,7 @@ function AuthContextProvider({ children }) {
     };
 
     syncUser();
-  }, [isLoaded, isSignedIn, user, userId]);
+  }, [getToken, isLoaded, isSignedIn, tokenAudience, user, userId]);
 
   const logout = async () => {
     try {
