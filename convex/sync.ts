@@ -16,6 +16,16 @@ function normalizeEmail(value: unknown): string {
 }
 
 const SYNC_RECEIPT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const PULL_TABLES = [
+  "customers",
+  "pools",
+  "equipment",
+  "serviceLogs",
+  "chemicalUsage",
+  "notes",
+  "saltCellLogs",
+] as const;
+type PullTableName = typeof PULL_TABLES[number];
 
 export const cleanupSyncOperations = internalMutation({
   args: {},
@@ -78,10 +88,10 @@ async function saveSyncReceipt(
 
 /**
  * Cursor-paginated pull for all records owned by the authenticated business.
- * A single opaque cursor contains one Convex cursor per table.  This keeps a
- * pull bounded while still making one deterministic checkpoint for the local
- * Dexie store.  `since` is an updated_at watermark; the first pull (since=0)
- * intentionally includes legacy rows that have no timestamp.
+ * Convex permits only one paginated database query per function invocation,
+ * so the opaque cursor advances through one table at a time. `since` is an
+ * updated_at watermark; the first pull (since=0) intentionally includes legacy
+ * rows that have no timestamp.
  */
 export const pull = query({
   args: {
@@ -89,6 +99,18 @@ export const pull = query({
     since: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
+  returns: v.object({
+    customers: v.array(v.any()),
+    pools: v.array(v.any()),
+    equipment: v.array(v.any()),
+    serviceLogs: v.array(v.any()),
+    chemicalUsage: v.array(v.any()),
+    notes: v.array(v.any()),
+    saltCellLogs: v.array(v.any()),
+    cursor: v.union(v.string(), v.null()),
+    hasMore: v.boolean(),
+    watermark: v.number(),
+  }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
@@ -107,6 +129,19 @@ export const pull = query({
     // Capture one upper watermark for the entire pull. Changes committed
     // after this point are picked up by the following pull.
     const watermark = Number.isFinite(state.watermark) ? state.watermark : Date.now();
+    let activeTableIndex = 0;
+    let tableCursor: string | null = null;
+    if (state.version === 2 && PULL_TABLES.includes(state.table)) {
+      activeTableIndex = PULL_TABLES.indexOf(state.table);
+      tableCursor = typeof state.tableCursor === "string" ? state.tableCursor : null;
+    } else {
+      // Resume cursors written by the earlier per-table cursor format.
+      const legacyIndex = PULL_TABLES.findIndex((table) => state[table] !== null);
+      activeTableIndex = legacyIndex >= 0 ? legacyIndex : 0;
+      const legacyCursor = state[PULL_TABLES[activeTableIndex]];
+      tableCursor = typeof legacyCursor === "string" ? legacyCursor : null;
+    }
+    const activeTable = PULL_TABLES[activeTableIndex];
     const business = await resolveBusinessContext(ctx, identity.email!);
     const ownerEmail = business?.owner_email || identity.email!;
 
@@ -165,11 +200,9 @@ export const pull = query({
       );
     };
 
-    const page = async (name: string, q: any): Promise<{ rows: any[]; next: string | null; done: boolean }> => {
-      // null explicitly means this table was exhausted on an earlier page.
-      if (state[name] === null) return { rows: [], next: null, done: true };
+    const page = async (q: any): Promise<{ rows: any[]; next: string | null; done: boolean }> => {
       const result = await filterByWatermark(q).paginate({
-        cursor: state[name] || null,
+        cursor: tableCursor,
         numItems: pageLimit,
       });
       return {
@@ -179,44 +212,45 @@ export const pull = query({
       };
     };
 
-    const deferredPage = (): { rows: any[]; next: string | null; done: boolean } => ({
-      rows: [],
-      next: undefined as any,
-      done: false,
-    });
-    const customers = await page("customers", customerQuery);
-    const customersDone = customers.done;
-    const pools = customersDone ? await page("pools", poolQuery) : deferredPage();
-    const poolsDone = customersDone && pools.done;
-    const equipment = poolsDone ? await page("equipment", equipmentQuery) : deferredPage();
-    const equipmentDone = poolsDone && equipment.done;
-    const serviceLogs = equipmentDone ? await page("serviceLogs", childQuery("serviceLogs")) : deferredPage();
-    const chemicalUsage = equipmentDone ? await page("chemicalUsage", childQuery("chemicalUsage")) : deferredPage();
-    const notes = equipmentDone ? await page("notes", childQuery("notes")) : deferredPage();
-    const saltCellLogs = equipmentDone ? await page("saltCellLogs", childQuery("saltCellLogs")) : deferredPage();
+    const queries: Record<PullTableName, any> = {
+      customers: customerQuery,
+      pools: poolQuery,
+      equipment: equipmentQuery,
+      serviceLogs: childQuery("serviceLogs"),
+      chemicalUsage: childQuery("chemicalUsage"),
+      notes: childQuery("notes"),
+      saltCellLogs: childQuery("saltCellLogs"),
+    };
+    const currentPage = await page(queries[activeTable]);
+    const rows: Record<PullTableName, any[]> = {
+      customers: [],
+      pools: [],
+      equipment: [],
+      serviceLogs: [],
+      chemicalUsage: [],
+      notes: [],
+      saltCellLogs: [],
+    };
+    rows[activeTable] = currentPage.rows;
 
-    const nextState: any = {
+    let nextTableIndex = activeTableIndex;
+    let nextTableCursor = currentPage.next;
+    if (currentPage.done) {
+      nextTableIndex += 1;
+      nextTableCursor = null;
+    }
+    const isDone = nextTableIndex >= PULL_TABLES.length;
+    const nextState = isDone ? null : JSON.stringify({
+      version: 2,
       since,
       watermark,
-      customers: customers.next,
-      pools: pools.next,
-      equipment: equipment.next,
-      serviceLogs: serviceLogs.next,
-      chemicalUsage: chemicalUsage.next,
-      notes: notes.next,
-      saltCellLogs: saltCellLogs.next,
-    };
-    const isDone = [customers, pools, equipment, serviceLogs, chemicalUsage, notes, saltCellLogs].every((result) => result.done);
+      table: PULL_TABLES[nextTableIndex],
+      tableCursor: nextTableCursor,
+    });
 
     return {
-      customers: customers.rows,
-      pools: pools.rows,
-      equipment: equipment.rows,
-      serviceLogs: serviceLogs.rows,
-      chemicalUsage: chemicalUsage.rows,
-      notes: notes.rows,
-      saltCellLogs: saltCellLogs.rows,
-      cursor: isDone ? null : JSON.stringify(nextState),
+      ...rows,
+      cursor: nextState,
       hasMore: !isDone,
       watermark,
     };
