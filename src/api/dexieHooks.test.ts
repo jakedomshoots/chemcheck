@@ -1,6 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { queryServiceLogsByCustomerDateRange, useCustomerCreate } from './dexieHooks';
+import {
+  queryServiceLogsByCustomerDateRange,
+  filterCustomersForLocalAccount,
+  useCustomerCreate,
+  useCurrentUser,
+} from './dexieHooks';
 
 const mockCustomersToArray = vi.hoisted(() => vi.fn());
 const mockCustomersAdd = vi.hoisted(() => vi.fn());
@@ -51,12 +56,37 @@ describe('useCustomerCreate', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     mockCheckRateLimit.mockReturnValue({ allowed: true });
     mockValidateCustomer.mockImplementation((data) => ({ success: true, data }));
     mockServiceLogsWhere.mockReturnValue({ between: mockServiceLogsBetween });
     mockServiceLogsBetween.mockReturnValue({ reverse: mockServiceLogsReverse });
     mockServiceLogsReverse.mockReturnValue({ limit: mockServiceLogsLimit });
     mockServiceLogsLimit.mockReturnValue({ toArray: mockServiceLogsToArray });
+  });
+
+  it('uses the authenticated account email for new customer ownership', async () => {
+    localStorage.setItem('chemcheck_current_user', JSON.stringify({
+      email: 'Owner@Example.com',
+      name: 'Pool Owner',
+    }));
+    mockCustomersToArray.mockResolvedValue([
+      { id: 1, created_by: 'owner@example.com', service_day: 'Monday' },
+      { id: 2, created_by: 'local', service_day: 'Monday' },
+      { id: 3, created_by: 'other@example.com', service_day: 'Monday' },
+    ]);
+    mockCustomersAdd.mockResolvedValue(18);
+
+    const { result } = renderHook(() => useCustomerCreate());
+    await act(async () => {
+      await result.current(baseCustomer);
+    });
+
+    expect(mockCustomersAdd).toHaveBeenCalledWith(expect.objectContaining({
+      created_by: 'owner@example.com',
+      sort_order: 2,
+    }));
   });
 
   it('assigns a default sort_order when omitted, based on the current service day count', async () => {
@@ -133,6 +163,47 @@ describe('useCustomerCreate', () => {
         sort_order: 7,
       })
     );
+  });
+});
+
+describe('useCurrentUser', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it('returns the normalized authenticated email from local state', () => {
+    localStorage.setItem('chemcheck_current_user', JSON.stringify({
+      email: 'Owner@Example.com ',
+      name: 'Pool Owner',
+    }));
+
+    const { result } = renderHook(() => useCurrentUser());
+
+    expect(result.current).toEqual({ email: 'owner@example.com', name: 'Pool Owner' });
+  });
+
+  it('keeps legacy local mode when no authenticated user is stored', () => {
+    const { result } = renderHook(() => useCurrentUser());
+
+    expect(result.current).toEqual({ email: 'local', name: 'Local User' });
+  });
+});
+
+describe('customer account visibility', () => {
+  it('shows synced owner records and legacy local records without leaking another account', () => {
+    const customers = [
+      { id: 1, created_by: 'owner@example.com', full_name: 'Synced Customer' },
+      { id: 2, created_by: 'local', full_name: 'Legacy Customer' },
+      { id: 3, created_by: 'other@example.com', full_name: 'Other Account' },
+    ] as any[];
+
+    const visibleCustomers = filterCustomersForLocalAccount(customers, 'OWNER@EXAMPLE.COM');
+
+    expect(visibleCustomers.map((customer) => customer.full_name)).toEqual([
+      'Synced Customer',
+      'Legacy Customer',
+    ]);
   });
 });
 

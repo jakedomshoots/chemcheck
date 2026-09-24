@@ -190,12 +190,52 @@ function addIdAliasToArray<T extends { id?: number }>(records: T[]): (T & { _id:
     return records.map(addIdAlias);
 }
 
+function normalizeOwnerEmail(email: unknown): string {
+    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
+function getStoredCurrentUser(): { email: string; name: string } {
+    try {
+        const userData = sessionStorage.getItem('chemcheck_current_user')
+            || localStorage.getItem('chemcheck_current_user');
+        if (userData) {
+            const user = JSON.parse(userData);
+            return {
+                email: normalizeOwnerEmail(user.email) || DEFAULT_USER,
+                name: user.name || 'Local User',
+            };
+        }
+    } catch {
+        // A malformed or unavailable browser store falls back to legacy local mode.
+    }
+    return { email: DEFAULT_USER, name: 'Local User' };
+}
+
+function isCustomerInLocalAccount(customer: Customer, ownerEmail: string): boolean {
+    const customerOwner = normalizeOwnerEmail(customer.created_by);
+    const normalizedOwner = normalizeOwnerEmail(ownerEmail) || DEFAULT_USER;
+    return customerOwner === normalizedOwner || customerOwner === DEFAULT_USER;
+}
+
+export function filterCustomersForLocalAccount(
+    customers: Customer[],
+    ownerEmail: string
+): Customer[] {
+    return customers.filter((customer) => isCustomerInLocalAccount(customer, ownerEmail));
+}
+
+async function getCustomersForLocalAccount(ownerEmail: string): Promise<Customer[]> {
+    const customers = await db.customers.toArray();
+    return filterCustomersForLocalAccount(customers, ownerEmail);
+}
+
 export function useCustomers() {
+    const user = useCurrentUser();
     const data = useLiveQuery(
         () => measureDatabaseOperation('customers_list', () =>
-            db.customers.where('created_by').equals(DEFAULT_USER).toArray()
+            getCustomersForLocalAccount(user.email)
         ),
-        [],
+        [user.email],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
@@ -207,16 +247,14 @@ export function usePaginatedCustomers(options?: {
 }) {
     const page = options?.page ?? 0;
     const pageSize = options?.pageSize ?? 50;
+    const user = useCurrentUser();
 
     const data = useLiveQuery(
-        () => measureDatabaseOperation('customers_paginated', () =>
-            db.customers
-                .where('created_by').equals(DEFAULT_USER)
-                .offset(page * pageSize)
-                .limit(pageSize)
-                .toArray()
-        ),
-        [page, pageSize],
+        () => measureDatabaseOperation('customers_paginated', async () => {
+            const customers = await getCustomersForLocalAccount(user.email);
+            return customers.slice(page * pageSize, (page + 1) * pageSize);
+        }),
+        [page, pageSize, user.email],
         []
     );
 
@@ -224,27 +262,29 @@ export function usePaginatedCustomers(options?: {
 }
 
 export function useCustomerCount() {
+    const user = useCurrentUser();
     return useLiveQuery(
-        () => measureDatabaseOperation('customers_count', () =>
-            db.customers.where('created_by').equals(DEFAULT_USER).count()
+        () => measureDatabaseOperation('customers_count', async () =>
+            (await getCustomersForLocalAccount(user.email)).length
         ),
-        [],
+        [user.email],
         0
     );
 }
 
 export function useCustomersFilter(filters?: { created_by?: string; service_day?: string }) {
+    const user = useCurrentUser();
+    const ownerEmail = normalizeOwnerEmail(filters?.created_by) || user.email;
     const data = useLiveQuery(
         async () => {
-            let query = db.customers.where('created_by').equals(filters?.created_by || DEFAULT_USER);
-            const customers = await query.toArray();
+            const customers = await getCustomersForLocalAccount(ownerEmail);
 
             if (filters?.service_day) {
                 return customers.filter(c => c.service_day === filters.service_day);
             }
             return customers;
         },
-        [filters?.created_by, filters?.service_day],
+        [ownerEmail, filters?.service_day],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
@@ -260,6 +300,8 @@ export function useCustomer(id: number | undefined) {
 }
 
 export function useCustomerCreate() {
+    const user = useCurrentUser();
+    const ownerEmail = normalizeOwnerEmail(user.email) || DEFAULT_USER;
     return useCallback(async (data: Omit<Customer, 'id' | 'created_by' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
         const rateCheck = checkRateLimit('customers');
         if (!rateCheck.allowed) {
@@ -274,7 +316,7 @@ export function useCustomerCreate() {
         const existingCustomers = await db.customers.toArray();
         const sameDayCount = existingCustomers.filter(
             (customer) =>
-                customer.created_by === DEFAULT_USER &&
+                isCustomerInLocalAccount(customer, ownerEmail) &&
                 customer.service_day === validation.data.service_day
         ).length;
 
@@ -285,7 +327,7 @@ export function useCustomerCreate() {
         const id = await db.customers.add({
             ...validation.data,
             sort_order: sortOrder,
-            created_by: DEFAULT_USER,
+            created_by: ownerEmail,
             createdAt: now,
             updatedAt: now,
             sync_status: 'pending',
@@ -311,7 +353,7 @@ export function useCustomerCreate() {
             local_updated_at: nowMs,
         });
         return id;
-    }, []);
+    }, [ownerEmail]);
 }
 
 export function useCustomerUpdate() {
@@ -684,31 +726,5 @@ export function useNoteDelete() {
  * compatibility with existing local-only data.
  */
 export function useCurrentUser() {
-    return useMemo(() => {
-        try {
-            let userData = sessionStorage.getItem('chemcheck_current_user');
-            if (!userData) {
-                userData = localStorage.getItem('chemcheck_current_user');
-            }
-
-            if (userData) {
-                const user = JSON.parse(userData);
-                if (process.env.NODE_ENV === 'development') {
-                    console.debug(
-                        '[SECURITY] Using DEFAULT_USER for data queries. ' +
-                        'In production, use authenticated user email for proper tenant isolation.'
-                    );
-                }
-                return {
-                    email: DEFAULT_USER,
-                    name: user.name || 'Local User'
-                };
-            }
-        } catch (e) {
-        }
-        return {
-            email: DEFAULT_USER,
-            name: 'Local User'
-        };
-    }, []);
+    return useMemo(() => getStoredCurrentUser(), []);
 }
