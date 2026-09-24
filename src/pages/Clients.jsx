@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useCustomersFilter, useCurrentUser, useCustomerUpdate, useCustomerDelete } from "@/api/convexHooks";
+import { useActivePoolCustomerIds, useCustomersFilter, useCurrentUser, useCustomerUpdate, useCustomerDelete } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useNavigate } from "react-router-dom";
@@ -63,6 +63,7 @@ export default function Clients() {
   const convexBusiness = useQuery(api.businesses.getCurrent);
 
   const allCustomers = useCustomersFilter(user?.email ? { created_by: user.email } : undefined);
+  const activePoolCustomerIds = useActivePoolCustomerIds();
   const updateCustomer = useCustomerUpdate();
   const deleteCustomerMutation = useCustomerDelete();
 
@@ -332,7 +333,7 @@ export default function Clients() {
     setMovingCustomerId(customer._id);
 
     try {
-      const dayCustomers = customers.filter((c) => c.service_day === customer.service_day);
+      const dayCustomers = scheduledCustomers.filter((c) => c.service_day === customer.service_day);
       const currentIndex = dayCustomers.findIndex(c => c._id === customer._id);
 
       if (currentIndex <= 0) {
@@ -360,7 +361,7 @@ export default function Clients() {
     setMovingCustomerId(customer._id);
 
     try {
-      const dayCustomers = customers.filter((c) => c.service_day === customer.service_day);
+      const dayCustomers = scheduledCustomers.filter((c) => c.service_day === customer.service_day);
       const currentIndex = dayCustomers.findIndex(c => c._id === customer._id);
 
       if (currentIndex >= dayCustomers.length - 1) {
@@ -385,6 +386,7 @@ export default function Clients() {
 
   const getCustomersByDay = useCallback((day) => {
     return customers
+      .filter((customer) => activePoolCustomerIds.has(Number(customer._id)))
       .filter((c) => c.service_day === day)
       .sort(compareByPotentialOrder)
       .filter((c) => {
@@ -393,23 +395,27 @@ export default function Clients() {
         return c.full_name.toLowerCase().includes(query) ||
           c.address.toLowerCase().includes(query);
       });
-  }, [customers, searchQuery]);
+  }, [activePoolCustomerIds, customers, searchQuery]);
+
+  const scheduledCustomers = useMemo(() => (
+    customers.filter((customer) => activePoolCustomerIds.has(Number(customer._id)))
+  ), [activePoolCustomerIds, customers]);
 
   const customerCounts = useMemo(() => {
     const counts = {};
-    customers.forEach(c => {
+    scheduledCustomers.forEach(c => {
       counts[c.service_day] = (counts[c.service_day] || 0) + 1;
     });
     return counts;
-  }, [customers]);
+  }, [scheduledCustomers]);
 
   const orphanedCustomers = useMemo(() => {
-    return customers.filter(c => !daysOfWeek.includes(c.service_day));
-  }, [customers, daysOfWeek]);
+    return scheduledCustomers.filter(c => !daysOfWeek.includes(c.service_day));
+  }, [scheduledCustomers, daysOfWeek]);
 
   const visibleCustomerCount = useMemo(() => {
-    return customers.filter(c => daysOfWeek.includes(c.service_day)).length;
-  }, [customers, daysOfWeek]);
+    return scheduledCustomers.filter(c => daysOfWeek.includes(c.service_day)).length;
+  }, [scheduledCustomers, daysOfWeek]);
   if (loading) {
     return (
       <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">

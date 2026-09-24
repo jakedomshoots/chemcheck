@@ -7,6 +7,20 @@ const withAlias = <T extends { id?: number }>(record: T | undefined) => (
   record ? { ...record, _id: record.id } : record
 );
 
+export function getActivePoolCustomerIds(pools: Pool[]): Set<number> {
+  return new Set(
+    pools
+      .filter((pool) => pool.active === true)
+      .map((pool) => Number(pool.customer_id))
+      .filter((customerId) => Number.isFinite(customerId) && customerId > 0),
+  );
+}
+
+export function useActivePoolCustomerIds() {
+  const pools = useLiveQuery(() => db.pools.toArray(), [], []);
+  return useMemo(() => getActivePoolCustomerIds(pools), [pools]);
+}
+
 export function usePoolsByCustomer(customerId?: number) {
   const pools = useLiveQuery(
     () => customerId ? db.pools.where('customer_id').equals(customerId).toArray() : [],
