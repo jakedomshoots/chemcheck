@@ -477,13 +477,25 @@ class UserManager {
       };
 
       const users = this.getStoredUsers();
-      const existingUser = users.find(u => u.email === userEmail || u.id === user.id);
+      const normalizedUserEmail = userEmail.trim().toLowerCase();
+      const existingUserIndex = users.findIndex(u =>
+        u.email.trim().toLowerCase() === normalizedUserEmail || u.id === user.id
+      );
 
-      if (!existingUser) {
+      if (existingUserIndex === -1) {
         users.push(user);
         localStorage.setItem('chemcheck_users', JSON.stringify(users));
       } else {
-        user = existingUser;
+        // The authenticated cloud tenant is authoritative. Rebind an existing
+        // same-email local profile that may point at an orphan setup business.
+        user = {
+          ...users[existingUserIndex],
+          email: userEmail,
+          businessId: business.id,
+          isActive: true,
+        };
+        users[existingUserIndex] = user;
+        localStorage.setItem('chemcheck_users', JSON.stringify(users));
       }
 
       business.ownerId = user.id;
