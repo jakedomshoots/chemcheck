@@ -6,11 +6,13 @@ import { BrowserRouter } from 'react-router-dom';
 // Mock stable data
 const mockUser = { email: 'test@example.com' };
 const mockNotes = [
-    { _id: 'n1', title: 'Test Note 1', content: 'Test content', priority: 'high', completed: false, customer_id: 'c1', category: 'General' }
+    { _id: 'n1', title: 'Test Note 1', content: 'Test content', priority: 'high', completed: false, customer_id: 1, category: 'General' }
 ];
 const mockCustomers = [
-    { _id: 'c1', full_name: 'Alice Smith' }
+    { _id: 1, full_name: 'Alice Smith', service_day: 'Monday' },
+    { _id: 2, full_name: 'Historical Customer', service_day: 'Tuesday' },
 ];
+const mockActivePoolCustomerIds = new Set([1]);
 const mockCreateNote = vi.fn();
 const mockUpdateNote = vi.fn();
 const mockRemoveNote = vi.fn();
@@ -20,6 +22,7 @@ vi.mock('@/api/convexHooks', () => ({
     useCurrentUser: () => mockUser,
     useNotes: () => mockNotes,
     useCustomersFilter: () => mockCustomers, // Notes uses useCustomersFilter? Let's check.
+    useActivePoolCustomerIds: () => mockActivePoolCustomerIds,
     useNoteCreate: () => mockCreateNote,
     useNoteUpdate: () => mockUpdateNote,
     useNoteDelete: () => mockRemoveNote,
@@ -68,5 +71,12 @@ describe('Notes Page', () => {
             // If not found, component may render differently - check title exists instead
             expect(screen.getByText('Test Note 1')).toBeInTheDocument();
         }
+    });
+
+    it('counts only customers with active pools in the annual filter checklist', () => {
+        render(<BrowserRouter><Notes /></BrowserRouter>);
+
+        expect(screen.getByLabelText('0 of 1 filters cleaned')).toBeInTheDocument();
+        expect(screen.queryByLabelText('0 of 2 filters cleaned')).not.toBeInTheDocument();
     });
 });

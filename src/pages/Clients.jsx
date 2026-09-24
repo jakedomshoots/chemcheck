@@ -333,7 +333,7 @@ export default function Clients() {
     setMovingCustomerId(customer._id);
 
     try {
-      const dayCustomers = scheduledCustomers.filter((c) => c.service_day === customer.service_day);
+      const dayCustomers = activePoolCustomers.filter((c) => c.service_day === customer.service_day);
       const currentIndex = dayCustomers.findIndex(c => c._id === customer._id);
 
       if (currentIndex <= 0) {
@@ -361,7 +361,7 @@ export default function Clients() {
     setMovingCustomerId(customer._id);
 
     try {
-      const dayCustomers = scheduledCustomers.filter((c) => c.service_day === customer.service_day);
+      const dayCustomers = activePoolCustomers.filter((c) => c.service_day === customer.service_day);
       const currentIndex = dayCustomers.findIndex(c => c._id === customer._id);
 
       if (currentIndex >= dayCustomers.length - 1) {
@@ -397,25 +397,25 @@ export default function Clients() {
       });
   }, [activePoolCustomerIds, customers, searchQuery]);
 
-  const scheduledCustomers = useMemo(() => (
+  const activePoolCustomers = useMemo(() => (
     customers.filter((customer) => activePoolCustomerIds.has(Number(customer._id)))
   ), [activePoolCustomerIds, customers]);
 
   const customerCounts = useMemo(() => {
     const counts = {};
-    scheduledCustomers.forEach(c => {
+    activePoolCustomers.forEach(c => {
       counts[c.service_day] = (counts[c.service_day] || 0) + 1;
     });
     return counts;
-  }, [scheduledCustomers]);
+  }, [activePoolCustomers]);
 
   const orphanedCustomers = useMemo(() => {
-    return scheduledCustomers.filter(c => !daysOfWeek.includes(c.service_day));
-  }, [scheduledCustomers, daysOfWeek]);
+    return activePoolCustomers.filter(c => !daysOfWeek.includes(c.service_day));
+  }, [activePoolCustomers, daysOfWeek]);
 
   const visibleCustomerCount = useMemo(() => {
-    return scheduledCustomers.filter(c => daysOfWeek.includes(c.service_day)).length;
-  }, [scheduledCustomers, daysOfWeek]);
+    return activePoolCustomers.filter(c => daysOfWeek.includes(c.service_day)).length;
+  }, [activePoolCustomers, daysOfWeek]);
   if (loading) {
     return (
       <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
@@ -635,7 +635,7 @@ export default function Clients() {
       </Tabs>
       ) : (
         <ClientDirectory
-          customers={customers}
+          customers={activePoolCustomers}
           searchQuery={searchQuery}
           onOpen={handleOpenCustomer}
         />

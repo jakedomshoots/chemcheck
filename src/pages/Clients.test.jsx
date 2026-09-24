@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 // Mock stable data and functions
 let mockCustomers = [];
+let mockActivePoolCustomerIds = { has: () => true };
 const mockUpdateCustomer = vi.fn();
 const mockDeleteCustomer = vi.fn();
 const mockUser = { email: 'test@example.com' };
@@ -15,9 +16,8 @@ const setMockCustomers = (customers) => {
 
 // Mock hooks
 vi.mock('@/api/convexHooks', () => {
-    const activePoolCustomerIds = { has: () => true };
     return ({
-    useActivePoolCustomerIds: () => activePoolCustomerIds,
+    useActivePoolCustomerIds: () => mockActivePoolCustomerIds,
     useCurrentUser: () => mockUser,
     useCustomersFilter: () => mockCustomers,
     useCustomerUpdate: () => mockUpdateCustomer,
@@ -74,6 +74,7 @@ vi.mock('@/components/ui/tabs', () => ({
 
 describe('Clients Page', () => {
     beforeEach(() => {
+      mockActivePoolCustomerIds = { has: () => true };
       mockUpdateCustomer.mockResolvedValue(undefined);
       mockUpdateCustomer.mockClear();
       setMockCustomers([
@@ -129,6 +130,20 @@ describe('Clients Page', () => {
         expect(screen.queryByRole('button', { name: /Reorder/i })).not.toBeInTheDocument();
         expect(screen.getByTestId('client-directory')).toBeInTheDocument();
         expect(screen.getByPlaceholderText('Search by name, phone, or address...')).toBeInTheDocument();
+    });
+
+    it('excludes historical customers without an active pool from Directory', () => {
+        mockActivePoolCustomerIds = new Set([1]);
+        setMockCustomers([
+          { _id: 1, full_name: 'Active Customer', address: '123 Active St', service_day: 'Monday', sort_order: 0 },
+          { _id: 2, full_name: 'Historical Customer', address: '456 History Ave', service_day: 'Tuesday', sort_order: 0 },
+        ]);
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+
+        fireEvent.click(screen.getByRole('tab', { name: 'Directory' }));
+
+        expect(screen.getByText('Active Customer')).toBeInTheDocument();
+        expect(screen.queryByText('Historical Customer')).not.toBeInTheDocument();
     });
 
     it('searches phone numbers while in Directory mode', () => {

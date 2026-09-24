@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from "react";
-import { useNotes, useCustomersFilter, useCurrentUser, useNoteCreate, useNoteUpdate, useNoteDelete } from "@/api/convexHooks";
+import { useActivePoolCustomerIds, useNotes, useCustomersFilter, useCurrentUser, useNoteCreate, useNoteUpdate, useNoteDelete } from "@/api/convexHooks";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Circle, Trash2, ChevronDown, AlertCircle } from "lucide-react";
 import { PoolIcon, IconBadge } from "@/components/ui/iconography";
@@ -49,6 +49,7 @@ export default function Notes() {
 
   const allNotes = useNotes("-created_date");
   const allCustomers = useCustomersFilter({ created_by: user.email });
+  const activePoolCustomerIds = useActivePoolCustomerIds();
   const createNote = useNoteCreate();
   const updateNote = useNoteUpdate();
   const deleteNoteMutation = useNoteDelete();
@@ -132,6 +133,10 @@ export default function Notes() {
 
   const activeCount = notes.filter(n => !n.completed).length;
   const completedCount = notes.filter(n => n.completed).length;
+  const activePoolCustomers = useMemo(
+    () => customers.filter((customer) => activePoolCustomerIds.has(Number(customer._id))),
+    [activePoolCustomerIds, customers]
+  );
 
   if (loading) {
     return (
@@ -418,7 +423,7 @@ export default function Notes() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <FilterMaintenanceSection customers={customers} />
+      <FilterMaintenanceSection customers={activePoolCustomers} />
       <SaltCellLogSection customers={customers} />
     </main>
   );
