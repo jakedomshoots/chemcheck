@@ -130,7 +130,7 @@ Smoke test the TestFlight build on a physical iPhone before App Review.
 - App category, age rating, copyright, support URL, marketing URL, privacy policy URL, and terms URL are filled.
 - App Privacy answers match the privacy policy and native privacy manifest.
 - Reviewer account is active and documented in App Review notes.
-- Billing decision is settled for iOS. The current parked shell blocks Stripe checkout, Stripe portal, and subscription cancellation actions in native iOS while keeping PWA pricing/billing unchanged.
+- Billing decision is settled for iOS. The current parked shell blocks web checkout (Square), plan-change, and subscription cancellation actions in native iOS while keeping PWA pricing/billing unchanged.
 - Sign in with Apple is enabled if social/third-party sign-in is exposed.
 - Screenshots match the iOS build.
 - No placeholder content is visible.

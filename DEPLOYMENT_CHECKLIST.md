@@ -7,7 +7,7 @@
 
 ### **Manual Configuration Tasks**
 - [ ] **Configure Clerk Providers** - Add Google/GitHub OAuth in Clerk dashboard
-- [ ] **Configure production environment variables** - Set up Convex, Clerk, Stripe keys
+- [ ] **Configure production environment variables** - Set up Convex, Clerk, Square credentials (see SQUARE_SETUP.md)
 - [ ] **Test data isolation between tenants** - Verify multi-tenant security
 - [ ] **Security Audit** - Full security review and penetration testing
 
@@ -134,7 +134,7 @@
 ## 🚨 **CURRENT BLOCKERS**
 
 1. **Security Audit** - Need professional security review before launch
-2. **Manual Configuration** - Clerk, Stripe, monitoring setup required
+2. **Manual Configuration** - Clerk, Square, monitoring setup required
 3. **User Testing** - Need real pool service companies to test the app
 
 ---
@@ -144,7 +144,7 @@
 ### **✅ COMPLETED CORE FEATURES**
 - Authentication system (Clerk + offline mode)
 - Multi-tenant data isolation
-- Billing and subscriptions (Stripe)
+- Billing and subscriptions (Square)
 - PWA with offline support
 - Push notifications
 - API documentation
@@ -166,7 +166,7 @@
 
 ### **🎯 READY FOR BETA LAUNCH**
 The app has all core functionality and technical infrastructure needed for a production launch. The remaining items are:
-- **Manual configuration** (Clerk OAuth, Stripe keys, env vars)
+- **Manual configuration** (Clerk OAuth, Square credentials, env vars)
 - **Security audit** (professional review recommended)
 - **User acceptance testing** (real pool service companies)
 - **Business/marketing preparation** (landing page, sales materials)

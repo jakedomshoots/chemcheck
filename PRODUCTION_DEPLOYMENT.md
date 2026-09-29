@@ -8,7 +8,7 @@ This guide walks you through deploying ChemCheck to production using Vercel and 
 - Vercel account (https://vercel.com)
 - Convex account (https://convex.dev)
 - Clerk account (https://clerk.com)
-- Stripe account (https://stripe.com) - optional for billing
+- Square Developer account (https://developer.squareup.com) - for billing and customer payments
 
 ## Step 1: Set Up Convex Production
 
@@ -87,7 +87,7 @@ Add these environment variables in Vercel:
 | `VITE_CONVEX_URL` | `https://your-project.convex.cloud` | Convex deployment URL |
 | `VITE_CLERK_PUBLISHABLE_KEY` | `pk_live_xxx` | Clerk publishable key |
 
-Configure Stripe only in Convex, using the variables in `STRIPE_SETUP.md`. Do not add Stripe keys, price IDs, or billing endpoint URLs to Vercel/Vite environment variables.
+Configure Square only in Convex, using the variables in `SQUARE_SETUP.md`. Do not add Square tokens, plan variation IDs, or billing endpoint URLs to Vercel/Vite environment variables.
 
 ### 3.4 Deploy
 
@@ -95,16 +95,14 @@ Click "Deploy" and wait for the build to complete.
 
 ## Step 4: Configure Webhooks
 
-### 4.1 Stripe Webhooks (if using billing)
+### 4.1 Square webhook and OAuth (billing and customer payments)
 
-1. Go to [Stripe Webhooks](https://dashboard.stripe.com/webhooks)
-2. Add endpoint: `https://your-project.convex.site/stripe-webhook`
-3. Select events:
-   - `customer.subscription.created`
-   - `customer.subscription.updated`
-   - `customer.subscription.deleted`
-   - `invoice.payment_succeeded`
-   - `invoice.payment_failed`
+1. In the [Square Developer Console](https://developer.squareup.com/apps), open your application.
+2. Webhooks → add a subscription for `https://your-project.convex.site/square/webhook` with
+   `payment.created`, `payment.updated`, `subscription.created`, `subscription.updated`,
+   `invoice.payment_made`, `invoice.scheduled_charge_failed`, `oauth.authorization.revoked`.
+3. OAuth → redirect URL `https://your-project.convex.site/square/oauth/callback`.
+4. See `SQUARE_SETUP.md` for plans, env vars and sandbox testing.
 
 ### 4.2 Clerk Webhooks (optional)
 
@@ -152,15 +150,22 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxxxx
 ### Billing (Convex environment only)
 
 ```env
-STRIPE_SECRET_KEY=sk_live_xxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxx
+SQUARE_ENVIRONMENT=production
+SQUARE_APPLICATION_ID=sq0idp-xxxxx
+SQUARE_APPLICATION_SECRET=sq0csp-xxxxx
+SQUARE_ACCESS_TOKEN=EAAAxxxxx
+SQUARE_LOCATION_ID=Lxxxxx
+SQUARE_PLATFORM_MERCHANT_ID=MLxxxxx
+SQUARE_WEBHOOK_SIGNATURE_KEY=xxxxx
+SQUARE_WEBHOOK_URL=https://your-project.convex.site/square/webhook
+SQUARE_TOKEN_ENCRYPTION_KEY=<openssl rand -base64 32>
 APP_URL=https://app.chemcheck.app
-STRIPE_STARTER_MONTHLY_PRICE_ID=price_xxxxx
-STRIPE_STARTER_YEARLY_PRICE_ID=price_xxxxx
-STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_xxxxx
-STRIPE_PROFESSIONAL_YEARLY_PRICE_ID=price_xxxxx
-STRIPE_BUSINESS_MONTHLY_PRICE_ID=price_xxxxx
-STRIPE_BUSINESS_YEARLY_PRICE_ID=price_xxxxx
+SQUARE_PLAN_VARIATION_STARTER_MONTHLY=xxxxx
+SQUARE_PLAN_VARIATION_STARTER_ANNUAL=xxxxx
+SQUARE_PLAN_VARIATION_PROFESSIONAL_MONTHLY=xxxxx
+SQUARE_PLAN_VARIATION_PROFESSIONAL_ANNUAL=xxxxx
+SQUARE_PLAN_VARIATION_BUSINESS_MONTHLY=xxxxx
+SQUARE_PLAN_VARIATION_BUSINESS_ANNUAL=xxxxx
 ```
 
 ### Optional (Monitoring)
@@ -216,4 +221,4 @@ VITE_SENTRY_DSN=https://xxxxx@sentry.io/xxxxx
 - [Convex Documentation](https://docs.convex.dev)
 - [Clerk Documentation](https://clerk.com/docs)
 - [Vercel Documentation](https://vercel.com/docs)
-- [Stripe Documentation](https://stripe.com/docs)
+- [Square Developer Documentation](https://developer.squareup.com/docs)

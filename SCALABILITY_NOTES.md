@@ -6,7 +6,7 @@
 - **Impact:** 70% reduction in initial bundle size (1.1MB → 328KB)
 - **How:** React.lazy() for all page components + manual vendor chunks
 - **Result:** Faster initial load, pages load on-demand
-- **Vendor Chunks:** react, radix-ui, charts, forms, dates, clerk, stripe, convex, dexie
+- **Vendor Chunks:** react, radix-ui, charts, forms, dates, clerk, convex, dexie
 
 ### 2. Server-Side Rate Limiting (Implemented)
 - **Impact:** Prevents API abuse

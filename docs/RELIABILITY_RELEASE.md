@@ -1,7 +1,7 @@
 # Reliability release: deploy checklist
 
 This release closes the audit findings (dosing direction, report sending,
-SMS abuse, tenant isolation, delete sync, Stripe routing, cron crashes, and
+SMS abuse, tenant isolation, delete sync, payment routing, cron crashes, and
 more). Most changes deploy with no action. The steps below are required.
 
 ## Before deploying
@@ -15,19 +15,22 @@ more). Most changes deploy with no action. The steps below are required.
    npx convex env set PLAN_LIMIT_EXEMPT_EMAILS "owner@yourbusiness.com"
    ```
 
-2. **Stripe Connect** (customer invoice and deposit payments). Card payments
-   for invoices now go to each pool company's own Stripe account. Until a
-   business connects, sending a payment link returns "Connect your Stripe
-   account in Settings to accept card payments".
-   - Enable Connect (Express) in the Stripe dashboard.
-   - Add a webhook endpoint that listens to **connected accounts** at
-     `https://<deployment>.convex.site/stripe-connect-webhook` for
-     `account.updated`, `checkout.session.completed`, and
-     `checkout.session.async_payment_succeeded`.
-   - `npx convex env set STRIPE_CONNECT_WEBHOOK_SECRET whsec_...`
+2. **Square** (replaces Stripe for subscriptions and customer payments).
+   Card payments for invoices and deposits go to each pool company's own
+   Square account through Square OAuth. Until a business connects, sending a
+   payment link returns "Connect your Square account in Settings to accept
+   card payments". Platform subscriptions are Square subscriptions on the
+   ChemCheck owner's account.
+   - Create the Square application, OAuth redirect URL
+     (`https://<deployment>.convex.site/square/oauth/callback`) and webhook
+     subscription (`https://<deployment>.convex.site/square/webhook`).
+   - Create one subscription plan with six variations and set their ids.
+   - Set the `SQUARE_*` variables, `SQUARE_TOKEN_ENCRYPTION_KEY` and `APP_URL`.
    - Optional: `npx convex env set PLATFORM_FEE_BPS 0` (basis points).
    - Each business connects from Settings → Integrations.
-   See `STRIPE_SETUP.md` step 6.
+   - Existing Stripe subscribers are not migrated automatically; see
+     "Migrating existing Stripe subscribers" in `SQUARE_SETUP.md`.
+   See `SQUARE_SETUP.md` for every step.
 
 3. **Report links** use the configured app origin (`APP_URL`); client-supplied
    base URLs are ignored. Confirm `APP_URL` is set in Convex.

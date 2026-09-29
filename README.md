@@ -59,7 +59,7 @@ the inevitable offline-edit conflicts.
 | UI           | Tailwind CSS + Radix UI                    |
 | Backend      | Convex (real-time database)                |
 | Auth         | Clerk                                      |
-| Billing      | Stripe                                     |
+| Billing      | Square (subscriptions + seller OAuth)      |
 | Local cache  | Dexie (IndexedDB)                          |
 | Mobile       | Capacitor (iOS/Android) + PWA              |
 | Observability| Sentry                                     |
@@ -71,7 +71,7 @@ the inevitable offline-edit conflicts.
 # 1. Install
 npm install
 
-# 2. Configure env (Convex, Clerk, Stripe — see SETUP.md)
+# 2. Configure env (Convex, Clerk, Square — see SETUP.md and SQUARE_SETUP.md)
 cp .env.example .env
 
 # 3. Run dev server
@@ -109,7 +109,7 @@ npm run patch-clerk  # Apply local Clerk patch (post-install)
                     │
                     ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  Clerk (auth) · Stripe (billing) · Sentry (observability)│
+   │  Clerk (auth) · Square (billing) · Sentry (observability)│
    └──────────────────────────────────────────────────────────┘
 ```
 
@@ -148,7 +148,7 @@ chemcheck/
 | [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) | Production deploy runbook     |
 | [STAGING_SETUP.md](./STAGING_SETUP.md)       | Staging environment                  |
 | [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md) | Vercel + Convex deploy details |
-| [STRIPE_SETUP.md](./STRIPE_SETUP.md)         | Billing configuration                |
+| [SQUARE_SETUP.md](./SQUARE_SETUP.md)         | Billing configuration                |
 | [EMAIL_SETUP.md](./EMAIL_SETUP.md)           | Transactional email setup             |
 | [MOBILE_MIGRATION_PLAN.md](./MOBILE_MIGRATION_PLAN.md) | Capacitor migration plan       |
 | [docs/](./docs/)                             | Specs, launch checklists             |

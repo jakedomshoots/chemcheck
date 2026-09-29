@@ -550,17 +550,27 @@ Exceeding limits returns a rate limit error.
 
 ## Webhooks
 
-### Stripe Webhook
+### Square Webhook
 
 ```
-POST /stripe-webhook
+POST /square/webhook
 ```
 
-Handles Stripe subscription events. Configure in Stripe Dashboard.
+Verifies `x-square-hmacsha256-signature` (HMAC-SHA256 over `SQUARE_WEBHOOK_URL` + raw body)
+and processes each `event_id` at most once. Configure in the Square Developer Console.
 
 **Events handled:**
-- `customer.subscription.created`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
-- `invoice.payment_succeeded`
-- `invoice.payment_failed`
+- `payment.created`, `payment.updated` (settle invoices / quote deposits paid on a connected seller account)
+- `subscription.created`, `subscription.updated` (platform subscriptions)
+- `invoice.payment_made`, `invoice.scheduled_charge_failed` (subscription renewals)
+- `oauth.authorization.revoked` (seller disconnected ChemCheck in Square)
+
+### Square OAuth callback
+
+```
+GET /square/oauth/callback
+```
+
+Redirect URL for pool companies connecting their Square seller account.
+
+The legacy `/stripe-webhook` and `/stripe-connect-webhook` routes return `410 Gone`.

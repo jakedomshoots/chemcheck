@@ -54,8 +54,8 @@ Required-reason APIs:
 Current parked-shell position:
 
 - Existing-account/field-operations app.
-- Native iOS pricing page does not initiate Stripe checkout.
-- Native iOS billing dashboard does not open Stripe portal or cancellation actions.
+- Native iOS pricing page does not initiate web checkout (Square).
+- Native iOS billing dashboard does not expose plan-change or cancellation actions.
 - PWA/web billing remains separate from App Store review.
 
 If this changes and native iOS sells digital ChemCheck access, implement Apple In-App Purchase before submission.

@@ -46,11 +46,11 @@ ChemCheck stores operational data locally for offline field use and syncs queued
 
 Before submission, decide and document one of these positions in App Store Connect:
 
-- Existing-account app: iOS users sign in to an account managed outside the app. This is the current parked-shell behavior because native iOS pricing and billing screens do not expose Stripe checkout or portal actions.
+- Existing-account app: iOS users sign in to an account managed outside the app. This is the current parked-shell behavior because native iOS pricing and billing screens do not expose web checkout (Square) or billing-management actions.
 - Real-world services: billing relates to pool service operations, not digital app access.
 - Digital subscription: implement Apple In-App Purchase before review.
 
-The PWA/web app can keep its Stripe pricing path. If native iOS later sells digital ChemCheck access, implement Apple In-App Purchase before review.
+The PWA/web app can keep its Square pricing path. If native iOS later sells digital ChemCheck access, implement Apple In-App Purchase before review.
 
 ## Sign-In Notes
 

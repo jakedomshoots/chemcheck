@@ -35,18 +35,25 @@ VITE_SENTRY_DSN=https://staging-sentry-dsn@sentry.io/staging-project
 
 ## Convex Staging Setup
 
-Set Stripe configuration in the staging Convex deployment, never in Vercel:
+Set Square (sandbox) configuration in the staging Convex deployment, never in Vercel (see `SQUARE_SETUP.md`):
 
 ```bash
-STRIPE_SECRET_KEY=sk_test_staging_stripe_key
-STRIPE_WEBHOOK_SECRET=whsec_staging_webhook_secret
+SQUARE_ENVIRONMENT=sandbox
+SQUARE_APPLICATION_ID=sandbox-sq0idb-staging
+SQUARE_APPLICATION_SECRET=sandbox-sq0csb-staging
+SQUARE_ACCESS_TOKEN=EAAAstaging_sandbox_token
+SQUARE_LOCATION_ID=Lstaging
+SQUARE_PLATFORM_MERCHANT_ID=MLstaging
+SQUARE_WEBHOOK_SIGNATURE_KEY=staging_signature_key
+SQUARE_WEBHOOK_URL=https://staging-deployment.convex.site/square/webhook
+SQUARE_TOKEN_ENCRYPTION_KEY=<openssl rand -base64 32>
 APP_URL=https://staging.chemcheck.app
-STRIPE_STARTER_MONTHLY_PRICE_ID=price_staging_starter_monthly
-STRIPE_STARTER_YEARLY_PRICE_ID=price_staging_starter_yearly
-STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_staging_professional_monthly
-STRIPE_PROFESSIONAL_YEARLY_PRICE_ID=price_staging_professional_yearly
-STRIPE_BUSINESS_MONTHLY_PRICE_ID=price_staging_business_monthly
-STRIPE_BUSINESS_YEARLY_PRICE_ID=price_staging_business_yearly
+SQUARE_PLAN_VARIATION_STARTER_MONTHLY=staging_variation_id
+SQUARE_PLAN_VARIATION_STARTER_ANNUAL=staging_variation_id
+SQUARE_PLAN_VARIATION_PROFESSIONAL_MONTHLY=staging_variation_id
+SQUARE_PLAN_VARIATION_PROFESSIONAL_ANNUAL=staging_variation_id
+SQUARE_PLAN_VARIATION_BUSINESS_MONTHLY=staging_variation_id
+SQUARE_PLAN_VARIATION_BUSINESS_ANNUAL=staging_variation_id
 ```
 
 ### Option 1: Shared Database (Simpler)
@@ -77,15 +84,15 @@ npx convex deploy --prod --config=staging
    - Add same OAuth providers as production
    - Use staging redirect URLs
 
-## Stripe Staging Setup
+## Square Staging Setup
 
-1. **Use Test Mode**:
-   - All Stripe keys should be test keys (`pk_test_...`)
-   - Create test products and prices
-   - Test payments won't charge real cards
+1. **Use the Sandbox**:
+   - Use the Sandbox tab credentials of the Square application (`SQUARE_ENVIRONMENT=sandbox`)
+   - Create sandbox subscription plan variations
+   - Sandbox payments never charge real cards
 
 2. **Test Data**:
-   - Use test card numbers: `4242 4242 4242 4242`
+   - Use Square's sandbox test card: `4111 1111 1111 1111`
    - Any future expiry date and CVC
 
 ## Automated Staging Deployment
@@ -150,7 +157,7 @@ jobs:
 - [ ] Configure Vercel preview environment variables
 - [ ] Set up Convex staging deployment (if using separate DB)
 - [ ] Create Clerk staging application
-- [ ] Configure Stripe test mode
+- [ ] Configure Square sandbox
 - [ ] Test full user flow on staging
 - [ ] Set up monitoring for staging environment
 - [ ] Document staging URLs and access
@@ -161,7 +168,7 @@ Update these with your actual URLs:
 - **Staging App**: https://chemcheck-git-staging-your-username.vercel.app
 - **Convex Dashboard**: https://dashboard.convex.dev (staging project)
 - **Clerk Dashboard**: https://dashboard.clerk.com (staging app)
-- **Stripe Dashboard**: https://dashboard.stripe.com (test mode)
+- **Square Developer Console**: https://developer.squareup.com/apps (Sandbox tab)
 
 ## Best Practices
 
@@ -172,7 +179,7 @@ Update these with your actual URLs:
 
 2. **Testing**:
    - Test all critical user flows
-   - Verify integrations (Stripe, Clerk, Convex)
+   - Verify integrations (Square, Clerk, Convex)
    - Check mobile responsiveness
 
 3. **Security**:

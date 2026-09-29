@@ -16,8 +16,8 @@ This checklist keeps the PWA as the active shipping product while preserving the
 - [x] Chromium E2E passes on an isolated ChemCheck server: `PLAYWRIGHT_PORT=5174 npm run test:e2e -- --project=chromium` reported 31/31 passing tests.
 - [x] Capacitor sync passes: `npm run ios:sync`.
 - [x] Native plist syntax passes: `plutil -lint ios/App/App/Info.plist ios/App/App/PrivacyInfo.xcprivacy`.
-- [x] Native iOS pricing route does not expose Stripe checkout actions.
-- [x] Native iOS billing dashboard does not expose Stripe portal or cancellation actions.
+- [x] Native iOS pricing route does not expose web checkout (Square) actions.
+- [x] Native iOS billing dashboard does not expose plan-change or cancellation actions.
 - [x] Native App-Bound Domains are restricted to known production WebView navigation hosts.
 - [x] Privacy manifest uses Apple required-reason API category names and the app-only UserDefaults reason code.
 
@@ -70,8 +70,8 @@ This checklist keeps the PWA as the active shipping product while preserving the
   - Document any legally required retention exceptions in the privacy policy.
 
 - [x] Gate iOS billing behavior.
-  - The native iOS pricing page no longer exposes Stripe checkout actions.
-  - The native iOS billing dashboard no longer exposes Stripe portal or cancellation actions.
+  - The native iOS pricing page no longer exposes web checkout (Square) actions.
+  - The native iOS billing dashboard no longer exposes plan-change or cancellation actions.
   - PWA/web pricing and billing behavior remains unchanged.
   - Final App Store Connect notes should classify the iOS app as existing-account/field-operations access unless Apple In-App Purchase is added later.
 

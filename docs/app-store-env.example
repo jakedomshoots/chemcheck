@@ -38,19 +38,9 @@ Set `VITE_CONVEX_URL` to the exact production deployment host. This value is req
 
 ## Billing
 
-The parked iOS shell blocks Stripe checkout and Stripe portal actions in native iOS. Keep the PWA/web billing configuration separate from the App Store review decision.
+The parked iOS shell blocks web checkout (Square) and in-app subscription changes/cancellation in native iOS. Keep the PWA/web billing configuration separate from the App Store review decision.
 
-If this build is only for existing ChemCheck accounts, leave Stripe checkout URLs out of the iOS release build:
-
-```bash
-VITE_STRIPE_PUBLISHABLE_KEY=
-VITE_STRIPE_CHECKOUT_URL=
-VITE_STRIPE_PORTAL_URL=
-VITE_STRIPE_CANCEL_URL=
-VITE_STRIPE_STARTER_PRICE_ID=
-VITE_STRIPE_PRO_PRICE_ID=
-VITE_STRIPE_BUSINESS_PRICE_ID=
-```
+Billing is configured only in Convex (see `SQUARE_SETUP.md`); no billing variables belong in the iOS release build.
 
 If native iOS later sells digital ChemCheck access, replace this approach with Apple In-App Purchase before App Review.
 
