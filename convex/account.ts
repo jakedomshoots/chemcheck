@@ -619,6 +619,17 @@ async function deleteGeneralBatch(
         .paginate({ cursor: state.tableCursor ?? null, numItems });
 
       for (const business of page.page) {
+        // Square seller tokens and pending subscription checkouts (a handful of rows per business).
+        for (const table of ["squareSellerAccounts", "squareSubscriptionCheckouts"] as const) {
+          const rows = await ctx.db
+            .query(table)
+            .withIndex("by_business", (q: any) => q.eq("business_id", business._id))
+            .take(50);
+          for (const row of rows) {
+            await ctx.db.delete(row._id);
+            deletedCount += 1;
+          }
+        }
         await ctx.db.delete(business._id);
         deletedCount += 1;
         writesLeft -= 1;
