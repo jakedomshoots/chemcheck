@@ -6,6 +6,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ReportSettingsPanel } from './ReportSettingsPanel';
 
+/**
+ * A save that stays pending until the test resolves it, so every test can let
+ * the save settle (and its state updates flush) before teardown.
+ */
+function deferredSave() {
+  let resolve;
+  const promise = new Promise((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+async function settleSave(save) {
+  save.resolve();
+  await waitFor(() => {
+    expect(screen.getByText('Settings saved successfully!')).toBeInTheDocument();
+  });
+}
+
 describe('ReportSettingsPanel', () => {
   const mockOnClose = vi.fn();
   const mockOnSave = vi.fn();
@@ -183,12 +202,15 @@ describe('ReportSettingsPanel', () => {
           })
         );
       });
+
+      await waitFor(() => {
+        expect(screen.getByText('Settings saved successfully!')).toBeInTheDocument();
+      });
     });
 
     it('shows loading state during save', async () => {
-      mockOnSave.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
-      );
+      const save = deferredSave();
+      mockOnSave.mockImplementation(() => save.promise);
 
       render(<ReportSettingsPanel {...defaultProps} />);
 
@@ -198,6 +220,8 @@ describe('ReportSettingsPanel', () => {
       await waitFor(() => {
         expect(screen.getByText('Saving...')).toBeInTheDocument();
       });
+
+      await settleSave(save);
     });
 
     it('shows success message after save', async () => {
@@ -244,9 +268,8 @@ describe('ReportSettingsPanel', () => {
     });
 
     it('disables buttons during save', async () => {
-      mockOnSave.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
-      );
+      const save = deferredSave();
+      mockOnSave.mockImplementation(() => save.promise);
 
       render(<ReportSettingsPanel {...defaultProps} />);
 
@@ -259,6 +282,8 @@ describe('ReportSettingsPanel', () => {
         expect(saveButton).toBeDisabled();
         expect(cancelButton).toBeDisabled();
       });
+
+      await settleSave(save);
     });
   });
 
@@ -273,9 +298,8 @@ describe('ReportSettingsPanel', () => {
     });
 
     it('does not close during save', async () => {
-      mockOnSave.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
-      );
+      const save = deferredSave();
+      mockOnSave.mockImplementation(() => save.promise);
 
       render(<ReportSettingsPanel {...defaultProps} />);
 
@@ -286,6 +310,8 @@ describe('ReportSettingsPanel', () => {
       fireEvent.click(cancelButton);
 
       expect(mockOnClose).not.toHaveBeenCalled();
+
+      await settleSave(save);
     });
   });
 

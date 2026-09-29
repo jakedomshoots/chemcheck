@@ -3,6 +3,14 @@ import { action, internalMutation, internalQuery, mutation, query } from "./_gen
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
+import { enforceRateLimit } from "./rateLimit";
+import {
+  canAccessCustomer,
+  escapeHtml,
+  normalizeEmailForComparison,
+  resolveCustomerBusiness,
+  sanitizeForSubject,
+} from "./serviceReports";
 
 const VALID_STATUSES = ["queued", "sent", "delivered", "failed"] as const;
 
@@ -20,9 +28,41 @@ function validateStatus(status: string): void {
   }
 }
 
-function toPositiveInt(value: number | undefined, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(1, Math.floor(value as number));
+const MAX_BATCH_LIMIT = 100;
+export const MAX_SMS_MESSAGE_LENGTH = 640;
+const MAX_EMAIL_MESSAGE_LENGTH = 5000;
+const SERVICE_TEXT_HOURLY_CAP = 60;
+const MAX_SCHEDULE_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
+
+export function toPositiveInt(value: number | undefined, fallback: number, max = MAX_BATCH_LIMIT): number {
+  if (!Number.isFinite(value)) return Math.min(fallback, max);
+  return Math.min(max, Math.max(1, Math.floor(value as number)));
+}
+
+/**
+ * Normalize a phone number to E.164 digits (no "+") for comparison.
+ * 10-digit numbers are treated as North American and get a leading "1".
+ */
+export function normalizePhoneForComparison(value: string | undefined | null): string {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length === 10) return `1${digits}`;
+  return digits;
+}
+
+/**
+ * True when `recipient` is one of the customer's phone numbers on file.
+ */
+export function isCustomerPhone(customer: { phone?: string | null } | null | undefined, recipient: string): boolean {
+  const target = normalizePhoneForComparison(recipient);
+  if (target.length < 7 || !customer) return false;
+  const phones = [customer.phone].filter((phone): phone is string => Boolean(phone));
+  return phones.some((phone) => normalizePhoneForComparison(phone) === target);
+}
+
+export function isCustomerEmail(customer: { email?: string | null } | null | undefined, recipient: string): boolean {
+  const target = normalizeEmailForComparison(recipient);
+  if (!target || !customer?.email) return false;
+  return normalizeEmailForComparison(customer.email) === target;
 }
 
 function buildEmailSubject(item: {
@@ -93,6 +133,20 @@ async function sendSmsViaTwilio(recipient: string, message: string): Promise<Del
   }
 }
 
+/**
+ * Build the HTML email body. Subject and message are user-controlled (message
+ * text, payment links, titles), so both are HTML-escaped; links stay plain
+ * text rather than being rendered as anchors.
+ */
+export function buildCommunicationEmailHtml(subject: string, message: string): string {
+  return `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #0f172a;">
+        <h2 style="margin: 0 0 12px 0;">${escapeHtml(subject)}</h2>
+        <p style="margin: 0; white-space: pre-line;">${escapeHtml(message)}</p>
+      </div>
+    `;
+}
+
 async function sendEmailViaMailersend(args: {
   recipient: string;
   message: string;
@@ -103,12 +157,7 @@ async function sendEmailViaMailersend(args: {
     const { apiKey, fromEmail } = requireMailersendConfig();
 
     const textBody = args.message;
-    const htmlBody = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #0f172a;">
-        <h2 style="margin: 0 0 12px 0;">${args.subject}</h2>
-        <p style="margin: 0; white-space: pre-line;">${args.message}</p>
-      </div>
-    `;
+    const htmlBody = buildCommunicationEmailHtml(args.subject, args.message);
 
     const response = await fetchProvider("https://api.mailersend.com/v1/email", {
       method: "POST",
@@ -159,7 +208,46 @@ async function sendEmailViaMailersend(args: {
   }
 }
 
-async function deliverCommunication(item: any, businessName: string): Promise<DeliveryResult> {
+/**
+ * Server-side delivery policy applied to every queued communication, whichever
+ * mutation queued it. Returns an error message when the item must not be sent.
+ * - Message length is capped per channel.
+ * - Free-form service texts may only go to the owning customer's contact
+ *   details. Templated reminders (invoice/quote) keep their explicit
+ *   alternate-recipient support.
+ */
+export function getDeliveryPolicyError(
+  item: { channel?: string; type?: string; recipient: string; message?: string },
+  customer: { phone?: string | null; email?: string | null } | null
+): string | null {
+  const message = item.message || "";
+  const maxLength = item.channel === "sms" ? MAX_SMS_MESSAGE_LENGTH : MAX_EMAIL_MESSAGE_LENGTH;
+  if (message.length > maxLength) {
+    return `Message exceeds the ${maxLength} character limit.`;
+  }
+
+  if (!customer) {
+    return "Recipient customer not found.";
+  }
+
+  if (item.type === "service_text") {
+    const matches = item.channel === "sms"
+      ? isCustomerPhone(customer, item.recipient)
+      : isCustomerEmail(customer, item.recipient);
+    if (!matches) {
+      return "Recipient must match the customer's contact details on file.";
+    }
+  }
+
+  return null;
+}
+
+async function deliverCommunication(item: any, businessName: string, customer: any): Promise<DeliveryResult> {
+  const policyError = getDeliveryPolicyError(item, customer);
+  if (policyError) {
+    return { success: false, status: "failed", error: policyError };
+  }
+
   if (item.channel === "sms") {
     let recipient: string | undefined;
     try {
@@ -204,7 +292,7 @@ async function deliverCommunication(item: any, businessName: string): Promise<De
       recipient,
       message: item.message || "",
       subject: buildEmailSubject(item),
-      fromName: businessName || "ChemCheck",
+      fromName: sanitizeForSubject(businessName) || "ChemCheck",
     });
   }
 
@@ -245,10 +333,11 @@ export const list = query({
           q.eq("created_by", email).eq("customer_id", args.customer_id)
         );
     } else if (args.status) {
+      const status = args.status;
       query = ctx.db
         .query("communications")
         .withIndex("by_created_by_and_status", (q) =>
-          q.eq("created_by", email).eq("status", args.status)
+          q.eq("created_by", email).eq("status", status)
         );
     } else {
       query = ctx.db
@@ -288,21 +377,61 @@ export const queueServiceText = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    const email = identity.email;
+    if (!email) throw new Error("Not authenticated");
+
     const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer || !(await canAccessCustomer(ctx, customer, email))) {
       throw new Error("Customer not found or access denied");
     }
 
+    if (args.work_order_id) {
+      const workOrder = await ctx.db.get(args.work_order_id);
+      if (!workOrder || workOrder.customer_id !== args.customer_id) {
+        throw new Error("Work order not found or access denied");
+      }
+    }
+
+    // The platform Twilio number may only text the customer's own phone.
+    if (!isCustomerPhone(customer, args.recipient)) {
+      throw new Error("Recipient must be the customer's phone number on file.");
+    }
+    const recipient = validatePhone(customer.phone);
+    if (!recipient) throw new Error("Customer phone number is invalid.");
+
+    const message = args.message.trim();
+    if (!message) throw new Error("Message cannot be empty.");
+    if (message.length > MAX_SMS_MESSAGE_LENGTH) {
+      throw new Error(`Message must be ${MAX_SMS_MESSAGE_LENGTH} characters or fewer.`);
+    }
+
     const now = Date.now();
+    if (
+      args.scheduled_for !== undefined &&
+      (!Number.isFinite(args.scheduled_for) || args.scheduled_for > now + MAX_SCHEDULE_AHEAD_MS)
+    ) {
+      throw new Error("Scheduled time is invalid.");
+    }
+
+    await enforceRateLimit(ctx, email, "communication.sms");
+    const recentServiceTexts = await ctx.db
+      .query("communications")
+      .withIndex("by_created_by", (q) => q.eq("created_by", email).gt("_creationTime", now - 60 * 60 * 1000))
+      .filter((q) => q.eq(q.field("type"), "service_text"))
+      .take(SERVICE_TEXT_HOURLY_CAP);
+    if (recentServiceTexts.length >= SERVICE_TEXT_HOURLY_CAP) {
+      throw new Error("Hourly text message limit reached. Please try again later.");
+    }
+
     return await ctx.db.insert("communications", {
       type: "service_text",
       channel: "sms",
-      recipient: args.recipient,
+      recipient,
       customer_id: args.customer_id,
       work_order_id: args.work_order_id,
-      template_key: args.template_key,
+      template_key: args.template_key?.slice(0, 100),
       status: "queued",
-      message: args.message,
+      message,
       scheduled_for: args.scheduled_for ?? now,
       sent_at: undefined,
       delivered_at: undefined,
@@ -311,7 +440,7 @@ export const queueServiceText = mutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
-      created_by: identity.email!,
+      created_by: email,
       created_at: now,
       updated_at: now,
     });
@@ -397,6 +526,23 @@ export const requeueFailed = mutation({
   },
 });
 
+/**
+ * Load what delivery needs for a queued item: the owning customer (only when
+ * the sender can still access it; the delivery policy rejects items without
+ * one) and the customer's business name for the sender label.
+ */
+async function loadDeliveryContext(ctx: any, item: any, userEmail: string) {
+  const rawCustomer = item.customer_id ? await ctx.db.get(item.customer_id) : null;
+  const customer = rawCustomer && (await canAccessCustomer(ctx, rawCustomer, userEmail)) ? rawCustomer : null;
+  const business = customer ? await resolveCustomerBusiness(ctx, customer) : null;
+
+  return {
+    item,
+    customer: customer ? { phone: customer.phone ?? null, email: customer.email ?? null } : null,
+    business_name: (business?.name as string | undefined) || "ChemCheck",
+  };
+}
+
 export const getForDelivery = internalQuery({
   args: {
     id: v.id("communications"),
@@ -408,15 +554,7 @@ export const getForDelivery = internalQuery({
       throw new Error("Communication record not found or access denied");
     }
 
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
-      .first();
-
-    return {
-      item,
-      business_name: business?.name || "ChemCheck",
-    };
+    return await loadDeliveryContext(ctx, item, args.user_email);
   },
 });
 
@@ -439,19 +577,12 @@ export const listQueuedForDelivery = internalQuery({
       .order("asc")
       .take(limit * 4);
 
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
-      .first();
-
-    return queued
+    const due = queued
       .filter((item) => !item.scheduled_for || item.scheduled_for <= now)
       .sort((a, b) => a.created_at - b.created_at)
-      .slice(0, limit)
-      .map((item) => ({
-        item,
-        business_name: business?.name || "ChemCheck",
-      }));
+      .slice(0, limit);
+
+    return await Promise.all(due.map((item) => loadDeliveryContext(ctx, item, args.user_email)));
   },
 });
 
@@ -515,7 +646,7 @@ export const deliver = action({
       };
     }
 
-    const result = await deliverCommunication(item, businessName);
+    const result = await deliverCommunication(item, businessName, payload.customer);
 
     await ctx.runMutation(internal.communications.recordDeliveryAttempt, {
       id: item._id,
@@ -555,7 +686,7 @@ export const deliverQueued = action({
 
     for (const entry of queued) {
       const item = entry.item;
-      const result = await deliverCommunication(item, entry.business_name);
+      const result = await deliverCommunication(item, entry.business_name, entry.customer);
 
       await ctx.runMutation(internal.communications.recordDeliveryAttempt, {
         id: item._id,
