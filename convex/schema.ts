@@ -240,6 +240,13 @@ export default defineSchema({
         }))),
       })),
     }),
+    // Stripe Connect (Express) account that receives this business's customer
+    // payments. Written only by server code (convex/stripeConnect.ts).
+    stripe_account_id: v.optional(v.string()),
+    stripe_charges_enabled: v.optional(v.boolean()),
+    stripe_payouts_enabled: v.optional(v.boolean()),
+    stripe_details_submitted: v.optional(v.boolean()),
+    stripe_connect_updated_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
   })

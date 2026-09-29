@@ -83,6 +83,7 @@ import {
   formatStorageBytes,
 } from '@/lib/proof-of-service';
 import { BottomNavigationSettings } from '@/components/settings/BottomNavigationSettings';
+import { StripeConnectCard } from '@/components/billing/StripeConnectCard';
 
 function AppearanceSection() {
   const [theme, setThemeState] = useState(() => getTheme());
@@ -1314,6 +1315,8 @@ export default function Settings() {
                     Billing and customer messages use server-side Convex environment variables. Secrets are never stored in ChemCheck or sent to this device.
                   </p>
                 </div>
+
+                <StripeConnectCard />
 
                 {!providerStatus ? (
                   <div className="rounded-lg border border-line p-4 text-sm text-ink-secondary">Loading provider status...</div>

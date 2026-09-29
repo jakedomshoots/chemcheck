@@ -86,10 +86,49 @@ This guide walks you through setting up Stripe for ChemCheck billing.
 2. Set default trial period to 14 days
 3. Or configure per-product trial periods
 
+## Step 6: Stripe Connect for Customer Payments (Required for invoice/deposit links)
+
+Invoice and quote-deposit payments belong to each pool company, not to ChemCheck.
+They are created as **direct charges on the pool company's Stripe Connect Express
+account** (`Stripe-Account: acct_...` header). ChemCheck's platform account only
+collects its own subscription revenue plus an optional application fee.
+
+**Why Express + Account Links:** Stripe hosts onboarding/KYC and a lightweight
+payouts dashboard, pool companies do not need an existing Stripe account, and no
+OAuth client is required. (Standard accounts would need OAuth and give ChemCheck
+less control of the flow.)
+
+### Platform setup (one time, ChemCheck owner)
+1. Enable Connect: [Connect settings](https://dashboard.stripe.com/settings/connect) → choose **Express**, complete the platform profile, and set your branding (name, icon, color) for the hosted onboarding.
+2. Set **Connect → Settings → Onboarding options** redirect domain to your `APP_URL` origin.
+3. Add a second webhook endpoint at [Webhooks](https://dashboard.stripe.com/webhooks) with **"Listen to events on Connected accounts"** selected:
+   - URL: `https://your-deployment.convex.site/stripe-connect-webhook`
+   - Events: `account.updated`, `checkout.session.completed`, `checkout.session.async_payment_succeeded`
+4. Copy that endpoint's signing secret (different from the platform endpoint's) into Convex:
+   ```
+   npx convex env set STRIPE_CONNECT_WEBHOOK_SECRET whsec_xxxxx
+   ```
+5. Optional platform fee, in basis points (100 = 1%, default 0 = no fee). Applied as `payment_intent_data[application_fee_amount]`, rounded down:
+   ```
+   npx convex env set PLATFORM_FEE_BPS 0
+   ```
+
+### Pool company flow
+- **Settings → Integrations → Customer card payments** (owners/admins only): *Connect Stripe* creates the Express account (idempotent per business) and redirects to Stripe onboarding. Stripe returns to `/settings?stripe_connect=return#integrations` (or `refresh` if the link expired) and the card refreshes the account status.
+- Until the connected account has `charges_enabled`, sending a Stripe invoice or deposit link fails with *"Connect your Stripe account in Settings to accept card payments"*. ChemCheck never falls back to charging on the platform account.
+- Payment confirmation: the Connect webhook marks the invoice/deposit paid only if the event's `account` matches the business that owns the record and the paid `amount_total`/`currency` equal the record's amount. The `/workorders?stripe_payment=...` return page also re-verifies the session on the connected account.
+- Links created before Connect (on the platform account) are never reused; resending creates a new connected-account session. Old platform sessions can still be synced by `session_id` and are confirmed by the existing `/stripe-webhook` endpoint.
+
+### Testing Connect locally
+```bash
+stripe listen --forward-connect-to localhost:3000/stripe-connect-webhook
+```
+Use Stripe's test onboarding values (e.g. SSN `000-00-0000`, test bank `000123456789`) to reach `charges_enabled` in test mode.
+
 ## Testing
 
 ### Invoice and Deposit Payment Links
-- ChemCheck now creates Stripe Checkout links for:
+- ChemCheck now creates Stripe Checkout links (on the pool company's connected account, see Step 6) for:
   - Customer invoice payment (`payment_type=invoice`)
   - Quote deposit payment (`payment_type=quote_deposit`)
 - Success redirects include `session_id` and return to:
@@ -131,6 +170,8 @@ stripe listen --forward-to localhost:3000/stripe-webhook
 # Backend (Convex)
 STRIPE_SECRET_KEY=sk_live_xxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxx
+STRIPE_CONNECT_WEBHOOK_SECRET=whsec_xxxxx   # "Connected accounts" endpoint /stripe-connect-webhook
+PLATFORM_FEE_BPS=0                          # optional application fee, basis points
 APP_URL=https://app.chemcheck.app
 STRIPE_STARTER_MONTHLY_PRICE_ID=price_xxxxx
 STRIPE_STARTER_YEARLY_PRICE_ID=price_xxxxx
