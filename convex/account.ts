@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, internalMutation } from "./_generated/server";
+import { action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
@@ -933,24 +933,47 @@ function stripInternalFields(record: any): Record<string, unknown> {
   return rest;
 }
 
+const EXPORT_FILE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Internal query wrapper: actions have no ctx.db, so exportUserData reads the
+ * user's data through this query.
+ */
+export const collectUserExportDataInternal = internalQuery({
+  args: { userEmail: v.string() },
+  handler: async (ctx, args) => {
+    return await collectUserExportData(ctx, args.userEmail);
+  },
+});
+
+/**
+ * Deletes a temporary GDPR export file. Scheduled by exportUserData so export
+ * files do not linger in storage.
+ */
+export const deleteExportFile = internalMutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const metadata = await ctx.db.system.get(args.storageId);
+    if (metadata) {
+      await ctx.storage.delete(args.storageId);
+    }
+    return null;
+  },
+});
+
 async function uploadExportToStorage(
   ctx: any,
   payload: Record<string, unknown>
 ): Promise<{ url: string; filename: string }> {
-  const uploadUrl = await ctx.storage.generateUploadUrl();
   const json = JSON.stringify(payload, null, 2);
+  const storageId: Id<"_storage"> = await ctx.storage.store(
+    new Blob([json], { type: "application/json" })
+  );
 
-  const uploadResponse = await fetch(uploadUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: json,
-  });
+  // The export contains personal data: always schedule cleanup, even if the
+  // URL cannot be generated below.
+  await ctx.scheduler.runAfter(EXPORT_FILE_TTL_MS, internal.account.deleteExportFile, { storageId });
 
-  if (!uploadResponse.ok) {
-    throw new Error(`Failed to upload export to storage: ${uploadResponse.status}`);
-  }
-
-  const { storageId } = await uploadResponse.json();
   const url = await ctx.storage.getUrl(storageId);
   if (!url) {
     throw new Error("Failed to generate export download URL");
@@ -966,7 +989,7 @@ async function uploadExportToStorage(
  *
  * For small accounts the full payload is returned inline. For accounts whose
  * data would exceed Convex action response limits, the export is written to a
- * temporary storage URL and the URL is returned instead.
+ * temporary storage URL (deleted after 24 hours) and the URL is returned instead.
  */
 export const exportUserData = action({
   args: {},
@@ -980,7 +1003,11 @@ export const exportUserData = action({
     }
 
     const userEmail = identity.email;
-    const { data, truncated, totalRecords } = await collectUserExportData(ctx, userEmail);
+    const { data, truncated, totalRecords }: {
+      data: Record<string, unknown>;
+      truncated: boolean;
+      totalRecords: number;
+    } = await ctx.runQuery(internal.account.collectUserExportDataInternal, { userEmail });
 
     // If the dataset is large or any table hit the batch cap, stream it through
     // storage so the browser can download it without hitting action size limits.

@@ -15,15 +15,96 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
+import { enforceRateLimit } from "./rateLimit";
 
 export const REPORT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Neutral customer-facing fallback used when a business has not set its name. */
+export const DEFAULT_BUSINESS_NAME = "Your pool service provider";
 
 export function isReportExpired(expiresAt: number | undefined, now = Date.now()): boolean {
   return expiresAt === undefined || now >= expiresAt;
 }
 
+export function normalizeEmailForComparison(email: unknown): string {
+  return String(email || "").trim().toLowerCase();
+}
+
 /**
- * Helper: Verify service log ownership
+ * A team member only counts once their membership is active. Newer rows may
+ * carry a `status` ('pending' | 'active'); legacy rows only have `is_active`.
+ */
+export function isActiveTeamMember(member: any): boolean {
+  return Boolean(
+    member &&
+      member.is_active === true &&
+      (member.status === undefined || member.status === "active")
+  );
+}
+
+/**
+ * Resolve the business that owns a customer: prefer the customer's
+ * business_id, falling back to the business owned by the customer's creator
+ * for legacy rows that predate multi-tenant support.
+ * Uses ctx.db, so only call it from queries/mutations.
+ */
+export async function resolveCustomerBusiness(ctx: any, customer: any): Promise<any | null> {
+  if (!customer) return null;
+
+  if (customer.business_id) {
+    const businessId = ctx.db.normalizeId("businesses", String(customer.business_id));
+    if (businessId) {
+      const business = await ctx.db.get(businessId);
+      if (business) return business;
+    }
+  }
+
+  if (!customer.created_by) return null;
+  return await ctx.db
+    .query("businesses")
+    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", customer.created_by))
+    .first();
+}
+
+/**
+ * Customer access rule shared by report and communication endpoints: the
+ * creator, the owner of the customer's business, or an active team member of
+ * that business may act on the customer.
+ * Uses ctx.db, so only call it from queries/mutations.
+ */
+export async function canAccessCustomer(
+  ctx: any,
+  customer: any,
+  email: string | undefined | null
+): Promise<boolean> {
+  const normalizedEmail = normalizeEmailForComparison(email);
+  if (!customer || !normalizedEmail) return false;
+
+  if (normalizeEmailForComparison(customer.created_by) === normalizedEmail) {
+    return true;
+  }
+
+  const business = await resolveCustomerBusiness(ctx, customer);
+  if (!business) return false;
+
+  if (normalizeEmailForComparison(business.owner_email) === normalizedEmail) {
+    return true;
+  }
+
+  const members = await ctx.db
+    .query("team_members")
+    .withIndex("by_business", (q: any) => q.eq("business_id", business._id))
+    .collect();
+
+  return members.some(
+    (member: any) =>
+      normalizeEmailForComparison(member.user_email) === normalizedEmail && isActiveTeamMember(member)
+  );
+}
+
+/**
+ * Helper: Verify the caller may access the customer behind a service log.
+ * Uses ctx.db, so only call it from queries/mutations (never actions).
  */
 async function verifyServiceLogOwnership(
   ctx: any,
@@ -36,7 +117,7 @@ async function verifyServiceLogOwnership(
   }
 
   const customer = await ctx.db.get(serviceLog.customer_id);
-  if (!customer || customer.created_by !== userEmail) {
+  if (!customer || !(await canAccessCustomer(ctx, customer, userEmail))) {
     throw new Error("Access denied");
   }
 
@@ -100,7 +181,32 @@ function isLocalhostBaseUrl(url: string): boolean {
   }
 }
 
-function resolveReportBaseUrl(clientBaseUrl?: string, envBaseUrl?: string): string | null {
+const MAX_CUSTOM_NOTE_LENGTH = 2000;
+
+/**
+ * Report emails may only go to the customer's email on file. A client-supplied
+ * override is accepted only when it matches that address (case-insensitive),
+ * so the endpoint cannot be used to mail arbitrary recipients.
+ */
+export function resolveReportRecipientEmail(
+  customerEmail: string | undefined | null,
+  override?: string | null
+): string | null {
+  const onFile = customerEmail?.trim();
+  if (!onFile) return null;
+  const requested = override?.trim();
+  if (requested && normalizeEmailForComparison(requested) !== normalizeEmailForComparison(onFile)) {
+    return null;
+  }
+  return onFile;
+}
+
+/**
+ * Report links always point at the configured app origin (APP_URL). A client
+ * origin is only honoured for localhost development when APP_URL is unset, so
+ * callers cannot inject links to arbitrary (phishing) hosts.
+ */
+export function resolveReportBaseUrl(clientBaseUrl?: string, envBaseUrl?: string): string | null {
   const normalizedClientBase = normalizeReportBaseUrl(clientBaseUrl);
   const normalizedEnvBase = normalizeReportBaseUrl(envBaseUrl);
 
@@ -256,7 +362,7 @@ export const cleanupExpiredReportsAndLogs = internalMutation({
     while (true) {
       const expiredReports = await ctx.db
         .query("serviceReports")
-        .withIndex("by_expires_at", (q) => q.lt(q.field("expires_at"), now))
+        .withIndex("by_expires_at", (q) => q.lt("expires_at", now))
         .take(BATCH_SIZE);
 
       if (expiredReports.length === 0) break;
@@ -272,7 +378,7 @@ export const cleanupExpiredReportsAndLogs = internalMutation({
     while (true) {
       const oldLogs = await ctx.db
         .query("reportAccessLogs")
-        .withIndex("by_accessed_at", (q) => q.lt(q.field("accessed_at"), cutoff))
+        .withIndex("by_accessed_at", (q) => q.lt("accessed_at", cutoff))
         .take(BATCH_SIZE);
 
       if (oldLogs.length === 0) break;
@@ -319,15 +425,25 @@ export const sendReport = action({
     if (!identity?.email) throw new Error("Not authenticated");
 
     const deliveryMethod = args.delivery_method || 'sms';
-    const customNote = args.custom_note;
-    const poolStatusOverride = args.pool_status as "good" | "needs_attention" | undefined;
+    if (deliveryMethod !== 'sms' && deliveryMethod !== 'email') {
+      return { success: false, error: "Unsupported delivery method." };
+    }
+    const customNote = args.custom_note?.slice(0, MAX_CUSTOM_NOTE_LENGTH);
+    const poolStatusOverride =
+      args.pool_status === "good" || args.pool_status === "needs_attention" ? args.pool_status : undefined;
     const recipientEmailOverride = args.recipient_email?.trim();
 
-    await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email);
+    // Actions have no ctx.db: verifyServiceLogOwnership (plus the per-user send
+    // rate limit) runs inside an internal mutation.
+    await ctx.runMutation(internal.serviceReports.verifyServiceLogOwnershipForSend, {
+      service_log_id: args.service_log_id,
+      user_email: identity.email,
+    });
 
     // Get the service log and customer data
     const serviceLog = await ctx.runQuery(internal.serviceReports.getServiceLogWithCustomer, {
       service_log_id: args.service_log_id,
+      user_email: identity.email,
     });
 
     if (!serviceLog) {
@@ -345,11 +461,13 @@ export const sendReport = action({
       };
     }
 
-    const resolvedRecipientEmail = recipientEmailOverride || serviceLog.customer.email?.trim();
-    if (deliveryMethod === 'email' && (!resolvedRecipientEmail || resolvedRecipientEmail.length === 0)) {
+    const resolvedRecipientEmail = resolveReportRecipientEmail(serviceLog.customer.email, recipientEmailOverride);
+    if (deliveryMethod === 'email' && !resolvedRecipientEmail) {
       return {
         success: false,
-        error: "No email address on file. Please add an email address to send email reports.",
+        error: recipientEmailOverride && serviceLog.customer.email
+          ? "Recipient email must match the customer's email on file. Please wait for the customer to sync and try again."
+          : "No email address on file. Please add an email address to send email reports.",
       };
     }
 
@@ -383,7 +501,7 @@ export const sendReport = action({
 
     // Determine overall pool status - use override if provided, otherwise calculate from readings
     const overallStatus = poolStatusOverride || determinePoolStatus(serviceLog);
-    const businessName = serviceLog.business?.name || "Dominick Pool Solutions";
+    const businessName = serviceLog.business?.name || DEFAULT_BUSINESS_NAME;
     const serviceDate = formatServiceDate(serviceLog.service_date);
 
     if (deliveryMethod === 'sms') {
@@ -399,7 +517,7 @@ export const sendReport = action({
       return await sendViaEmail(ctx, {
         report,
         customer: serviceLog.customer,
-        recipientEmail: resolvedRecipientEmail,
+        recipientEmail: resolvedRecipientEmail ?? undefined,
         businessName,
         serviceDate,
         overallStatus,
@@ -411,25 +529,39 @@ export const sendReport = action({
 });
 
 /**
+ * Internal mutation used by the sendReport action (actions have no ctx.db):
+ * authorizes the caller for the service log and consumes a per-user send
+ * rate-limit slot. Throws on denial.
+ */
+export const verifyServiceLogOwnershipForSend = internalMutation({
+  args: {
+    service_log_id: v.id("serviceLogs"),
+    user_email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await verifyServiceLogOwnership(ctx, args.service_log_id, args.user_email);
+    await enforceRateLimit(ctx, args.user_email, "report.send");
+    return null;
+  },
+});
+
+/**
  * Internal query to get service log with customer and business data
  * Used by the sendReport action
  */
 export const getServiceLogWithCustomer = internalQuery({
   args: {
     service_log_id: v.id("serviceLogs"),
+    user_email: v.string(),
   },
   handler: async (ctx, args) => {
     const serviceLog = await ctx.db.get(args.service_log_id);
     if (!serviceLog) return null;
 
     const customer = await ctx.db.get(serviceLog.customer_id);
-    if (!customer) return null;
+    if (!customer || !(await canAccessCustomer(ctx, customer, args.user_email))) return null;
 
-    // Get business info for the customer's owner
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", customer.created_by))
-      .first();
+    const business = await resolveCustomerBusiness(ctx, customer);
 
     return {
       ...serviceLog,
@@ -498,7 +630,7 @@ export const getOrCreateReportInternal = internalMutation({
         await ctx.db.patch(existingReport._id, { report_token, expires_at });
         return { ...existingReport, report_token, expires_at, rotated: true };
       }
-      return existingReport;
+      return { ...existingReport, rotated: false };
     }
 
     // Generate unique token with collision checking (consistent with generateUniqueToken)
@@ -529,6 +661,7 @@ export const getOrCreateReportInternal = internalMutation({
       sent_at: undefined as number | undefined,
       sent_to_phone: undefined as string | undefined,
       send_count: undefined as number | undefined,
+      rotated: false,
     };
   },
 });
@@ -602,7 +735,7 @@ export function createSafeEmailFields(params: {
     customerName: escapeHtml(params.customerName || 'Valued Customer'),
     serviceDate: escapeHtml(params.serviceDate || 'Unknown Date'),
     customNote: escapeHtml(params.customNote || ''),
-    businessName: escapeHtml(params.businessName || 'Dominick Pool Solutions'),
+    businessName: escapeHtml(params.businessName || DEFAULT_BUSINESS_NAME),
     reportLink: escapeUrlForHtml(params.reportLink),
   };
 }
@@ -696,7 +829,7 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const safeReportLink = safeFields.reportLink;
 
   // Use provided business name or default (unescaped for text content)
-  const businessName = inputBusinessName || "Dominick Pool Solutions";
+  const businessName = inputBusinessName || DEFAULT_BUSINESS_NAME;
   const footerText = "This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions";
 
   // Subject line: sanitize to prevent email header injection, use unescaped values (plain text)
@@ -1261,148 +1394,320 @@ async function sendViaEmail(
   }
 }
 
-/**
- * Internal mutation to log report access attempts
- * Used for audit trail and security monitoring
- */
-export const logReportAccess = internalMutation({
-  args: {
-    report_token: v.string(),
-    ip_address: v.optional(v.string()),
-    user_agent: v.optional(v.string()),
-    success: v.boolean(),
-    failure_reason: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.insert("reportAccessLogs", {
-      report_token: args.report_token,
-      ip_address: args.ip_address,
-      user_agent: args.user_agent,
-      success: args.success,
-      failure_reason: args.failure_reason,
-      accessed_at: Date.now(),
-    });
-  },
-});
+// ============================================
+// Public report access
+// ============================================
 
-function resolveReportAccessRateLimitKey(
-  ipAddress: string | undefined,
-  reportToken: string
-): string {
-  // Never use a single global key such as the old PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY.
-  // Prefer IP-based limiting, and fall back to a per-token key so a missing IP
-  // cannot exhaust a shared global pool.
-  if (ipAddress && ipAddress.trim().length > 0) {
-    return `report_access:ip:${ipAddress.trim()}`;
-  }
+const REPORT_ACCESS_WINDOW_MS = 60 * 1000; // 1 minute window
+const REPORT_ACCESS_MAX_REQUESTS = 30; // 30 requests per minute per report token
+const REPORT_TOKEN_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_AUDIT_IP_LENGTH = 64;
+const MAX_AUDIT_USER_AGENT_LENGTH = 256;
+
+export type ReportVisibilitySettings = {
+  show_chemical_readings: boolean;
+  show_photos: boolean;
+  show_service_notes: boolean;
+  show_technician_name: boolean;
+  show_service_duration: boolean;
+  show_overall_status: boolean;
+};
+
+export const DEFAULT_REPORT_SETTINGS: ReportVisibilitySettings = {
+  show_chemical_readings: true,
+  show_photos: true,
+  show_service_notes: true,
+  show_technician_name: true,
+  show_service_duration: true,
+  show_overall_status: true,
+};
+
+type ReportPhoto = { id: string; category: string; timestamp: string; url: string | null };
+
+export type PublicReport = {
+  businessName: string;
+  serviceDate: string;
+  technicianName: string | null;
+  customerName: string;
+  chemicalReadings: {
+    ph: string | null;
+    chlorine: string | null;
+    alkalinity: string | null;
+    stabilizer: string | null;
+    salt: number | null;
+  } | null;
+  notes: string | null;
+  overallStatus: "good" | "needs_attention";
+  photos: {
+    before: ReportPhoto[];
+    after: ReportPhoto[];
+  };
+  serviceDuration: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  settings: ReportVisibilitySettings;
+};
+
+export type PublicReportResult = {
+  found: boolean;
+  error?: string;
+  rate_limited?: boolean;
+  failure_reason?: string;
+  report?: PublicReport;
+};
+
+export function isWellFormedReportToken(token: string): boolean {
+  return REPORT_TOKEN_PATTERN.test(token);
+}
+
+/**
+ * The public report limiter is keyed on the report token. It never uses a
+ * single global key (the old PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY) and never
+ * the client-supplied IP, which callers can spoof or rotate freely.
+ */
+export function resolveReportAccessRateLimitKey(reportToken: string): string {
   return `report_access:token:${reportToken}`;
 }
 
 /**
- * Internal query to check rate limit for report access
- * Returns whether access should be allowed based on IP-based rate limiting
+ * Resolve the customer's report settings, defaulting any missing flag to shown.
  */
-export const checkReportAccessRateLimit = internalQuery({
-  args: {
-    ip_address: v.optional(v.string()),
-    report_token: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const key = resolveReportAccessRateLimitKey(args.ip_address, args.report_token);
-    const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute window
-    const maxRequests = 30; // 30 requests per minute per IP
-
-    const existing = await ctx.db
-      .query("rateLimits")
-      .withIndex("by_key", (q) => q.eq("key", key))
-      .first();
-
-    if (!existing) {
-      return { allowed: true, remaining: maxRequests - 1, reset_time: now + windowMs };
-    }
-
-    // Check if window has expired
-    if (now >= existing.reset_time) {
-      return { allowed: true, remaining: maxRequests - 1, reset_time: now + windowMs };
-    }
-
-    // Check if within limit
-    if (existing.count >= maxRequests) {
-      return {
-        allowed: false,
-        remaining: 0,
-        reset_time: existing.reset_time,
-        error: "Too many requests. Please try again in a minute."
-      };
-    }
-
-    return { allowed: true, remaining: maxRequests - existing.count - 1, reset_time: existing.reset_time };
-  },
-});
+export function resolveReportSettings(settings: Partial<ReportVisibilitySettings> | null | undefined): ReportVisibilitySettings {
+  return { ...DEFAULT_REPORT_SETTINGS, ...(settings || {}) };
+}
 
 /**
- * Internal mutation to update rate limit counter for report access
+ * Enforce report visibility settings server-side: hidden sections are removed
+ * from the public payload instead of merely being hidden by the UI.
  */
-export const updateReportAccessRateLimit = internalMutation({
-  args: {
-    ip_address: v.optional(v.string()),
-    report_token: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const key = resolveReportAccessRateLimitKey(args.ip_address, args.report_token);
-    const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute window
+export function applyReportVisibility(report: PublicReport): PublicReport {
+  const settings = resolveReportSettings(report.settings);
+  return {
+    ...report,
+    settings,
+    chemicalReadings: settings.show_chemical_readings ? report.chemicalReadings : null,
+    notes: settings.show_service_notes ? report.notes : null,
+    technicianName: settings.show_technician_name ? report.technicianName : null,
+    photos: settings.show_photos ? report.photos : { before: [], after: [] },
+    serviceDuration: settings.show_service_duration ? report.serviceDuration : null,
+    startTime: settings.show_service_duration ? report.startTime : null,
+    endTime: settings.show_service_duration ? report.endTime : null,
+  };
+}
 
-    const existing = await ctx.db
-      .query("rateLimits")
-      .withIndex("by_key", (q) => q.eq("key", key))
-      .first();
+function truncateOptional(value: string | undefined, maxLength: number): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
 
-    if (!existing || now >= existing.reset_time) {
-      // Create new or reset expired window
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          count: 1,
-          reset_time: now + windowMs,
-          updated_at: now,
-        });
-      } else {
-        await ctx.db.insert("rateLimits", {
-          key,
-          count: 1,
-          reset_time: now + windowMs,
-          created_at: now,
-          updated_at: now,
-        });
-      }
+/**
+ * Check and consume one slot of the per-token limiter in the same mutation,
+ * so the check and increment are atomic. Returns whether access is allowed
+ * and whether this request is the first denial of the window (the only one
+ * that gets audited, to keep denied traffic from writing unbounded rows).
+ */
+async function consumeReportAccessRateLimit(
+  ctx: any,
+  key: string,
+  now: number
+): Promise<{ allowed: boolean; auditDenial: boolean }> {
+  const existing = await ctx.db
+    .query("rateLimits")
+    .withIndex("by_key", (q: any) => q.eq("key", key))
+    .first();
+
+  if (!existing || now >= existing.reset_time) {
+    if (existing) {
+      await ctx.db.patch(existing._id, { count: 1, reset_time: now + REPORT_ACCESS_WINDOW_MS, updated_at: now });
     } else {
-      // Increment counter
-      await ctx.db.patch(existing._id, {
-        count: existing.count + 1,
+      await ctx.db.insert("rateLimits", {
+        key,
+        count: 1,
+        reset_time: now + REPORT_ACCESS_WINDOW_MS,
+        created_at: now,
         updated_at: now,
       });
     }
+    return { allowed: true, auditDenial: false };
+  }
+
+  if (existing.count >= REPORT_ACCESS_MAX_REQUESTS) {
+    if (existing.count === REPORT_ACCESS_MAX_REQUESTS) {
+      await ctx.db.patch(existing._id, { count: existing.count + 1, updated_at: now });
+      return { allowed: false, auditDenial: true };
+    }
+    return { allowed: false, auditDenial: false };
+  }
+
+  await ctx.db.patch(existing._id, { count: existing.count + 1, updated_at: now });
+  return { allowed: true, auditDenial: false };
+}
+
+async function loadPublicReport(ctx: any, report: any, now: number): Promise<PublicReportResult> {
+  // SECURITY: Check token expiration (30 days)
+  if (isReportExpired(report.expires_at, now)) {
+    return {
+      found: false,
+      error: "This report link has expired. Please request a new report from your service provider.",
+      failure_reason: "expired",
+    };
+  }
+
+  const serviceLog = await ctx.db.get(report.service_log_id);
+  if (!serviceLog) {
+    return {
+      found: false,
+      error: "This service report is no longer available.",
+      failure_reason: "service_log_deleted",
+    };
+  }
+
+  const customer = await ctx.db.get(report.customer_id);
+  if (!customer) {
+    return {
+      found: false,
+      error: "This service report is no longer available.",
+      failure_reason: "customer_deleted",
+    };
+  }
+
+  const settings = resolveReportSettings(customer.report_settings);
+  const business = await resolveCustomerBusiness(ctx, customer);
+
+  // Only resolve photo URLs when the customer is allowed to see photos.
+  let beforePhotos: ReportPhoto[] = [];
+  let afterPhotos: ReportPhoto[] = [];
+  if (settings.show_photos) {
+    const photos = await ctx.db
+      .query("servicePhotos")
+      .withIndex("by_service_log", (q: any) => q.eq("service_log_id", report.service_log_id))
+      .collect();
+
+    const photosWithUrls: ReportPhoto[] = await Promise.all(
+      photos.map(async (photo: any) => ({
+        id: photo._id,
+        category: photo.category,
+        timestamp: photo.timestamp,
+        url: (await ctx.storage.getUrl(photo.storage_id)) || null,
+      }))
+    );
+    const validPhotos = photosWithUrls.filter((p) => p.url !== null);
+    beforePhotos = validPhotos.filter((p) => p.category === "before");
+    afterPhotos = validPhotos.filter((p) => p.category === "after");
+  }
+
+  // Derive technician name with safe fallback
+  // If created_by contains '@', use the part before it; otherwise use the full value
+  const technicianName = business?.name || (
+    customer.created_by.includes('@')
+      ? customer.created_by.split('@')[0]
+      : customer.created_by
+  );
+
+  return {
+    found: true,
+    report: applyReportVisibility({
+      businessName: business?.name || DEFAULT_BUSINESS_NAME,
+      serviceDate: serviceLog.service_date,
+      technicianName,
+      customerName: customer.full_name,
+      chemicalReadings: {
+        ph: serviceLog.ph ?? null,
+        chlorine: serviceLog.chlorine ?? null,
+        alkalinity: serviceLog.alkalinity ?? null,
+        stabilizer: serviceLog.stabilizer ?? null,
+        salt: serviceLog.salt ?? null,
+      },
+      notes: serviceLog.notes ?? null,
+      overallStatus: determinePoolStatus(serviceLog),
+      photos: {
+        before: beforePhotos,
+        after: afterPhotos,
+      },
+      serviceDuration: serviceLog.duration_ms ?? null,
+      startTime: serviceLog.start_time ?? null,
+      endTime: serviceLog.end_time ?? null,
+      settings,
+    }),
+  };
+}
+
+const REPORT_NOT_FOUND: PublicReportResult = {
+  found: false,
+  error: "Report not found. The link may be invalid.",
+  failure_reason: "not_found",
+};
+
+/**
+ * Internal mutation behind the public report page. Rate limiting (check and
+ * increment), audit logging and the data read happen in one transaction.
+ * Malformed or unknown tokens return "not found" without writing anything, so
+ * unauthenticated callers cannot create unbounded rows.
+ */
+export const accessReportByToken = internalMutation({
+  args: {
+    token: v.string(),
+    ip_address: v.optional(v.string()),
+    user_agent: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<PublicReportResult> => {
+    const token = args.token.trim();
+    if (!isWellFormedReportToken(token)) {
+      return REPORT_NOT_FOUND;
+    }
+
+    const report = await ctx.db
+      .query("serviceReports")
+      .withIndex("by_token", (q) => q.eq("report_token", token))
+      .first();
+    if (!report) {
+      return REPORT_NOT_FOUND;
+    }
+
+    const now = Date.now();
+    const auditFields = {
+      report_token: token,
+      // Client-supplied and unverified: stored for audit only, never used for limiting.
+      ip_address: truncateOptional(args.ip_address, MAX_AUDIT_IP_LENGTH),
+      user_agent: truncateOptional(args.user_agent, MAX_AUDIT_USER_AGENT_LENGTH),
+      accessed_at: now,
+    };
+
+    const rateLimit = await consumeReportAccessRateLimit(ctx, resolveReportAccessRateLimitKey(token), now);
+    if (!rateLimit.allowed) {
+      if (rateLimit.auditDenial) {
+        await ctx.db.insert("reportAccessLogs", { ...auditFields, success: false, failure_reason: "rate_limited" });
+      }
+      return {
+        found: false,
+        error: "Too many requests. Please try again in a minute.",
+        rate_limited: true,
+      };
+    }
+
+    const result = await loadPublicReport(ctx, report, now);
+    await ctx.db.insert("reportAccessLogs", {
+      ...auditFields,
+      success: result.found,
+      failure_reason: result.found ? undefined : result.failure_reason,
+    });
+    return result;
   },
 });
 
 /**
  * Get a service report by token for the public report page
- * 
+ *
  * This action is PUBLIC (no authentication required) to allow customers
  * to view their service reports via the link sent in SMS.
- * 
+ *
  * SECURITY FEATURES:
- * - Rate limiting: 30 requests per minute per IP
+ * - Rate limiting: 30 requests per minute per report token (atomic)
  * - Token expiration: Reports expire 30 days after creation
- * - Audit logging: All access attempts are logged
- * 
- * Returns all data needed for the public report page:
- * - Service date and technician name
- * - Chemical readings with status indicators
- * - Service notes
- * - Photos grouped by category
- * 
+ * - Audit logging: Access attempts on real reports are logged
+ * - Visibility settings: hidden sections are omitted from the response
+ *
  * Requirements: 3.1
  */
 export const getReportByToken = action({
@@ -1411,219 +1716,11 @@ export const getReportByToken = action({
     ip_address: v.optional(v.string()),
     user_agent: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{
-    found: boolean;
-    error?: string;
-    rate_limited?: boolean;
-    failure_reason?: string;
-    report?: {
-      businessName: string;
-      serviceDate: string;
-      technicianName: string;
-      customerName: string;
-      chemicalReadings: {
-        ph: string | null;
-        chlorine: string | null;
-        alkalinity: string | null;
-        stabilizer: string | null;
-        salt: number | null;
-      };
-      notes: string | null;
-      overallStatus: "good" | "needs_attention";
-      photos: {
-        before: Array<{ id: string; category: string; timestamp: string; url: string | null }>;
-        after: Array<{ id: string; category: string; timestamp: string; url: string | null }>;
-      };
-      serviceDuration: number | null;
-      startTime: string | null;
-      endTime: string | null;
-      settings: {
-        show_chemical_readings: boolean;
-        show_photos: boolean;
-        show_service_notes: boolean;
-        show_technician_name: boolean;
-        show_service_duration: boolean;
-        show_overall_status: boolean;
-      };
-    };
-  }> => {
-    // SECURITY: Check rate limit for this IP/token
-    const rateLimitCheck: { allowed: boolean; remaining: number; reset_time: number; error?: string } =
-      await ctx.runQuery(internal.serviceReports.checkReportAccessRateLimit, {
-        ip_address: args.ip_address,
-        report_token: args.token,
-      });
-
-    if (!rateLimitCheck.allowed) {
-      // Log rate-limited access attempt
-      await ctx.runMutation(internal.serviceReports.logReportAccess, {
-        report_token: args.token,
-        ip_address: args.ip_address,
-        user_agent: args.user_agent,
-        success: false,
-        failure_reason: "rate_limited",
-      });
-
-      return {
-        found: false,
-        error: rateLimitCheck.error || "Too many requests. Please try again later.",
-        rate_limited: true,
-      };
-    }
-
-    // Update rate limit counter
-    await ctx.runMutation(internal.serviceReports.updateReportAccessRateLimit, {
-      ip_address: args.ip_address,
-      report_token: args.token,
-    });
-
-    // Get the report data
-    const result: any = await ctx.runQuery(internal.serviceReports.getReportByTokenInternal, {
+  handler: async (ctx, args): Promise<PublicReportResult> => {
+    return await ctx.runMutation(internal.serviceReports.accessReportByToken, {
       token: args.token,
-    });
-
-    // Log the access attempt
-    await ctx.runMutation(internal.serviceReports.logReportAccess, {
-      report_token: args.token,
       ip_address: args.ip_address,
       user_agent: args.user_agent,
-      success: result.found,
-      failure_reason: result.found ? undefined : result.failure_reason,
     });
-
-    return result;
-  },
-});
-
-/**
- * Internal query to get report data by token
- * Used by the public getReportByToken action
- */
-export const getReportByTokenInternal = internalQuery({
-  args: {
-    token: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // Find report by token
-    const report = await ctx.db
-      .query("serviceReports")
-      .withIndex("by_token", (q) => q.eq("report_token", args.token))
-      .first();
-
-    if (!report) {
-      return {
-        found: false,
-        error: "Report not found. The link may be invalid.",
-        failure_reason: "not_found",
-      };
-    }
-
-    // SECURITY: Check token expiration (30 days)
-    const now = Date.now();
-    if (isReportExpired(report.expires_at, now)) {
-      return {
-        found: false,
-        error: "This report link has expired. Please request a new report from your service provider.",
-        failure_reason: "expired",
-      };
-    }
-
-    // Get service log
-    const serviceLog = await ctx.db.get(report.service_log_id);
-    if (!serviceLog) {
-      return {
-        found: false,
-        error: "This service report is no longer available.",
-        failure_reason: "service_log_deleted",
-      };
-    }
-
-    // Get customer
-    const customer = await ctx.db.get(report.customer_id);
-    if (!customer) {
-      return {
-        found: false,
-        error: "This service report is no longer available.",
-        failure_reason: "customer_deleted",
-      };
-    }
-
-    // Get business info for technician name
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", customer.created_by))
-      .first();
-
-    // Get photos for this service log
-    const photos = await ctx.db
-      .query("servicePhotos")
-      .withIndex("by_service_log", (q) => q.eq("service_log_id", report.service_log_id))
-      .collect();
-
-    // Get URLs for photos
-    const photosWithUrls = await Promise.all(
-      photos.map(async (photo) => {
-        const url = await ctx.storage.getUrl(photo.storage_id);
-        return {
-          id: photo._id,
-          category: photo.category,
-          timestamp: photo.timestamp,
-          url: url || null,
-        };
-      })
-    );
-
-    // Filter out photos with missing URLs
-    const validPhotos = photosWithUrls.filter((p) => p.url !== null);
-
-    // Group photos by category
-    const beforePhotos = validPhotos.filter((p) => p.category === "before");
-    const afterPhotos = validPhotos.filter((p) => p.category === "after");
-
-    // Determine overall pool status
-    const overallStatus = determinePoolStatus(serviceLog);
-
-    // Derive technician name with safe fallback
-    // If created_by contains '@', use the part before it; otherwise use the full value
-    const technicianName = business?.name || (
-      customer.created_by.includes('@')
-        ? customer.created_by.split('@')[0]
-        : customer.created_by
-    );
-
-    return {
-      found: true,
-      report: {
-        businessName: business?.name || "Dominick Pool Solutions",
-        serviceDate: serviceLog.service_date,
-        technicianName,
-        customerName: customer.full_name,
-        chemicalReadings: {
-          ph: serviceLog.ph,
-          chlorine: serviceLog.chlorine,
-          alkalinity: serviceLog.alkalinity,
-          stabilizer: serviceLog.stabilizer,
-          salt: serviceLog.salt,
-        },
-        notes: serviceLog.notes,
-        overallStatus,
-        photos: {
-          before: beforePhotos,
-          after: afterPhotos,
-        },
-        serviceDuration: serviceLog.duration_ms,
-        startTime: serviceLog.start_time,
-        endTime: serviceLog.end_time,
-        // Include customer's report customization settings
-        settings: customer.report_settings || {
-          show_chemical_readings: true,
-          show_photos: true,
-          show_service_notes: true,
-          show_technician_name: true,
-          show_service_duration: true,
-          show_overall_status: true,
-        },
-      },
-    };
   },
 });
