@@ -586,7 +586,14 @@ function WorkOrdersContent() {
   const cloudCustomers = useMemo(() => cloudCustomersData?.customers ?? [], [cloudCustomersData]);
   const customers = localDevMode ? localCustomers : cloudCustomers;
 
-  const teamMembers = useMemo(() => teamMembersData ?? [], [teamMembersData]);
+  // Only accepted, active members can be assigned work; pending invites cannot.
+  const teamMembers = useMemo(
+    () =>
+      (teamMembersData ?? []).filter(
+        (member) => member.is_active === true && (member.status == null || member.status === "active")
+      ),
+    [teamMembersData]
+  );
 
   const workOrders = useMemo(
     () => localDevMode

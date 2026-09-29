@@ -12,6 +12,7 @@ import { v } from "convex/values";
 import { action, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
+import { getAccessContext } from "./access";
 
 export type ProviderName = "stripe" | "mailersend" | "twilio";
 
@@ -229,18 +230,8 @@ export const getStatus = query({
 export const canManageProviders = internalQuery({
   args: { email: v.string() },
   handler: async (ctx, args) => {
-    const ownerBusiness = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.email))
-      .first();
-    if (ownerBusiness) return true;
-
-    const membership = await ctx.db
-      .query("team_members")
-      .withIndex("by_user_email", (q) => q.eq("user_email", args.email))
-      .filter((q) => q.eq(q.field("is_active"), true))
-      .first();
-    return membership?.role === "owner" || membership?.role === "admin";
+    const { role } = await getAccessContext(ctx, args.email);
+    return role === "owner" || role === "admin";
   },
 });
 

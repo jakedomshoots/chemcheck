@@ -18,7 +18,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'business',
     name: 'Business',
     price: 149,
-    features: ['Unlimited team members', 'Unlimited customers', 'Custom reporting', 'Phone & email support', 'API access', 'White-label options', 'Dedicated account manager'],
+    features: ['Unlimited team members', 'Unlimited customers', 'Custom reporting', 'Phone & email support', 'Dedicated account manager'],
     limits: { users: -1, customers: -1 },
   },
 } as const;

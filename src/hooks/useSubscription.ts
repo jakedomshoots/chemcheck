@@ -53,7 +53,9 @@ export function useSubscription(): UseSubscriptionReturn {
 
   const isActive = subscription?.status === 'active' || subscription?.status === 'trialing';
   const isTrialing = subscription?.status === 'trialing';
-  const currentPlan = subscription?.planId ? SUBSCRIPTION_PLANS[subscription.planId] : null;
+  // Mirrors convex/planLimits.ts: only these statuses keep the paid plan's limits.
+  const isEntitled = ['active', 'trialing', 'past_due'].includes(subscription?.status ?? '');
+  const currentPlan = subscription?.planId && isEntitled ? SUBSCRIPTION_PLANS[subscription.planId] : null;
   const daysRemaining = subscription?.currentPeriodEnd
     ? Math.max(0, Math.ceil((subscription.currentPeriodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;

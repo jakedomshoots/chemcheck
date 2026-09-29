@@ -302,3 +302,12 @@ describe("plan limits", () => {
     await expect(assertCanAddTeamMember(ctxFor(db, "owner@acme.test"), business, 1)).rejects.toThrow(/Plan limit reached/);
   });
 });
+
+describe("plan limit exemptions", () => {
+  it("matches owner emails case-insensitively from a comma-separated list", async () => {
+    const { isPlanLimitExempt } = await import("./planLimits");
+    expect(isPlanLimitExempt("Owner@Pool.com", " owner@pool.com, other@x.com")).toBe(true);
+    expect(isPlanLimitExempt("someone@else.com", "owner@pool.com")).toBe(false);
+    expect(isPlanLimitExempt("owner@pool.com", undefined)).toBe(false);
+  });
+});

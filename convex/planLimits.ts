@@ -34,6 +34,18 @@ export function isWithinLimit(limit: number, current: number, adding: number): b
   return limit === -1 || current + adding <= limit;
 }
 
+declare const process: { env: Record<string, string | undefined> };
+
+/**
+ * Tenants (by owner email) that are never plan-limited, e.g. the operator's
+ * own pool business. Comma-separated PLAN_LIMIT_EXEMPT_EMAILS.
+ */
+export function isPlanLimitExempt(ownerEmail: string, raw = process.env.PLAN_LIMIT_EXEMPT_EMAILS): boolean {
+  const target = normalizeEmail(ownerEmail);
+  if (!target || !raw) return false;
+  return raw.split(",").some((entry) => normalizeEmail(entry) === target);
+}
+
 async function subscriptionForTenant(ctx: any, business: any | null, email: string): Promise<any | null> {
   if (business) {
     const byBusiness = await ctx.db
@@ -62,6 +74,7 @@ async function resolveTenant(ctx: any, ownerEmailOrBusiness: any): Promise<{ bus
 
 export async function getCustomerUsage(ctx: any, ownerEmailOrBusiness: any) {
   const { business, email } = await resolveTenant(ctx, ownerEmailOrBusiness);
+  if (isPlanLimitExempt(email)) return { limit: -1, current: 0, plan: "exempt" };
   const subscription = await subscriptionForTenant(ctx, business, email);
   const limits = limitsForSubscription(subscription);
   const base = business
@@ -104,6 +117,7 @@ export async function countTeamSeats(ctx: any, business: any): Promise<number> {
 export async function assertCanAddTeamMember(ctx: any, ownerEmailOrBusiness: any, count = 1): Promise<void> {
   const { business, email } = await resolveTenant(ctx, ownerEmailOrBusiness);
   if (!business) throw new Error("Create a business before inviting team members.");
+  if (isPlanLimitExempt(email)) return;
   const subscription = await subscriptionForTenant(ctx, business, email);
   const limits = limitsForSubscription(subscription);
   if (limits.users === -1) return;
