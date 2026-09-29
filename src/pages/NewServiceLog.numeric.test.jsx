@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import NewServiceLog from './NewServiceLog';
 import { BrowserRouter } from 'react-router-dom';
+import { validateServiceLog } from '@/lib/validation';
 
 // Same shell mocks as NewServiceLog.test.jsx, but SimplifiedChemicalInput is
 // NOT mocked: this suite guards the real parent/child state wiring.
@@ -132,5 +133,29 @@ describe('New Service Log numeric chemistry entry', () => {
             hardness_source: 'calcium',
         });
         expect(mockCreateServiceLog.mock.calls[0][0].lsi_calculation_version).toBeUndefined();
+    });
+
+    it('saves normally when measured LSI is selected but no LSI readings are entered', async () => {
+        mockCreateServiceLog.mockImplementationOnce(async (data) => {
+            const validation = validateServiceLog(data);
+            if (!validation.success) {
+                throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+            }
+            return 1;
+        });
+
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        fireEvent.click(screen.getByRole('button', { name: /Enter LSI readings/i }));
+        fireEvent.click(screen.getByText('Measured LSI', { exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Service' }));
+
+        await waitFor(() => expect(mockCreateServiceLog).toHaveBeenCalledTimes(1));
+        expect(screen.queryByText('Failed to save service log. Please try again.')).not.toBeInTheDocument();
+        expect(mockCreateServiceLog.mock.calls[0][0]).toMatchObject({
+            hardness_value: undefined,
+            hardness_source: undefined,
+            lsi_calculation_version: undefined,
+        });
     });
 });

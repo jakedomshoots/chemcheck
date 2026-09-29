@@ -49,6 +49,14 @@ function formatDuration(ms) {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function optionalReading(value) {
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export default function NewServiceLog() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -325,16 +333,21 @@ export default function NewServiceLog() {
       ? Math.max(0, new Date(endTime).getTime() - new Date(startTime).getTime())
       : undefined;
 
+    const hardnessValue = optionalReading(formData.hardness_value);
+    const waterTemperature = optionalReading(formData.water_temperature);
+    const tdsValue = optionalReading(formData.tds_value);
     const lsiReadings = {
-      ph_value: formData.ph_value !== "" ? parseFloat(formData.ph_value) : undefined,
-      alkalinity_value: formData.alkalinity_value !== "" ? parseFloat(formData.alkalinity_value) : undefined,
-      stabilizer_value: formData.stabilizer_value !== "" ? parseFloat(formData.stabilizer_value) : undefined,
-      hardness_value: formData.hardness_value !== "" ? parseFloat(formData.hardness_value) : undefined,
-      hardness_source: formData.hardness_source || undefined,
-      water_temperature: formData.water_temperature !== "" ? parseFloat(formData.water_temperature) : undefined,
-      water_temperature_source: formData.water_temperature_source || undefined,
-      tds_value: formData.tds_value !== "" ? parseFloat(formData.tds_value) : undefined,
-      tds_source: formData.tds_source || undefined,
+      ph_value: optionalReading(formData.ph_value),
+      alkalinity_value: optionalReading(formData.alkalinity_value),
+      stabilizer_value: optionalReading(formData.stabilizer_value),
+      hardness_value: hardnessValue,
+      hardness_source: hardnessValue !== undefined ? formData.hardness_source || undefined : undefined,
+      water_temperature: waterTemperature,
+      water_temperature_source: waterTemperature !== undefined
+        ? formData.water_temperature_source || undefined
+        : undefined,
+      tds_value: tdsValue,
+      tds_source: tdsValue !== undefined ? formData.tds_source || undefined : undefined,
     };
     const measuredLsi = calculateServiceLogLsi(lsiReadings);
     const preserveLegacyLsiVersion = formData.hardness_source === "aquachek_total"
@@ -355,9 +368,9 @@ export default function NewServiceLog() {
       alkalinity: formData.alkalinity,
       stabilizer: formData.stabilizer,
       ph_value: lsiReadings.ph_value,
-      chlorine_value: formData.chlorine_value !== "" ? parseFloat(formData.chlorine_value) : undefined,
-      total_chlorine_value: formData.total_chlorine_value !== "" ? parseFloat(formData.total_chlorine_value) : undefined,
-      total_bromine_value: formData.total_bromine_value !== "" ? parseFloat(formData.total_bromine_value) : undefined,
+      chlorine_value: optionalReading(formData.chlorine_value),
+      total_chlorine_value: optionalReading(formData.total_chlorine_value),
+      total_bromine_value: optionalReading(formData.total_bromine_value),
       lsi_calculation_version: lsiCalculationVersion,
       alkalinity_value: lsiReadings.alkalinity_value,
       stabilizer_value: lsiReadings.stabilizer_value,
