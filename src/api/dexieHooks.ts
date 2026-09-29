@@ -404,7 +404,9 @@ export function useCustomerDelete() {
     return useCallback(async (idOrObj: number | { id?: number; _id?: number }) => {
         const id = typeof idOrObj === 'number' ? idOrObj : (idOrObj.id ?? idOrObj._id);
         if (!id) throw new Error('Customer id required');
-        await db.customers.delete(id);
+        // Queues a server delete (via the Dexie deleting hook) that cascades
+        // to the customer's children and tombstones them for other devices.
+        await db.deleteCustomerWithChildren(id);
     }, []);
 }
 

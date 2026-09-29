@@ -1,6 +1,11 @@
 /**
  * SyncQueue manages the queue of records pending synchronization
  * and keeps the queue persisted safely in localStorage.
+ *
+ * Unsynced work is never dropped: items that exhaust their retries move to a
+ * persisted "failed" list that is retried with a long backoff (or on demand
+ * via retryFailed()), and the queue is never truncated.  MAX_QUEUE_SIZE is
+ * only a capacity warning threshold.
  */
 
 export interface SyncQueueItem {
@@ -14,17 +19,26 @@ export interface SyncQueueItem {
   priority: number; // Lower number = higher priority
   /** Unique identity for this exact queued revision of the record. */
   revision: string;
+  /** Set when the item exhausted its retries and moved to the failed list. */
+  failedAt?: number;
+  /** How many times the item has been moved to the failed list. */
+  failedCount?: number;
 }
 
 const STORAGE_KEY = 'chemcheck_sync_queue';
+const FAILED_STORAGE_KEY = 'chemcheck_sync_queue_failed';
 const MAX_RETRIES = 3;
-const MAX_QUEUE_SIZE = 500; // Prevent unbounded growth
+const MAX_QUEUE_SIZE = 500; // Capacity warning only; unsynced items are never evicted
 const QUEUE_WARNING_THRESHOLD = Math.floor(MAX_QUEUE_SIZE * 0.8);
 const BATCH_SIZE = 20; // Process this many items per sync cycle
 const PERSIST_ERROR_THROTTLE_MS = 15_000;
+// Failed items are retried automatically after 1, 2, 4 ... 60 minutes.
+const FAILED_RETRY_BASE_MS = 60_000;
+const FAILED_RETRY_MAX_MS = 60 * 60_000;
 
 export class SyncQueue {
   private queue: SyncQueueItem[] = [];
+  private failed: SyncQueueItem[] = [];
   private highWatermarkWarned = false;
   private lastPersistErrorAt = 0;
   private isPersisting = false;
@@ -32,6 +46,7 @@ export class SyncQueue {
 
   constructor() {
     this.loadFromStorage();
+    this.loadFailedFromStorage();
   }
 
   /**
@@ -64,15 +79,8 @@ export class SyncQueue {
     }
 
     this.queue = this.sanitizeQueue(nextQueue);
-
-    // Enforce queue size limit - remove lowest priority items if exceeded
-    if (this.queue.length > MAX_QUEUE_SIZE) {
-      const overflow = this.queue.length - MAX_QUEUE_SIZE;
-      this.queue.splice(-overflow, overflow);
-      console.warn(
-        `Sync queue overflow: removed ${overflow} low-priority items to maintain limit of ${MAX_QUEUE_SIZE}`
-      );
-    }
+    // A newer revision supersedes any failed attempt for the same record.
+    this.removeFailed(queueItem.table, queueItem.localId);
 
     this.updateHighWatermarkState();
     this.persistQueueState('enqueue');
@@ -141,11 +149,13 @@ export class SyncQueue {
    * Remove all entries for a given record from queue
    */
   clearForItem(table: SyncQueueItem['table'], localId: number): boolean {
+    const hadFailed = !!this.findFailed(table, localId);
+    this.removeFailed(table, localId);
     const nextQueue = this.queue.filter(
       (item) => !(item.table === table && item.localId === localId)
     );
     if (nextQueue.length === this.queue.length) {
-      return false;
+      return hadFailed;
     }
 
     this.queue = this.sanitizeQueue(nextQueue);
@@ -203,9 +213,15 @@ export class SyncQueue {
     queuedItem.error = error;
 
     if (queuedItem.retryCount >= MAX_RETRIES) {
-      // Remove from queue after max retries
+      // Never drop unsynced work: park it in the persisted failed list, where
+      // it is retried with a long backoff or on demand (retryFailed()).
       this.queue.splice(itemIndex, 1);
-      console.log(`Removed ${item.table}[${item.localId}] from queue after ${MAX_RETRIES} failed attempts`);
+      this.failed = [
+        ...this.failed.filter((entry) => !(entry.table === queuedItem.table && entry.localId === queuedItem.localId)),
+        { ...queuedItem, failedAt: Date.now(), failedCount: (queuedItem.failedCount || 0) + 1 },
+      ];
+      this.persistFailedState('markFailed');
+      console.warn(`Moved ${item.table}[${item.localId}] to the failed sync list after ${MAX_RETRIES} failed attempts`);
     }
     else {
       // Keep in queue for retry with exponential backoff
@@ -221,16 +237,69 @@ export class SyncQueue {
    * Clear all items from queue
    */
   clear(): boolean {
-    if (this.queue.length === 0) {
+    if (this.queue.length === 0 && this.failed.length === 0) {
       this.highWatermarkWarned = false;
       return false;
     }
 
     this.queue = [];
+    this.failed = [];
     this.highWatermarkWarned = false;
     this.persistQueueState('clear');
+    this.persistFailedState('clear');
     console.log('Sync queue cleared');
     return true;
+  }
+
+  /** Items that exhausted their retries and wait for a (manual) retry. */
+  getFailedItems(): SyncQueueItem[] {
+    return [...this.failed];
+  }
+
+  getFailedCount(): number {
+    return this.failed.length;
+  }
+
+  findFailed(table: SyncQueueItem['table'], localId: number): SyncQueueItem | undefined {
+    return this.failed.find(item => item.table === table && item.localId === localId);
+  }
+
+  /**
+   * Move failed items back into the active queue with a fresh retry budget.
+   * With `onlyDue`, only items whose failed-list backoff has elapsed move.
+   * Returns the number of revived items.
+   */
+  retryFailed(options: { onlyDue?: boolean; now?: number } = {}): number {
+    const now = options.now ?? Date.now();
+    const revive = options.onlyDue
+      ? this.failed.filter((item) => now - (item.failedAt || 0) >= this.getFailedBackoffMs(item))
+      : [...this.failed];
+    if (revive.length === 0) return 0;
+
+    const reviveKeys = new Set(revive.map((item) => `${item.table}:${item.localId}`));
+    this.failed = this.failed.filter((item) => !reviveKeys.has(`${item.table}:${item.localId}`));
+    const activeKeys = new Set(this.queue.map((item) => `${item.table}:${item.localId}`));
+    const revived = revive
+      .filter((item) => !activeKeys.has(`${item.table}:${item.localId}`))
+      .map((item) => ({ ...item, retryCount: 0, lastAttempt: undefined, revision: this.createRevision() }));
+    this.queue = this.sanitizeQueue([...this.queue, ...revived]);
+    this.updateHighWatermarkState();
+    this.persistQueueState('retryFailed');
+    this.persistFailedState('retryFailed');
+    return revived.length;
+  }
+
+  private getFailedBackoffMs(item: SyncQueueItem): number {
+    const exponent = Math.max(0, (item.failedCount || 1) - 1);
+    return Math.min(FAILED_RETRY_BASE_MS * Math.pow(2, exponent), FAILED_RETRY_MAX_MS);
+  }
+
+  private removeFailed(table: SyncQueueItem['table'], localId: number): void {
+    const next = this.failed.filter((item) => !(item.table === table && item.localId === localId));
+    if (next.length !== this.failed.length) {
+      this.failed = next;
+      this.persistFailedState('supersede');
+    }
   }
 
   /**
@@ -316,6 +385,18 @@ export class SyncQueue {
     }
   }
 
+  private loadFailedFromStorage(): void {
+    if (!this.isStorageAvailable()) return;
+    try {
+      const stored = localStorage.getItem(FAILED_STORAGE_KEY);
+      if (!stored) return;
+      this.failed = this.sanitizeQueue(JSON.parse(stored), false);
+    } catch (error) {
+      console.error('Failed to load failed sync items from storage:', error);
+      this.failed = [];
+    }
+  }
+
   private isStorageAvailable(): boolean {
     try {
       return typeof window !== 'undefined' && !!window.localStorage;
@@ -356,13 +437,7 @@ export class SyncQueue {
       console.warn(`Sync queue stored with duplicate/invalid records. Loaded ${sorted.length}/${valid.length} unique items.`);
     }
 
-    if (sorted.length > MAX_QUEUE_SIZE) {
-      sorted.splice(MAX_QUEUE_SIZE);
-      if (log) {
-        console.warn(`Sync queue contains more than ${MAX_QUEUE_SIZE} items. Truncated oldest entries.`);
-      }
-    }
-
+    // Never truncate: every entry represents unsynced local work.
     return sorted;
   }
 
@@ -373,6 +448,8 @@ export class SyncQueue {
       priority: Number.isFinite(item.priority) ? item.priority : this.getPriority(item.table, item.operation),
       lastAttempt: item.lastAttempt && Number.isFinite(item.lastAttempt) ? item.lastAttempt : undefined,
       error: typeof item.error === 'string' ? item.error : undefined,
+      failedAt: item.failedAt && Number.isFinite(item.failedAt) ? item.failedAt : undefined,
+      failedCount: item.failedCount && Number.isFinite(item.failedCount) ? item.failedCount : undefined,
       revision: typeof item.revision === 'string' && item.revision
         ? item.revision
         : this.createRevision(),
@@ -403,6 +480,17 @@ export class SyncQueue {
 
     this.lastPersistErrorAt = now;
     return false;
+  }
+
+  private persistFailedState(action: string): void {
+    if (!this.isStorageAvailable()) return;
+    try {
+      localStorage.setItem(FAILED_STORAGE_KEY, JSON.stringify(this.failed));
+    } catch (error) {
+      if (!this.shouldThrottlePersistError(Date.now())) {
+        console.error(`Failed sync list persist failed during ${action}:`, error);
+      }
+    }
   }
 
   private persistQueueState(action: string): void {

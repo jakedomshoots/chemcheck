@@ -361,6 +361,16 @@ export async function getPendingPhotos(): Promise<OfflinePhotoRecord[]> {
 }
 
 /**
+ * Get all photos that still need uploading (pending or previously failed)
+ * @throws PhotoStorageError if the operation fails
+ */
+export async function getPhotosNeedingSync(): Promise<OfflinePhotoRecord[]> {
+  return withErrorHandling('get photos needing sync', async () => {
+    return db.photos.where('syncStatus').anyOf(['pending', 'failed']).toArray();
+  });
+}
+
+/**
  * Get count of photos by category for a customer
  * Optimized to count at database level without loading full photo data
  * @param customerId - The customer ID
