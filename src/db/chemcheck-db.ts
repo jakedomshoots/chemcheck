@@ -383,12 +383,13 @@ export class ChemCheckDB extends Dexie {
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
                 const dirtyBase = this.trackDirtyBase(obj, modifications);
-
-                Object.assign(modifications, {
+                // Dexie applies the hook's *return value* as additional
+                // modifications (mutating `modifications` is not reliable).
+                const additions: Record<string, any> = {
                     local_updated_at: updatedRecord.local_updated_at,
                     sync_status: updatedRecord.sync_status,
                     ...(dirtyBase ? { dirty_base: dirtyBase } : {}),
-                });
+                };
                 if (dirtyBase) updatedRecord.dirty_base = dirtyBase;
 
                 trans.on('complete', () => {
@@ -396,6 +397,7 @@ export class ChemCheckDB extends Dexie {
                         this.syncService.enqueueRecord(tableName, primKey, 'update', updatedRecord);
                     }
                 });
+                return additions;
             });
 
             table.hook('deleting', (primKey, obj, trans) => {
@@ -412,8 +414,12 @@ export class ChemCheckDB extends Dexie {
 
             // Table.clear() fires the deleting hook for every row. It is used
             // for local wipes/restores, which must never delete server data.
-            const originalClear = table.clear.bind(table);
-            table.clear = (() => this.withLocalOnlyDeletes(tableName, originalClear)) as typeof table.clear;
+            // `db.<name>` and `db.table(name)` are distinct Table instances.
+            for (const instance of new Set([table, (this as any)[tableName] as Table<any>])) {
+                if (!instance) continue;
+                const originalClear = instance.clear.bind(instance);
+                instance.clear = (() => this.withLocalOnlyDeletes(tableName, originalClear)) as typeof instance.clear;
+            }
         }
     }
 

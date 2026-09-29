@@ -1596,7 +1596,7 @@ export class SyncService {
 
           // Build remote record from conflict data
           const remoteRecord = result.conflict?.remote_data ? {
-            ...result.conflict.remote_data,
+            ...(await this.mapConflictRemote(record, result.conflict.remote_data, result.conflict.remote_updated_at)),
             remote_updated_at: result.conflict.remote_updated_at,
           } : undefined;
 
@@ -1638,29 +1638,10 @@ export class SyncService {
                 };
                 this.lastSyncError = errorData.sync_error;
 
-                switch (table) {
-                  case 'customers':
-                    await db.customers.update(record.id, errorData);
-                    break;
-                  case 'pools':
-                    await db.pools.update(record.id, errorData);
-                    break;
-                  case 'equipment':
-                    await db.equipment.update(record.id, errorData);
-                    break;
-                  case 'serviceLogs':
-                    await db.serviceLogs.update(record.id, errorData);
-                    break;
-                  case 'chemicalUsage':
-                    await db.chemicalUsage.update(record.id, errorData);
-                    break;
-                  case 'notes':
-                    await db.notes.update(record.id, errorData);
-                    break;
-                  case 'saltCellLogs':
-                    await db.saltCellLogs.update(record.id, errorData);
-                    break;
-                }
+                // Resolution writes are sync bookkeeping, not new user edits.
+                await this.withoutSyncHooks(async () => {
+                  await this.getTable(table)?.update?.(record.id, errorData);
+                });
 
                 return false;
               }
@@ -1671,29 +1652,10 @@ export class SyncService {
                 sync_error: `Conflict resolved: local version wins. ${resolution.backupCreated ? 'Remote data backed up.' : ''} Retrying sync (attempt ${conflictRetryCount + 1}/${maxConflictRetries})...`,
               };
 
-              switch (table) {
-                case 'customers':
-                  await db.customers.update(record.id, resolvedData);
-                  break;
-                case 'pools':
-                  await db.pools.update(record.id, resolvedData);
-                  break;
-                case 'equipment':
-                  await db.equipment.update(record.id, resolvedData);
-                  break;
-                case 'serviceLogs':
-                  await db.serviceLogs.update(record.id, resolvedData);
-                  break;
-                case 'chemicalUsage':
-                  await db.chemicalUsage.update(record.id, resolvedData);
-                  break;
-                case 'notes':
-                  await db.notes.update(record.id, resolvedData);
-                  break;
-                case 'saltCellLogs':
-                  await db.saltCellLogs.update(record.id, resolvedData);
-                  break;
-              }
+              // Resolution writes are sync bookkeeping, not new user edits.
+              await this.withoutSyncHooks(async () => {
+                await this.getTable(table)?.update?.(record.id, resolvedData);
+              });
 
               // Add exponential backoff delay before retry to give remote time to settle
               const backoffMs = Math.pow(2, conflictRetryCount) * 500; // 500ms, 1s, 2s
@@ -1725,29 +1687,10 @@ export class SyncService {
                 sync_error: undefined,
               };
 
-              switch (table) {
-                case 'customers':
-                  await db.customers.update(record.id, resolvedData);
-                  break;
-                case 'pools':
-                  await db.pools.update(record.id, resolvedData);
-                  break;
-                case 'equipment':
-                  await db.equipment.update(record.id, resolvedData);
-                  break;
-                case 'serviceLogs':
-                  await db.serviceLogs.update(record.id, resolvedData);
-                  break;
-                case 'chemicalUsage':
-                  await db.chemicalUsage.update(record.id, resolvedData);
-                  break;
-                case 'notes':
-                  await db.notes.update(record.id, resolvedData);
-                  break;
-                case 'saltCellLogs':
-                  await db.saltCellLogs.update(record.id, resolvedData);
-                  break;
-              }
+              // Resolution writes are sync bookkeeping, not new user edits.
+              await this.withoutSyncHooks(async () => {
+                await this.getTable(table)?.update?.(record.id, resolvedData);
+              });
 
               console.log(`Conflict resolved for ${table}[${record.id}]: remote version accepted${resolution.backupCreated ? ', local changes backed up' : ''}`);
               monitoring.recordMetric('sync_conflict_remote_wins', 1, {
@@ -1867,6 +1810,16 @@ export class SyncService {
     } catch (error) {
       console.warn(`Could not record superseded push for ${table}[${pushed?.id}]:`, error);
     }
+  }
+
+  /** Map a conflict's server document to the local shape, keeping local foreign keys. */
+  private async mapConflictRemote(local: any, remote: any, remoteUpdatedAt: unknown): Promise<any> {
+    const convexId = String(remote?._id || local?.convex_id || '');
+    const mapped = await this.mapRemoteRecord(remote, convexId, Number(remoteUpdatedAt) || 0);
+    if (!convexId) delete mapped.convex_id;
+    if (typeof mapped.customer_id === 'string') mapped.customer_id = local.customer_id;
+    if (typeof mapped.pool_id === 'string') mapped.pool_id = local.pool_id;
+    return mapped;
   }
 
   /**
