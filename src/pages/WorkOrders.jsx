@@ -314,8 +314,7 @@ function formatDepositSource(source) {
 }
 
 function hasProviderPaymentLink(invoice) {
-  // stripe_checkout_session_id: legacy, pre-Square payment links.
-  return Boolean(invoice?.square_payment_link_id || invoice?.stripe_checkout_session_id);
+  return Boolean(invoice?.square_payment_link_id);
 }
 
 function isValidEmailForSend(value) {

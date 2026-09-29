@@ -6,8 +6,8 @@ describe('canManuallyMarkInvoicePaid', () => {
     expect(canManuallyMarkInvoicePaid({ square_payment_link_id: 'PLINK_123' })).toBe(false);
   });
 
-  it('still rejects legacy invoices linked to a pre-Square checkout session', () => {
-    expect(canManuallyMarkInvoicePaid({ stripe_checkout_session_id: 'cs_live_123' })).toBe(false);
+  it('allows legacy pre-Square invoices, which are no longer confirmed automatically', () => {
+    expect(canManuallyMarkInvoicePaid({ stripe_checkout_session_id: 'cs_live_123' } as any)).toBe(true);
   });
 
   it('allows a manually collected payment with no provider link', () => {

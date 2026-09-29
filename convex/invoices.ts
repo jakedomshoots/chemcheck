@@ -85,14 +85,12 @@ const DEFAULT_BACKFILL_BATCH_SIZE = 100;
 const MAX_BACKFILL_BATCH_SIZE = 500;
 
 /**
- * Invoices with a provider payment link are settled only by the verified
- * provider payment (webhook or status sync), never manually.
+ * Invoices with a Square payment link are settled only by the verified
+ * provider payment (webhook or status sync), never manually. Legacy pre-Square
+ * links are no longer confirmed automatically, so those may be marked manually.
  */
-export function canManuallyMarkInvoicePaid(invoice: {
-  square_payment_link_id?: string;
-  stripe_checkout_session_id?: string; // legacy, pre-Square
-}): boolean {
-  return !invoice.square_payment_link_id && !invoice.stripe_checkout_session_id;
+export function canManuallyMarkInvoicePaid(invoice: { square_payment_link_id?: string }): boolean {
+  return !invoice.square_payment_link_id;
 }
 
 function validateStatus(status: string): void {
