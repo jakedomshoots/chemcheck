@@ -302,12 +302,9 @@ export default function CustomerDetail() {
         }
 
         if (customerSyncProblem) {
-          if (deliveryMethod === 'email') {
-            console.warn("Continuing email send with recipient override after customer sync issue:", customerSyncProblem);
-            toast.warning("Customer cloud sync is delayed. Sending with the current email anyway.");
-          } else {
-            return { success: false, error: `${customerSyncProblem} Please check your connection and retry.` };
-          }
+          // The server only delivers to contact info it has on file, so an
+          // unsynced contact change would be rejected anyway.
+          return { success: false, error: `${customerSyncProblem} Please check your connection and retry.` };
         }
       }
 

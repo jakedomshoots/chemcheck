@@ -91,7 +91,7 @@ export function createSafeEmailFields(params: {
     customerName: escapeHtml(params.customerName || 'Valued Customer'),
     serviceDate: escapeHtml(params.serviceDate || 'Unknown Date'),
     customNote: escapeHtml(params.customNote || ''),
-    businessName: escapeHtml(params.businessName || 'Dominick Pool Solutions'),
+    businessName: escapeHtml(params.businessName || 'Your pool service provider'),
     reportLink: escapeUrlForHtml(params.reportLink),
   };
 }
@@ -145,7 +145,7 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const safeReportLink = safeFields.reportLink;
   
   // Use provided business name or default
-  const businessName = inputBusinessName || "Dominick Pool Solutions";
+  const businessName = inputBusinessName || "Your pool service provider";
   const footerText = "This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions";
   
   // Subject line: sanitize to prevent email header injection, use unescaped values (plain text)
