@@ -160,12 +160,8 @@ export async function deleteCustomerData(customerId: number): Promise<{
     db.notes.where('customer_id').equals(customerId).count(),
   ]);
 
-  await db.transaction('rw', [db.customers, db.serviceLogs, db.chemicalUsage, db.notes], async () => {
-    await db.serviceLogs.where('customer_id').equals(customerId).delete();
-    await db.chemicalUsage.where('customer_id').equals(customerId).delete();
-    await db.notes.where('customer_id').equals(customerId).delete();
-    await db.customers.delete(customerId);
-  });
+  // One customer delete syncs to the server, which erases its children too.
+  await db.deleteCustomerWithChildren(customerId);
 
   return {
     deleted: {

@@ -362,16 +362,22 @@ export class ChemCheckDB extends Dexie {
         for (const tableName of SYNC_TABLE_NAMES) {
             const table = this.table(tableName);
 
-            table.hook('creating', (_primKey, obj, trans) => {
-                if (this.syncHooksSuppressed > 0) return;
+            const db = this;
+            table.hook('creating', function (_primKey, obj, trans) {
+                if (db.syncHooksSuppressed > 0) return;
                 obj.local_updated_at = Date.now();
                 obj.sync_status = 'pending';
 
-                trans.on('complete', () => {
-                    if (this.syncService && obj.id) {
-                        this.syncService.enqueueRecord(tableName, obj.id, 'create', obj);
-                    }
-                });
+                // Auto-incremented ids are only known once the add succeeds,
+                // so enqueue from onsuccess rather than reading obj.id here.
+                this.onsuccess = (primKey) => {
+                    trans.on('complete', () => {
+                        const id = typeof primKey === 'number' ? primKey : obj.id;
+                        if (db.syncService && id) {
+                            db.syncService.enqueueRecord(tableName, id, 'create', { ...obj, id });
+                        }
+                    });
+                };
             });
 
             table.hook('updating', (modifications: Record<string, any>, primKey, obj, trans) => {

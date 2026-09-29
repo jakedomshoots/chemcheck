@@ -2,6 +2,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { enforceRateLimit } from "./rateLimit";
+import { assertCanAddCustomers } from "./planLimits";
 import {
   validateChemicalUsageCreate,
   validateCustomerCreate,
@@ -38,6 +39,9 @@ export const MAX_SYNC_BATCH_SIZE = 100;
 // Batch creates consume one `customer.create` token per this many customers.
 const BATCH_CUSTOMERS_PER_RATE_LIMIT_TOKEN = 5;
 const CUSTOMER_WRITE_ROLES = new Set(["owner", "admin"]);
+// Field staff may add customers (e.g. a new stop found on route); edits and
+// deletes stay with owners/admins.
+const CUSTOMER_CREATE_ROLES = new Set(["owner", "admin", "technician", "employee"]);
 // Mirrors convex/pools.ts WRITE_ROLES.
 const POOL_WRITE_ROLES = new Set(["owner", "admin", "technician"]);
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -828,7 +832,8 @@ export const syncCustomer = mutation({
     // SECURITY: Same validation/sanitization as customers.create.
     const validated = validateCustomerCreate(fields);
 
-    // TODO(plan-limits): await assertCanAddCustomers(ctx, business, identity.email!, 1);
+    await assertBusinessRole(ctx, business, identity.email!, CUSTOMER_CREATE_ROLES);
+    await assertCanAddCustomers(ctx, business ?? identity.email!, 1);
 
     // Create new customer record
     const now = Date.now();
@@ -1492,7 +1497,8 @@ export const batchSyncCustomers = mutation({
     const createdBy = business ? business.owner_email : identity.email!;
     const businessId = business ? String(business._id) : undefined;
 
-    // TODO(plan-limits): await assertCanAddCustomers(ctx, business, identity.email!, args.customers.length);
+    await assertBusinessRole(ctx, business, identity.email!, CUSTOMER_CREATE_ROLES);
+    await assertCanAddCustomers(ctx, business ?? identity.email!, args.customers.length);
 
     for (const customer of args.customers) {
       try {

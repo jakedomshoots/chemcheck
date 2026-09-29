@@ -3,6 +3,7 @@ import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import {
     CUSTOMER_WRITE_ROLES,
+    FIELD_WRITE_ROLES,
     assertCustomerAccess,
     canAccessCustomer as canAccessCustomerShared,
     getRoleInBusiness,
@@ -214,9 +215,10 @@ export const create = mutation({
         const validatedData = validateCustomerCreate(args);
         const business = await resolveBusinessContext(ctx, identity.email!);
         if (business) {
-            // Creating customer records is limited to owners/admins, matching update/remove.
+            // Field staff may add customers (a new stop found on route);
+            // update/remove stay limited to owners/admins.
             const role = await getRoleInBusiness(ctx, business, identity.email!);
-            if (!role || !CUSTOMER_WRITE_ROLES.includes(role)) {
+            if (!role || !FIELD_WRITE_ROLES.includes(role)) {
                 throw new Error("Insufficient role permissions");
             }
         }
