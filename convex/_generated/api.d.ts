@@ -31,6 +31,7 @@ import type * as serviceLogs from "../serviceLogs.js";
 import type * as servicePhotos from "../servicePhotos.js";
 import type * as serviceReports from "../serviceReports.js";
 import type * as skippedStops from "../skippedStops.js";
+import type * as stripeConnect from "../stripeConnect.js";
 import type * as stripeEvents from "../stripeEvents.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
 import type * as subscriptions from "../subscriptions.js";
@@ -70,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   servicePhotos: typeof servicePhotos;
   serviceReports: typeof serviceReports;
   skippedStops: typeof skippedStops;
+  stripeConnect: typeof stripeConnect;
   stripeEvents: typeof stripeEvents;
   stripeWebhook: typeof stripeWebhook;
   subscriptions: typeof subscriptions;

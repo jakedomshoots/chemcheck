@@ -3,9 +3,16 @@ import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
 import { validateEmail, validatePhone } from "./validation";
 import { fetchProvider, requireStripeConfig } from "./providerConfig";
-
-const STRIPE_API_BASE = "https://api.stripe.com/v1";
-const FALLBACK_APP_BASE_URL = "https://app.chemcheck.app";
+import {
+  STRIPE_API_BASE,
+  appBaseUrl,
+  buildStripeHeaders,
+  checkoutPaymentMatches,
+  isStripeAccountId,
+  platformFeeCentsFromEnv,
+  requireChargeableAccount,
+  toUsdCents,
+} from "./stripeConnect";
 
 type StripeLinkResult = {
   success: boolean;
@@ -16,14 +23,9 @@ type StripeLinkResult = {
 };
 
 function normalizeBaseUrl(baseUrl?: string): string {
+  // Redirect origins always come from server env, never the caller.
   void baseUrl;
-  const trimmedEnv = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
-  return trimmedEnv || FALLBACK_APP_BASE_URL;
-}
-
-function toUsdCents(amount: number): number {
-  if (!Number.isFinite(amount)) return 0;
-  return Math.max(0, Math.round(amount * 100));
+  return appBaseUrl();
 }
 
 function hasValidSendDestination(customer: { phone?: string; email?: string }): boolean {
@@ -62,9 +64,9 @@ function normalizeSendDestinationOverride(
   throw new Error("Alternate channel must be either sms or email.");
 }
 
-async function createStripeCheckoutSession(args: {
-  stripeSecretKey: string;
+type CheckoutSessionArgs = {
   amountCents: number;
+  applicationFeeCents?: number;
   customerEmail?: string;
   customMessage?: string;
   lineItemName: string;
@@ -73,7 +75,10 @@ async function createStripeCheckoutSession(args: {
   cancelUrl: string;
   clientReferenceId: string;
   metadata: Record<string, string>;
-}): Promise<{ id: string; url: string }> {
+};
+
+/** Form body for a Checkout Session created as a direct charge on a connected account. */
+export function buildCheckoutSessionForm(args: CheckoutSessionArgs): URLSearchParams {
   const form = new URLSearchParams();
   form.set("mode", "payment");
   form.set("success_url", args.successUrl);
@@ -90,6 +95,10 @@ async function createStripeCheckoutSession(args: {
     form.set(`payment_intent_data[metadata][${key}]`, value);
   }
 
+  if (args.applicationFeeCents && args.applicationFeeCents > 0) {
+    form.set("payment_intent_data[application_fee_amount]", String(args.applicationFeeCents));
+  }
+
   if (args.customerEmail) {
     form.set("customer_email", args.customerEmail);
   }
@@ -98,13 +107,27 @@ async function createStripeCheckoutSession(args: {
     form.set("custom_text[submit][message]", args.customMessage);
   }
 
+  return form;
+}
+
+class StripeRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+async function createStripeCheckoutSession(
+  args: CheckoutSessionArgs & { stripeSecretKey: string; stripeAccountId: string },
+): Promise<{ id: string; url: string }> {
+  // Direct charge: the session (and the money) belongs to the connected account.
   const response = await fetchProvider(`${STRIPE_API_BASE}/checkout/sessions`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${args.stripeSecretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: form.toString(),
+    headers: buildStripeHeaders({
+      secretKey: args.stripeSecretKey,
+      stripeAccountId: args.stripeAccountId,
+      form: true,
+    }),
+    body: buildCheckoutSessionForm(args).toString(),
   });
 
   const data = await response.json();
@@ -125,12 +148,15 @@ async function createStripeCheckoutSession(args: {
 async function getStripeCheckoutSession(args: {
   stripeSecretKey: string;
   sessionId: string;
+  /** Connected account that owns the session; omit only for legacy platform sessions. */
+  stripeAccountId?: string;
 }): Promise<any> {
   const response = await fetchProvider(`${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(args.sessionId)}`, {
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${args.stripeSecretKey}`,
-    },
+    headers: buildStripeHeaders({
+      secretKey: args.stripeSecretKey,
+      stripeAccountId: args.stripeAccountId,
+    }),
   });
 
   const data = await response.json();
@@ -138,10 +164,52 @@ async function getStripeCheckoutSession(args: {
     const message = typeof data?.error?.message === "string"
       ? data.error.message
       : `Stripe checkout fetch failed (${response.status})`;
-    throw new Error(message);
+    throw new StripeRequestError(message, response.status);
   }
 
   return data;
+}
+
+/**
+ * Retrieve a Checkout Session for the caller's business. Sessions live on the
+ * business's connected account; sessions created before Stripe Connect was
+ * introduced live on the platform account, so a missing session falls back to
+ * a platform lookup (ownership is still enforced by the invoice/quote checks).
+ */
+async function retrieveCheckoutSessionForBusiness(args: {
+  stripeSecretKey: string;
+  sessionId: string;
+  stripeAccountId?: string;
+}): Promise<any> {
+  if (isStripeAccountId(args.stripeAccountId)) {
+    try {
+      return await getStripeCheckoutSession(args);
+    } catch (error) {
+      if (!(error instanceof StripeRequestError) || error.status !== 404) throw error;
+    }
+  }
+  return await getStripeCheckoutSession({ stripeSecretKey: args.stripeSecretKey, sessionId: args.sessionId });
+}
+
+/**
+ * A stored payment link is only reused when its session still exists ON THE
+ * CONNECTED ACCOUNT, is open, and charges the current amount. Links created on
+ * the platform account before Stripe Connect are never reused.
+ */
+async function isReusableConnectedSession(args: {
+  stripeSecretKey: string;
+  stripeAccountId: string;
+  sessionId: string;
+  amountCents: number;
+}): Promise<boolean> {
+  try {
+    const session = await getStripeCheckoutSession(args);
+    return session?.status === "open"
+      && session?.amount_total === args.amountCents
+      && String(session?.currency || "").toLowerCase() === "usd";
+  } catch {
+    return false;
+  }
 }
 
 export const sendInvoiceWithStripe = action({
@@ -171,21 +239,6 @@ export const sendInvoiceWithStripe = action({
       throw new Error("Cannot send an invoice that is paid or cancelled");
     }
 
-    const hasReusableStripeLink =
-      invoice.status === "sent"
-      && Boolean(invoice.stripe_checkout_session_id)
-      && Boolean(invoice.payment_url)
-      && /^https:\/\/(checkout|pay)\.stripe\.com\//i.test(invoice.payment_url || "");
-
-    if (!args.force_new_session && hasReusableStripeLink && !destinationOverride) {
-      return {
-        success: true,
-        payment_url: invoice.payment_url,
-        stripe_checkout_session_id: invoice.stripe_checkout_session_id,
-        reused: true,
-      };
-    }
-
     if (invoice.total <= 0) {
       await ctx.runMutation(internal.invoices.markPaidFromStripe, {
         invoice_id: args.id,
@@ -203,11 +256,44 @@ export const sendInvoiceWithStripe = action({
     let stripeCheckoutSessionId: string | undefined;
 
     if (amountCents > 0) {
+      // Card payments go to the pool company's connected account, never the platform.
+      const stripeAccountId = requireChargeableAccount(
+        await ctx.runQuery(internal.stripeConnect.getPaymentAccountForUser, {
+          user_email: invoice.created_by,
+        }),
+      );
       const { secretKey: stripeSecretKey } = requireStripeConfig();
+
+      const hasReusableStripeLink =
+        invoice.status === "sent"
+        && Boolean(invoice.stripe_checkout_session_id)
+        && Boolean(invoice.payment_url)
+        && /^https:\/\/(checkout|pay)\.stripe\.com\//i.test(invoice.payment_url || "");
+
+      if (
+        !args.force_new_session
+        && hasReusableStripeLink
+        && !destinationOverride
+        && await isReusableConnectedSession({
+          stripeSecretKey,
+          stripeAccountId,
+          sessionId: invoice.stripe_checkout_session_id,
+          amountCents,
+        })
+      ) {
+        return {
+          success: true,
+          payment_url: invoice.payment_url,
+          stripe_checkout_session_id: invoice.stripe_checkout_session_id,
+          reused: true,
+        };
+      }
 
       const session = await createStripeCheckoutSession({
         stripeSecretKey,
+        stripeAccountId,
         amountCents,
+        applicationFeeCents: platformFeeCentsFromEnv(amountCents),
         customerEmail: destinationOverride?.channel === "email"
           ? destinationOverride.recipient
           : customer.email || undefined,
@@ -250,9 +336,14 @@ export const syncCheckoutSessionStatus = action({
 
     const { secretKey: stripeSecretKey } = requireStripeConfig();
 
-    const session = await getStripeCheckoutSession({
+    // The account is resolved from the caller's business, never from the client.
+    const paymentAccount = await ctx.runQuery(internal.stripeConnect.getPaymentAccountForUser, {
+      user_email: identity.email!,
+    });
+    const session = await retrieveCheckoutSessionForBusiness({
       stripeSecretKey,
       sessionId: args.session_id,
+      stripeAccountId: paymentAccount?.stripe_account_id,
     });
 
     const paymentType = session?.metadata?.payment_type || session?.metadata?.entity_type;
@@ -282,10 +373,14 @@ export const syncCheckoutSessionStatus = action({
         return { success: false, synced: false, payment_type: "invoice", message: "Missing invoice metadata" };
       }
 
-      await ctx.runQuery(internal.invoices.getForPayment, {
+      const { invoice }: any = await ctx.runQuery(internal.invoices.getForPayment, {
         id: invoiceId as any,
         user_email: identity.email!,
       });
+      const match = checkoutPaymentMatches(session, toUsdCents(invoice.total));
+      if (!match.ok) {
+        return { success: false, synced: false, payment_type: "invoice", message: "Paid amount does not match the invoice" };
+      }
       await ctx.runMutation(internal.invoices.markPaidFromStripe, {
         invoice_id: invoiceId as any,
         stripe_checkout_session_id: stripeCheckoutSessionId,
@@ -306,10 +401,14 @@ export const syncCheckoutSessionStatus = action({
         return { success: false, synced: false, payment_type: "quote_deposit", message: "Missing quote metadata" };
       }
 
-      await ctx.runQuery(internal.quotes.getForDepositPayment, {
+      const { quote }: any = await ctx.runQuery(internal.quotes.getForDepositPayment, {
         id: quoteId as any,
         user_email: identity.email!,
       });
+      const match = checkoutPaymentMatches(session, toUsdCents(quote.deposit_required ?? 0));
+      if (!match.ok) {
+        return { success: false, synced: false, payment_type: "quote_deposit", message: "Paid amount does not match the deposit" };
+      }
       await ctx.runMutation(internal.quotes.markDepositPaidFromStripe, {
         quote_id: quoteId as any,
         stripe_checkout_session_id: stripeCheckoutSessionId,
@@ -367,11 +466,30 @@ export const createDepositPaymentLink = action({
       };
     }
 
+    const amountCents = toUsdCents(quote.deposit_required);
+    if (amountCents <= 0) {
+      throw new Error("Deposit amount must be greater than zero");
+    }
+
+    // Deposits go to the pool company's connected account, never the platform.
+    const stripeAccountId = requireChargeableAccount(
+      await ctx.runQuery(internal.stripeConnect.getPaymentAccountForUser, {
+        user_email: quote.created_by,
+      }),
+    );
+    const { secretKey: stripeSecretKey } = requireStripeConfig();
+
     if (
       quote.deposit_payment_url
       && quote.deposit_checkout_session_id
       && quote.deposit_status === "pending"
       && !destinationOverride
+      && await isReusableConnectedSession({
+        stripeSecretKey,
+        stripeAccountId,
+        sessionId: quote.deposit_checkout_session_id,
+        amountCents,
+      })
     ) {
       return {
         success: true,
@@ -381,17 +499,12 @@ export const createDepositPaymentLink = action({
       };
     }
 
-    const { secretKey: stripeSecretKey } = requireStripeConfig();
-
-    const amountCents = toUsdCents(quote.deposit_required);
-    if (amountCents <= 0) {
-      throw new Error("Deposit amount must be greater than zero");
-    }
-
     const baseUrl = normalizeBaseUrl(args.base_url);
     const session = await createStripeCheckoutSession({
       stripeSecretKey,
+      stripeAccountId,
       amountCents,
+      applicationFeeCents: platformFeeCentsFromEnv(amountCents),
       customerEmail: destinationOverride?.channel === "email"
         ? destinationOverride.recipient
         : customer.email || undefined,
