@@ -42,7 +42,7 @@ const POOL_SCHOOL_DATA = {
                 steps: [
                   'Test your **CYA level** first. Below 30? That\'s your problem.',
                   'Brush the walls and floor - get that algae floating.',
-                  '**Triple shock** the pool (3 lbs per 10,000 gal).',
+                  '**Shock** to the CYA-based shock level (FC about 40% of CYA, e.g. ~16 ppm at 40 ppm CYA) and hold it until clear. No swimming until FC is back to 10 ppm or below.',
                   'Run the pump **24/7** until clear.',
                   'Backwash filter every 8-12 hours.',
                   'Vacuum to WASTE once dead algae settles.'
@@ -54,7 +54,7 @@ const POOL_SCHOOL_DATA = {
                   'This stuff is stubborn and chlorine-resistant.',
                   'Brush EVERYTHING - it hides in crevices.',
                   'Use **Mustard Algae treatment** (Yellow Out, etc.).',
-                  'Shock to 30 ppm chlorine.',
+                  'Shock to the CYA-based shock level (FC about 40% of CYA). No swimming until FC is back to 10 ppm or below.',
                   'Wash all pool toys, floats, and swimsuits - it spreads!'
                 ]
               },
@@ -189,7 +189,7 @@ const POOL_SCHOOL_DATA = {
                   'Use **liquid chlorine** for daily sanitizing.',
                   'Use tablets only for vacation/backup.',
                   'Test CYA monthly.',
-                  'Keep CYA between 30-50 ppm.',
+                  'Keep CYA between 30-50 ppm (60-80 ppm for salt pools).',
                   'Partial drain annually if using tablets.'
                 ]
               }
@@ -366,7 +366,7 @@ const POOL_SCHOOL_DATA = {
                   '**CYA (stabilizer)** acts like sunscreen for chlorine.',
                   'Without CYA, you\'re throwing money away.',
                   'With too much CYA, chlorine can\'t work.',
-                  'Sweet spot: **30-50 ppm CYA**.'
+                  'Sweet spot: **30-50 ppm CYA** (60-80 ppm for salt pools).'
                 ]
               },
               {
@@ -604,7 +604,7 @@ const POOL_SCHOOL_DATA = {
                 title: 'Water Recovery',
                 steps: [
                   'Test all chemical levels.',
-                  '**Triple shock** the pool.',
+                  '**Shock** to the CYA-based shock level (FC about 40% of CYA).',
                   'Run pump 24/7 until clear.',
                   'Backwash filter frequently.',
                   'Add algaecide as prevention.',

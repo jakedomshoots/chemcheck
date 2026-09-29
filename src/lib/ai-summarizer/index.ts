@@ -101,7 +101,9 @@ function extractChemicalTrends(logs: ServiceLog[]): ChemicalTrend[] {
       history,
       confidence,
     };
-  });
+  })
+    // A chemical that was never tested has no trend (don't report it as 'good').
+    .filter(trend => trend.history.length > 0);
 }
 
 function calculateTrendDirection(readings: ChemicalReading[]): TrendDirection {
