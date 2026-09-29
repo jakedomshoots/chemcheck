@@ -280,3 +280,13 @@ describe('units agree with LSI', () => {
     expect(higher.value).toBeGreaterThan(lsi.value);
   });
 });
+
+describe('soda ash calibration', () => {
+  it('matches the ~6 oz per 10k gal per +0.2 pH rule of thumb at TA 100', () => {
+    const plan = planDose({ chemical: 'ph', status: 'low', gallons: 10000, value: 7.2, alkalinity: 100 })!;
+    expect(plan.product).toBe('sodium carbonate (soda ash)');
+    const ozPerTwoTenths = (plan.amount / ((plan.target as number) - 7.2)) * 0.2;
+    expect(ozPerTwoTenths).toBeGreaterThanOrEqual(4.5);
+    expect(ozPerTwoTenths).toBeLessThanOrEqual(7.5);
+  });
+});

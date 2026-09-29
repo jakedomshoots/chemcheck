@@ -240,6 +240,12 @@ export const DOSING_CONSTANTS = {
   carbonicPka1: 6.3,
   /** Soda ash (Na2CO3) molar mass, g/mol. */
   sodaAshMolarMass: 105.99,
+  /**
+   * The closed-system model ignores CO2 outgassing, which also raises pH, and
+   * roughly doubles real soda ash needs. Halving it matches the common rule of
+   * ~6 oz / 10k gal per +0.2 pH at TA 100.
+   */
+  sodaAshModelFactor: 0.5,
   /** lb of chemical per 1 mg/L in 10,000 gal. */
   lbPerPpmPer10kGal: 0.0834,
   /** Assumed TA when pH must be adjusted but TA was not measured. */
@@ -277,7 +283,7 @@ export function acidMeqForPhDrop(from: number, to: number, ta: number): number {
 /**
  * Approximate soda ash (mmol/L) to move pH from `from` up to `to`.
  * CO3^2- + CO2 → 2 HCO3-. Ignores aeration/outgassing (which also raises pH),
- * so real needs are usually lower than this estimate — add half, then retest.
+ * so callers scale it by DOSING_CONSTANTS.sodaAshModelFactor.
  */
 export function sodaAshMmolForPhRise(from: number, to: number, ta: number): number {
   if (!(to > from) || !(ta > 0)) return 0;
@@ -404,7 +410,8 @@ export function planDose(input: DoseInput): DosePlan | null {
         return { ...base, product: 'muriatic acid (31.45%)', amount: flOz, unit: 'fl oz', capped, target, text };
       }
       const mmol = sodaAshMmolForPhRise(current, target, ta);
-      const fullLb = mmol * DOSING_CONSTANTS.sodaAshMolarMass * DOSING_CONSTANTS.lbPerPpmPer10kGal * scale;
+      const fullLb =
+        mmol * DOSING_CONSTANTS.sodaAshMolarMass * DOSING_CONSTANTS.lbPerPpmPer10kGal * DOSING_CONSTANTS.sodaAshModelFactor * scale;
       const capLb = DOSING_CONSTANTS.maxSodaAshLbPerAddition * scale;
       const capped = fullLb > capLb;
       const oz = Math.max(1, round(Math.min(fullLb, capLb) * 16, 0.5));
