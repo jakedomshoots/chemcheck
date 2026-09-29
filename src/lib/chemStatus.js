@@ -9,6 +9,9 @@
  *   low      -> watch   (below ideal, not dangerous)
  *   high     -> action  (above ideal, treat)
  *   critical -> critical (unsafe / far out of range)
+ *   not_tested -> (none) chemical was not tested this visit; resolves to an
+ *               undefined status / neutral tone, exactly like a missing
+ *               reading. It is never 'good' and never a problem.
  *
  * 'critical' is a DISPLAY status and does not say which way to correct.
  * Anything that decides what to add must use readingToDirectionalStatus(),
@@ -20,6 +23,8 @@ import {
   classifyReading,
   getChemistryConfig,
   isChemicalKey,
+  isNotTested,
+  NOT_TESTED,
   toDisplayStatus,
 } from './poolChemistry';
 
@@ -62,6 +67,13 @@ export function getChemicalConfig(key, poolType) {
   return toUiConfig(getChemistryConfig(key, { poolType }));
 }
 
+export { NOT_TESTED, isNotTested };
+
+/** True when a stored reading holds an actual test result (not missing, not 'not_tested'). */
+export function isTestedReading(value) {
+  return value !== undefined && value !== null && value !== '' && !isNotTested(value);
+}
+
 const KNOWN_STATUSES = new Set(['good', 'low', 'high', 'critical']);
 const DIRECTIONAL_STATUSES = new Set(['critical_low', 'low', 'good', 'high', 'critical_high']);
 
@@ -77,7 +89,7 @@ export function mapNumericValueToStatus(value, ranges) {
  * actually render their intended tone.
  */
 export function readingToStatus(key, value, poolType) {
-  if (value === undefined || value === null || value === '') return undefined;
+  if (value === undefined || value === null || value === '' || isNotTested(value)) return undefined;
   const asString = String(value).toLowerCase();
   if (KNOWN_STATUSES.has(asString)) return asString;
   if (asString === 'critical_low' || asString === 'critical_high') return 'critical';
@@ -92,7 +104,7 @@ export function readingToStatus(key, value, poolType) {
  * reading instead of guessing which way to dose.
  */
 export function readingToDirectionalStatus(key, value, poolType) {
-  if (value === undefined || value === null || value === '') return undefined;
+  if (value === undefined || value === null || value === '' || isNotTested(value)) return undefined;
   const asString = String(value).toLowerCase();
   if (DIRECTIONAL_STATUSES.has(asString)) return asString;
   if (asString === 'critical') return undefined;
@@ -111,6 +123,7 @@ export const STATUS_TO_TONE = {
 };
 
 export function statusToTone(status) {
+  if (isNotTested(status)) return 'neutral';
   return STATUS_TO_TONE[status] || 'info';
 }
 

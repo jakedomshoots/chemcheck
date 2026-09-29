@@ -2,15 +2,17 @@ import React from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { CheckCircle2, AlertTriangle, AlertCircle, XCircle } from "lucide-react";
+import { CheckCircle2, AlertTriangle, AlertCircle, XCircle, MinusCircle } from "lucide-react";
 import { mapNumericValueToStatus } from "@/lib/chemStatus";
 
 /**
  * Quick levels — tones come from the semantic ramp (index.css), so the
  * logging form, the route chips, and the analysis panel always agree on
- * what a status looks like.
+ * what a status looks like. "Not tested" is deliberately neutral: it is the
+ * default for a new log so an untested chemical is never saved as "good".
  */
 const levels = [
+  { value: "not_tested", label: "Not tested", icon: MinusCircle, bg: "bg-surface-2", border: "border-[var(--ink-muted)]", text: "text-ink-secondary" },
   { value: "low", label: "Low", icon: AlertTriangle, bg: "bg-[var(--status-watch-soft)]", border: "border-[var(--status-watch-line)]", text: "text-watch" },
   { value: "good", label: "Good", icon: CheckCircle2, bg: "bg-[var(--status-ok-soft)]", border: "border-[var(--status-ok-line)]", text: "text-ok" },
   { value: "high", label: "High", icon: AlertCircle, bg: "bg-[var(--status-action-soft)]", border: "border-[var(--status-action-line)]", text: "text-action" },
@@ -40,7 +42,11 @@ export default function SimplifiedChemicalInput({
     const raw = e.target.value;
     const nextValue = raw === "" ? undefined : raw;
     onNumericValueChange?.(nextValue);
-    const derivedStatus = mapNumericValueToStatus(nextValue, ranges);
+    // Clearing the reading means nothing was measured — don't leave a stale
+    // derived status (e.g. "good") behind.
+    const derivedStatus = nextValue === undefined
+      ? "not_tested"
+      : mapNumericValueToStatus(nextValue, ranges);
     if (derivedStatus && derivedStatus !== value) {
       onChange?.(derivedStatus);
     }
@@ -93,7 +99,7 @@ export default function SimplifiedChemicalInput({
         </div>
       ) : (
         <div className="mt-3">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1.5">
             {levels.map((level) => {
               const Icon = level.icon;
               const isSelected = value === level.value;

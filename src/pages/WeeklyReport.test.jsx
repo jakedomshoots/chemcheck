@@ -21,7 +21,8 @@ vi.mock('@/api/convexHooks', () => ({
                 service_date: format(monday, 'yyyy-MM-dd'), // Log for this week
                 ph: '7.4',
                 chlorine: '3.0',
-                alkalinity: 'good'
+                alkalinity: 'good',
+                stabilizer: 'not_tested'
             },
             {
                 _id: 'log2',
@@ -75,5 +76,13 @@ describe('WeeklyReport', () => {
 
         expect(screen.getByText('Alk')).toBeInTheDocument();
         expect(screen.getByText('good')).toBeInTheDocument();
+    });
+
+    it('shows not_tested readings as "Not tested" instead of the raw token', () => {
+        render(<WeeklyReport />);
+        fireEvent.click(screen.getByText('Monday'));
+
+        expect(screen.getByText('Not tested')).toBeInTheDocument();
+        expect(screen.queryByText('not_tested')).not.toBeInTheDocument();
     });
 });

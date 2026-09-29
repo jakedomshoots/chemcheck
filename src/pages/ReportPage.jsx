@@ -32,8 +32,12 @@ function formatDisplayDate(dateString) {
   }
 }
 
+function isReadingTested(value) {
+  return Boolean(value) && String(value).toLowerCase() !== 'not_tested';
+}
+
 function getReadingStatus(value) {
-  if (!value) {
+  if (!isReadingTested(value)) {
     return { color: 'text-ink-muted', bgColor: 'bg-surface-2', label: 'Not tested', icon: 'unknown' };
   }
   
@@ -50,6 +54,34 @@ function getReadingStatus(value) {
     default:
       return { color: 'text-ink-secondary', bgColor: 'bg-surface-2', label: value, icon: 'unknown' };
   }
+}
+
+const OVERALL_STATUS_DISPLAY = {
+  good: {
+    label: 'All Good',
+    textClass: 'text-ok',
+    badgeClass: 'rounded-full bg-[var(--status-ok-soft)] px-2.5 py-1 text-xs font-semibold text-ok hover:bg-[var(--status-ok-soft)]',
+  },
+  needs_attention: {
+    label: 'Needs Attention',
+    textClass: 'text-watch',
+    badgeClass: 'rounded-full bg-[var(--status-watch-soft)] px-2.5 py-1 text-xs font-semibold text-watch hover:bg-[var(--status-watch-soft)]',
+  },
+  not_tested: {
+    label: 'Service Completed',
+    textClass: 'text-ink-secondary',
+    badgeClass: 'rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-secondary hover:bg-surface-2',
+  },
+};
+
+/**
+ * Overall status for display. 'not_tested' means no chemistry was tested, so
+ * never show "All Good". Unknown values fall back to "Needs Attention" as before.
+ */
+function resolveOverallStatus(report) {
+  const status = report?.overallStatus;
+  if (status === 'good' || status === 'not_tested') return status;
+  return 'needs_attention';
 }
 
 function formatDuration(ms) {
@@ -218,15 +250,16 @@ export default function ReportPage() {
   }
 
   const report = reportResult.report;
+  const overallStatus = resolveOverallStatus(report);
   const beforeCount = report?.photos?.before?.length || 0;
   const afterCount = report?.photos?.after?.length || 0;
   const hasNotes = Boolean(report?.notes && report.notes.trim().length > 0);
   const hasReadings = Boolean(
     report?.chemicalReadings
-    && (report.chemicalReadings.ph
-      || report.chemicalReadings.chlorine
-      || report.chemicalReadings.alkalinity
-      || report.chemicalReadings.stabilizer
+    && (isReadingTested(report.chemicalReadings.ph)
+      || isReadingTested(report.chemicalReadings.chlorine)
+      || isReadingTested(report.chemicalReadings.alkalinity)
+      || isReadingTested(report.chemicalReadings.stabilizer)
       || report.chemicalReadings.salt)
   );
   const confidenceScore = (
@@ -266,8 +299,8 @@ export default function ReportPage() {
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-card border border-line bg-surface-1 p-3 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Overall</p>
-                <p className={`mt-1 text-sm font-semibold ${report.overallStatus === 'good' ? 'text-ok' : 'text-watch'}`}>
-                  {report.overallStatus === 'good' ? 'All Good' : 'Needs Attention'}
+                <p className={`mt-1 text-sm font-semibold ${OVERALL_STATUS_DISPLAY[overallStatus].textClass}`}>
+                  {OVERALL_STATUS_DISPLAY[overallStatus].label}
                 </p>
               </div>
               <div className="rounded-card border border-line bg-surface-1 p-3 shadow-sm">
@@ -297,24 +330,15 @@ export default function ReportPage() {
                     {report.customerName}
                   </CardTitle>
                 </div>
-                <Badge
-                  className={
-                    report.overallStatus === 'good'
-                      ? 'rounded-full bg-[var(--status-ok-soft)] px-2.5 py-1 text-xs font-semibold text-ok hover:bg-[var(--status-ok-soft)]'
-                      : 'rounded-full bg-[var(--status-watch-soft)] px-2.5 py-1 text-xs font-semibold text-watch hover:bg-[var(--status-watch-soft)]'
-                  }
-                >
-                  {report.overallStatus === 'good' ? (
-                    <>
-                      <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden="true" />
-                      All Good
-                    </>
+                <Badge className={OVERALL_STATUS_DISPLAY[overallStatus].badgeClass}>
+                  {overallStatus === 'good' ? (
+                    <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden="true" />
+                  ) : overallStatus === 'not_tested' ? (
+                    <Minus className="mr-1 h-3 w-3" aria-hidden="true" />
                   ) : (
-                    <>
-                      <AlertTriangle className="mr-1 h-3 w-3" aria-hidden="true" />
-                      Needs Attention
-                    </>
+                    <AlertTriangle className="mr-1 h-3 w-3" aria-hidden="true" />
                   )}
+                  {OVERALL_STATUS_DISPLAY[overallStatus].label}
                 </Badge>
               </div>
             </CardHeader>

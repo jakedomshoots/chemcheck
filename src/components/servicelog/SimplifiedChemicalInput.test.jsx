@@ -86,4 +86,23 @@ describe('SimplifiedChemicalInput numeric entry', () => {
     );
     expect(screen.getByText(/raise or lower/)).toBeInTheDocument();
   });
+
+  it('offers a neutral "Not tested" option in quick mode', () => {
+    const onChange = vi.fn();
+    render(
+      <SimplifiedChemicalInput
+        label="pH"
+        value="not_tested"
+        onChange={onChange}
+        mode="quick"
+        config={CHEMICAL_CONFIGS.ph}
+      />
+    );
+    const notTested = screen.getByRole('button', { name: /Not tested/i });
+    expect(notTested).toHaveAttribute('aria-pressed', 'true');
+    expect(notTested.className).not.toMatch(/status-(ok|watch|action|critical)/);
+    fireEvent.click(screen.getByRole('button', { name: /Good/i }));
+    expect(onChange).toHaveBeenCalledWith('good');
+  });
 });
+

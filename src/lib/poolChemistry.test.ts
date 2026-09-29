@@ -10,6 +10,7 @@ import {
   directionOf,
   getChemistryConfig,
   planDose,
+  isNotTested,
   representativeValue,
   sodaAshMmolForPhRise,
   type ChemicalKey,
@@ -84,6 +85,20 @@ describe('poolChemistry ranges', () => {
         }),
       );
     }
+  });
+});
+
+describe('not_tested readings', () => {
+  it('never produce a dose plan', () => {
+    for (const key of ['ph', 'chlorine', 'alkalinity', 'stabilizer'] as const) {
+      expect(planDose({ chemical: key, status: 'not_tested' as never, gallons: 15000 })).toBeNull();
+    }
+  });
+
+  it('isNotTested recognises the marker only', () => {
+    expect(isNotTested('not_tested')).toBe(true);
+    expect(isNotTested('good')).toBe(false);
+    expect(isNotTested(undefined)).toBe(false);
   });
 });
 

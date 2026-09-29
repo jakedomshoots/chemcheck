@@ -15,6 +15,16 @@ beforeAll(() => {
 });
 
 describe('toAnalysisLog', () => {
+  it('treats not_tested as missing, deriving from a numeric value when present', () => {
+    const log = toAnalysisLog({
+      _id: 'nt', service_date: '2026-09-01',
+      ph: 'not_tested', ph_value: 7.4,
+      chlorine: 'not_tested',
+    });
+    expect(log.ph).toBe('good');
+    expect(log.chlorine).toBeUndefined();
+  });
+
   it('leaves untested chemicals undefined instead of defaulting to good', () => {
     const log = toAnalysisLog({ _id: 'a', service_date: '2026-09-01', ph: 'high' });
     expect(log.ph).toBe('high');

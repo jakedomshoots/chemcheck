@@ -158,4 +158,46 @@ describe('New Service Log numeric chemistry entry', () => {
             lsi_calculation_version: undefined,
         });
     });
+
+    it('defaults every chemical to not_tested so untested readings are never saved as good', async () => {
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        // The neutral "Not tested" option is pre-selected for all four chemicals.
+        const notTestedButtons = screen.getAllByRole('button', { name: /Not tested/i });
+        expect(notTestedButtons).toHaveLength(4);
+        notTestedButtons.forEach((button) => expect(button).toHaveAttribute('aria-pressed', 'true'));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Service' }));
+
+        await waitFor(() => expect(mockCreateServiceLog).toHaveBeenCalledTimes(1));
+        const saved = mockCreateServiceLog.mock.calls[0][0];
+        expect(saved).toMatchObject({
+            ph: 'not_tested',
+            chlorine: 'not_tested',
+            alkalinity: 'not_tested',
+            stabilizer: 'not_tested',
+        });
+        expect(validateServiceLog(saved).success).toBe(true);
+    });
+
+    it('derives the status from a numeric value and reverts to not_tested when cleared', async () => {
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        const numericTabs = screen.getAllByRole('tab', { name: /^Numeric$/i });
+        fireEvent.click(numericTabs[0]);
+        fireEvent.change(screen.getByTestId('ph-numeric-input'), { target: { value: '7.4' } });
+        fireEvent.click(numericTabs[1]);
+        fireEvent.change(screen.getByTestId('chlorine-numeric-input'), { target: { value: '3' } });
+        fireEvent.change(screen.getByTestId('chlorine-numeric-input'), { target: { value: '' } });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Service' }));
+
+        await waitFor(() => expect(mockCreateServiceLog).toHaveBeenCalledTimes(1));
+        expect(mockCreateServiceLog.mock.calls[0][0]).toMatchObject({
+            ph: 'good',
+            ph_value: 7.4,
+            chlorine: 'not_tested',
+            chlorine_value: undefined,
+        });
+    });
 });

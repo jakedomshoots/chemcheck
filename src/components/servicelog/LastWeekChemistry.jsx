@@ -1,4 +1,4 @@
-import { chemToneClasses } from '@/lib/chemStatus';
+import { chemToneClasses, isNotTested } from '@/lib/chemStatus';
 import { formatServiceDate } from '@/utils';
 
 const chemistryFields = [
@@ -16,7 +16,8 @@ function getReading(log, field) {
     && Number.isFinite(Number(rawNumericValue));
   const sourceValue = hasNumericValue ? Number(rawNumericValue) : log?.[field.key];
 
-  if (sourceValue === null || sourceValue === undefined || sourceValue === '') return null;
+  // 'not_tested' renders like a missing reading (never the raw token).
+  if (sourceValue === null || sourceValue === undefined || sourceValue === '' || isNotTested(sourceValue)) return null;
 
   const displayValue = hasNumericValue
     ? String(sourceValue)
@@ -81,7 +82,7 @@ export default function LastWeekChemistry({ log }) {
                     )}
                   </dd>
                 ) : (
-                  <dd className="font-data text-sm font-semibold text-ink-muted">—</dd>
+                  <dd className="font-data text-sm font-semibold text-ink-muted" title="Not tested" aria-label="Not tested">—</dd>
                 )}
               </div>
             ))}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateLsiFields, validateLsiUpdate, validateServiceLogCreate } from "./validation";
+import { READING_LEVELS, validateLsiFields, validateLsiUpdate, validateServiceLogCreate } from "./validation";
 
 describe("service log validation", () => {
   it("accepts critical chemical readings from the service log form", () => {
@@ -15,6 +15,31 @@ describe("service log validation", () => {
 
     expect(result.ph).toBe("critical");
     expect(result.chlorine).toBe("critical");
+  });
+
+  it("accepts an explicit not_tested reading", () => {
+    const result = validateServiceLogCreate({
+      customer_id: "customer-id",
+      service_date: "2026-07-06",
+      status: "completed",
+      ph: "not_tested",
+      chlorine: "good",
+      alkalinity: "not_tested",
+      stabilizer: "not_tested",
+    });
+
+    expect(result.ph).toBe("not_tested");
+    expect(result.alkalinity).toBe("not_tested");
+    expect(READING_LEVELS).toContain("not_tested");
+  });
+
+  it("still rejects unknown reading words", () => {
+    expect(() => validateServiceLogCreate({
+      customer_id: "customer-id",
+      service_date: "2026-07-06",
+      status: "completed",
+      ph: "untested",
+    })).toThrow();
   });
 });
 

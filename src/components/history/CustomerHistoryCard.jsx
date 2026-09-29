@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { ChevronDown, ChevronRight, MapPin, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, Trash2, Calendar as CalendarIcon, Lock, BarChart3, Camera, ClipboardList } from "lucide-react";
+import { ChevronDown, ChevronRight, MapPin, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, MinusCircle, Trash2, Calendar as CalendarIcon, Lock, BarChart3, Camera, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
 import { format, parseISO } from "date-fns";
@@ -40,7 +40,8 @@ const levelConfig = {
   low: { icon: AlertTriangle, color: "text-watch", bg: "bg-[var(--status-watch-soft)]", border: "border-[var(--status-watch-line)]", label: "Low" },
   good: { icon: CheckCircle2, color: "text-ok", bg: "bg-[var(--status-ok-soft)]", border: "border-[var(--status-ok-line)]", label: "Good" },
   high: { icon: AlertCircle, color: "text-action", bg: "bg-[var(--status-action-soft)]", border: "border-[var(--status-action-line)]", label: "High" },
-  critical: { icon: XCircle, color: "text-critical", bg: "bg-[var(--status-critical-soft)]", border: "border-[var(--status-critical-line)]", label: "Critical" }
+  critical: { icon: XCircle, color: "text-critical", bg: "bg-[var(--status-critical-soft)]", border: "border-[var(--status-critical-line)]", label: "Critical" },
+  not_tested: { icon: MinusCircle, color: "text-ink-muted", bg: "bg-surface-2", border: "border-line", label: "Not tested" }
 };
 
 // Get overall status for a log entry
@@ -49,7 +50,8 @@ function getLogStatus(log) {
   if (levels.includes('critical')) return 'critical';
   if (levels.includes('high')) return 'high';
   if (levels.includes('low')) return 'low';
-  return 'good';
+  // Only claim "Good" when something was actually tested good.
+  return levels.includes('good') ? 'good' : 'not_tested';
 }
 
 // Collapsible Log Entry Component
@@ -189,7 +191,7 @@ function LogEntry({ log, onDelete }) {
               if (reading.type === "number") return null;
               const config = levelConfig[reading.value] || levelConfig.good;
               return (
-                <div key={reading.label} className={`w-2 h-2 rounded-full ${config.color.replace('text-', 'bg-')}`} title={`${reading.label}: ${reading.value}`} />
+                <div key={reading.label} className={`w-2 h-2 rounded-full ${config.color.replace('text-', 'bg-')}`} title={`${reading.label}: ${levelConfig[reading.value] ? config.label : reading.value}`} />
               );
             })}
           </div>
@@ -238,7 +240,7 @@ function LogEntry({ log, onDelete }) {
                       <div className="text-xs text-ink-secondary font-medium">{reading.label}</div>
                     </div>
                     <div className={`text-xs font-semibold ${config.color} capitalize`}>
-                      {reading.value}
+                      {levelConfig[reading.value] ? config.label : reading.value}
                     </div>
                   </div>
                 );

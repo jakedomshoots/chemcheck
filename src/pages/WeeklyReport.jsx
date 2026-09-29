@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Download, Calendar, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { format, startOfWeek, endOfWeek, parseISO, isWithinInterval, addWeeks } from "date-fns";
+import { isNotTested } from "@/lib/chemStatus";
+
+/** On-screen cell text for a stored reading; never shows the raw 'not_tested' token. */
+function formatLevelCell(value) {
+  if (isNotTested(value)) return "Not tested";
+  return value || "-";
+}
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -96,6 +103,7 @@ export default function WeeklyReport() {
     };
 
     const getLevelDisplay = (value) => {
+      if (isNotTested(value)) return 'Not tested';
       const key = getLevelKey(value);
       if (key) return key.toUpperCase();
 
@@ -503,7 +511,7 @@ export default function WeeklyReport() {
                                     log.ph === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
                                       log.ph === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
-                                  {log.ph || '-'}
+                                  {formatLevelCell(log.ph)}
                                 </span>
                               </td>
                               <td className="px-2 py-2 text-center">
@@ -512,7 +520,7 @@ export default function WeeklyReport() {
                                     log.chlorine === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
                                       log.chlorine === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
-                                  {log.chlorine || '-'}
+                                  {formatLevelCell(log.chlorine)}
                                 </span>
                               </td>
                               <td className="px-2 py-2 text-center">
@@ -521,7 +529,7 @@ export default function WeeklyReport() {
                                     log.alkalinity === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
                                       log.alkalinity === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
-                                  {log.alkalinity || '-'}
+                                  {formatLevelCell(log.alkalinity)}
                                 </span>
                               </td>
                               <td className="px-2 py-2 text-center">
@@ -530,7 +538,7 @@ export default function WeeklyReport() {
                                     log.stabilizer === 'high' ? 'bg-[var(--status-action-soft)] text-action' :
                                       log.stabilizer === 'critical' ? 'bg-[var(--status-critical-soft)] text-critical' : 'bg-surface-2 text-ink-secondary'
                                   }`}>
-                                  {log.stabilizer || '-'}
+                                  {formatLevelCell(log.stabilizer)}
                                 </span>
                               </td>
                               <td className="max-w-[160px] truncate px-3 py-2 text-xs text-ink-secondary">{log.notes || '-'}</td>

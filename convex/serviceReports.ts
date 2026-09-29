@@ -372,7 +372,7 @@ export const sendReport = action({
     service_log_id: v.id("serviceLogs"),
     delivery_method: v.optional(v.string()), // 'sms' or 'email', defaults to 'sms'
     custom_note: v.optional(v.string()), // Optional custom note for needs_attention status
-    pool_status: v.optional(v.string()), // Optional pool status override ('good' or 'needs_attention')
+    pool_status: v.optional(v.string()), // Optional pool status override ('good', 'needs_attention' or 'not_tested')
     recipient_email: v.optional(v.string()), // Optional local override when customer sync is delayed
     report_base_url: v.optional(v.string()), // Optional app origin override for report links
   },
@@ -392,7 +392,9 @@ export const sendReport = action({
     }
     const customNote = args.custom_note?.slice(0, MAX_CUSTOM_NOTE_LENGTH);
     const poolStatusOverride =
-      args.pool_status === "good" || args.pool_status === "needs_attention" ? args.pool_status : undefined;
+      args.pool_status === "good" || args.pool_status === "needs_attention" || args.pool_status === "not_tested"
+        ? args.pool_status
+        : undefined;
     const recipientEmailOverride = args.recipient_email?.trim();
 
     // Actions have no ctx.db: verifyServiceLogOwnership (plus the per-user send
@@ -732,7 +734,7 @@ export function sanitizeForSubject(text: string | null | undefined): string {
 export interface EmailContentParams {
   customerName: string;
   serviceDate: string;
-  poolStatus: 'good' | 'needs_attention';
+  poolStatus: 'good' | 'needs_attention' | 'not_tested';
   customNote?: string;
   businessName?: string;
   reportLink?: string;
@@ -799,9 +801,11 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const subject = `Pool Service Completed - ${sanitizedServiceDate}`;
 
   // Generate status-specific content
-  const statusIcon = poolStatus === 'good' ? '✓' : '⚠';
-  const statusText = poolStatus === 'good' ? 'Everything is Perfect' : 'Needs Attention';
-  const statusColor = poolStatus === 'good' ? '#10b981' : '#f59e0b';
+  // 'not_tested': no chemistry was tested this visit — never claim "perfect".
+  const isNotTested = poolStatus === 'not_tested';
+  const statusIcon = poolStatus === 'good' || isNotTested ? '✓' : '⚠';
+  const statusText = poolStatus === 'good' ? 'Everything is Perfect' : isNotTested ? 'Service Completed' : 'Needs Attention';
+  const statusColor = poolStatus === 'good' ? '#10b981' : isNotTested ? '#64748b' : '#f59e0b';
 
   // Generate the message body based on status
   let messageContent: string;
@@ -812,6 +816,9 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   if (poolStatus === 'good') {
     messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Your pool is in excellent condition and ready for use.</p>`;
     textMessageContent = 'Your pool is in excellent condition and ready for use.';
+  } else if (isNotTested) {
+    messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Water chemistry was not tested on this visit.</p>`;
+    textMessageContent = 'Water chemistry was not tested on this visit.';
   } else {
     // Needs attention - include custom note or generic message
     const noteText = safeCustomNote || 'Your pool requires some attention. Please contact us if you have any questions.';
@@ -824,7 +831,7 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
     textMessageContent = `Technician Notes:\n${customNote || 'Your pool requires some attention. Please contact us if you have any questions.'}`;
   }
 
-  if (safeCustomNote && poolStatus === 'good') {
+  if (safeCustomNote && (poolStatus === 'good' || isNotTested)) {
     optionalCustomMessageHtml = `
       <div style="background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0284c7;">
         <p style="margin: 0; font-size: 14px; color: #075985; font-weight: 600;">Custom Message:</p>
@@ -956,32 +963,45 @@ This is a service notification, not a marketing email.
 }
 
 /**
+ * Overall pool status shown to customers.
+ * - needs_attention: at least one recorded low/high/critical reading
+ * - good: no problems and at least one reading actually tested 'good'
+ * - not_tested: nothing was tested (every reading is 'not_tested' or missing),
+ *   so we must not claim the pool is "All Good".
+ */
+export type OverallPoolStatus = "good" | "needs_attention" | "not_tested";
+
+/**
  * Helper: Determine overall pool status based on chemical readings
- * 
+ *
  * Note: Salt is excluded from status determination as it's a numeric value
  * (PPM) rather than a status indicator like the other readings.
- * 
- * Handles null/undefined readings by treating them as "unknown" which
- * doesn't trigger a "needs_attention" status (missing data is not the same
- * as bad data - the technician may not have tested that parameter).
+ *
+ * Missing (null/undefined) and explicit 'not_tested' readings are never
+ * issues — missing data is not bad data — but they are not evidence of a
+ * healthy pool either.
  */
-function determinePoolStatus(serviceLog: any): "good" | "needs_attention" {
+export function determinePoolStatus(serviceLog: any): OverallPoolStatus {
   const readings = [
-    serviceLog.ph,
-    serviceLog.chlorine,
-    serviceLog.alkalinity,
-    serviceLog.stabilizer
+    serviceLog?.ph,
+    serviceLog?.chlorine,
+    serviceLog?.alkalinity,
+    serviceLog?.stabilizer
   ];
 
-  // Check for any reading that explicitly indicates an issue
-  // null/undefined readings are not considered issues (just missing data)
   const hasIssue = readings.some((reading) =>
-    reading !== null &&
-    reading !== undefined &&
-    (reading === "low" || reading === "high" || reading === "critical")
+    reading === "low" || reading === "high" || reading === "critical"
   );
+  if (hasIssue) return "needs_attention";
 
-  return hasIssue ? "needs_attention" : "good";
+  const anyTestedGood = readings.some((reading) => reading === "good");
+  return anyTestedGood ? "good" : "not_tested";
+}
+
+/** A stored reading, or null when it is missing or explicitly 'not_tested'. */
+export function testedReadingOrNull(reading: string | null | undefined): string | null {
+  if (reading === undefined || reading === null || reading === "" || reading === "not_tested") return null;
+  return reading;
 }
 
 /**
@@ -1026,7 +1046,7 @@ function formatServiceDate(dateString: string): string {
 function formatSmsMessage(
   businessName: string,
   serviceDate: string,
-  overallStatus: "good" | "needs_attention",
+  overallStatus: OverallPoolStatus,
   reportLink: string
 ): string {
   // Truncate business name if too long
@@ -1038,7 +1058,9 @@ function formatSmsMessage(
   // Use ASCII characters only for GSM-7 encoding compatibility
   const statusText = overallStatus === "good"
     ? "OK"
-    : "Needs Attention";
+    : overallStatus === "not_tested"
+      ? "Not tested"
+      : "Needs Attention";
 
   return `${truncatedBusinessName} - Service completed ${serviceDate}\nPool Status: ${statusText}\nView report: ${reportLink}`;
 }
@@ -1053,7 +1075,7 @@ async function sendViaSms(
     customer: any;
     businessName: string;
     serviceDate: string;
-    overallStatus: "good" | "needs_attention";
+    overallStatus: OverallPoolStatus;
     reportLink: string;
   }
 ): Promise<{
@@ -1244,7 +1266,7 @@ async function sendViaEmail(
     recipientEmail?: string;
     businessName: string;
     serviceDate: string;
-    overallStatus: "good" | "needs_attention";
+    overallStatus: OverallPoolStatus;
     reportLink: string;
     customNote?: string;
   }
@@ -1399,7 +1421,7 @@ export type PublicReport = {
     salt: number | null;
   } | null;
   notes: string | null;
-  overallStatus: "good" | "needs_attention";
+  overallStatus: OverallPoolStatus;
   photos: {
     before: ReportPhoto[];
     after: ReportPhoto[];
@@ -1575,10 +1597,12 @@ async function loadPublicReport(ctx: any, report: any, now: number): Promise<Pub
       technicianName,
       customerName: customer.full_name,
       chemicalReadings: {
-        ph: serviceLog.ph ?? null,
-        chlorine: serviceLog.chlorine ?? null,
-        alkalinity: serviceLog.alkalinity ?? null,
-        stabilizer: serviceLog.stabilizer ?? null,
+        // 'not_tested' is sent as null: the customer page shows "Not tested"
+        // and it does not count as a recorded reading.
+        ph: testedReadingOrNull(serviceLog.ph),
+        chlorine: testedReadingOrNull(serviceLog.chlorine),
+        alkalinity: testedReadingOrNull(serviceLog.alkalinity),
+        stabilizer: testedReadingOrNull(serviceLog.stabilizer),
         salt: serviceLog.salt ?? null,
       },
       notes: serviceLog.notes ?? null,

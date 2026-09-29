@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, ChevronDown, Trash2, Lock, Camera, Send, CheckCheck, Loader2, RefreshCw } from "lucide-react";
+import { Calendar, FileText, CheckCircle2, AlertTriangle, AlertCircle, XCircle, MinusCircle, ChevronDown, Trash2, Lock, Camera, Send, CheckCheck, Loader2, RefreshCw } from "lucide-react";
 import { formatServiceDateFull } from "@/utils";
 import {
   AlertDialog,
@@ -22,7 +22,8 @@ const levelConfig = {
   low: { icon: AlertTriangle, color: "text-watch", bg: "bg-[var(--status-watch-soft)]", border: "border-[var(--status-watch-line)]" },
   good: { icon: CheckCircle2, color: "text-ok", bg: "bg-[var(--status-ok-soft)]", border: "border-[var(--status-ok-line)]" },
   high: { icon: AlertCircle, color: "text-action", bg: "bg-[var(--status-action-soft)]", border: "border-[var(--status-action-line)]" },
-  critical: { icon: XCircle, color: "text-critical", bg: "bg-[var(--status-critical-soft)]", border: "border-[var(--status-critical-line)]" }
+  critical: { icon: XCircle, color: "text-critical", bg: "bg-[var(--status-critical-soft)]", border: "border-[var(--status-critical-line)]" },
+  not_tested: { icon: MinusCircle, color: "text-ink-muted", bg: "bg-surface-2", border: "border-line", label: "Not tested" }
 };
 
 /**
@@ -180,8 +181,11 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
     if (levelStatuses.includes('critical')) return 'critical';
     if (levelStatuses.includes('high')) return 'high';
     if (levelStatuses.includes('low')) return 'low';
-    return 'good';
+    // Never summarize as "good" when nothing was actually tested good.
+    return levelStatuses.includes('good') ? 'good' : 'not_tested';
   };
+  // 'not_tested' levels are shown as such but don't count as readings taken.
+  const testedLevelCount = readings.filter(r => r.type === "level" && r.value !== "not_tested").length;
 
   const worstStatus = getWorstStatus();
   const summaryConfig = levelConfig[worstStatus];
@@ -234,7 +238,7 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
               <div className="flex items-center gap-1.5 mt-0.5">
                 <SummaryIcon className={`w-2.5 h-2.5 ${summaryConfig.color}`} />
                 <span className={`text-xs font-medium ${summaryConfig.color}`}>
-                  {readings.filter(r => r.type === "level").length} reading{readings.filter(r => r.type === "level").length !== 1 ? 's' : ''}
+                  {testedLevelCount} reading{testedLevelCount !== 1 ? 's' : ''}
                 </span>
                 
                 {/* Photo Indicator - Requirements: 1.1, 1.5 */}
@@ -330,7 +334,7 @@ export default function ServiceLogCard({ log, onDelete, onSendReport, onRetryRep
                         <div className="text-xs text-ink-secondary font-medium">{reading.label}</div>
                       </div>
                       <div className={`text-xs font-semibold ${config.color} capitalize`}>
-                        {reading.value}
+                        {config.label ?? reading.value}
                       </div>
                     </div>
                   );

@@ -29,6 +29,14 @@ export function sanitizeHtml(input: string): string {
 }
 
 /**
+ * Allowed chemistry status words for service log readings. Mirrors
+ * READING_LEVELS in convex/validation.ts. 'not_tested' means the chemical was
+ * not tested on this visit — treat it like a missing reading, never as 'good'.
+ */
+export const READING_LEVELS = ['good', 'low', 'high', 'critical', 'not_tested'] as const;
+export type ReadingLevel = typeof READING_LEVELS[number];
+
+/**
  * Sanitize and trim string input
  */
 export function sanitizeString(input: string): string {
@@ -100,10 +108,10 @@ export const serviceLogSchema = z.object({
       message: 'Notes must be less than 2000 characters'
     }),
 
-  ph: z.enum(['good', 'low', 'high', 'critical']),
-  chlorine: z.enum(['good', 'low', 'high', 'critical']),
-  alkalinity: z.enum(['good', 'low', 'high', 'critical']),
-  stabilizer: z.enum(['good', 'low', 'high', 'critical']),
+  ph: z.enum(READING_LEVELS),
+  chlorine: z.enum(READING_LEVELS),
+  alkalinity: z.enum(READING_LEVELS),
+  stabilizer: z.enum(READING_LEVELS),
 
   ph_value: z.number()
     .min(0, 'pH value must be positive')

@@ -231,7 +231,9 @@ export const SERVICE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 export const POOL_TYPES = ['Salt', 'Chlorine'] as const;
 export const SURFACE_TYPES = ['Plaster', 'Vinyl', 'Fiberglass', 'Tile'] as const;
 export const SERVICE_STATUSES = ['completed', 'pending', 'cancelled', 'rescheduled'] as const;
-export const READING_LEVELS = ['good', 'low', 'high', 'critical'] as const;
+// 'not_tested' = the tech did not test this chemical on this visit. It is
+// never a problem and never 'good' — consumers treat it like a missing reading.
+export const READING_LEVELS = ['good', 'low', 'high', 'critical', 'not_tested'] as const;
 export const NOTE_CATEGORIES = ['General', 'Customer', 'Equipment', 'Reminder', 'Chemical', 'Billing'] as const;
 export const PRIORITY_LEVELS = ['low', 'medium', 'high'] as const;
 

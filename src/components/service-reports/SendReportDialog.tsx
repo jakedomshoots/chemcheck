@@ -25,7 +25,7 @@ import { EmailPreview } from './EmailPreview';
 import { getEmailDeliveryValidationError } from '@/lib/emailValidation';
 
 export type DeliveryMethod = 'sms' | 'email';
-export type PoolStatus = 'good' | 'needs_attention';
+export type PoolStatus = 'good' | 'needs_attention' | 'not_tested';
 
 /** Maximum character limit for custom notes */
 export const CUSTOM_NOTE_MAX_LENGTH = 500;
@@ -276,9 +276,11 @@ export function SendReportDialog({
           {poolStatus && (
             <div 
               className={`flex items-center gap-2 p-3 rounded-lg border ${
-                poolStatus === 'good' 
-                  ? 'bg-[var(--status-ok-soft)] border-[var(--status-ok-line)]' 
-                  : 'bg-[var(--status-watch-soft)] border-[var(--status-watch-line)]'
+                poolStatus === 'good'
+                  ? 'bg-[var(--status-ok-soft)] border-[var(--status-ok-line)]'
+                  : poolStatus === 'not_tested'
+                    ? 'bg-surface-2 border-line'
+                    : 'bg-[var(--status-watch-soft)] border-[var(--status-watch-line)]'
               }`}
               data-testid="pool-status-indicator"
             >
@@ -286,6 +288,11 @@ export function SendReportDialog({
                 <>
                   <div className="w-2 h-2 rounded-full bg-[var(--status-ok-soft)]0" />
                   <span className="text-sm text-ok font-medium">Pool Status: Everything is Perfect ✓</span>
+                </>
+              ) : poolStatus === 'not_tested' ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-[var(--ink-muted)]" />
+                  <span className="text-sm text-ink-secondary font-medium">Pool Status: Chemistry not tested</span>
                 </>
               ) : (
                 <>

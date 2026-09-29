@@ -19,6 +19,17 @@ export type ChemicalKey = 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer';
 /** Display status (UI / stored quick-entry vocabulary). */
 export type DisplayStatus = 'good' | 'low' | 'high' | 'critical';
 
+/**
+ * Explicit "not tested this visit" marker stored in place of a status word.
+ * It is equivalent to a missing reading everywhere: no status, no dose, and
+ * excluded from scores. It is never 'good'.
+ */
+export const NOT_TESTED = 'not_tested' as const;
+
+export function isNotTested(value: unknown): boolean {
+  return typeof value === 'string' && value.toLowerCase() === NOT_TESTED;
+}
+
 /** Direction-aware status. 'critical' alone loses which way to correct. */
 export type DirectionalStatus = 'critical_low' | 'low' | 'good' | 'high' | 'critical_high';
 
@@ -191,6 +202,10 @@ export function classifyReading(
 ): DirectionalStatus | undefined {
   return classifyInRanges(value, getChemistryConfig(key, context).ranges);
 }
+
+const DIRECTIONAL_STATUSES: ReadonlySet<string> = new Set<DirectionalStatus>([
+  'critical_low', 'low', 'good', 'high', 'critical_high',
+]);
 
 export function toDisplayStatus(status: DirectionalStatus): DisplayStatus;
 export function toDisplayStatus(status: DirectionalStatus | undefined): DisplayStatus | undefined;
@@ -374,6 +389,8 @@ const RETEST = 'Circulate at least 30 minutes, then retest before adding more.';
  */
 export function planDose(input: DoseInput): DosePlan | null {
   const { chemical, status, gallons } = input;
+  // 'not_tested' (or anything unrecognised) is a missing reading — never dose.
+  if (!DIRECTIONAL_STATUSES.has(status)) return null;
   if (status === 'good') return null;
   if (!(gallons > 0) || !Number.isFinite(gallons)) return null;
 

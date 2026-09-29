@@ -26,6 +26,23 @@ export function isOutOfRangeReading(reading: unknown): boolean {
   return reading === 'low' || reading === 'high' || reading === 'critical';
 }
 
+/**
+ * Stored logs may carry the explicit 'not_tested' marker. For analysis it is
+ * exactly a missing reading: excluded from scores, never dosed.
+ */
+export function normalizeServiceLogReadings<T extends object>(log: T): T {
+  if (!log || typeof log !== 'object') return log;
+  const l = log as Record<string, unknown>;
+  let copy: Record<string, unknown> | null = null;
+  for (const key of VALID_CHEMICALS) {
+    if (typeof l[key] === 'string' && (l[key] as string).toLowerCase() === 'not_tested') {
+      copy = copy ?? { ...l };
+      copy[key] = undefined;
+    }
+  }
+  return (copy ?? log) as T;
+}
+
 export function isValidChemical(chemical: unknown): chemical is ValidChemical {
   return typeof chemical === 'string' && VALID_CHEMICALS.includes(chemical as ValidChemical);
 }
@@ -186,7 +203,9 @@ export function validateServiceLog(log: unknown): log is ServiceLog {
 
 export function validateServiceLogs(logs: unknown[]): ServiceLog[] {
   const validated = validateArray<unknown>(logs, BOUNDS.MAX_SERVICE_LOGS);
-  return validated.filter(validateServiceLog);
+  return validated
+    .map((log) => (log && typeof log === 'object' ? normalizeServiceLogReadings(log) : log))
+    .filter(validateServiceLog);
 }
 
 export function generateSecureId(prefix: string, ...parts: (string | number)[]): string {

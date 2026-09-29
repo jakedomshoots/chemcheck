@@ -13,7 +13,7 @@
 export interface EmailContentParams {
   customerName: string;
   serviceDate: string;
-  poolStatus: 'good' | 'needs_attention';
+  poolStatus: 'good' | 'needs_attention' | 'not_tested';
   customNote?: string;
   businessName?: string;
   reportLink?: string;
@@ -153,9 +153,11 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const subject = `Pool Service Completed - ${sanitizedServiceDate}`;
   
   // Generate status-specific content
-  const statusIcon = poolStatus === 'good' ? '✓' : '⚠';
-  const statusText = poolStatus === 'good' ? 'Everything is Perfect' : 'Needs Attention';
-  const statusColor = poolStatus === 'good' ? '#10b981' : '#f59e0b';
+  // 'not_tested': no chemistry was tested this visit — never claim "perfect".
+  const isNotTested = poolStatus === 'not_tested';
+  const statusIcon = poolStatus === 'good' || isNotTested ? '✓' : '⚠';
+  const statusText = poolStatus === 'good' ? 'Everything is Perfect' : isNotTested ? 'Service Completed' : 'Needs Attention';
+  const statusColor = poolStatus === 'good' ? '#10b981' : isNotTested ? '#64748b' : '#f59e0b';
   
   // Generate the message body based on status
   let messageContent: string;
@@ -166,6 +168,9 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   if (poolStatus === 'good') {
     messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Your pool is in excellent condition and ready for use.</p>`;
     textMessageContent = 'Your pool is in excellent condition and ready for use.';
+  } else if (isNotTested) {
+    messageContent = `<p style="font-size: 16px; margin-bottom: 20px;">Water chemistry was not tested on this visit.</p>`;
+    textMessageContent = 'Water chemistry was not tested on this visit.';
   } else {
     // Needs attention - include custom note or generic message
     const noteText = safeCustomNote || 'Your pool requires some attention. Please contact us if you have any questions.';
@@ -178,7 +183,7 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
     textMessageContent = `Technician Notes:\n${customNote || 'Your pool requires some attention. Please contact us if you have any questions.'}`;
   }
 
-  if (safeCustomNote && poolStatus === 'good') {
+  if (safeCustomNote && (poolStatus === 'good' || isNotTested)) {
     optionalCustomMessageHtml = `
       <div style="background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0284c7;">
         <p style="margin: 0; font-size: 14px; color: #075985; font-weight: 600;">Custom Message:</p>

@@ -151,6 +151,25 @@ describe('Service Log Validation', () => {
     }
   });
 
+  it('accepts not_tested chemistry readings', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      ph: 'not_tested',
+      chlorine: 'not_tested',
+      alkalinity: 'not_tested',
+      stabilizer: 'not_tested',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.ph).toBe('not_tested');
+    }
+  });
+
+  it('rejects unknown chemistry reading words', () => {
+    const result = validateServiceLog({ ...validServiceLog, ph: 'untested' });
+    expect(result.success).toBe(false);
+  });
+
   it('should reject invalid date format', () => {
     const invalidLog = { ...validServiceLog, service_date: '12/13/2024' };
     

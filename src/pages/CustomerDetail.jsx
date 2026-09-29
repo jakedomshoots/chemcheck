@@ -12,6 +12,7 @@ import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
 import { SendReportDialog } from "@/components/service-reports";
 import { ReportSettingsPanel } from "@/components/service-reports/ReportSettingsPanel";
 import { formatSmsMessage, buildReportUrl } from "@/lib/smsReport";
+import { isTestedReading } from "@/lib/chemStatus";
 import { syncPhotosForServiceLog, getPhotos } from "@/lib/proof-of-service";
 import {
   addToReportQueue,
@@ -263,8 +264,11 @@ export default function CustomerDetail() {
     const hasIssue = readings.some(r =>
       r === "low" || r === "high" || r === "critical"
     );
+    if (hasIssue) return 'needs_attention';
 
-    return hasIssue ? 'needs_attention' : 'good';
+    // Mirrors determinePoolStatus in convex/serviceReports.ts: with nothing
+    // actually tested (all 'not_tested'/missing) never claim "All Good".
+    return readings.some(r => r === "good") ? 'good' : 'not_tested';
   }, []);
 
   const handleCloseSendReport = useCallback(() => {
@@ -816,7 +820,7 @@ export default function CustomerDetail() {
         </div>
       </Card>
 
-      {lastWeekLog && (lastWeekLog.notes || lastWeekLog.ph || lastWeekLog.chlorine) && (
+      {lastWeekLog && (lastWeekLog.notes || isTestedReading(lastWeekLog.ph) || isTestedReading(lastWeekLog.chlorine)) && (
         <div className="mb-4 overflow-hidden rounded-raised border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] p-4 shadow-sm">
           <div className="mb-2 flex items-center gap-2">
             <FileText className="h-4 w-4 text-watch" aria-hidden="true" />
@@ -826,19 +830,19 @@ export default function CustomerDetail() {
             </span>
           </div>
 
-          {(lastWeekLog.ph || lastWeekLog.chlorine || lastWeekLog.alkalinity) && (
+          {(isTestedReading(lastWeekLog.ph) || isTestedReading(lastWeekLog.chlorine) || isTestedReading(lastWeekLog.alkalinity)) && (
             <div className="mb-2 flex flex-wrap gap-1.5">
-              {lastWeekLog.ph && (
+              {isTestedReading(lastWeekLog.ph) && (
                 <span className="rounded-full bg-surface-1 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
                   pH: {lastWeekLog.ph}
                 </span>
               )}
-              {lastWeekLog.chlorine && (
+              {isTestedReading(lastWeekLog.chlorine) && (
                 <span className="rounded-full bg-surface-1 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
                   Cl: {lastWeekLog.chlorine}
                 </span>
               )}
-              {lastWeekLog.alkalinity && (
+              {isTestedReading(lastWeekLog.alkalinity) && (
                 <span className="rounded-full bg-surface-1 px-2.5 py-1 text-xs font-semibold text-ink-secondary">
                   Alk: {lastWeekLog.alkalinity}
                 </span>

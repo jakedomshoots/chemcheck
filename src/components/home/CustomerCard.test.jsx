@@ -155,4 +155,27 @@ describe("CustomerCard", () => {
     expect(onUnskip).toHaveBeenCalledTimes(1);
     expect(onSkip).not.toHaveBeenCalled();
   });
+
+  it("omits not_tested chips instead of printing the raw token", () => {
+    render(
+      <CustomerCard
+        customer={customer}
+        isCompleted={false}
+        isSkipped={false}
+        lastWeekLog={{
+          ph: "not_tested",
+          chlorine: "low",
+          alkalinity: "not_tested",
+          stabilizer: "not_tested",
+          service_date: "2026-06-16",
+        }}
+      />
+    );
+
+    const quickView = screen.getByLabelText("Quick chemical view");
+    expect(quickView).not.toHaveTextContent(/not_tested/i);
+    expect(within(quickView).queryByText("pH")).not.toBeInTheDocument();
+    expect(within(quickView).getByText("low")).toBeInTheDocument();
+  });
 });
+

@@ -17,6 +17,7 @@ import confetti from "canvas-confetti";
 import { toast } from "sonner";
 import { trackUxEvent } from "@/lib/uxAnalytics";
 import { getEffectiveWorkingDays } from "@/lib/workingDays";
+import { isTestedReading } from "@/lib/chemStatus";
 import { buildDurationProfile, calculateServiceTimingSummary } from "@/lib/routeTimingEstimator";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -343,7 +344,7 @@ export default function Home() {
     const log = todayLogsMap.get(customerId);
     if (!log) return null;
 
-    const hasCoreReadings = Boolean(log.ph && log.chlorine && log.alkalinity && log.stabilizer);
+    const hasCoreReadings = [log.ph, log.chlorine, log.alkalinity, log.stabilizer].every(isTestedReading);
     const hasRequiredPhotos = Boolean(log.has_before_photos && log.has_after_photos);
     const hasNotes = Boolean(log.notes && String(log.notes).trim().length > 0);
 

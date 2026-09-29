@@ -29,7 +29,7 @@ import { generateCostAnalysis } from './costProjector';
 import { analyzeFleet, type PoolData } from './fleetAnalyzer';
 import { analyzeLearning } from './learningEngine';
 import { analyzeWeatherImpact } from './weatherAnalyzer';
-import { isOutOfRangeReading, isValidReading } from './validation';
+import { isOutOfRangeReading, isValidReading, normalizeServiceLogReadings } from './validation';
 
 export interface PoolAnalysisInput {
   customerId: string;
@@ -284,13 +284,15 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     customerName,
     poolType = 'standard',
     poolGallons = null,
-    serviceLogs,
+    serviceLogs: rawServiceLogs,
     weatherForecast = null,
     includeWeather = true,
     includeCosts = true,
     includeLearning = true,
   } = input;
 
+  // 'not_tested' readings are treated exactly like missing readings.
+  const serviceLogs = rawServiceLogs.map(normalizeServiceLogReadings);
   const generatedAt = new Date().toISOString();
   const dataRange = calculateDateRange(serviceLogs);
   const totalServices = serviceLogs.length;
@@ -481,7 +483,11 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
   };
 }
 export function analyzeFleetPools(input: FleetAnalysisInput): FleetInsights {
-  const { pools, config } = input;
+  const { config } = input;
+  const pools = input.pools.map(pool => ({
+    ...pool,
+    serviceLogs: pool.serviceLogs.map(normalizeServiceLogReadings),
+  }));
 
   const poolDataArray: PoolData[] = pools.map(pool => {
     let healthScore: PoolHealthScore;

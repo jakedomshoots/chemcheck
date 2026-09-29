@@ -34,4 +34,34 @@ describe('LastWeekChemistry', () => {
       'No readings recorded'
     );
   });
+
+  it('never shows the raw not_tested token and does not treat it as good', () => {
+    render(
+      <LastWeekChemistry
+        log={{
+          service_date: '2026-07-20',
+          ph: 'not_tested',
+          chlorine: 'low',
+          alkalinity: 'not_tested',
+          stabilizer: 'not_tested',
+        }}
+      />
+    );
+
+    const chart = screen.getByRole('region', { name: "Last week's chemistry" });
+    expect(chart).not.toHaveTextContent(/not_tested/i);
+    expect(within(screen.getByTestId('last-week-ph')).getByLabelText('Not tested')).toBeInTheDocument();
+    expect(screen.queryByTestId('last-week-ph-value')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('last-week-chlorine')).getByText('Low')).toBeInTheDocument();
+  });
+
+  it('uses the empty state when nothing was tested', () => {
+    render(
+      <LastWeekChemistry
+        log={{ service_date: '2026-07-20', ph: 'not_tested', chlorine: 'not_tested', alkalinity: 'not_tested', stabilizer: 'not_tested' }}
+      />
+    );
+    expect(screen.getByRole('region', { name: "Last week's chemistry" })).toHaveTextContent('No readings recorded');
+  });
 });
+

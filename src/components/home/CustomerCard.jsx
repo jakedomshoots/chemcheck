@@ -10,7 +10,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { readingToStatus, statusToTone } from "@/lib/chemStatus";
+import { isNotTested, readingToStatus, statusToTone } from "@/lib/chemStatus";
 import { formatServiceDate } from "@/utils";
 
 const chemicalReadingMeta = [
@@ -27,7 +27,8 @@ function getChemicalReadings(log, poolType) {
   return chemicalReadingMeta
     .map(({ key, label, suffix = "" }) => {
       const value = log[key];
-      if (value === null || value === undefined || value === "") return null;
+      // Untested chemicals are omitted rather than shown as "not_tested".
+      if (value === null || value === undefined || value === "" || isNotTested(value)) return null;
       return {
         key,
         label,
