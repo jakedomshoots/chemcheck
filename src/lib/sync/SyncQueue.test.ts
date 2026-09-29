@@ -41,16 +41,70 @@ describe('SyncQueue', () => {
     expect(queue.getPendingCount()).toBe(0);
   });
 
-  it('drops item after max failed attempts', () => {
+  it('parks an item in the persisted failed list after max failed attempts instead of dropping it', () => {
     const queue = new SyncQueue();
 
     queue.enqueue({ table: 'chemicalUsage', localId: 7, operation: 'create', data: { id: 7 } });
     const item = queue.getPending()[0];
     queue.markFailed(item, 'temporary issue');
     queue.markFailed(item, 'temporary issue');
-    queue.markFailed(item, 'temporary issue');
+    queue.markFailed(item, 'permanent issue');
 
     expect(queue.getPendingCount()).toBe(0);
+    expect(queue.getRetryableItems()).toHaveLength(0);
+    expect(queue.getFailedCount()).toBe(1);
+    expect(queue.getFailedItems()[0]).toMatchObject({ table: 'chemicalUsage', localId: 7, error: 'permanent issue', failedCount: 1 });
+
+    // Survives a reload.
+    const reloaded = new SyncQueue();
+    expect(reloaded.getFailedItems()).toHaveLength(1);
+  });
+
+  it('retries failed items on demand with a fresh retry budget', () => {
+    const queue = new SyncQueue();
+    queue.enqueue({ table: 'notes', localId: 4, operation: 'delete', data: { convex_id: 'notes:4' } });
+    const item = queue.getPending()[0];
+    for (let attempt = 0; attempt < 3; attempt += 1) queue.markFailed(item, 'down');
+
+    expect(queue.retryFailed()).toBe(1);
+    expect(queue.getFailedCount()).toBe(0);
+    expect(queue.getPending()).toHaveLength(1);
+    expect(queue.getPending()[0]).toMatchObject({ localId: 4, operation: 'delete', retryCount: 0, data: { convex_id: 'notes:4' } });
+    expect(queue.getPending()[0].revision).not.toBe(item.revision);
+  });
+
+  it('auto-revives failed items only after their failed-list backoff elapsed', () => {
+    const queue = new SyncQueue();
+    queue.enqueue({ table: 'notes', localId: 5, operation: 'update', data: { id: 5 } });
+    const item = queue.getPending()[0];
+    for (let attempt = 0; attempt < 3; attempt += 1) queue.markFailed(item, 'down');
+    const failedAt = queue.getFailedItems()[0].failedAt!;
+
+    expect(queue.retryFailed({ onlyDue: true, now: failedAt + 1_000 })).toBe(0);
+    expect(queue.retryFailed({ onlyDue: true, now: failedAt + 60_000 })).toBe(1);
+  });
+
+  it('lets a newer local edit supersede a failed item', () => {
+    const queue = new SyncQueue();
+    queue.enqueue({ table: 'notes', localId: 6, operation: 'update', data: { id: 6, title: 'old' } });
+    const item = queue.getPending()[0];
+    for (let attempt = 0; attempt < 3; attempt += 1) queue.markFailed(item, 'down');
+
+    queue.enqueue({ table: 'notes', localId: 6, operation: 'update', data: { id: 6, title: 'new' } });
+
+    expect(queue.getFailedCount()).toBe(0);
+    expect(queue.getPending()[0].data.title).toBe('new');
+  });
+
+  it('never evicts unsynced items beyond the capacity warning threshold', () => {
+    const queue = new SyncQueue();
+    for (let localId = 1; localId <= 520; localId += 1) {
+      queue.enqueue({ table: 'serviceLogs', localId, operation: 'create', data: { id: localId } });
+    }
+
+    expect(queue.getPendingCount()).toBe(520);
+    expect(queue.getCapacityStatus().usagePercent).toBeGreaterThan(100);
+    expect(new SyncQueue().getPendingCount()).toBe(520);
   });
 
   it('does not let a stale completion remove a newer revision of the same record', () => {

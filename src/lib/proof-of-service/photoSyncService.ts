@@ -8,6 +8,7 @@
 import { Id } from '../../../convex/_generated/dataModel';
 import {
   getPendingPhotos,
+  getPhotosNeedingSync,
   updateSyncStatus,
   getPhotoById,
   getPhotosByServiceLog,
@@ -65,6 +66,47 @@ let syncProgress: SyncProgress = {
   inProgress: false,
 };
 let progressListeners: ((progress: SyncProgress) => void)[] = [];
+// Photos currently uploading through any path (background or report send);
+// prevents the same photo from being uploaded twice concurrently.
+const photosInFlight = new Set<string>();
+// Failed photos are retried in the background at most this often.
+const FAILED_PHOTO_RETRY_MS = 10 * 60_000;
+const lastFailedAttemptAt = new Map<string, number>();
+
+/** Convex ids a photo must be uploaded against. */
+export interface ResolvedPhotoIds {
+  serviceLogId: string;
+  customerId: string;
+}
+
+export type PhotoIdResolver = (photo: OfflinePhotoRecord) => Promise<ResolvedPhotoIds | null>;
+
+function isLocalNumericId(value: string | null | undefined): boolean {
+  return typeof value === 'string' && /^\d+$/.test(value);
+}
+
+/**
+ * Photos are captured against local Dexie ids (service log / customer).
+ * Translate them to Convex ids once the service log has synced; returns
+ * null while the log is not on the server yet (the photo stays pending).
+ * Non-numeric ids are treated as Convex ids (legacy photos).
+ */
+export async function resolveLocalPhotoIds(photo: OfflinePhotoRecord): Promise<ResolvedPhotoIds | null> {
+  if (!photo.serviceLogId) return null;
+  if (!isLocalNumericId(photo.serviceLogId)) {
+    return { serviceLogId: photo.serviceLogId, customerId: photo.customerId };
+  }
+  const { db } = await import('@/db/chemcheck-db');
+  const log = await db.serviceLogs.get(Number(photo.serviceLogId));
+  if (!log?.convex_id) return null;
+  let customerId = log.convex_customer_id;
+  if (!customerId) {
+    const customer = await db.customers.get(log.customer_id);
+    customerId = customer?.convex_id;
+  }
+  if (!customerId) return null;
+  return { serviceLogId: log.convex_id, customerId };
+}
 
 // ============================================
 // Progress Tracking
@@ -277,6 +319,21 @@ async function uploadPhotoToConvexWithIds(
   convexClient: ConvexClient,
   config: SyncServiceConfig
 ): Promise<SyncResult> {
+  photosInFlight.add(photo.id);
+  try {
+    return await uploadPhotoWithIdsUnguarded(photo, convexServiceLogId, convexCustomerId, convexClient, config);
+  } finally {
+    photosInFlight.delete(photo.id);
+  }
+}
+
+async function uploadPhotoWithIdsUnguarded(
+  photo: OfflinePhotoRecord,
+  convexServiceLogId: string,
+  convexCustomerId: string,
+  convexClient: ConvexClient,
+  config: SyncServiceConfig
+): Promise<SyncResult> {
   let lastError: string | undefined;
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
@@ -352,12 +409,15 @@ async function uploadPhotoToConvexWithIds(
 // ============================================
 
 /**
- * Sync all pending photos to Convex
+ * Sync all pending photos (and failed photos whose retry delay elapsed) to
+ * Convex.  Local Dexie ids are translated to Convex ids with `resolveIds`;
+ * photos whose service log has not synced yet are skipped until a later run.
  * Requirements: 6.3 - Sync all proof-of-service data when connectivity is restored
  */
 export async function syncPendingPhotos(
   convexClient: ConvexClient,
-  config: Partial<SyncServiceConfig> = {}
+  config: Partial<SyncServiceConfig> = {},
+  resolveIds: PhotoIdResolver = resolveLocalPhotoIds,
 ): Promise<SyncResult[]> {
   // Prevent concurrent syncs
   if (syncInProgress) {
@@ -373,14 +433,21 @@ export async function syncPendingPhotos(
   syncInProgress = true;
 
   try {
-    // Get all pending photos
-    const pendingPhotos = await getPendingPhotos();
-    
-    // Filter to only photos with service log IDs (can't sync without one)
-    const syncablePhotos = pendingPhotos.filter((p) => p.serviceLogId !== null);
+    const now = Date.now();
+    const candidates = (await getPhotosNeedingSync()).filter((photo) => (
+      photo.serviceLogId !== null
+      && !photosInFlight.has(photo.id)
+      && (photo.syncStatus !== 'failed' || now - (lastFailedAttemptAt.get(photo.id) || 0) >= FAILED_PHOTO_RETRY_MS)
+    ));
+
+    const syncable: { photo: OfflinePhotoRecord; ids: ResolvedPhotoIds }[] = [];
+    for (const photo of candidates) {
+      const ids = await resolveIds(photo);
+      if (ids) syncable.push({ photo, ids });
+    }
 
     updateProgress({
-      total: syncablePhotos.length,
+      total: syncable.length,
       completed: 0,
       failed: 0,
       inProgress: true,
@@ -389,13 +456,16 @@ export async function syncPendingPhotos(
     const results: SyncResult[] = [];
 
     // Sync photos sequentially to avoid overwhelming the server
-    for (const photo of syncablePhotos) {
-      const result = await uploadPhotoToConvex(photo, convexClient, mergedConfig);
+    for (const { photo, ids } of syncable) {
+      if (photosInFlight.has(photo.id)) continue;
+      const result = await uploadPhotoToConvexWithIds(photo, ids.serviceLogId, ids.customerId, convexClient, mergedConfig);
       results.push(result);
 
       if (result.success) {
+        lastFailedAttemptAt.delete(photo.id);
         updateProgress({ completed: syncProgress.completed + 1 });
       } else {
+        lastFailedAttemptAt.set(photo.id, Date.now());
         updateProgress({ failed: syncProgress.failed + 1 });
       }
     }
@@ -414,13 +484,11 @@ export async function retrySyncFailedPhotos(
   convexClient: ConvexClient,
   config: Partial<SyncServiceConfig> = {}
 ): Promise<SyncResult[]> {
-  // Get all photos and filter for failed ones
-  const pendingPhotos = await getPendingPhotos();
-  
-  // Reset failed photos to pending status
-  for (const photo of pendingPhotos) {
-    const fullPhoto = await getPhotoById(photo.id);
-    if (fullPhoto?.syncStatus === 'failed') {
+  // Reset failed photos to pending status (getPendingPhotos() only returns
+  // pending ones, so failed photos must be looked up explicitly).
+  for (const photo of await getPhotosNeedingSync()) {
+    if (photo.syncStatus === 'failed') {
+      lastFailedAttemptAt.delete(photo.id);
       await updateSyncStatus(photo.id, 'pending');
     }
   }
@@ -487,6 +555,11 @@ export async function syncPhotosForServiceLog(
 
   const results: SyncResult[] = [];
   for (const photo of syncablePhotos) {
+    if (photosInFlight.has(photo.id)) {
+      // Already uploading in the background; report it as pending success.
+      results.push({ photoId: photo.id, success: true });
+      continue;
+    }
     const result = await uploadPhotoToConvexWithIds(
       photo,
       convexServiceLogId,
@@ -510,19 +583,22 @@ let onlineListenerAttached = false;
 
 function handleOnline(): void {
   if (autoSyncEnabled && autoSyncConvexClient) {
-    syncPendingPhotos(autoSyncConvexClient).catch(console.error);
+    syncPendingPhotos(autoSyncConvexClient, autoSyncConfig).catch(console.error);
   }
 }
+
+let autoSyncConfig: Partial<SyncServiceConfig> = {};
 
 /**
  * Enable automatic sync when device comes online
  * Requirements: 6.3 - Sync when connectivity is restored
  */
-export function enableAutoSync(convexClient: ConvexClient): void {
+export function enableAutoSync(convexClient: ConvexClient, config: Partial<SyncServiceConfig> = {}): void {
   if (typeof window === 'undefined') return;
   
   // Update the client reference
   autoSyncConvexClient = convexClient;
+  autoSyncConfig = config;
   autoSyncEnabled = true;
   
   // Only add listener if not already attached (prevents duplicate listeners)
@@ -533,7 +609,7 @@ export function enableAutoSync(convexClient: ConvexClient): void {
   
   // If already online, trigger sync
   if (isOnline()) {
-    syncPendingPhotos(convexClient).catch(console.error);
+    syncPendingPhotos(convexClient, config).catch(console.error);
   }
 }
 

@@ -7,6 +7,9 @@ export interface UseSyncStateReturn {
   
   // Number of pending records
   pendingCount: number;
+
+  // Number of local changes that failed to sync (see retryFailed)
+  failedCount: number;
   
   // Last sync timestamp
   lastSyncAt: number | null;
@@ -16,6 +19,9 @@ export interface UseSyncStateReturn {
   
   // Trigger manual sync
   syncNow: () => Promise<void>;
+
+  // Retry every change that failed to sync
+  retryFailed: () => Promise<void>;
   
   // Check if specific record is synced
   isRecordSynced: (table: string, localId: number) => Promise<boolean>;
@@ -34,6 +40,7 @@ export interface UseSyncStateReturn {
 export function useSyncState(): UseSyncStateReturn {
   const [status, setStatus] = useState<SyncStatus>(syncService.getSyncStatus());
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const [failedCount, setFailedCount] = useState<number>(0);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,12 +60,24 @@ export function useSyncState(): UseSyncStateReturn {
 
   const refreshPendingCount = useCallback(async () => {
     try {
-      const count = await syncService.getPendingCount();
+      const [count, failed] = await Promise.all([
+        syncService.getPendingCount(),
+        typeof syncService.getFailedCount === 'function' ? syncService.getFailedCount() : Promise.resolve(0),
+      ]);
       setPendingCount(count);
+      setFailedCount(failed);
     } catch (err) {
       console.error('Failed to get pending count:', err);
     }
   }, []);
+
+  // Refresh counts after every sync cycle so failures surface immediately.
+  useEffect(() => {
+    if (typeof syncService.onSyncComplete !== 'function') return undefined;
+    return syncService.onSyncComplete(() => {
+      refreshPendingCount();
+    });
+  }, [refreshPendingCount]);
 
   // Load initial pending count
   useEffect(() => {
@@ -134,6 +153,23 @@ export function useSyncState(): UseSyncStateReturn {
     }
   }, [refreshPendingCount]);
 
+  const retryFailed = useCallback(async () => {
+    try {
+      setError(null);
+      const result = await syncService.retryFailed();
+      if (result.success) {
+        setLastSyncAt(Date.now());
+      } else if (result.error) {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Retry failed');
+      console.error('Retry of failed changes failed:', err);
+    } finally {
+      await refreshPendingCount();
+    }
+  }, [refreshPendingCount]);
+
   const isRecordSynced = useCallback(async (table: string, localId: number): Promise<boolean> => {
     try {
       return await syncService.isRecordSynced(table, localId);
@@ -158,9 +194,11 @@ export function useSyncState(): UseSyncStateReturn {
   return {
     status,
     pendingCount,
+    failedCount,
     lastSyncAt,
     error,
     syncNow,
+    retryFailed,
     isRecordSynced,
     getRecordSyncStatus,
     refreshPendingCount,

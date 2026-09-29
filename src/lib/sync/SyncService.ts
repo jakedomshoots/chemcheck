@@ -3,7 +3,7 @@ import { Id } from '../../../convex/_generated/dataModel';
 import { db } from '@/db/chemcheck-db';
 import { api } from '../../../convex/_generated/api';
 import { SyncQueue, SyncQueueItem } from './SyncQueue';
-import { ConflictResolver } from './ConflictResolver';
+import { ConflictResolver, valuesEqual } from './ConflictResolver';
 import { monitoring } from '@/lib/monitoring';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
@@ -30,9 +30,31 @@ interface RemotePullPage {
   saltCellLogs?: any[];
   pools?: any[];
   equipment?: any[];
+  tombstones?: { table: string; server_id: string; deleted_at?: number }[];
   cursor?: string | null;
   hasMore?: boolean;
   watermark?: number;
+}
+
+type SyncTable = SyncQueueItem['table'];
+const SYNC_TABLES: SyncTable[] = ['customers', 'pools', 'equipment', 'serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs'];
+// Local children removed together with a customer (mirrors sync.syncDelete).
+const CUSTOMER_CHILD_TABLES: SyncTable[] = ['serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs', 'equipment', 'pools'];
+
+function hasDirtyBase(record: any): boolean {
+  return !!record?.dirty_base && typeof record.dirty_base === 'object' && Object.keys(record.dirty_base).length > 0;
+}
+
+/** Server `updated_at` the local copy is based on (conflict base version). */
+function baseVersionOf(record: any): number | undefined {
+  if (!record?.convex_id) return undefined;
+  const base = Number(record.remote_updated_at);
+  return Number.isFinite(base) && base > 0 ? base : undefined;
+}
+
+function isPermissionDenied(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /access denied|insufficient role permissions/i.test(message);
 }
 
 export interface RecordSyncStatus {
@@ -67,6 +89,8 @@ export class SyncService {
   private pullScope = 'anonymous';
   private lastPullCount = 0;
   private lastConflictCount = 0;
+  private lastSyncError: string | undefined;
+  private syncCompleteCallbacks: ((result: SyncResult) => void)[] = [];
 
   constructor() {
     this.syncQueue = new SyncQueue();
@@ -327,6 +351,64 @@ export class SyncService {
     return this.findLocalByConvexId('pools', convexId);
   }
 
+  /**
+   * Translate a server document into the local record shape: strip Convex
+   * system fields and map foreign keys to local numeric ids while keeping the
+   * Convex ids for later pushes.  Unresolvable foreign keys stay strings.
+   */
+  private async mapRemoteRecord(remote: any, convexId: string, remoteUpdatedAt: number): Promise<any> {
+    const mapped: any = { ...remote };
+    delete mapped._id;
+    delete mapped._creationTime;
+    mapped.convex_id = convexId;
+    mapped.remote_updated_at = remoteUpdatedAt;
+    mapped.local_updated_at = remoteUpdatedAt || Date.now();
+    mapped.sync_status = 'synced';
+    mapped.sync_error = undefined;
+
+    if (mapped.customer_id && typeof mapped.customer_id === 'string') {
+      const customer = await this.findLocalCustomerByConvexId(mapped.customer_id);
+      mapped.convex_customer_id = mapped.customer_id;
+      if (customer?.id !== undefined) mapped.customer_id = customer.id;
+    }
+    if (mapped.pool_id && typeof mapped.pool_id === 'string') {
+      const pool = await this.findLocalPoolByConvexId(mapped.pool_id);
+      mapped.convex_pool_id = mapped.pool_id;
+      if (pool?.id !== undefined) mapped.pool_id = pool.id;
+    }
+    return mapped;
+  }
+
+  /**
+   * Merge a newer server version into a local record that has unsynced
+   * edits, field by field (see ConflictResolver.mergeWithBase).  Returns the
+   * record to store; it stays `pending` while local edits remain to push.
+   */
+  private buildFieldMergedRecord(local: any, mapped: any, remoteUpdatedAt: number): { record: any; conflictedFields: string[] } {
+    const remoteData = { ...mapped };
+    // Foreign keys that could not be mapped must not clobber local ids.
+    if (typeof remoteData.customer_id === 'string') remoteData.customer_id = local.customer_id;
+    if (typeof remoteData.pool_id === 'string') remoteData.pool_id = local.pool_id;
+
+    const { merged, dirtyBase, conflictedFields } = this.conflictResolver.mergeWithBase(local, remoteData, local.dirty_base || {});
+    const record: any = {
+      ...local,
+      ...merged,
+      id: local.id,
+      convex_id: remoteData.convex_id ?? local.convex_id,
+      local_updated_at: local.local_updated_at,
+      remote_updated_at: remoteUpdatedAt || local.remote_updated_at,
+      sync_status: dirtyBase ? 'pending' : 'synced',
+      sync_error: undefined,
+      dirty_base: dirtyBase,
+    };
+    if (conflictedFields.length > 0) {
+      const { conflict_backup: _previousBackup, dirty_base: _dirtyBase, ...snapshot } = local;
+      record.conflict_backup = JSON.stringify({ timestamp: Date.now(), data: snapshot, conflictedFields });
+    }
+    return { record, conflictedFields };
+  }
+
   private async applyRemotePullPage(page: RemotePullPage): Promise<{ pulledCount: number; conflictCount: number }> {
     let pulledCount = 0;
     let conflictCount = 0;
@@ -340,25 +422,7 @@ export class SyncService {
 
       // Translate remote foreign keys to local numeric keys while preserving
       // the Convex IDs for subsequent pushes.
-      const mapped: any = { ...remote };
-      delete mapped._id;
-      delete mapped._creationTime;
-      mapped.convex_id = convexId;
-      mapped.remote_updated_at = remoteUpdatedAt;
-      mapped.local_updated_at = remoteUpdatedAt || Date.now();
-      mapped.sync_status = 'synced';
-      mapped.sync_error = undefined;
-
-      if (mapped.customer_id && typeof mapped.customer_id === 'string') {
-        const customer = await this.findLocalCustomerByConvexId(mapped.customer_id);
-        mapped.convex_customer_id = mapped.customer_id;
-        if (customer?.id !== undefined) mapped.customer_id = customer.id;
-      }
-      if (mapped.pool_id && typeof mapped.pool_id === 'string') {
-        const pool = await this.findLocalPoolByConvexId(mapped.pool_id);
-        mapped.convex_pool_id = mapped.pool_id;
-        if (pool?.id !== undefined) mapped.pool_id = pool.id;
-      }
+      const mapped = await this.mapRemoteRecord(remote, convexId, remoteUpdatedAt);
 
       if (!local) {
         // Child records cannot be safely materialized until their local parent
@@ -376,7 +440,29 @@ export class SyncService {
         return;
       }
 
-      const localChanged = local.sync_status === 'pending' ||
+      if (hasDirtyBase(local)) {
+        // The local copy has unsynced edits with a known base version.
+        if (remoteUpdatedAt > 0 && remoteUpdatedAt <= Number(local.remote_updated_at || 0)) {
+          // Not newer than the version our edits are based on; the pending
+          // push carries the local changes.
+          return;
+        }
+        const { record, conflictedFields } = this.buildFieldMergedRecord(local, mapped, remoteUpdatedAt);
+        if (conflictedFields.length > 0) {
+          conflictCount += 1;
+          monitoring.recordMetric('sync_pull_conflict_remote_wins', 1, { table, localId: local.id, fields: conflictedFields.length });
+        }
+        await this.withoutSyncHooks(async () => {
+          await localTable.update(local.id, record);
+        });
+        if (!record.dirty_base) this.syncQueue.clearForItem(table as SyncTable, local.id);
+        pulledCount += 1;
+        monitoring.recordMetric('sync_pull_record_applied', 1, { table, merged: true });
+        return;
+      }
+
+      // Legacy path: unsynced edits made before per-field tracking existed.
+      const localChanged = local.sync_status === 'pending' || local.sync_status === 'error' ||
         Number(local.local_updated_at || 0) > Number(local.remote_updated_at || 0);
       const localTimestamp = Number(local.local_updated_at || 0);
       if (localChanged && localTimestamp > remoteUpdatedAt) {
@@ -423,7 +509,39 @@ export class SyncService {
     for (const record of page.chemicalUsage || []) await merge('chemicalUsage', record);
     for (const record of page.notes || []) await merge('notes', record);
     for (const record of page.saltCellLogs || []) await merge('saltCellLogs', record);
+    for (const tombstone of page.tombstones || []) {
+      if (await this.applyTombstone(tombstone.table, tombstone.server_id)) pulledCount += 1;
+    }
     return { pulledCount, conflictCount };
+  }
+
+  /**
+   * Remove the local copy of a record deleted on another device.  Runs with
+   * sync hooks suppressed so the deletion is not echoed back as a new delete.
+   */
+  private async applyTombstone(table: string, serverId: string): Promise<boolean> {
+    if (!SYNC_TABLES.includes(table as SyncTable) || !serverId) return false;
+    const localTable = this.getTable(table);
+    if (!localTable || typeof localTable.delete !== 'function') return false;
+    const local = await this.findLocalByConvexId(table, serverId);
+    if (!local?.id) return false;
+
+    await this.withoutSyncHooks(async () => {
+      const cascade: SyncTable[] = table === 'customers' ? CUSTOMER_CHILD_TABLES : table === 'pools' ? ['equipment'] : [];
+      const foreignKey = table === 'customers' ? 'customer_id' : 'pool_id';
+      for (const childTable of cascade) {
+        const children = this.getTable(childTable);
+        try {
+          await children?.where?.(foreignKey)?.equals?.(local.id)?.delete?.();
+        } catch (error) {
+          console.warn(`Could not remove local ${childTable} of deleted ${table}[${local.id}]:`, error);
+        }
+      }
+      await localTable.delete(local.id);
+    });
+    this.syncQueue.clearForItem(table as SyncTable, local.id);
+    monitoring.recordMetric('sync_pull_tombstone_applied', 1, { table });
+    return true;
   }
 
   private async withoutSyncHooks<T>(operation: () => Promise<T>): Promise<T> {
@@ -639,10 +757,70 @@ export class SyncService {
         this.getPendingRecords(db.saltCellLogs),
       ]);
 
-      return customers.length + pools.length + equipment.length + serviceLogs.length + chemicalUsage.length + notes.length + saltCellLogs.length;
+      // Deleted rows no longer exist locally; count their queued deletes.
+      const queuedDeletes = this.syncQueue.getPending().filter((item) => item.operation === 'delete').length;
+
+      return customers.length + pools.length + equipment.length + serviceLogs.length + chemicalUsage.length + notes.length + saltCellLogs.length + queuedDeletes;
     } catch (error) {
       console.error('Error getting pending count:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Number of local changes that failed to sync: records in `error` state plus
+   * queue items that exhausted their retries (e.g. deletes).
+   */
+  async getFailedCount(): Promise<number> {
+    const keys = new Set<string>();
+    for (const item of this.syncQueue.getFailedItems()) keys.add(`${item.table}:${item.localId}`);
+    try {
+      const errored = await Promise.all(SYNC_TABLES.map(async (table) => ({
+        table,
+        records: await this.getErroredRecords(this.getTable(table)),
+      })));
+      for (const { table, records } of errored) {
+        for (const record of records) keys.add(`${table}:${record.id}`);
+      }
+    } catch (error) {
+      console.error('Error getting failed count:', error);
+    }
+    return keys.size;
+  }
+
+  /**
+   * Retry every failed change now: failed queue items get a fresh retry budget
+   * and errored records are re-queued by the sync cycle.
+   */
+  async retryFailed(): Promise<SyncResult> {
+    const revived = this.syncQueue.retryFailed();
+    monitoring.recordMetric('sync_retry_failed', revived);
+    if (!this.convexClient || !this.isOnline) {
+      return {
+        success: false,
+        error: this.isOnline ? 'SyncService not initialized with Convex client' : 'Cannot sync while offline',
+        syncedCount: 0,
+        failedCount: 0,
+      };
+    }
+    return this.syncPendingRecords('manual');
+  }
+
+  /** Subscribe to completed sync cycles (e.g. to upload photos afterwards). */
+  onSyncComplete(callback: (result: SyncResult) => void): () => void {
+    this.syncCompleteCallbacks.push(callback);
+    return () => {
+      this.syncCompleteCallbacks = this.syncCompleteCallbacks.filter((entry) => entry !== callback);
+    };
+  }
+
+  private notifySyncComplete(result: SyncResult): void {
+    for (const callback of [...this.syncCompleteCallbacks]) {
+      try {
+        callback(result);
+      } catch (error) {
+        console.error('Sync completion listener failed:', error);
+      }
     }
   }
 
@@ -728,6 +906,15 @@ export class SyncService {
     return [...pending, ...legacyPending];
   }
 
+  private async getErroredRecords(table: any): Promise<any[]> {
+    if (!table || typeof table.where !== 'function') return [];
+    try {
+      return (await table.where('sync_status').equals('error').toArray()) || [];
+    } catch {
+      return [];
+    }
+  }
+
   // ============================================
   // Private Methods
   // ============================================
@@ -773,113 +960,33 @@ export class SyncService {
     try {
       this.recordQueueDepth('before_batch', trigger);
 
+      // Failed items whose long backoff elapsed get another attempt.
+      this.syncQueue.retryFailed({ onlyDue: true });
+
       // Get retryable items from queue (respects exponential backoff)
       const retryableItems = this.syncQueue.getRetryableItems();
       const batchSize = this.syncQueue.getBatchSize();
 
       if (retryableItems.length === 0) {
-        // No items ready for retry, check database for new pending records
-        // Note: SyncQueue.enqueue() automatically deduplicates by table+localId
-        const [pendingCustomers, pendingPools, pendingEquipment, pendingServiceLogs, pendingChemicalUsage, pendingNotes, pendingSaltCellLogs] = await Promise.all([
-          this.getPendingRecords(db.customers),
-          this.getPendingRecords(db.pools),
-          this.getPendingRecords(db.equipment),
-          this.getPendingRecords(db.serviceLogs),
-          this.getPendingRecords(db.chemicalUsage),
-          this.getPendingRecords(db.notes),
-          this.getPendingRecords(db.saltCellLogs),
-        ]);
+        // No items ready for retry: queue local rows that still need syncing.
+        // `error` rows are retried too; the queue's backoff and failed list
+        // keep a permanently failing row from being hammered.
+        await this.enqueueUnsyncedRecords();
+      }
 
-        // Add new pending records to queue (deduplication handled by queue)
-        // Priority order: customers first (due to foreign key dependencies)
-        for (const customer of pendingCustomers) {
-          this.syncQueue.enqueue({
-            table: 'customers',
-            localId: customer.id!,
-            operation: customer.convex_id ? 'update' : 'create',
-            data: customer,
-          });
-        }
-
-        for (const pool of pendingPools) {
-          this.syncQueue.enqueue({
-            table: 'pools',
-            localId: pool.id!,
-            operation: pool.convex_id ? 'update' : 'create',
-            data: pool,
-          });
-        }
-
-        for (const equipment of pendingEquipment) {
-          this.syncQueue.enqueue({
-            table: 'equipment',
-            localId: equipment.id!,
-            operation: equipment.convex_id ? 'update' : 'create',
-            data: equipment,
-          });
-        }
-
-        for (const serviceLog of pendingServiceLogs) {
-          this.syncQueue.enqueue({
-            table: 'serviceLogs',
-            localId: serviceLog.id!,
-            operation: serviceLog.convex_id ? 'update' : 'create',
-            data: serviceLog,
-          });
-        }
-
-        for (const chemicalUsage of pendingChemicalUsage) {
-          this.syncQueue.enqueue({
-            table: 'chemicalUsage',
-            localId: chemicalUsage.id!,
-            operation: chemicalUsage.convex_id ? 'update' : 'create',
-            data: chemicalUsage,
-          });
-        }
-
-        for (const note of pendingNotes) {
-          this.syncQueue.enqueue({
-            table: 'notes',
-            localId: note.id!,
-            operation: note.convex_id ? 'update' : 'create',
-            data: note,
-          });
-        }
-
-        for (const saltCellLog of pendingSaltCellLogs) {
-          this.syncQueue.enqueue({
-            table: 'saltCellLogs',
-            localId: saltCellLog.id!,
-            operation: saltCellLog.convex_id ? 'update' : 'create',
-            data: saltCellLog,
-          });
-        }
-
-        // Get updated retryable items
-        const updatedRetryableItems = this.syncQueue.getRetryableItems();
-
-        // Process items with priority order (customers first)
-        const batchItems = updatedRetryableItems.slice(0, batchSize);
-        for (const item of batchItems) {
-          const success = await this.syncQueueItem(item);
-          if (success) {
-            syncedCount++;
-            this.syncQueue.markSynced(item);
-          } else {
-            failedCount++;
-          }
-        }
-      } else {
-        // Process retryable items
-        const batchItems = retryableItems.slice(0, batchSize);
-        for (const item of batchItems) {
-          const success = await this.syncQueueItem(item);
-          if (success) {
-            syncedCount++;
-            this.syncQueue.markSynced(item);
-          } else {
-            failedCount++;
-          }
+      // Process items with priority order (customers first)
+      const batchItems = (retryableItems.length === 0 ? this.syncQueue.getRetryableItems() : retryableItems)
+        .slice(0, batchSize);
+      for (const item of batchItems) {
+        this.lastSyncError = undefined;
+        const success = await this.syncQueueItem(item);
+        if (success) {
+          syncedCount++;
+          this.syncQueue.markSynced(item);
+        } else {
+          failedCount++;
+          // Backoff, then park in the persisted failed list; never dropped.
+          this.syncQueue.markFailed(item, this.lastSyncError || 'Sync failed');
         }
       }
 
@@ -927,6 +1034,7 @@ export class SyncService {
         this.setStatus('idle');
       }
 
+      this.notifySyncComplete(result);
       return result;
     } catch (error) {
       monitoring.recordMetric('sync_cycle_failed', performance.now() - this.lastSyncStartedAt, {
@@ -946,8 +1054,69 @@ export class SyncService {
     }
   }
 
+  /** Queue every local row that is pending or errored and not yet queued. */
+  private async enqueueUnsyncedRecords(): Promise<void> {
+    // Note: SyncQueue.enqueue() deduplicates by table+localId, but it also
+    // resets the retry budget, so rows already queued or parked in the failed
+    // list are skipped here.
+    for (const table of SYNC_TABLES) {
+      const localTable = this.getTable(table);
+      const [pending, errored] = await Promise.all([
+        this.getPendingRecords(localTable),
+        this.getErroredRecords(localTable),
+      ]);
+      for (const record of [...pending, ...errored]) {
+        if (record?.id === undefined) continue;
+        if (this.syncQueue.findItem(table, record.id) || this.syncQueue.findFailed(table, record.id)) continue;
+        this.syncQueue.enqueue({
+          table,
+          localId: record.id,
+          operation: record.convex_id ? 'update' : 'create',
+          data: record,
+        });
+      }
+    }
+  }
+
+  /**
+   * Push a queued local delete.  Rows that never reached the server are
+   * simply dropped; otherwise sync.syncDelete removes the server copy and
+   * leaves a tombstone for other devices.
+   */
+  private async syncDeleteItem(item: SyncQueueItem): Promise<boolean> {
+    const serverId = item.data?.convex_id;
+    if (!serverId) return true;
+    const deleteRef = (api as any)?.sync?.syncDelete;
+    if (!this.convexClient || !deleteRef) throw new Error('Delete sync unavailable');
+
+    try {
+      await this.convexClient.mutation(deleteRef, {
+        table: item.table,
+        server_id: String(serverId),
+        idempotency_key: `delete:${item.table}:${serverId}`,
+      });
+      monitoring.recordMetric('sync_delete_pushed', 1, { table: item.table });
+      return true;
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        // The server refused the delete (e.g. a technician deleting a
+        // customer). Retrying cannot succeed; restore the server copy by
+        // re-running a full pull instead of leaving the devices diverged.
+        console.warn(`Server refused delete of ${item.table}[${item.localId}]; restoring it from the server.`);
+        monitoring.recordMetric('sync_delete_refused', 1, { table: item.table });
+        this.writePullState({ since: 0, cursor: null });
+        return true;
+      }
+      throw error;
+    }
+  }
+
   private async syncQueueItem(item: SyncQueueItem): Promise<boolean> {
     try {
+      if (item.operation === 'delete') {
+        return await this.syncDeleteItem(item);
+      }
+
       // Get fresh record from database
       let record: any;
 
@@ -994,8 +1163,8 @@ export class SyncService {
         error: errorMessage,
       });
 
-      // Mark as failed in queue (handles retry logic with exponential backoff)
-      this.syncQueue.markFailed(item, errorMessage);
+      // The sync cycle marks the item failed (retry backoff / failed list).
+      this.lastSyncError = errorMessage;
 
       return false;
     }
@@ -1031,6 +1200,9 @@ export class SyncService {
     while (retryCount < maxRetries) {
       try {
         const localUpdatedAt = this.normalizeLocalUpdatedAt(record.local_updated_at);
+        // The server version this edit is based on; the server reports a
+        // conflict only if its copy changed after it (server clock only).
+        const baseVersion = baseVersionOf(record);
         const convexPoolId = ['serviceLogs', 'chemicalUsage', 'notes', 'saltCellLogs'].includes(table)
           ? await this.resolveConvexPoolId(record)
           : undefined;
@@ -1055,6 +1227,7 @@ export class SyncService {
                 report_settings: record.report_settings,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: baseVersion,
               convex_id: record.convex_id as Id<"customers"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1083,6 +1256,7 @@ export class SyncService {
                 active: record.active,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: baseVersion,
               convex_id: record.convex_id as Id<"pools"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1113,6 +1287,7 @@ export class SyncService {
                 notes: record.notes,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: baseVersion,
               convex_id: record.convex_id as Id<"equipment"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1189,6 +1364,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: baseVersion,
               convex_id: record.convex_id as Id<"serviceLogs"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1231,6 +1407,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: baseVersion,
               convex_id: record.convex_id as Id<"chemicalUsage"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1267,6 +1444,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: baseVersion,
               convex_id: record.convex_id as Id<"notes"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1309,6 +1487,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: baseVersion,
               convex_id: record.convex_id as Id<"saltCellLogs"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1331,6 +1510,9 @@ export class SyncService {
         // responses. It may describe what the server accepted or observed, but
         // it must never acknowledge or overwrite newer local work.
         if (!queueRevisionIsCurrent || !localRevisionIsCurrent) {
+          if (result?.success && result.convex_id) {
+            await this.recordSupersededPush(table as SyncTable, record, currentRecord, result);
+          }
           return true;
         }
 
@@ -1342,6 +1524,7 @@ export class SyncService {
             sync_status: 'synced' as const,
             sync_error: undefined,
             remote_updated_at: result.updated_at ?? Date.now(), // Use server timestamp
+            dirty_base: undefined, // every local edit is now acknowledged
           };
 
           try {
@@ -1399,9 +1582,21 @@ export class SyncService {
             phase: 'sync_cycle',
           });
 
+          if (hasDirtyBase(currentRecord) && result.conflict?.remote_data) {
+            return await this.resolveConflictByFieldMerge(
+              table as SyncTable,
+              currentRecord,
+              result.conflict,
+              conflictRetryCount,
+              expectedQueueRevision,
+            );
+          }
+          // Legacy records without per-field tracking: whole-record
+          // last-write-wins by timestamp (kept for backward compatibility).
+
           // Build remote record from conflict data
           const remoteRecord = result.conflict?.remote_data ? {
-            ...result.conflict.remote_data,
+            ...(await this.mapConflictRemote(record, result.conflict.remote_data, result.conflict.remote_updated_at)),
             remote_updated_at: result.conflict.remote_updated_at,
           } : undefined;
 
@@ -1441,30 +1636,12 @@ export class SyncService {
                   sync_status: 'error' as const,
                 sync_error: `Conflict resolution failed after ${maxConflictRetries} attempts. Local changes preserved but not synced.`,
                 };
+                this.lastSyncError = errorData.sync_error;
 
-                switch (table) {
-                  case 'customers':
-                    await db.customers.update(record.id, errorData);
-                    break;
-                  case 'pools':
-                    await db.pools.update(record.id, errorData);
-                    break;
-                  case 'equipment':
-                    await db.equipment.update(record.id, errorData);
-                    break;
-                  case 'serviceLogs':
-                    await db.serviceLogs.update(record.id, errorData);
-                    break;
-                  case 'chemicalUsage':
-                    await db.chemicalUsage.update(record.id, errorData);
-                    break;
-                  case 'notes':
-                    await db.notes.update(record.id, errorData);
-                    break;
-                  case 'saltCellLogs':
-                    await db.saltCellLogs.update(record.id, errorData);
-                    break;
-                }
+                // Resolution writes are sync bookkeeping, not new user edits.
+                await this.withoutSyncHooks(async () => {
+                  await this.getTable(table)?.update?.(record.id, errorData);
+                });
 
                 return false;
               }
@@ -1475,29 +1652,10 @@ export class SyncService {
                 sync_error: `Conflict resolved: local version wins. ${resolution.backupCreated ? 'Remote data backed up.' : ''} Retrying sync (attempt ${conflictRetryCount + 1}/${maxConflictRetries})...`,
               };
 
-              switch (table) {
-                case 'customers':
-                  await db.customers.update(record.id, resolvedData);
-                  break;
-                case 'pools':
-                  await db.pools.update(record.id, resolvedData);
-                  break;
-                case 'equipment':
-                  await db.equipment.update(record.id, resolvedData);
-                  break;
-                case 'serviceLogs':
-                  await db.serviceLogs.update(record.id, resolvedData);
-                  break;
-                case 'chemicalUsage':
-                  await db.chemicalUsage.update(record.id, resolvedData);
-                  break;
-                case 'notes':
-                  await db.notes.update(record.id, resolvedData);
-                  break;
-                case 'saltCellLogs':
-                  await db.saltCellLogs.update(record.id, resolvedData);
-                  break;
-              }
+              // Resolution writes are sync bookkeeping, not new user edits.
+              await this.withoutSyncHooks(async () => {
+                await this.getTable(table)?.update?.(record.id, resolvedData);
+              });
 
               // Add exponential backoff delay before retry to give remote time to settle
               const backoffMs = Math.pow(2, conflictRetryCount) * 500; // 500ms, 1s, 2s
@@ -1529,29 +1687,10 @@ export class SyncService {
                 sync_error: undefined,
               };
 
-              switch (table) {
-                case 'customers':
-                  await db.customers.update(record.id, resolvedData);
-                  break;
-                case 'pools':
-                  await db.pools.update(record.id, resolvedData);
-                  break;
-                case 'equipment':
-                  await db.equipment.update(record.id, resolvedData);
-                  break;
-                case 'serviceLogs':
-                  await db.serviceLogs.update(record.id, resolvedData);
-                  break;
-                case 'chemicalUsage':
-                  await db.chemicalUsage.update(record.id, resolvedData);
-                  break;
-                case 'notes':
-                  await db.notes.update(record.id, resolvedData);
-                  break;
-                case 'saltCellLogs':
-                  await db.saltCellLogs.update(record.id, resolvedData);
-                  break;
-              }
+              // Resolution writes are sync bookkeeping, not new user edits.
+              await this.withoutSyncHooks(async () => {
+                await this.getTable(table)?.update?.(record.id, resolvedData);
+              });
 
               console.log(`Conflict resolved for ${table}[${record.id}]: remote version accepted${resolution.backupCreated ? ', local changes backed up' : ''}`);
               monitoring.recordMetric('sync_conflict_remote_wins', 1, {
@@ -1601,6 +1740,7 @@ export class SyncService {
           sync_status: 'error' as const,
           sync_error: error instanceof Error ? error.message : 'Unknown error',
         };
+        this.lastSyncError = errorData.sync_error;
 
         try {
           switch (table) {
@@ -1637,8 +1777,108 @@ export class SyncService {
     return false;
   }
 
+  /**
+   * A push succeeded on the server but newer local work superseded it.  Keep
+   * the server's version stamp (and id, for creates) so the next push is not
+   * reported as a conflict against our own write, and re-base the dirty
+   * fields on the values the server now holds.
+   */
+  private async recordSupersededPush(table: SyncTable, pushed: any, current: any, result: any): Promise<void> {
+    try {
+      if (!current) {
+        // Deleted locally while its create was in flight: the server copy now
+        // exists, so queue the delete with its server id.
+        if (!pushed?.convex_id) {
+          this.enqueueRecord(table, pushed.id, 'delete', { ...pushed, convex_id: result.convex_id });
+        }
+        return;
+      }
+      const changes: Record<string, any> = {};
+      if (Number.isFinite(Number(result.updated_at))) changes.remote_updated_at = Number(result.updated_at);
+      if (!current.convex_id) changes.convex_id = result.convex_id;
+      if (hasDirtyBase(current)) {
+        const rebased: Record<string, any> = {};
+        for (const field of Object.keys(current.dirty_base)) {
+          if (!valuesEqual(current[field], pushed[field])) rebased[field] = pushed[field] === undefined ? null : pushed[field];
+        }
+        changes.dirty_base = Object.keys(rebased).length > 0 ? rebased : undefined;
+      }
+      if (Object.keys(changes).length === 0) return;
+      await this.withoutSyncHooks(async () => {
+        await this.getTable(table)?.update?.(current.id, changes);
+      });
+    } catch (error) {
+      console.warn(`Could not record superseded push for ${table}[${pushed?.id}]:`, error);
+    }
+  }
+
+  /** Map a conflict's server document to the local shape, keeping local foreign keys. */
+  private async mapConflictRemote(local: any, remote: any, remoteUpdatedAt: unknown): Promise<any> {
+    const convexId = String(remote?._id || local?.convex_id || '');
+    const mapped = await this.mapRemoteRecord(remote, convexId, Number(remoteUpdatedAt) || 0);
+    if (!convexId) delete mapped.convex_id;
+    if (typeof mapped.customer_id === 'string') mapped.customer_id = local.customer_id;
+    if (typeof mapped.pool_id === 'string') mapped.pool_id = local.pool_id;
+    return mapped;
+  }
+
+  /**
+   * Resolve a server conflict with a field-level merge: keep local edits the
+   * server did not touch, accept server values for fields changed on both
+   * sides (local copy kept in conflict_backup), then push the merged record
+   * against the server's current version.
+   */
+  private async resolveConflictByFieldMerge(
+    table: SyncTable,
+    local: any,
+    conflict: any,
+    conflictRetryCount: number,
+    expectedQueueRevision?: string,
+  ): Promise<boolean> {
+    const remote = conflict.remote_data;
+    const remoteUpdatedAt = Number(conflict.remote_updated_at || remote.updated_at || 0);
+    const convexId = String(remote._id || local.convex_id);
+    const mapped = await this.mapRemoteRecord(remote, convexId, remoteUpdatedAt);
+    const { record: merged, conflictedFields } = this.buildFieldMergedRecord(local, mapped, remoteUpdatedAt);
+
+    if (conflictedFields.length > 0) {
+      console.warn(`Conflict on ${table}[${local.id}] fields ${conflictedFields.join(', ')}: server values kept, local copy backed up.`);
+      monitoring.recordMetric('sync_conflict_fields_remote_wins', conflictedFields.length, { table, localId: local.id });
+    }
+
+    await this.withoutSyncHooks(async () => {
+      await this.getTable(table)?.update?.(local.id, merged);
+    });
+
+    if (!merged.dirty_base) {
+      // Nothing left to push: the server copy already reflects the merge.
+      this.lastSyncError = undefined;
+      return true;
+    }
+
+    if (conflictRetryCount >= this.MAX_CONFLICT_RETRIES) {
+      const message = `Conflict resolution failed after ${this.MAX_CONFLICT_RETRIES} attempts. Local changes preserved but not synced.`;
+      this.lastSyncError = message;
+      monitoring.recordMetric('sync_conflict_exhausted', 1, { table, localId: local.id, conflictRetryCount });
+      await this.withoutSyncHooks(async () => {
+        await this.getTable(table)?.update?.(local.id, { sync_status: 'error', sync_error: message });
+      });
+      return false;
+    }
+
+    monitoring.recordMetric('sync_conflict_retry', 1, {
+      table,
+      localId: local.id,
+      retryAttempt: conflictRetryCount + 1,
+      maxConflictRetries: this.MAX_CONFLICT_RETRIES,
+      backoffMs: 0,
+    });
+    return this.syncSingleRecord(table, merged, conflictRetryCount + 1, expectedQueueRevision);
+  }
+
   private async markRecordAuthError(table: string, record: any, error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : 'Authentication failed';
+    this.lastSyncError = message;
     const errorData = {
       sync_status: 'error' as const,
       sync_error: message,
@@ -1695,6 +1935,9 @@ export class SyncService {
     if (this.isInitialized && !this.autoSyncInterval) {
       this.startAutoSync();
     }
+
+    // Connectivity is back: give changes parked in the failed list a new try.
+    this.syncQueue.retryFailed();
 
     if (this.convexClient && this.isInitialized) {
       this.syncPendingRecords('auto').catch((error) => {

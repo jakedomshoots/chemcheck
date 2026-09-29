@@ -8,6 +8,7 @@ import {
   getStatusText, 
   getStatusColor, 
   isSyncButtonDisabled,
+  getFailedText,
   getRecordStatusText,
   getRecordStatusColor
 } from './syncStatusUtils';
@@ -21,8 +22,10 @@ export function SyncStatusIndicator({
   showLabel = false, 
   showPendingCount = true 
 }) {
-  const { status, pendingCount, lastSyncAt, error, syncNow } = useSyncState();
+  const { status, pendingCount, failedCount = 0, lastSyncAt, error, syncNow, retryFailed } = useSyncState();
   const statusText = getStatusText(status, pendingCount);
+  const failedText = getFailedText(failedCount);
+  const canRetryFailed = failedCount > 0 && typeof retryFailed === 'function' && !isSyncButtonDisabled(status);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -48,6 +51,15 @@ export function SyncStatusIndicator({
       await syncNow();
     } catch (err) {
       console.error('Manual sync failed:', err);
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    if (!canRetryFailed) return;
+    try {
+      await retryFailed();
+    } catch (err) {
+      console.error('Retrying failed changes failed:', err);
     }
   };
 
@@ -91,6 +103,23 @@ export function SyncStatusIndicator({
                 </p>
               </div>
             </div>
+            {failedCount > 0 && (
+              <div
+                role="alert"
+                className="flex items-center justify-between gap-2 rounded-md border border-[var(--status-critical-line)] bg-[var(--status-critical-soft)] px-2 py-1"
+              >
+                <p className="text-xs font-medium text-critical">{failedText}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={handleRetryFailed}
+                  disabled={!canRetryFailed}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
             {error && (
               <p className="text-xs text-critical bg-[var(--status-critical-soft)] border border-[var(--status-critical-line)] rounded-md px-2 py-1">
                 {error}
@@ -109,6 +138,21 @@ export function SyncStatusIndicator({
           </div>
         </PopoverContent>
       </Popover>
+
+      {failedCount > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRetryFailed}
+          disabled={!canRetryFailed}
+          aria-label={`${failedText} — Retry`}
+          title={`${failedText} — Retry`}
+          className="h-8 rounded-full border-[var(--status-critical-line)] bg-[var(--status-critical-soft)] px-3 text-xs font-medium text-critical"
+        >
+          <AlertCircle className="mr-1 h-3.5 w-3.5" />
+          {failedCount} failed · Retry
+        </Button>
+      )}
 
       {showPendingCount && pendingCount > 0 && (
         <Badge variant="secondary" className={cn('text-xs font-medium', getStatusColor(status, pendingCount))}>

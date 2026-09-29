@@ -61,6 +61,10 @@ vi.mock('./SyncQueue', () => ({
     findItem = vi.fn();
     markSynced = vi.fn();
     markFailed = vi.fn();
+    retryFailed = vi.fn(() => 0);
+    findFailed = vi.fn(() => undefined);
+    getFailedItems = vi.fn(() => []);
+    clearForItem = vi.fn(() => false);
   },
 }));
 

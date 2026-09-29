@@ -52,6 +52,10 @@ vi.mock('./SyncQueue', () => {
     getPendingCount = vi.fn(() => 0);
     markSynced = vi.fn();
     markFailed = vi.fn();
+    retryFailed = vi.fn(() => 0);
+    findFailed = vi.fn(() => undefined);
+    getFailedItems = vi.fn(() => []);
+    clearForItem = vi.fn(() => false);
     getRetryableItems = vi.fn(() => []);
     findItem = vi.fn(() => undefined);
     getBatchSize = vi.fn(() => 20);

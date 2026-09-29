@@ -1,6 +1,15 @@
 /**
- * ConflictResolver handles conflicts when the same record is modified both locally and remotely
- * Implements last-write-wins strategy with backup functionality
+ * ConflictResolver handles conflicts when the same record is modified both locally and remotely.
+ *
+ * Preferred strategy (`mergeWithBase`): a clock-free, field-level three-way
+ * merge using the per-field base values captured when the user first edited a
+ * field (`dirty_base`).  Fields only changed locally keep the local value,
+ * fields only changed remotely take the remote value, and fields changed on
+ * both sides to different values take the server value (the local value is
+ * preserved in `conflict_backup`).
+ *
+ * Legacy strategy (`resolve`): whole-record last-write-wins by timestamp, kept
+ * for records edited before dirty-field tracking existed.
  */
 
 import { SyncableRecord } from '@/db/chemcheck-db';
@@ -9,6 +18,33 @@ export interface ConflictResolutionResult {
   resolved: SyncableRecord;
   hadConflict: boolean;
   backupCreated: boolean;
+}
+
+export interface FieldMergeResult {
+  /** Remote record with locally edited (non-conflicting) fields applied. */
+  merged: Record<string, any>;
+  /** Base for the fields that still need pushing; undefined when none remain. */
+  dirtyBase: Record<string, any> | undefined;
+  /** Fields edited on both sides to different values (remote value kept). */
+  conflictedFields: string[];
+}
+
+function normalizeValue(value: unknown): unknown {
+  return value === undefined ? null : value;
+}
+
+export function valuesEqual(left: unknown, right: unknown): boolean {
+  const a = normalizeValue(left);
+  const b = normalizeValue(right);
+  if (a === b) return true;
+  if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 export interface ConflictInfo {
@@ -99,6 +135,42 @@ export class ConflictResolver {
       resolved,
       hadConflict: true,
       backupCreated,
+    };
+  }
+
+  /**
+   * Field-level three-way merge of a locally edited record with a newer
+   * remote version.  `remote` must already be mapped to the local shape
+   * (local foreign keys).  Never consults device clocks.
+   */
+  mergeWithBase(
+    local: Record<string, any>,
+    remote: Record<string, any>,
+    dirtyBase: Record<string, any>,
+  ): FieldMergeResult {
+    const merged: Record<string, any> = { ...remote };
+    const rebased: Record<string, any> = {};
+    const conflictedFields: string[] = [];
+
+    for (const [field, baseValue] of Object.entries(dirtyBase || {})) {
+      const localValue = local[field];
+      const remoteValue = remote[field];
+      if (valuesEqual(localValue, remoteValue)) continue; // both sides converged
+      if (valuesEqual(remoteValue, baseValue)) {
+        // Only the local side changed this field: keep it and re-base it on
+        // the server's current value for the next push.
+        merged[field] = localValue;
+        rebased[field] = remoteValue === undefined ? null : remoteValue;
+        continue;
+      }
+      // Changed on both sides: the server copy wins deterministically.
+      conflictedFields.push(field);
+    }
+
+    return {
+      merged,
+      dirtyBase: Object.keys(rebased).length > 0 ? rebased : undefined,
+      conflictedFields,
     };
   }
 

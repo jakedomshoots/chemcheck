@@ -128,7 +128,9 @@ export default defineSchema({
     .index("by_created_by", ["created_by"])
     .index("by_service_date", ["service_date"])
     .index("by_customer_and_date", ["customer_id", "service_date"])
-    .index("by_created_by_and_service_date", ["created_by", "service_date"]),
+    .index("by_created_by_and_service_date", ["created_by", "service_date"])
+    // Incremental offline-sync pulls: tenant email + updated_at watermark.
+    .index("by_created_by_and_updated_at", ["created_by", "updated_at"]),
 
   chemicalUsage: defineTable({
     customer_id: v.id("customers"),
@@ -144,7 +146,8 @@ export default defineSchema({
     .index("by_customer", ["customer_id"])
     .index("by_created_date", ["created_date"])
     .index("by_created_by", ["created_by"])
-    .index("by_created_by_and_created_date", ["created_by", "created_date"]),
+    .index("by_created_by_and_created_date", ["created_by", "created_date"])
+    .index("by_created_by_and_updated_at", ["created_by", "updated_at"]),
 
   notes: defineTable({
     title: v.string(),
@@ -165,7 +168,8 @@ export default defineSchema({
     .index("by_created_by", ["created_by"])
     .index("by_created_by_and_created_date", ["created_by", "created_date"])
     .index("by_created_by_and_customer_id", ["created_by", "customer_id"])
-    .index("by_created_by_and_completed", ["created_by", "completed"]),
+    .index("by_created_by_and_completed", ["created_by", "completed"])
+    .index("by_created_by_and_updated_at", ["created_by", "updated_at"]),
 
   subscriptions: defineTable({
     // Optional while legacy user-scoped subscriptions are backfilled.
@@ -291,11 +295,16 @@ export default defineSchema({
     condition: v.string(), // good, moderate, heavy - scale buildup condition
     notes: v.optional(v.string()),
     next_cleaning_due: v.optional(v.string()), // YYYY-MM-DD format
+    // Tenant email (the customer's created_by). Optional until
+    // sync.backfillChildCreatedBy has run over legacy rows.
+    created_by: v.optional(v.string()),
     created_at: v.optional(v.number()),
     updated_at: v.optional(v.number()),
   })
     .index("by_customer", ["customer_id"])
-    .index("by_cleaning_date", ["cleaning_date"]),
+    .index("by_cleaning_date", ["cleaning_date"])
+    .index("by_created_by", ["created_by"])
+    .index("by_created_by_and_updated_at", ["created_by", "updated_at"]),
 
   // Client mutation receipts used by offline sync.  Keeping receipts in a
   // dedicated table makes create retries safe when the response is lost after
@@ -312,6 +321,23 @@ export default defineSchema({
   })
     .index("by_key", ["key"])
     .index("by_expires_at", ["expires_at"]),
+
+  // Offline-sync deletions. Every record deleted through sync.syncDelete
+  // leaves a tombstone so other devices remove their cached copy on the next
+  // pull. Tombstones are tenant scoped (business_id for business accounts,
+  // created_by for single-user accounts) and pruned after 90 days by
+  // sync.cleanupSyncOperations.
+  syncTombstones: defineTable({
+    table: v.string(),
+    server_id: v.string(),
+    business_id: v.optional(v.string()),
+    created_by: v.string(),
+    deleted_by: v.string(),
+    deleted_at: v.number(),
+  })
+    .index("by_business_and_deleted_at", ["business_id", "deleted_at"])
+    .index("by_created_by_and_deleted_at", ["created_by", "deleted_at"])
+    .index("by_deleted_at", ["deleted_at"]),
 
   // Service reports for SMS/Email notifications to customers
   serviceReports: defineTable({

@@ -63,6 +63,8 @@ describe('sync pull pagination', () => {
       'chemicalUsage',
       'notes',
       'saltCellLogs',
+      // Deletions are reported through a final tombstone stream.
+      'tombstones',
     ];
     let cursor: string | undefined;
 

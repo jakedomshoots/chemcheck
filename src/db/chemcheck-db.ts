@@ -7,7 +7,37 @@ export interface SyncableRecord {
     local_updated_at: number;
     remote_updated_at?: number;
     conflict_backup?: string;
+    /**
+     * Server value of each locally edited field, captured at the first edit
+     * after the last sync (null = field was absent).  Cleared once the edit
+     * is acknowledged by the server.
+     */
+    dirty_base?: Record<string, unknown>;
 }
+
+export const SYNC_TABLE_NAMES = [
+    'customers',
+    'pools',
+    'equipment',
+    'serviceLogs',
+    'chemicalUsage',
+    'notes',
+    'saltCellLogs',
+] as const;
+export type SyncTableName = typeof SYNC_TABLE_NAMES[number];
+
+/** Bookkeeping fields that never count as a user edit. */
+export const SYNC_FIELDS = [
+    'sync_status',
+    'sync_error',
+    'convex_id',
+    'local_updated_at',
+    'remote_updated_at',
+    'conflict_backup',
+    'convex_customer_id',
+    'convex_pool_id',
+    'dirty_base',
+];
 
 export interface Customer extends SyncableRecord {
     id?: number;
@@ -175,6 +205,7 @@ export class ChemCheckDB extends Dexie {
 
     private syncService: any = null;
     private syncHooksSuppressed = 0;
+    private localOnlyDeleteTables = new Map<string, number>();
 
     constructor() {
         super('chemcheck');
@@ -291,288 +322,128 @@ export class ChemCheckDB extends Dexie {
         }
     }
 
+    /**
+     * Delete a customer and its local child rows.  Only the customer delete
+     * is sent to the server: sync.syncDelete cascades to the synced children
+     * there and tombstones them for other devices, so the children are removed
+     * locally without queueing one delete per row.
+     */
+    async deleteCustomerWithChildren(customerId: number): Promise<void> {
+        const childTables = [this.serviceLogs, this.chemicalUsage, this.notes, this.saltCellLogs, this.equipment, this.pools];
+        await this.withoutSyncHooks(async () => {
+            await this.transaction('rw', childTables, async () => {
+                for (const table of childTables) {
+                    await (table as Table<any>).where('customer_id').equals(customerId).delete();
+                }
+            });
+        });
+        await this.customers.delete(customerId);
+    }
+
+    /**
+     * Run a bulk local delete (e.g. `clear()` during a backup restore or a
+     * local data wipe) without propagating the deletions to the server.
+     */
+    private withLocalOnlyDeletes<T>(tableName: string, operation: () => Promise<T>): Promise<T> {
+        this.localOnlyDeleteTables.set(tableName, (this.localOnlyDeleteTables.get(tableName) || 0) + 1);
+        const release = () => {
+            const next = (this.localOnlyDeleteTables.get(tableName) || 1) - 1;
+            if (next <= 0) this.localOnlyDeleteTables.delete(tableName);
+            else this.localOnlyDeleteTables.set(tableName, next);
+        };
+        // Chain on the (Dexie) promise itself to stay inside an outer transaction zone.
+        return operation().then(
+            (value) => { release(); return value; },
+            (error) => { release(); throw error; },
+        );
+    }
+
     private setupSyncHooks(): void {
-        this.customers.hook('creating', (_primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            obj.local_updated_at = Date.now();
-            obj.sync_status = 'pending';
+        for (const tableName of SYNC_TABLE_NAMES) {
+            const table = this.table(tableName);
 
-            trans.on('complete', () => {
-                if (this.syncService && obj.id) {
-                    this.syncService.enqueueRecord('customers', obj.id, 'create', obj);
-                }
+            table.hook('creating', (_primKey, obj, trans) => {
+                if (this.syncHooksSuppressed > 0) return;
+                obj.local_updated_at = Date.now();
+                obj.sync_status = 'pending';
+
+                trans.on('complete', () => {
+                    if (this.syncService && obj.id) {
+                        this.syncService.enqueueRecord(tableName, obj.id, 'create', obj);
+                    }
+                });
             });
-        });
 
-        this.customers.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            // Only trigger sync if non-sync fields are modified
-            if (this.hasNonSyncFieldChanges(modifications)) {
+            table.hook('updating', (modifications: Record<string, any>, primKey, obj, trans) => {
+                if (this.syncHooksSuppressed > 0) return;
+                // Only trigger sync if non-sync fields are modified
+                if (!this.hasNonSyncFieldChanges(modifications)) return;
+
                 const updatedRecord = { ...obj, ...modifications };
                 updatedRecord.local_updated_at = Date.now();
                 updatedRecord.sync_status = 'pending';
-
-                Object.assign(modifications, {
+                const dirtyBase = this.trackDirtyBase(obj, modifications);
+                // Dexie applies the hook's *return value* as additional
+                // modifications (mutating `modifications` is not reliable).
+                const additions: Record<string, any> = {
                     local_updated_at: updatedRecord.local_updated_at,
-                    sync_status: updatedRecord.sync_status
-                });
+                    sync_status: updatedRecord.sync_status,
+                    ...(dirtyBase ? { dirty_base: dirtyBase } : {}),
+                };
+                if (dirtyBase) updatedRecord.dirty_base = dirtyBase;
 
                 trans.on('complete', () => {
                     if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('customers', primKey, 'update', updatedRecord);
+                        this.syncService.enqueueRecord(tableName, primKey, 'update', updatedRecord);
                     }
                 });
-            }
-        });
-
-        this.customers.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            trans.on('complete', () => {
-                if (this.syncService && primKey) {
-                    this.syncService.enqueueRecord('customers', primKey, 'delete', obj);
-                }
+                return additions;
             });
-        });
 
-        this.pools.hook('creating', (_primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            obj.local_updated_at = Date.now();
-            obj.sync_status = 'pending';
-            trans.on('complete', () => {
-                if (this.syncService && obj.id) this.syncService.enqueueRecord('pools', obj.id, 'create', obj);
-            });
-        });
-
-        this.pools.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            if (this.hasNonSyncFieldChanges(modifications)) {
-                const updatedRecord = { ...obj, ...modifications };
-                updatedRecord.local_updated_at = Date.now();
-                updatedRecord.sync_status = 'pending';
-                Object.assign(modifications, { local_updated_at: updatedRecord.local_updated_at, sync_status: 'pending' });
+            table.hook('deleting', (primKey, obj, trans) => {
+                if (this.syncHooksSuppressed > 0) return;
+                if (this.localOnlyDeleteTables.has(tableName)) return;
                 trans.on('complete', () => {
-                    if (this.syncService && primKey) this.syncService.enqueueRecord('pools', primKey, 'update', updatedRecord);
-                });
-            }
-        });
-
-        this.pools.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            trans.on('complete', () => {
-                if (this.syncService && primKey) this.syncService.enqueueRecord('pools', primKey, 'delete', obj);
-            });
-        });
-
-        this.equipment.hook('creating', (_primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            obj.local_updated_at = Date.now();
-            obj.sync_status = 'pending';
-            trans.on('complete', () => {
-                if (this.syncService && obj.id) this.syncService.enqueueRecord('equipment', obj.id, 'create', obj);
-            });
-        });
-
-        this.equipment.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            if (this.hasNonSyncFieldChanges(modifications)) {
-                const updatedRecord = { ...obj, ...modifications };
-                updatedRecord.local_updated_at = Date.now();
-                updatedRecord.sync_status = 'pending';
-                Object.assign(modifications, { local_updated_at: updatedRecord.local_updated_at, sync_status: 'pending' });
-                trans.on('complete', () => {
-                    if (this.syncService && primKey) this.syncService.enqueueRecord('equipment', primKey, 'update', updatedRecord);
-                });
-            }
-        });
-
-        this.equipment.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            trans.on('complete', () => {
-                if (this.syncService && primKey) this.syncService.enqueueRecord('equipment', primKey, 'delete', obj);
-            });
-        });
-
-        this.serviceLogs.hook('creating', (_primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            obj.local_updated_at = Date.now();
-            obj.sync_status = 'pending';
-
-            trans.on('complete', () => {
-                if (this.syncService && obj.id) {
-                    this.syncService.enqueueRecord('serviceLogs', obj.id, 'create', obj);
-                }
-            });
-        });
-
-        this.serviceLogs.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            if (this.hasNonSyncFieldChanges(modifications)) {
-                const updatedRecord = { ...obj, ...modifications };
-                updatedRecord.local_updated_at = Date.now();
-                updatedRecord.sync_status = 'pending';
-
-                Object.assign(modifications, {
-                    local_updated_at: updatedRecord.local_updated_at,
-                    sync_status: updatedRecord.sync_status
-                });
-
-                trans.on('complete', () => {
+                    // `obj` carries convex_id, which the delete sync needs
+                    // once the local row is gone.
                     if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('serviceLogs', primKey, 'update', updatedRecord);
+                        this.syncService.enqueueRecord(tableName, primKey, 'delete', obj);
                     }
                 });
+            });
+
+            // Table.clear() fires the deleting hook for every row. It is used
+            // for local wipes/restores, which must never delete server data.
+            // `db.<name>` and `db.table(name)` are distinct Table instances.
+            for (const instance of new Set([table, (this as any)[tableName] as Table<any>])) {
+                if (!instance) continue;
+                const originalClear = instance.clear.bind(instance);
+                instance.clear = (() => this.withLocalOnlyDeletes(tableName, originalClear)) as typeof instance.clear;
             }
-        });
+        }
+    }
 
-        this.serviceLogs.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            trans.on('complete', () => {
-                if (this.syncService && primKey) {
-                    this.syncService.enqueueRecord('serviceLogs', primKey, 'delete', obj);
-                }
-            });
-        });
-
-        this.chemicalUsage.hook('creating', (_primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            obj.local_updated_at = Date.now();
-            obj.sync_status = 'pending';
-
-            trans.on('complete', () => {
-                if (this.syncService && obj.id) {
-                    this.syncService.enqueueRecord('chemicalUsage', obj.id, 'create', obj);
-                }
-            });
-        });
-
-        this.chemicalUsage.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            if (this.hasNonSyncFieldChanges(modifications)) {
-                const updatedRecord = { ...obj, ...modifications };
-                updatedRecord.local_updated_at = Date.now();
-                updatedRecord.sync_status = 'pending';
-
-                Object.assign(modifications, {
-                    local_updated_at: updatedRecord.local_updated_at,
-                    sync_status: updatedRecord.sync_status
-                });
-
-                trans.on('complete', () => {
-                    if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('chemicalUsage', primKey, 'update', updatedRecord);
-                    }
-                });
-            }
-        });
-
-        this.chemicalUsage.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            trans.on('complete', () => {
-                if (this.syncService && primKey) {
-                    this.syncService.enqueueRecord('chemicalUsage', primKey, 'delete', obj);
-                }
-            });
-        });
-
-        this.notes.hook('creating', (_primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            obj.local_updated_at = Date.now();
-            obj.sync_status = 'pending';
-
-            trans.on('complete', () => {
-                if (this.syncService && obj.id) {
-                    this.syncService.enqueueRecord('notes', obj.id, 'create', obj);
-                }
-            });
-        });
-
-        this.notes.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            if (this.hasNonSyncFieldChanges(modifications)) {
-                const updatedRecord = { ...obj, ...modifications };
-                updatedRecord.local_updated_at = Date.now();
-                updatedRecord.sync_status = 'pending';
-
-                Object.assign(modifications, {
-                    local_updated_at: updatedRecord.local_updated_at,
-                    sync_status: updatedRecord.sync_status
-                });
-
-                trans.on('complete', () => {
-                    if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('notes', primKey, 'update', updatedRecord);
-                    }
-                });
-            }
-        });
-
-        this.notes.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            trans.on('complete', () => {
-                if (this.syncService && primKey) {
-                    this.syncService.enqueueRecord('notes', primKey, 'delete', obj);
-                }
-            });
-        });
-
-        this.saltCellLogs.hook('creating', (_primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            obj.local_updated_at = Date.now();
-            obj.sync_status = 'pending';
-
-            trans.on('complete', () => {
-                if (this.syncService && obj.id) {
-                    this.syncService.enqueueRecord('saltCellLogs', obj.id, 'create', obj);
-                }
-            });
-        });
-
-        this.saltCellLogs.hook('updating', (modifications, primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            if (this.hasNonSyncFieldChanges(modifications)) {
-                const updatedRecord = { ...obj, ...modifications };
-                updatedRecord.local_updated_at = Date.now();
-                updatedRecord.sync_status = 'pending';
-
-                Object.assign(modifications, {
-                    local_updated_at: updatedRecord.local_updated_at,
-                    sync_status: updatedRecord.sync_status
-                });
-
-                trans.on('complete', () => {
-                    if (this.syncService && primKey) {
-                        this.syncService.enqueueRecord('saltCellLogs', primKey, 'update', updatedRecord);
-                    }
-                });
-            }
-        });
-
-        this.saltCellLogs.hook('deleting', (primKey, obj, trans) => {
-            if (this.syncHooksSuppressed > 0) return;
-            trans.on('complete', () => {
-                if (this.syncService && primKey) {
-                    this.syncService.enqueueRecord('saltCellLogs', primKey, 'delete', obj);
-                }
-            });
-        });
+    /**
+     * Record the server-side value of each field the first time it is edited
+     * since the last successful sync.  The sync engine uses this base to merge
+     * concurrent edits field by field instead of trusting device clocks.
+     */
+    private trackDirtyBase(obj: any, modifications: Record<string, any>): Record<string, any> | undefined {
+        if (!obj?.convex_id) return undefined; // never synced: the create carries everything
+        const base: Record<string, any> = { ...(obj.dirty_base || {}) };
+        for (const key of Object.keys(modifications)) {
+            const field = key.split('.')[0];
+            if (SYNC_FIELDS.includes(field) || Object.prototype.hasOwnProperty.call(base, field)) continue;
+            base[field] = obj[field] === undefined ? null : obj[field];
+        }
+        return base;
     }
 
     /**
      * Check if modifications contain non-sync fields to avoid infinite loops
      */
     private hasNonSyncFieldChanges(modifications: any): boolean {
-        const syncFields = [
-            'sync_status',
-            'sync_error',
-            'convex_id',
-            'local_updated_at',
-            'remote_updated_at',
-            'conflict_backup',
-            'convex_customer_id',
-            'convex_pool_id'
-        ];
-
-        return Object.keys(modifications).some(key => !syncFields.includes(key));
+        return Object.keys(modifications).some(key => !SYNC_FIELDS.includes(key.split('.')[0]));
     }
 }
 

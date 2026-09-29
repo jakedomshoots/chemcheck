@@ -60,6 +60,17 @@ export function isSyncButtonDisabled(status) {
 }
 
 /**
+ * Text for local changes that failed to sync
+ *
+ * @param {number} failedCount - Number of failed changes
+ * @returns {string} e.g. "3 changes failed to sync"
+ */
+export function getFailedText(failedCount) {
+  const count = Number(failedCount) || 0;
+  return `${count} ${count === 1 ? 'change' : 'changes'} failed to sync`;
+}
+
+/**
  * Helper function to get record sync status text
  * 
  * @param {string} status - The record sync status ('synced', 'pending', 'error')
