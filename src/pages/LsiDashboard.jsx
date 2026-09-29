@@ -158,7 +158,7 @@ function VisitHistory({ customer, logs, onBack }) {
               <p className="mt-1 text-sm font-semibold text-ink">{STATUS_COPY[latestScored.output.result.status].label}</p>
             </div>
             <span className="rounded-full bg-surface-1/80 px-2.5 py-1 text-[0.6875rem] font-semibold text-ink-secondary">
-              {latestScored.output.result.confidence === 'detailed' ? 'Detailed' : 'Estimated'}
+              Measured
             </span>
           </div>
           <div className="mt-5"><LsiRail value={latestScored.output.result.value} /></div>
@@ -199,17 +199,9 @@ function VisitHistory({ customer, logs, onBack }) {
                   <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
                     <span><b className="block font-data text-ink">{log.ph_value}</b><span className="text-ink-muted">pH</span></span>
                     <span><b className="block font-data text-ink">{log.alkalinity_value} ppm</b><span className="text-ink-muted">Total alk.</span></span>
-                    <span><b className="block font-data text-ink">{log.hardness_value} ppm</b><span className="text-ink-muted">{log.hardness_source === 'calcium' ? 'Calcium' : 'Total hard.'}</span></span>
+                    <span><b className="block font-data text-ink">{log.hardness_value} ppm</b><span className="text-ink-muted">Calcium</span></span>
                   </div>
-                  <p className={`mt-3 text-xs font-semibold ${copy.tone}`}>{copy.label} · {output.result.confidence === 'detailed' ? 'detailed' : 'estimated'}</p>
-                  {(output.assumedTemperature || output.assumedTds) && (
-                    <p className="mt-1 text-[0.6875rem] text-ink-muted">
-                      Estimated inputs: {[
-                        output.assumedTemperature ? `${output.assumedTemperature}°F water` : null,
-                        output.assumedTds ? `${output.assumedTds.toLocaleString()} ppm TDS` : null,
-                      ].filter(Boolean).join(' · ')}.
-                    </p>
-                  )}
+                  <p className={`mt-3 text-xs font-semibold ${copy.tone}`}>{copy.label} · measured inputs</p>
                 </>
               ) : (
                 <p className="mt-3 rounded-control bg-surface-2 px-3 py-2 text-xs leading-5 text-ink-muted">
@@ -255,7 +247,7 @@ export default function LsiDashboard() {
         : <CustomerOverview customers={customers} logs={logs} onSelect={selectCustomer} />}
 
       <p className="mx-auto mt-5 max-w-xl text-center text-[0.6875rem] leading-5 text-ink-muted">
-        LSI is a water-balance indicator, not a chemical dosing instruction. Estimated results use total hardness and/or an assumed TDS; detailed results use measured calcium hardness and TDS.
+        LSI is a water-balance indicator, not a chemical dosing instruction. Results require measured pH, alkalinity, CYA, calcium hardness, water temperature, and TDS.
       </p>
     </main>
   );

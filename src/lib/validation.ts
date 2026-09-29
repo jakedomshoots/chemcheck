@@ -120,7 +120,7 @@ export const serviceLogSchema = z.object({
   strip_scan_analysis_version: z.enum(['aquachek-select-v2', 'aquachek-select-v3', 'aquachek-select-v4']).optional(),
   strip_scan_pad_confidence: stripScanPadConfidenceSchema.optional(),
   strip_scan_quality: stripScanQualitySchema.optional(),
-  lsi_calculation_version: z.literal('aquachek-epa-v1').optional(),
+  lsi_calculation_version: z.enum(['aquachek-epa-v1', 'lsi-v1']).optional(),
   alkalinity_value: z.number()
     .min(0, 'Alkalinity value must be positive')
     .max(1000, 'Alkalinity value seems unrealistic (max 1000 ppm)')
@@ -163,7 +163,6 @@ export const serviceLogSchema = z.object({
     data.strip_scan_analysis_version,
     data.strip_scan_pad_confidence,
     data.strip_scan_quality,
-    data.lsi_calculation_version,
   ].some((value) => value !== undefined);
   if (
     hasStripScanData
@@ -173,6 +172,26 @@ export const serviceLogSchema = z.object({
       code: 'custom',
       message: 'An AquaChek scan requires complete scan audit data',
       path: ['strip_scan_analysis_version'],
+    });
+  }
+  if (
+    data.lsi_calculation_version === 'lsi-v1'
+    && !(
+      Number.isFinite(data.ph_value)
+      && Number.isFinite(data.alkalinity_value) && data.alkalinity_value! > 0
+      && Number.isFinite(data.stabilizer_value)
+      && Number.isFinite(data.hardness_value) && data.hardness_value! > 0
+      && data.hardness_source === 'calcium'
+      && Number.isFinite(data.water_temperature)
+      && data.water_temperature_source === 'measured'
+      && Number.isFinite(data.tds_value) && data.tds_value! > 0
+      && data.tds_source === 'measured'
+    )
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'lsi-v1 requires measured pH, alkalinity, CYA, calcium hardness, water temperature, and TDS',
+      path: ['lsi_calculation_version'],
     });
   }
   if (data.hardness_value !== undefined && !data.hardness_source) {

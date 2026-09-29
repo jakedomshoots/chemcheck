@@ -374,7 +374,7 @@ export interface ValidatedServiceLogData {
     strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3' | 'aquachek-select-v4';
     strip_scan_pad_confidence?: StripScanPadConfidence;
     strip_scan_quality?: StripScanQuality;
-    lsi_calculation_version?: 'aquachek-epa-v1';
+    lsi_calculation_version?: 'aquachek-epa-v1' | 'lsi-v1';
     alkalinity_value?: number;
     stabilizer_value?: number;
     hardness_value?: number;
@@ -426,7 +426,7 @@ export function validateLsiFields(data: {
     validateEnum(data.strip_scan_method, ['aquachek_select_photo'] as const, 'Strip scan method', false);
     validateEnum(data.strip_scan_confidence, ['low', 'medium', 'high'] as const, 'Strip scan confidence', false);
     validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3', 'aquachek-select-v4'] as const, 'Strip scan analysis version', false);
-    validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1'] as const, 'LSI calculation version', false);
+    validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1', 'lsi-v1'] as const, 'LSI calculation version', false);
 
     if (data.strip_scan_pad_confidence) {
         validatePositiveNumber(data.strip_scan_pad_confidence.totalHardness, 'Hardness pad confidence', true, 0, 1);
@@ -449,7 +449,6 @@ export function validateLsiFields(data: {
         data.strip_scan_analysis_version,
         data.strip_scan_pad_confidence,
         data.strip_scan_quality,
-        data.lsi_calculation_version,
     ].some((value) => value !== undefined);
     if (
         requireSourceValues
@@ -457,6 +456,23 @@ export function validateLsiFields(data: {
         && (!data.strip_scan_method || !data.strip_scan_confidence || !data.strip_scan_analysis_version || !data.strip_scan_pad_confidence || !data.strip_scan_quality || !data.lsi_calculation_version)
     ) {
         throw new Error('An AquaChek scan requires complete scan audit data');
+    }
+
+    if (
+        data.lsi_calculation_version === 'lsi-v1'
+        && !(
+            Number.isFinite(data.ph_value)
+            && Number.isFinite(data.alkalinity_value) && data.alkalinity_value! > 0
+            && Number.isFinite(data.stabilizer_value)
+            && Number.isFinite(data.hardness_value) && data.hardness_value! > 0
+            && data.hardness_source === 'calcium'
+            && Number.isFinite(data.water_temperature)
+            && data.water_temperature_source === 'measured'
+            && Number.isFinite(data.tds_value) && data.tds_value! > 0
+            && data.tds_source === 'measured'
+        )
+    ) {
+        throw new Error('lsi-v1 requires measured pH, alkalinity, CYA, calcium hardness, water temperature, and TDS');
     }
 
     if (requireSourceValues && data.hardness_value !== undefined && !data.hardness_source) {
@@ -505,7 +521,7 @@ export function validateServiceLogCreate(data: {
     strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3' | 'aquachek-select-v4';
     strip_scan_pad_confidence?: StripScanPadConfidence;
     strip_scan_quality?: StripScanQuality;
-    lsi_calculation_version?: 'aquachek-epa-v1';
+    lsi_calculation_version?: 'aquachek-epa-v1' | 'lsi-v1';
     alkalinity_value?: number;
     stabilizer_value?: number;
     hardness_value?: number;
@@ -545,7 +561,7 @@ export function validateServiceLogCreate(data: {
         strip_scan_analysis_version: validateEnum(data.strip_scan_analysis_version, ['aquachek-select-v2', 'aquachek-select-v3', 'aquachek-select-v4'] as const, 'Strip scan analysis version', false),
         strip_scan_pad_confidence: data.strip_scan_pad_confidence,
         strip_scan_quality: data.strip_scan_quality,
-        lsi_calculation_version: validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1'] as const, 'LSI calculation version', false),
+        lsi_calculation_version: validateEnum(data.lsi_calculation_version, ['aquachek-epa-v1', 'lsi-v1'] as const, 'LSI calculation version', false),
         alkalinity_value: validatePositiveNumber(data.alkalinity_value, 'Alkalinity value', false, 0, 1000),
         stabilizer_value: validatePositiveNumber(data.stabilizer_value, 'Stabilizer value', false, 0, 1000),
         hardness_value: validatePositiveNumber(data.hardness_value, 'Hardness value', false, 0, 2000),

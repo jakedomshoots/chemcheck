@@ -5,7 +5,7 @@ const todayWeekday = () => new Date().toLocaleDateString('en-US', { weekday: 'lo
 
 test.use({ viewport: { width: 390, height: 844 } });
 
-test('normal daily visit with detailed manual LSI entry stays intact', async ({ page }) => {
+test('normal daily visit with measured LSI entry stays intact', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await setupDemoUser(page);
@@ -53,22 +53,19 @@ test('normal daily visit with detailed manual LSI entry stays intact', async ({ 
   await enterNumeric(2, 'alkalinity-numeric-input', '100');
   await enterNumeric(3, 'stabilizer-numeric-input', '50');
 
-  // Detailed manual LSI entry: exercises value/source pairing end to end.
-  await page.getByRole('button', { name: /Expand AquaChek 7 and LSI/i }).click();
-  await page.getByRole('button', { name: /Enter detailed LSI readings/i }).click();
-  await page.getByText('Detailed', { exact: true }).click();
+  // Measured LSI entry: exercises value/source pairing end to end.
+  await page.getByRole('button', { name: /Enter LSI readings/i }).click();
+  await page.getByText('Measured LSI', { exact: true }).click();
   await page.locator('#lsi-hardness').fill('350');
   await page.locator('#lsi-temperature').fill('82');
   await page.locator('#lsi-tds').fill('900');
   const lsiResult = page.getByRole('status').filter({ hasText: /calculation/i });
   await expect(lsiResult).toBeVisible({ timeout: 5000 });
-  await expect(lsiResult).toContainText('Detailed calculation');
+  await expect(lsiResult).toContainText('Measured calculation');
 
   // Fully collapse the feature so the main page stays lean, then finish.
   await page.getByRole('button', { name: /Collapse LSI details/i }).click();
   await expect(page.getByRole('button', { name: /Adjust LSI details/i })).toBeVisible();
-  await page.getByRole('button', { name: /Collapse AquaChek 7 and LSI/i }).click();
-  await expect(page.getByRole('button', { name: /Expand AquaChek 7 and LSI/i })).toBeVisible();
 
   await page.locator('#notes').fill('Release dogfood note');
   await page.getByRole('button', { name: /Complete Service/i }).click();

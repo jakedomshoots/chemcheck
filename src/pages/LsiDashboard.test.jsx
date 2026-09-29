@@ -39,7 +39,7 @@ describe('LSI dashboard', () => {
   it('shows each customer with the latest calculated LSI', () => {
     render(<MemoryRouter initialEntries={['/LSI']}><LsiDashboard /></MemoryRouter>);
     expect(screen.getByRole('heading', { name: 'LSI history' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Jamie Rivera/i })).toHaveTextContent('+0.01');
+    expect(screen.getByRole('button', { name: /Jamie Rivera/i })).toHaveTextContent('+0.02');
     expect(screen.getByText('With LSI').previousElementSibling).toHaveTextContent('1');
   });
 
@@ -48,14 +48,14 @@ describe('LSI dashboard', () => {
     render(<MemoryRouter initialEntries={['/LSI']}><LsiDashboard /></MemoryRouter>);
     await user.click(screen.getByRole('button', { name: /Jamie Rivera/i }));
     expect(screen.getByText('Latest calculated visit')).toBeInTheDocument();
-    expect(screen.getByText('Detailed')).toBeInTheDocument();
+    expect(screen.getByText('Measured')).toBeInTheDocument();
     expect(screen.getByText('Sep 15, 2026')).toBeInTheDocument();
   });
 
   it('keeps incomplete visits visible without assigning a score', () => {
     logs[0].hardness_value = undefined;
     render(<MemoryRouter initialEntries={['/LSI?customerId=1']}><LsiDashboard /></MemoryRouter>);
-    expect(screen.getByText(/Missing hardness/)).toBeInTheDocument();
+    expect(screen.getByText(/Missing calcium hardness/)).toBeInTheDocument();
     expect(screen.getAllByText('Needs readings').length).toBeGreaterThan(0);
     logs[0].hardness_value = 300;
   });

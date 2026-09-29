@@ -512,7 +512,7 @@ export const syncServiceLog = mutation({
       strip_scan_analysis_version: v.optional(stripScanAnalysisVersionValidator),
       strip_scan_pad_confidence: v.optional(stripScanPadConfidenceValidator),
       strip_scan_quality: v.optional(stripScanQualityValidator),
-      lsi_calculation_version: v.optional(v.literal("aquachek-epa-v1")),
+      lsi_calculation_version: v.optional(v.union(v.literal("aquachek-epa-v1"), v.literal("lsi-v1"))),
       alkalinity_value: v.optional(v.number()),
       stabilizer_value: v.optional(v.number()),
       hardness_value: v.optional(v.number()),

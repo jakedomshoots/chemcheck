@@ -42,7 +42,7 @@ const resultLabel = {
 };
 
 export default function LsiReadingFields({ formData, setFormData }) {
-  const active = Boolean(formData.hardness_source);
+  const active = formData.hardness_source === 'calcium';
   const [showDetailed, setShowDetailed] = useState(false);
   const lsiOutput = useMemo(() => calculateServiceLogLsi({
     ph_value: formData.ph_value === '' ? undefined : Number(formData.ph_value),
@@ -54,14 +54,14 @@ export default function LsiReadingFields({ formData, setFormData }) {
     water_temperature_source: formData.water_temperature_source || undefined,
     tds_value: formData.tds_value === '' ? undefined : Number(formData.tds_value),
     tds_source: formData.tds_source || undefined,
-    salt: formData.salt === '' ? undefined : Number(formData.salt),
-    strip_scan_method: formData.strip_scan_method || undefined,
   }), [formData]);
 
-  const chooseMode = (mode) => {
+  const enableLsi = () => {
     setFormData((current) => ({
       ...current,
-      hardness_source: mode,
+      hardness_source: 'calcium',
+      // The save boundary stamps lsi-v1 only after every measured input is valid.
+      lsi_calculation_version: '',
       ph_mode: 'numeric',
       alkalinity_mode: 'numeric',
       stabilizer_mode: 'numeric',
@@ -84,7 +84,7 @@ export default function LsiReadingFields({ formData, setFormData }) {
         className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-control text-xs font-semibold text-ink-muted hover:bg-surface-2 hover:text-ink-secondary"
       >
         <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-        {active ? 'Adjust LSI details' : 'Enter detailed LSI readings'}
+        {active ? 'Adjust LSI details' : 'Enter LSI readings'}
       </button>
     );
   }
@@ -106,19 +106,18 @@ export default function LsiReadingFields({ formData, setFormData }) {
           <div className="min-w-0 flex-1">
             <h4 id="lsi-readings-title" className="text-sm font-semibold text-ink">LSI readings</h4>
             <p className="mt-0.5 text-xs leading-5 text-ink-muted">
-              Finish the balance calculation or enter a detailed drop-test result.
+              Use measured readings to calculate this visit’s water balance.
             </p>
           </div>
           <ChevronDown className="mt-2 h-4 w-4 shrink-0 rotate-180 text-ink-muted" aria-hidden="true" />
         </button>
 
-        <fieldset className="mt-3 grid grid-cols-3 rounded-full bg-surface-2 p-1" aria-label="LSI testing method">
+        <fieldset className="mt-3 grid grid-cols-2 rounded-full bg-surface-2 p-1" aria-label="LSI testing method">
           {[
             ['off', 'Not logged'],
-            ['aquachek_total', 'AquaChek 7'],
-            ['calcium', 'Detailed'],
+            ['calcium', 'Measured LSI'],
           ].map(([value, label]) => {
-            const selected = (formData.hardness_source || 'off') === value;
+            const selected = value === 'calcium' ? active : !active;
             return (
               <label
                 key={value}
@@ -130,8 +129,17 @@ export default function LsiReadingFields({ formData, setFormData }) {
                   value={value}
                   checked={selected}
                   onChange={() => value === 'off'
-                    ? setFormData((current) => ({ ...current, hardness_source: '', hardness_value: '' }))
-                    : chooseMode(value)}
+                    ? setFormData((current) => ({
+                        ...current,
+                        hardness_source: '',
+                        hardness_value: '',
+                        water_temperature: '',
+                        water_temperature_source: '',
+                        tds_value: '',
+                        tds_source: '',
+                        lsi_calculation_version: '',
+                      }))
+                    : enableLsi()}
                   className="sr-only"
                 />
                 {label}
@@ -146,13 +154,13 @@ export default function LsiReadingFields({ formData, setFormData }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <ReadingInput
               id="lsi-hardness"
-              label={formData.hardness_source === 'calcium' ? 'Calcium hardness' : 'Total hardness'}
+              label="Calcium hardness"
               value={formData.hardness_value}
               onChange={(value) => update('hardness_value', value)}
               unit="ppm"
               min={0}
-              max={formData.hardness_source === 'calcium' ? 2000 : 1000}
-              hint={formData.hardness_source === 'aquachek_total' ? 'AquaChek range: 0–1,000 ppm' : 'Use a calcium-hardness test result'}
+              max={2000}
+              hint="Use a measured calcium-hardness result"
             />
             <ReadingInput
               id="lsi-temperature"
@@ -172,7 +180,7 @@ export default function LsiReadingFields({ formData, setFormData }) {
               unit="ppm"
               min={1}
               max={20000}
-              hint={formData.hardness_source === 'calcium' ? 'Required for detailed confidence' : 'Optional; estimated when blank'}
+              hint="Measured TDS is required for LSI"
             />
           </div>
 
@@ -181,9 +189,7 @@ export default function LsiReadingFields({ formData, setFormData }) {
               <div>
                 <p className="text-xs font-semibold">{resultLabel[lsiOutput.result.status]}</p>
                 <p className="mt-0.5 text-[0.6875rem] opacity-80">
-                  {lsiOutput.result.confidence === 'detailed' ? 'Detailed calculation' : 'Estimated calculation'}
-                  {lsiOutput.assumedTemperature ? ` · assumes ${lsiOutput.assumedTemperature}°F water` : ''}
-                  {lsiOutput.assumedTds ? ` · assumes ${lsiOutput.assumedTds.toLocaleString()} ppm TDS` : ''}
+                  Measured calculation
                 </p>
               </div>
               <span className="font-data text-xl font-semibold tabular-nums">{formatLsi(lsiOutput.result.value)}</span>

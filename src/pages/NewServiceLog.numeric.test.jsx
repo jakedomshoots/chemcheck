@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import NewServiceLog from './NewServiceLog';
 import { BrowserRouter } from 'react-router-dom';
@@ -63,6 +63,8 @@ vi.mock('react-router-dom', async () => {
 });
 
 beforeEach(() => {
+    mockCreateServiceLog.mockReset();
+    mockCreateServiceLog.mockResolvedValue(1);
     window.localStorage.clear();
     window.history.pushState({}, 'Test Page', '/?customerId=1');
 });
@@ -81,5 +83,54 @@ describe('New Service Log numeric chemistry entry', () => {
         fireEvent.change(phInput, { target: { value: '8.4' } });
 
         expect(phInput).toHaveValue(8.4);
+    });
+
+    it('stamps lsi-v1 only when every required LSI input is measured', async () => {
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        const numericTabs = screen.getAllByRole('tab', { name: /^Numeric$/i });
+        fireEvent.click(numericTabs[0]);
+        fireEvent.change(screen.getByTestId('ph-numeric-input'), { target: { value: '7.4' } });
+        fireEvent.click(numericTabs[2]);
+        fireEvent.change(screen.getByTestId('alkalinity-numeric-input'), { target: { value: '100' } });
+        fireEvent.click(numericTabs[3]);
+        fireEvent.change(screen.getByTestId('stabilizer-numeric-input'), { target: { value: '50' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /Enter LSI readings/i }));
+        fireEvent.click(screen.getByText('Measured LSI', { exact: true }));
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Calcium hardness' }), { target: { value: '350' } });
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Water temperature' }), { target: { value: '82' } });
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Total dissolved solids' }), { target: { value: '900' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Service' }));
+
+        await waitFor(() => expect(mockCreateServiceLog).toHaveBeenCalledTimes(1));
+        expect(mockCreateServiceLog.mock.calls[0][0]).toMatchObject({
+            ph_value: 7.4,
+            alkalinity_value: 100,
+            stabilizer_value: 50,
+            hardness_value: 350,
+            hardness_source: 'calcium',
+            water_temperature: 82,
+            water_temperature_source: 'measured',
+            tds_value: 900,
+            tds_source: 'measured',
+            lsi_calculation_version: 'lsi-v1',
+        });
+    });
+
+    it('does not claim lsi-v1 for an incomplete measured entry', async () => {
+        render(<BrowserRouter><NewServiceLog /></BrowserRouter>);
+
+        fireEvent.click(screen.getByRole('button', { name: /Enter LSI readings/i }));
+        fireEvent.click(screen.getByText('Measured LSI', { exact: true }));
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Calcium hardness' }), { target: { value: '350' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Service' }));
+
+        await waitFor(() => expect(mockCreateServiceLog).toHaveBeenCalledTimes(1));
+        expect(mockCreateServiceLog.mock.calls[0][0]).toMatchObject({
+            hardness_value: 350,
+            hardness_source: 'calcium',
+        });
+        expect(mockCreateServiceLog.mock.calls[0][0].lsi_calculation_version).toBeUndefined();
     });
 });

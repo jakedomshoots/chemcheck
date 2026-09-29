@@ -26,8 +26,9 @@ describe('SyncQueue', () => {
     expect(queue.getPendingCount()).toBe(0);
 
     queue.enqueue({ table: 'notes', localId: 12, operation: 'create', data: { id: 12 } });
-    expect(queue.markSynced('notes', 12)).toBe(true);
-    expect(queue.markSynced('notes', 12)).toBe(false);
+    const item = queue.getPending()[0];
+    expect(queue.markSynced(item)).toBe(true);
+    expect(queue.markSynced(item)).toBe(false);
   });
 
   it('supports idempotent clear of full queue', () => {
@@ -44,11 +45,66 @@ describe('SyncQueue', () => {
     const queue = new SyncQueue();
 
     queue.enqueue({ table: 'chemicalUsage', localId: 7, operation: 'create', data: { id: 7 } });
-    queue.markFailed('chemicalUsage', 7, 'temporary issue');
-    queue.markFailed('chemicalUsage', 7, 'temporary issue');
-    queue.markFailed('chemicalUsage', 7, 'temporary issue');
+    const item = queue.getPending()[0];
+    queue.markFailed(item, 'temporary issue');
+    queue.markFailed(item, 'temporary issue');
+    queue.markFailed(item, 'temporary issue');
 
     expect(queue.getPendingCount()).toBe(0);
+  });
+
+  it('does not let a stale completion remove a newer revision of the same record', () => {
+    const queue = new SyncQueue();
+    queue.enqueue({ table: 'customers', localId: 1, operation: 'update', data: { id: 1, sort_order: 1 } });
+    const olderRevision = queue.getPending()[0];
+
+    queue.enqueue({ table: 'customers', localId: 1, operation: 'update', data: { id: 1, sort_order: 0 } });
+
+    expect(queue.markSynced(olderRevision)).toBe(false);
+    expect(queue.getPending()).toHaveLength(1);
+    expect(queue.getPending()[0].data.sort_order).toBe(0);
+  });
+
+  it('does not let a stale failure penalize a newer revision of the same record', () => {
+    const queue = new SyncQueue();
+    queue.enqueue({ table: 'customers', localId: 1, operation: 'update', data: { id: 1, sort_order: 1 } });
+    const olderRevision = queue.getPending()[0];
+
+    queue.enqueue({ table: 'customers', localId: 1, operation: 'update', data: { id: 1, sort_order: 0 } });
+    queue.markFailed(olderRevision, 'old request failed');
+
+    expect(queue.getPending()).toHaveLength(1);
+    expect(queue.getPending()[0]).toMatchObject({ retryCount: 0, error: undefined });
+    expect(queue.getPending()[0].data.sort_order).toBe(0);
+  });
+
+  it('keeps only the newest reorder through repeated stale completions and failures', () => {
+    const queue = new SyncQueue();
+    const staleRevisions = [];
+
+    for (let sortOrder = 0; sortOrder < 100; sortOrder += 1) {
+      queue.enqueue({
+        table: 'customers',
+        localId: 1,
+        operation: 'update',
+        data: { id: 1, sort_order: sortOrder },
+      });
+      staleRevisions.push(queue.getPending()[0]);
+    }
+
+    const newestRevision = staleRevisions.pop()!;
+    for (const [index, staleRevision] of staleRevisions.entries()) {
+      if (index % 2 === 0) expect(queue.markSynced(staleRevision)).toBe(false);
+      else queue.markFailed(staleRevision, 'stale request');
+    }
+
+    expect(queue.getPending()).toHaveLength(1);
+    expect(queue.getPending()[0]).toMatchObject({
+      revision: newestRevision.revision,
+      retryCount: 0,
+      error: undefined,
+      data: { sort_order: 99 },
+    });
   });
 
   it('loads valid queue payload from localStorage on startup', () => {
@@ -69,6 +125,7 @@ describe('SyncQueue', () => {
     expect(queue.getPendingCount()).toBe(1);
     expect(queue.getPending()[0].table).toBe('notes');
     expect(queue.getPending()[0].localId).toBe(3);
+    expect(queue.getPending()[0].revision).toEqual(expect.any(String));
   });
 
   it('recovers gracefully from invalid storage by starting empty', () => {

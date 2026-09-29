@@ -97,12 +97,14 @@ export default defineSchema({
     chlorine_value: v.optional(v.number()),
     total_chlorine_value: v.optional(v.number()),
     total_bromine_value: v.optional(v.number()),
+    // Legacy scan audit fields remain optional so existing logs stay valid.
+    // Current product flows create measured LSI data only.
     strip_scan_method: v.optional(v.literal("aquachek_select_photo")),
     strip_scan_confidence: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
     strip_scan_analysis_version: v.optional(stripScanAnalysisVersionValidator),
     strip_scan_pad_confidence: v.optional(stripScanPadConfidenceValidator),
     strip_scan_quality: v.optional(stripScanQualityValidator),
-    lsi_calculation_version: v.optional(v.literal("aquachek-epa-v1")),
+    lsi_calculation_version: v.optional(v.union(v.literal("aquachek-epa-v1"), v.literal("lsi-v1"))),
     alkalinity_value: v.optional(v.number()),
     stabilizer_value: v.optional(v.number()),
     hardness_value: v.optional(v.number()),

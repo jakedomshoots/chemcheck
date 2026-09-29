@@ -79,6 +79,7 @@ export default function Clients() {
   const pendingSortInitializationIdsRef = useRef(new Set());
   const pendingReorderSortsRef = useRef(new Map());
   const pendingReorderDaysByCustomerIdRef = useRef(new Map());
+  const reorderInFlightRef = useRef(false);
   const dayTabRefs = useRef({});
   const clientViewTabRefs = useRef({});
   const hasAutoScrolledDayRef = useRef(false);
@@ -329,7 +330,8 @@ export default function Clients() {
   }, [compareCustomersForDisplay, customers, updateCustomer]);
 
   const handleMoveUp = async (customer) => {
-    if (movingCustomerId) return;
+    if (reorderInFlightRef.current) return;
+    reorderInFlightRef.current = true;
     setMovingCustomerId(customer._id);
 
     try {
@@ -352,12 +354,14 @@ export default function Clients() {
       console.error("Error moving customer:", error);
       toast.error("Failed to move customer");
     } finally {
+      reorderInFlightRef.current = false;
       setMovingCustomerId(null);
     }
   };
 
   const handleMoveDown = async (customer) => {
-    if (movingCustomerId) return;
+    if (reorderInFlightRef.current) return;
+    reorderInFlightRef.current = true;
     setMovingCustomerId(customer._id);
 
     try {
@@ -380,6 +384,7 @@ export default function Clients() {
       console.error("Error moving customer:", error);
       toast.error("Failed to move customer");
     } finally {
+      reorderInFlightRef.current = false;
       setMovingCustomerId(null);
     }
   };

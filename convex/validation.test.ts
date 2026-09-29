@@ -70,6 +70,34 @@ describe("LSI service log validation", () => {
     }, true)).toThrow(/complete scan audit data/i);
   });
 
+  it("accepts the standalone measured LSI version without strip audit data", () => {
+    expect(() => validateLsiFields({
+      ph_value: 7.6,
+      alkalinity_value: 90,
+      stabilizer_value: 60,
+      hardness_value: 300,
+      hardness_source: "calcium",
+      water_temperature: 84,
+      water_temperature_source: "measured",
+      tds_value: 1200,
+      tds_source: "measured",
+      lsi_calculation_version: "lsi-v1",
+    }, true)).not.toThrow();
+  });
+
+  it("rejects lsi-v1 when required readings are incomplete or assumed", () => {
+    expect(() => validateLsiFields({
+      ph_value: 7.6,
+      alkalinity_value: 90,
+      stabilizer_value: 60,
+      hardness_value: 300,
+      hardness_source: "calcium",
+      water_temperature: 84,
+      water_temperature_source: "assumed",
+      lsi_calculation_version: "lsi-v1",
+    }, true)).toThrow(/lsi-v1.*measured.*temperature.*TDS/i);
+  });
+
   it("rejects an out-of-range water temperature", () => {
     expect(() => validateLsiFields({ water_temperature: 180 }))
       .toThrow(/Water temperature/);

@@ -87,6 +87,7 @@ export interface ServiceLog extends SyncableRecord {
     chlorine_value?: number;
     total_chlorine_value?: number;
     total_bromine_value?: number;
+    // Legacy scan metadata is retained for backward-compatible local sync.
     strip_scan_method?: 'aquachek_select_photo';
     strip_scan_confidence?: 'low' | 'medium' | 'high';
     strip_scan_analysis_version?: 'aquachek-select-v2' | 'aquachek-select-v3' | 'aquachek-select-v4';
@@ -104,7 +105,7 @@ export interface ServiceLog extends SyncableRecord {
         lightingUniformity: number;
         framing: number;
     };
-    lsi_calculation_version?: 'aquachek-epa-v1';
+    lsi_calculation_version?: 'aquachek-epa-v1' | 'lsi-v1';
     alkalinity_value?: number;
     stabilizer_value?: number;
     hardness_value?: number;

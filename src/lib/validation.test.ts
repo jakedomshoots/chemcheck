@@ -236,6 +236,44 @@ describe('Service Log Validation', () => {
     }
   });
 
+  it('accepts standalone measured LSI data without strip metadata', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      ph_value: 7.6,
+      alkalinity_value: 90,
+      stabilizer_value: 60,
+      hardness_value: 300,
+      hardness_source: 'calcium',
+      water_temperature: 84,
+      water_temperature_source: 'measured',
+      tds_value: 1200,
+      tds_source: 'measured',
+      lsi_calculation_version: 'lsi-v1',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.lsi_calculation_version).toBe('lsi-v1');
+  });
+
+  it('rejects lsi-v1 when required readings are incomplete or assumed', () => {
+    const result = validateServiceLog({
+      ...validServiceLog,
+      ph_value: 7.6,
+      alkalinity_value: 90,
+      stabilizer_value: 60,
+      hardness_value: 300,
+      hardness_source: 'calcium',
+      water_temperature: 84,
+      water_temperature_source: 'assumed',
+      lsi_calculation_version: 'lsi-v1',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors.join(' ')).toMatch(/lsi-v1.*measured.*temperature.*TDS/i);
+    }
+  });
+
   it('rejects an incomplete v2 strip scan before local storage', () => {
     const result = validateServiceLog({
       ...validServiceLog,

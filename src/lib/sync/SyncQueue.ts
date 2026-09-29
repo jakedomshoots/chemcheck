@@ -12,6 +12,8 @@ export interface SyncQueueItem {
   lastAttempt?: number;
   error?: string;
   priority: number; // Lower number = higher priority
+  /** Unique identity for this exact queued revision of the record. */
+  revision: string;
 }
 
 const STORAGE_KEY = 'chemcheck_sync_queue';
@@ -26,6 +28,7 @@ export class SyncQueue {
   private highWatermarkWarned = false;
   private lastPersistErrorAt = 0;
   private isPersisting = false;
+  private revisionSequence = 0;
 
   constructor() {
     this.loadFromStorage();
@@ -41,11 +44,12 @@ export class SyncQueue {
   /**
    * Add record to sync queue
    */
-  enqueue(item: Omit<SyncQueueItem, 'retryCount' | 'priority'>): void {
+  enqueue(item: Omit<SyncQueueItem, 'retryCount' | 'priority' | 'revision'>): void {
     const queueItem: SyncQueueItem = this.normalizeQueueItem({
       ...item,
       retryCount: 0,
       priority: this.getPriority(item.table, item.operation),
+      revision: this.createRevision(),
     });
 
     const nextQueue = [...this.queue];
@@ -153,13 +157,13 @@ export class SyncQueue {
   /**
    * Mark item as synced (remove from queue)
    */
-  markSynced(table: string, localId: number): boolean {
+  markSynced(item: Pick<SyncQueueItem, 'table' | 'localId' | 'revision'>): boolean {
     if (this.queue.length === 0) {
       return false;
     }
 
     const nextQueue = this.queue.filter(
-      item => !(item.table === table && item.localId === localId)
+      queued => !this.isSameRevision(queued, item)
     );
 
     if (nextQueue.length === this.queue.length) {
@@ -171,9 +175,9 @@ export class SyncQueue {
 
     try {
       this.persistQueueState('markSynced');
-      console.log(`Marked ${table}[${localId}] as synced`);
+      console.log(`Marked ${item.table}[${item.localId}] revision ${item.revision} as synced`);
     } catch (error) {
-      console.error(`Failed to persist sync completion for ${table}[${localId}]:`, error);
+      console.error(`Failed to persist sync completion for ${item.table}[${item.localId}]:`, error);
       // Continue execution - the item is still removed from memory queue
     }
 
@@ -183,29 +187,29 @@ export class SyncQueue {
   /**
    * Mark item as failed and potentially retry
    */
-  markFailed(table: string, localId: number, error: string): void {
+  markFailed(item: Pick<SyncQueueItem, 'table' | 'localId' | 'revision'>, error: string): void {
     const itemIndex = this.queue.findIndex(
-      item => item.table === table && item.localId === localId
+      queued => this.isSameRevision(queued, item)
     );
 
     if (itemIndex === -1) {
-      console.warn(`Item ${table}[${localId}] not found in queue for failure marking`);
+      console.warn(`Item ${item.table}[${item.localId}] revision ${item.revision} is no longer current`);
       return;
     }
 
-    const item = this.queue[itemIndex];
-    item.retryCount += 1;
-    item.lastAttempt = Date.now();
-    item.error = error;
+    const queuedItem = this.queue[itemIndex];
+    queuedItem.retryCount += 1;
+    queuedItem.lastAttempt = Date.now();
+    queuedItem.error = error;
 
-    if (item.retryCount >= MAX_RETRIES) {
+    if (queuedItem.retryCount >= MAX_RETRIES) {
       // Remove from queue after max retries
       this.queue.splice(itemIndex, 1);
-      console.log(`Removed ${table}[${localId}] from queue after ${MAX_RETRIES} failed attempts`);
+      console.log(`Removed ${item.table}[${item.localId}] from queue after ${MAX_RETRIES} failed attempts`);
     }
     else {
       // Keep in queue for retry with exponential backoff
-      console.log(`Marked ${table}[${localId}] as failed (attempt ${item.retryCount}/${MAX_RETRIES})`);
+      console.log(`Marked ${item.table}[${item.localId}] as failed (attempt ${queuedItem.retryCount}/${MAX_RETRIES})`);
     }
 
     this.queue = this.sanitizeQueue(this.queue);
@@ -234,6 +238,11 @@ export class SyncQueue {
    */
   findItem(table: SyncQueueItem['table'], localId: number): SyncQueueItem | undefined {
     return this.queue.find(item => item.table === table && item.localId === localId);
+  }
+
+  /** True only while this exact queued revision is still the current one. */
+  isCurrent(item: Pick<SyncQueueItem, 'table' | 'localId' | 'revision'>): boolean {
+    return this.queue.some(queued => this.isSameRevision(queued, item));
   }
 
   /**
@@ -269,6 +278,23 @@ export class SyncQueue {
 
     return (tablePriority[table as keyof typeof tablePriority] || 3) * 10 +
       (operationPriority[operation as keyof typeof operationPriority] || 3);
+  }
+
+  private createRevision(): string {
+    this.revisionSequence += 1;
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
+    }
+    return `${Date.now().toString(36)}-${this.revisionSequence.toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  private isSameRevision(
+    left: Pick<SyncQueueItem, 'table' | 'localId' | 'revision'>,
+    right: Pick<SyncQueueItem, 'table' | 'localId' | 'revision'>,
+  ): boolean {
+    return left.table === right.table &&
+      left.localId === right.localId &&
+      left.revision === right.revision;
   }
 
   private loadFromStorage(): void {
@@ -347,6 +373,9 @@ export class SyncQueue {
       priority: Number.isFinite(item.priority) ? item.priority : this.getPriority(item.table, item.operation),
       lastAttempt: item.lastAttempt && Number.isFinite(item.lastAttempt) ? item.lastAttempt : undefined,
       error: typeof item.error === 'string' ? item.error : undefined,
+      revision: typeof item.revision === 'string' && item.revision
+        ? item.revision
+        : this.createRevision(),
     };
   }
 

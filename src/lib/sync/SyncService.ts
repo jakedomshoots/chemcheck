@@ -864,7 +864,7 @@ export class SyncService {
           const success = await this.syncQueueItem(item);
           if (success) {
             syncedCount++;
-            this.syncQueue.markSynced(item.table, item.localId);
+            this.syncQueue.markSynced(item);
           } else {
             failedCount++;
           }
@@ -876,7 +876,7 @@ export class SyncService {
           const success = await this.syncQueueItem(item);
           if (success) {
             syncedCount++;
-            this.syncQueue.markSynced(item.table, item.localId);
+            this.syncQueue.markSynced(item);
           } else {
             failedCount++;
           }
@@ -978,13 +978,12 @@ export class SyncService {
       }
 
       if (!record) {
-        // Record was deleted, remove from queue
-        this.syncQueue.markSynced(item.table, item.localId);
+        // The outer sync loop acknowledges this exact queue revision.
         return true;
       }
 
       // Use existing sync logic
-      return await this.syncSingleRecord(item.table, record);
+      return await this.syncSingleRecord(item.table, record, 0, item.revision);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Failed to sync queue item ${item.table}[${item.localId}]:`, errorMessage);
@@ -996,7 +995,7 @@ export class SyncService {
       });
 
       // Mark as failed in queue (handles retry logic with exponential backoff)
-      this.syncQueue.markFailed(item.table, item.localId, errorMessage);
+      this.syncQueue.markFailed(item, errorMessage);
 
       return false;
     }
@@ -1013,7 +1012,12 @@ export class SyncService {
     return refreshed?.convex_id || record.convex_pool_id;
   }
 
-  private async syncSingleRecord(table: string, record: any, conflictRetryCount = 0): Promise<boolean> {
+  private async syncSingleRecord(
+    table: string,
+    record: any,
+    conflictRetryCount = 0,
+    expectedQueueRevision?: string,
+  ): Promise<boolean> {
     if (!this.convexClient) return false;
 
     let retryCount = 0;
@@ -1021,6 +1025,7 @@ export class SyncService {
     const maxConflictRetries = this.MAX_CONFLICT_RETRIES;
     // Keep this key stable across network retries, but rotate it when a
     // conflict is explicitly retried after resolving a newer remote version.
+    const recordLocalUpdatedAt = Number(record.local_updated_at || 0);
     const idempotencyKey = `sync:${table}:${record.id}:${this.normalizeLocalUpdatedAt(record.local_updated_at)}:${conflictRetryCount}`;
 
     while (retryCount < maxRetries) {
@@ -1313,7 +1318,24 @@ export class SyncService {
             throw new Error(`Unknown table: ${table}`);
         }
 
+        const currentRecord = await this.getTable(table)?.get?.(record.id);
+        const queueRevisionIsCurrent = expectedQueueRevision === undefined || this.syncQueue.isCurrent({
+          table: table as SyncQueueItem['table'],
+          localId: record.id,
+          revision: expectedQueueRevision,
+        });
+        const localRevisionIsCurrent = !!currentRecord &&
+          Number(currentRecord.local_updated_at || 0) === recordLocalUpdatedAt;
+
+        // Any response for a superseded payload is stale, including conflict
+        // responses. It may describe what the server accepted or observed, but
+        // it must never acknowledge or overwrite newer local work.
+        if (!queueRevisionIsCurrent || !localRevisionIsCurrent) {
+          return true;
+        }
+
         if (result.success) {
+
           // Update local record with sync success
           const updateData = {
             convex_id: result.convex_id,
@@ -1493,7 +1515,12 @@ export class SyncService {
 
               // Retry sync with resolved data and incremented conflict counter
               const updatedRecord = { ...record, ...resolvedData };
-              return await this.syncSingleRecord(table, updatedRecord, conflictRetryCount + 1);
+              return await this.syncSingleRecord(
+                table,
+                updatedRecord,
+                conflictRetryCount + 1,
+                expectedQueueRevision,
+              );
             } else {
               // Remote wins - update local record with remote data, mark as synced (no retry needed)
               const resolvedData = {

@@ -17,10 +17,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import SimplifiedChemicalInput from "../components/servicelog/SimplifiedChemicalInput";
 import LastWeekChemistry from "@/components/servicelog/LastWeekChemistry";
 import LsiReadingFields from "@/components/servicelog/LsiReadingFields";
-import AquaChekStripScanner from "@/components/servicelog/AquaChekStripScanner";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
 import { hapticSuccess } from "@/lib/haptics";
 import { CHEMICAL_CONFIGS } from "@/lib/chemStatus";
+import { calculateServiceLogLsi, LSI_CALCULATION_VERSION } from "@/lib/lsi";
 import { transitionName } from "@/lib/viewTransitions";
 import { deleteUnlinkedPhotos, linkPhotosToServiceLog, getPhotos } from "@/lib/proof-of-service";
 import { useBusinessSettings } from "@/hooks/useBusinessSettings";
@@ -108,11 +108,6 @@ export default function NewServiceLog() {
     chlorine_value: existingLog?.chlorine_value ?? "",
     total_chlorine_value: existingLog?.total_chlorine_value ?? "",
     total_bromine_value: existingLog?.total_bromine_value ?? "",
-    strip_scan_method: existingLog?.strip_scan_method ?? "",
-    strip_scan_confidence: existingLog?.strip_scan_confidence ?? "",
-    strip_scan_analysis_version: existingLog?.strip_scan_analysis_version ?? "",
-    strip_scan_pad_confidence: existingLog?.strip_scan_pad_confidence,
-    strip_scan_quality: existingLog?.strip_scan_quality,
     lsi_calculation_version: existingLog?.lsi_calculation_version ?? "",
     alkalinity: existingLog?.alkalinity || "good",
     alkalinity_mode: existingLog?.alkalinity_value !== undefined ? "numeric" : "quick",
@@ -330,6 +325,25 @@ export default function NewServiceLog() {
       ? Math.max(0, new Date(endTime).getTime() - new Date(startTime).getTime())
       : undefined;
 
+    const lsiReadings = {
+      ph_value: formData.ph_value !== "" ? parseFloat(formData.ph_value) : undefined,
+      alkalinity_value: formData.alkalinity_value !== "" ? parseFloat(formData.alkalinity_value) : undefined,
+      stabilizer_value: formData.stabilizer_value !== "" ? parseFloat(formData.stabilizer_value) : undefined,
+      hardness_value: formData.hardness_value !== "" ? parseFloat(formData.hardness_value) : undefined,
+      hardness_source: formData.hardness_source || undefined,
+      water_temperature: formData.water_temperature !== "" ? parseFloat(formData.water_temperature) : undefined,
+      water_temperature_source: formData.water_temperature_source || undefined,
+      tds_value: formData.tds_value !== "" ? parseFloat(formData.tds_value) : undefined,
+      tds_source: formData.tds_source || undefined,
+    };
+    const measuredLsi = calculateServiceLogLsi(lsiReadings);
+    const preserveLegacyLsiVersion = formData.hardness_source === "aquachek_total"
+      ? formData.lsi_calculation_version || undefined
+      : undefined;
+    const lsiCalculationVersion = formData.hardness_source === "calcium"
+      ? (measuredLsi.result ? LSI_CALCULATION_VERSION : undefined)
+      : preserveLegacyLsiVersion;
+
     const logData = {
       customer_id: customerId,
       service_date: localDate,
@@ -340,24 +354,19 @@ export default function NewServiceLog() {
       chlorine: formData.chlorine,
       alkalinity: formData.alkalinity,
       stabilizer: formData.stabilizer,
-      ph_value: formData.ph_value !== "" ? parseFloat(formData.ph_value) : undefined,
+      ph_value: lsiReadings.ph_value,
       chlorine_value: formData.chlorine_value !== "" ? parseFloat(formData.chlorine_value) : undefined,
       total_chlorine_value: formData.total_chlorine_value !== "" ? parseFloat(formData.total_chlorine_value) : undefined,
       total_bromine_value: formData.total_bromine_value !== "" ? parseFloat(formData.total_bromine_value) : undefined,
-      strip_scan_method: formData.strip_scan_method || undefined,
-      strip_scan_confidence: formData.strip_scan_confidence || undefined,
-      strip_scan_analysis_version: formData.strip_scan_analysis_version || undefined,
-      strip_scan_pad_confidence: formData.strip_scan_pad_confidence || undefined,
-      strip_scan_quality: formData.strip_scan_quality || undefined,
-      lsi_calculation_version: formData.lsi_calculation_version || undefined,
-      alkalinity_value: formData.alkalinity_value !== "" ? parseFloat(formData.alkalinity_value) : undefined,
-      stabilizer_value: formData.stabilizer_value !== "" ? parseFloat(formData.stabilizer_value) : undefined,
-      hardness_value: formData.hardness_value !== "" ? parseFloat(formData.hardness_value) : undefined,
-      hardness_source: formData.hardness_source || undefined,
-      water_temperature: formData.water_temperature !== "" ? parseFloat(formData.water_temperature) : undefined,
-      water_temperature_source: formData.water_temperature_source || undefined,
-      tds_value: formData.tds_value !== "" ? parseFloat(formData.tds_value) : undefined,
-      tds_source: formData.tds_source || undefined,
+      lsi_calculation_version: lsiCalculationVersion,
+      alkalinity_value: lsiReadings.alkalinity_value,
+      stabilizer_value: lsiReadings.stabilizer_value,
+      hardness_value: lsiReadings.hardness_value,
+      hardness_source: lsiReadings.hardness_source,
+      water_temperature: lsiReadings.water_temperature,
+      water_temperature_source: lsiReadings.water_temperature_source,
+      tds_value: lsiReadings.tds_value,
+      tds_source: lsiReadings.tds_source,
       photo_count: actualBeforeCount + actualAfterCount,
       has_before_photos: actualBeforeCount > 0,
       has_after_photos: actualAfterCount > 0,
@@ -596,12 +605,6 @@ export default function NewServiceLog() {
             Chemical Readings
           </h3>
           <p className="mb-4 text-sm font-medium text-ink-secondary">Select the level for each chemical test</p>
-
-          <AquaChekStripScanner
-            formData={formData}
-            setFormData={setFormData}
-            sanitizer={String(customer.pool_type || '').toLowerCase().includes('bromine') ? 'bromine' : 'chlorine'}
-          />
 
           <div className="space-y-3">
             <SimplifiedChemicalInput

@@ -308,4 +308,26 @@ describe('Clients Page', () => {
         updateResolvers.get('c1')?.();
         updateResolvers.get('c2')?.();
     });
+
+    it('serializes rapid reorder input while the current move is being saved', async () => {
+        setMockCustomers([
+            { _id: 'c1', full_name: 'Alice Smith', address: '123 Apple St', service_day: 'Monday', sort_order: 0 },
+            { _id: 'c2', full_name: 'Bob Jones', address: '456 Banana Ave', service_day: 'Monday', sort_order: 1 },
+            { _id: 'c3', full_name: 'Cora Lane', address: '789 Citrus Rd', service_day: 'Monday', sort_order: 2 },
+        ]);
+
+        const resolvers = [];
+        mockUpdateCustomer.mockImplementation(() => new Promise((resolve) => resolvers.push(resolve)));
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+
+        fireEvent.click(screen.getByRole('button', { name: /Reorder/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Move down c1/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Move down c2/i }));
+
+        await waitFor(() => expect(mockUpdateCustomer).toHaveBeenCalledTimes(2));
+        expect(mockUpdateCustomer).toHaveBeenNthCalledWith(1, { id: 'c1', sort_order: 1 });
+        expect(mockUpdateCustomer).toHaveBeenNthCalledWith(2, { id: 'c2', sort_order: 0 });
+
+        resolvers.forEach((resolve) => resolve());
+    });
 });
