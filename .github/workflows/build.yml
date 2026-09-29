@@ -24,8 +24,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Readiness Gates
-        run: npm run test:gates
+      - name: Typecheck Convex functions
+        run: npm run typecheck:convex
+
+      - name: Unit tests
+        run: npm test
 
       - name: Check auth bypass flag
         run: |
@@ -46,4 +49,4 @@ jobs:
             echo "ERROR: CONVEX_DEPLOY_KEY secret is not configured"
             exit 1
           fi
-          npx convex deploy --yes --typecheck try
+          npx convex deploy --yes --typecheck enable
