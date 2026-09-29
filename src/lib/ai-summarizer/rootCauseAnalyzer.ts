@@ -18,6 +18,7 @@ import {
   CORRELATION_STRENGTH_THRESHOLD,
   type ValidChemical,
   VALID_CHEMICALS,
+  isOutOfRangeReading,
 } from './validation';
 
 const CHRONIC_ISSUE_THRESHOLD = 3;
@@ -39,7 +40,7 @@ const KNOWN_CORRELATIONS: Array<{
     condition: (ph, alk) => 
       (ph === 'low' && alk === 'low') || 
       (ph === 'high' && alk === 'high') ||
-      (ph !== 'good' && alk !== 'good'),
+      (isOutOfRangeReading(ph) && isOutOfRangeReading(alk)),
   },
   {
     chemicals: ['chlorine', 'stabilizer'],
@@ -57,7 +58,7 @@ const KNOWN_CORRELATIONS: Array<{
     implication: 'High pH reduces chlorine sanitizing power; low pH increases chlorine aggressiveness',
     condition: (chlorine, ph) =>
       (chlorine === 'low' && ph === 'high') ||
-      (chlorine !== 'good' && ph !== 'good'),
+      (isOutOfRangeReading(chlorine) && isOutOfRangeReading(ph)),
   },
 ];
 
@@ -80,7 +81,7 @@ const ROOT_CAUSE_PATTERNS: Array<{
       const evidence: string[] = [];
       let count = 0;
       for (const log of logs) {
-        if (log.ph !== 'good' && log.alkalinity !== 'good') {
+        if (isOutOfRangeReading(log.ph) && isOutOfRangeReading(log.alkalinity)) {
           count++;
           evidence.push(createEvidenceString(log, ['ph', 'alkalinity']));
         }
@@ -201,8 +202,8 @@ export function calculateCorrelationStrength(
   let eitherIssue = 0;
 
   for (const log of logs) {
-    const aHasIssue = log[chemicalA] !== 'good';
-    const bHasIssue = log[chemicalB] !== 'good';
+    const aHasIssue = isOutOfRangeReading(log[chemicalA]);
+    const bHasIssue = isOutOfRangeReading(log[chemicalB]);
 
     if (aHasIssue || bHasIssue) {
       eitherIssue++;
@@ -229,7 +230,7 @@ export function countChemicalIssues(
     if (issueType) {
       return reading === issueType;
     }
-    return reading !== 'good';
+    return isOutOfRangeReading(reading);
   }).length;
 }
 
@@ -246,7 +247,7 @@ export function getMostCommonIssue(
 
   for (const log of logs) {
     const reading = log[chemical];
-    if (reading && reading !== 'good') {
+    if (isOutOfRangeReading(reading)) {
       counts[reading]++;
     }
   }

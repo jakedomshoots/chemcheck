@@ -16,6 +16,7 @@ import {
   type TrendDirection,
   isValidConfidence,
 } from './types';
+import { isValidReading } from './validation';
 
 const MINIMUM_LOGS_FOR_PREDICTION = 5;
 const LOW_CONFIDENCE_THRESHOLD = 60;
@@ -39,22 +40,22 @@ const RECOMMENDED_ACTIONS: Record<string, Record<string, string>> = {
   ph: {
     low: 'Add pH increaser (sodium carbonate)',
     high: 'Add pH decreaser (muriatic acid or sodium bisulfate)',
-    critical: 'Immediate pH adjustment required - test and balance',
+    critical: 'Retest pH with a numeric reading before adjusting',
   },
   chlorine: {
-    low: 'Add chlorine shock treatment',
-    high: 'Allow chlorine to dissipate naturally or add neutralizer',
-    critical: 'Urgent chlorine adjustment needed - check sanitizer system',
+    low: 'Add chlorine to restore sanitizer levels',
+    high: 'Do not add chlorine - allow it to dissipate naturally',
+    critical: 'Retest free chlorine with a numeric reading - check sanitizer system',
   },
   alkalinity: {
     low: 'Add alkalinity increaser (sodium bicarbonate)',
     high: 'Add muriatic acid to lower alkalinity',
-    critical: 'Alkalinity severely out of range - comprehensive water balance needed',
+    critical: 'Retest alkalinity with a numeric reading before adjusting',
   },
   stabilizer: {
     low: 'Add cyanuric acid (stabilizer)',
     high: 'Partial drain and refill to reduce stabilizer levels',
-    critical: 'Stabilizer levels critical - may need significant water replacement',
+    critical: 'Retest stabilizer (CYA) with a numeric reading before adjusting',
   },
 };
 
@@ -63,7 +64,7 @@ function extractReadings(
   chemical: 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'
 ): ChemicalReading[] {
   return logs
-    .filter(log => log[chemical] !== undefined)
+    .filter(log => isValidReading(log[chemical]))
     .map(log => log[chemical] as ChemicalReading);
 }
 
@@ -311,8 +312,7 @@ function identifySeasonalFactors(logs: ServiceLog[]): string[] {
   const currentMonth = new Date().getMonth();
 
   if (currentMonth >= 4 && currentMonth <= 7) {
-    factors.push('Summer season: expect increased chlorine demand');
-    factors.push('Higher temperatures may accelerate chemical consumption');
+    factors.push('Summer season (calendar-based): chlorine demand is typically higher');
   }
 
   if (currentMonth >= 8 && currentMonth <= 10) {

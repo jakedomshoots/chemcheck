@@ -1,6 +1,12 @@
 export type HealthGrade = 'A' | 'B' | 'C' | 'D' | 'F';
 export type TrendDirection = 'improving' | 'stable' | 'declining';
 export type ChemicalReading = 'good' | 'low' | 'high' | 'critical';
+/**
+ * Direction-aware reading. A bare 'critical' does not say which way to
+ * correct, so dosing logic must work from this type (derived from numeric
+ * values when available).
+ */
+export type DirectionalReading = 'critical_low' | 'low' | 'good' | 'high' | 'critical_high';
 
 export interface ChemicalBreakdown {
   chemical: string;
@@ -345,10 +351,16 @@ export interface PoolAnalysisResult {
 export interface ServiceLog {
   id: number | string;
   service_date: string;
+  /** Status words. May be undefined when the chemical was not tested. */
   ph: ChemicalReading;
   chlorine: ChemicalReading;
   alkalinity: ChemicalReading;
   stabilizer: ChemicalReading;
+  /** Optional measured values (pH unitless; others ppm). Preferred over status words for dosing. */
+  ph_value?: number | null;
+  chlorine_value?: number | null;
+  alkalinity_value?: number | null;
+  stabilizer_value?: number | null;
   salt?: number;
   notes?: string;
 }

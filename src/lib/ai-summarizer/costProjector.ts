@@ -7,6 +7,7 @@ import {
   type ChemicalReading,
   isValidCostRange,
 } from './types';
+import { isOutOfRangeReading } from './validation';
 
 const CHEMICAL_COSTS: Record<string, Record<string, number>> = {
   ph: {
@@ -196,8 +197,8 @@ export function detectUsagePatternChanges(
   const chemicals = ['ph', 'chlorine', 'alkalinity', 'stabilizer'] as const;
 
   for (const chemical of chemicals) {
-    const recentIssues = recentLogs.filter(log => log[chemical] !== 'good').length;
-    const previousIssues = previousLogs.filter(log => log[chemical] !== 'good').length;
+    const recentIssues = recentLogs.filter(log => isOutOfRangeReading(log[chemical])).length;
+    const previousIssues = previousLogs.filter(log => isOutOfRangeReading(log[chemical])).length;
     
     const recentRate = recentIssues / recentLogs.length;
     const previousRate = previousIssues / previousLogs.length;
@@ -360,11 +361,11 @@ export function generateCostAnalysis(
   const baseMonthlyCost = calculateAverageMonthlyCost(serviceLogs);
   
   if (baseMonthlyCost === 0) {
-    const hasAnyIssues = serviceLogs.some(log => 
-      log.ph !== 'good' || 
-      log.chlorine !== 'good' || 
-      log.alkalinity !== 'good' || 
-      log.stabilizer !== 'good'
+    const hasAnyIssues = serviceLogs.some(log =>
+      isOutOfRangeReading(log.ph) ||
+      isOutOfRangeReading(log.chlorine) ||
+      isOutOfRangeReading(log.alkalinity) ||
+      isOutOfRangeReading(log.stabilizer)
     );
     
     if (!hasAnyIssues) {

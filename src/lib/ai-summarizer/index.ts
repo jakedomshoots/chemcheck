@@ -29,6 +29,7 @@ import { generateCostAnalysis } from './costProjector';
 import { analyzeFleet, type PoolData } from './fleetAnalyzer';
 import { analyzeLearning } from './learningEngine';
 import { analyzeWeatherImpact } from './weatherAnalyzer';
+import { isOutOfRangeReading, isValidReading } from './validation';
 
 export interface PoolAnalysisInput {
   customerId: string;
@@ -84,8 +85,9 @@ function extractChemicalTrends(logs: ServiceLog[]): ChemicalTrend[] {
   );
 
   return chemicals.map(chemical => {
+    // Untested readings are skipped (never assumed 'good').
     const history = sortedLogs
-      .filter(log => log[chemical] !== undefined)
+      .filter(log => isValidReading(log[chemical]))
       .map(log => log[chemical] as ChemicalReading);
 
     const currentStatus = history.length > 0 ? history[history.length - 1] : 'good';
@@ -99,7 +101,9 @@ function extractChemicalTrends(logs: ServiceLog[]): ChemicalTrend[] {
       history,
       confidence,
     };
-  });
+  })
+    // A chemical that was never tested has no trend (don't report it as 'good').
+    .filter(trend => trend.history.length > 0);
 }
 
 function calculateTrendDirection(readings: ChemicalReading[]): TrendDirection {
@@ -151,7 +155,7 @@ function extractProblems(
 
     for (const log of sortedLogs) {
       const reading = log[chemical];
-      if (reading && reading !== 'good') {
+      if (isOutOfRangeReading(reading)) {
         issueOccurrences.push({ date: log.service_date, reading });
       }
     }
@@ -380,6 +384,7 @@ export function analyzePool(input: PoolAnalysisInput): PoolAnalysisResult {
     recommendations = generateRecommendations({
       serviceLogs,
       poolGallons,
+      poolType,
       healthScore,
       rootCauseAnalysis,
       predictiveInsights,

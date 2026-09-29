@@ -1,8 +1,24 @@
-// Advanced Route Optimization
-// Optimizes service routes using GPS coordinates and various algorithms
+// Route planning
+//
+// Orders a day's stops and reports travel between them ONLY when the data is
+// real:
+//   - With a configured map provider (VITE_ROUTE_PROVIDER / VITE_ROUTE_PROXY_URL)
+//     addresses are geocoded and stops are ordered by nearest-neighbor on
+//     live road travel times.
+//   - Without one, addresses cannot be located, so stops keep the user's saved
+//     order and no distances or drive times are shown. If every stop already
+//     carries real coordinates, straight-line distances are reported (clearly
+//     labelled, never converted to a drive time).
+// Coordinates and drive times are never fabricated.
 
 import { monitoring } from './monitoring';
-import { deterministicGeocode, routeProvider, type LocationSource, type ProviderLocation, type RouteProvider } from './routeProvider';
+import {
+  routeProvider,
+  straightLineMiles,
+  type LocationSource,
+  type ProviderLocation,
+  type RouteProvider,
+} from './routeProvider';
 
 export interface Location {
   latitude: number;
@@ -21,6 +37,8 @@ export interface Customer {
   serviceDay: string;
   priority: 'low' | 'medium' | 'high';
   estimatedDuration: number; // minutes
+  /** User's saved stop order, when set. */
+  sortOrder?: number;
   timeWindow?: {
     start: string; // HH:MM
     end: string;   // HH:MM
@@ -28,54 +46,65 @@ export interface Customer {
   notes?: string;
 }
 
+export type TravelDataSource = 'road' | 'straight-line' | 'none';
+
 export interface RouteStop {
   customer: Customer;
-  arrivalTime: string;
-  departureTime: string;
-  travelTime: number; // minutes from previous stop
-  distance: number;   // miles from previous stop
+  /** Arrival/departure clock times; null when drive times are unknown. */
+  arrivalTime: string | null;
+  departureTime: string | null;
+  /** Driving minutes from the previous stop (or start); null when unknown. */
+  travelTime: number | null;
+  /** Miles from the previous stop (road or straight-line, see travelSource); null when unknown. */
+  distance: number | null;
+  travelSource: TravelDataSource;
 }
 
 export interface OptimizedRoute {
   id: string;
   date: string;
   stops: RouteStop[];
-  totalDistance: number;
+  /** Null when distances are unknown. */
+  totalDistance: number | null;
+  /** Service time plus drive/wait time when drive times are known; service time only otherwise. */
   totalTime: number;
-  totalTravelTime: number;
+  /** Null when drive times are unknown. */
+  totalTravelTime: number | null;
   totalServiceTime: number;
   totalWaitTime: number;
   startLocation?: Location;
   endLocation?: Location;
-  optimizationMethod: string;
+  /** 'nearest-neighbor' when reordered by travel data; 'saved-order' otherwise. */
+  optimizationMethod: 'nearest-neighbor' | 'saved-order';
+  /** Where travel figures came from. 'none' means no distances/ETAs should be shown. */
+  travelDataSource: TravelDataSource;
   createdAt: string;
   provider?: string;
-  geocoding?: { requested: number; remote: number; cached: number; fallback: number };
-  routing?: { remote: number; fallback: number };
+  geocoding?: { requested: number; remote: number; cached: number; unresolved: number };
+  routing?: { remote: number; straightLine: number };
   warnings?: string[];
 }
 
 export interface RouteOptimizationOptions {
-  startLocation?: Location;
-  endLocation?: Location;
+  startLocation?: Location | null;
+  endLocation?: Location | null;
   startTime?: string; // HH:MM
   maxWorkingHours?: number;
   prioritizeTimeWindows?: boolean;
   prioritizeHighPriority?: boolean;
-  avoidTraffic?: boolean;
-  algorithm?: 'nearest-neighbor' | 'genetic' | 'simulated-annealing';
 }
 
 type UnknownCustomer = Customer | Record<string, unknown>;
 type CustomerPriority = Customer['priority'];
+type TravelResult = { distance: number; duration: number | null; source: 'road' | 'straight-line' };
 
 class RouteOptimizer {
   private geocodeCache = new Map<string, Location>();
-  private distanceCache = new Map<string, { distance: number; duration: number }>();
+  private distanceCache = new Map<string, TravelResult>();
   private provider: RouteProvider = routeProvider;
   private diagnostics = this.createDiagnostics();
 
-  /** Inject a business-owned proxy or deterministic provider in tests. */
+  /** Inject a business-owned proxy or a test provider. */
   setRouteProvider(provider: RouteProvider): void {
     this.provider = provider;
     this.distanceCache.clear();
@@ -86,20 +115,25 @@ class RouteOptimizer {
     return this.provider;
   }
 
+  /** True when addresses can be geocoded and live drive times requested. */
+  hasMapProvider(): boolean {
+    return this.provider.name !== 'fallback';
+  }
+
   private createDiagnostics() {
     return {
       requested: 0,
       remote: 0,
       cached: 0,
-      fallback: 0,
+      unresolved: 0,
       routingRemote: 0,
-      routingFallback: 0,
+      routingStraightLine: 0,
       warnings: [] as string[],
     };
   }
 
   // ============================================
-  // Main Optimization Function
+  // Main entry point
   // ============================================
 
   async optimizeRoute(
@@ -112,51 +146,47 @@ class RouteOptimizer {
     const normalizedCustomers = customers
       .map((customer) => this.normalizeCustomer(customer))
       .filter((customer): customer is Customer => customer !== null);
-    
+
     try {
-      // Ensure all customers have locations
-      const customersWithLocations = await this.ensureLocations(normalizedCustomers);
-
       const targetDay = this.getDayOfWeek(date);
-      
-      // Filter customers for the specific day
-      const dayCustomers = customersWithLocations.filter(
+      const dayCustomers = this.sortBySavedOrder(normalizedCustomers.filter(
         (customer) => this.normalizeDayName(customer.serviceDay) === targetDay
-      );
-      
+      ));
+
       if (dayCustomers.length === 0) {
-        return this.createEmptyRoute(this.toDateString(date), options);
+        return this.buildRoute([], this.toDateString(date), options, 'saved-order', 'none');
       }
 
-      // Ask the routing provider for one matrix request instead of issuing a
-      // network request for every nearest-neighbor comparison. Providers that
-      // do not support matrices simply continue with pairwise estimates.
-      await this.prefetchTravelMatrix(dayCustomers, options);
+      const located = await this.ensureLocations(dayCustomers);
+      const allLocated = located.every((customer) => customer.location);
+      const startLocation = options.startLocation || undefined;
 
-      // Choose optimization algorithm
-      const algorithm = options.algorithm || 'nearest-neighbor';
-      let optimizedOrder: Customer[];
+      let ordered = located;
+      let method: OptimizedRoute['optimizationMethod'] = 'saved-order';
+      let travelSource: TravelDataSource = 'none';
 
-      switch (algorithm) {
-        case 'genetic':
-          optimizedOrder = await this.geneticAlgorithm(dayCustomers, options);
-          break;
-        case 'simulated-annealing':
-          optimizedOrder = await this.simulatedAnnealing(dayCustomers, options);
-          break;
-        default:
-          optimizedOrder = await this.nearestNeighbor(dayCustomers, options);
+      if (allLocated) {
+        await this.prefetchTravelMatrix(located, startLocation, options.endLocation || undefined);
+        travelSource = await this.probeTravelSource(located, startLocation);
+        // Only reorder on live road data. Straight-line distance ignores roads,
+        // water and one-way streets, so the saved order is kept in that case.
+        if (travelSource === 'road' && located.length > 1) {
+          ordered = await this.nearestNeighbor(located, startLocation);
+          method = 'nearest-neighbor';
+        }
+      } else if (this.hasMapProvider()) {
+        this.diagnostics.warnings.push(
+          'Some addresses could not be located, so your saved stop order is kept and travel estimates are hidden.'
+        );
       }
 
-      // Calculate route details
-      const route = await this.calculateRouteDetails(optimizedOrder, this.toDateString(date), options);
-      
+      const route = await this.buildRoute(ordered, this.toDateString(date), options, method, travelSource);
+
       const duration = performance.now() - startTime;
       monitoring.recordMetric('route_optimization', duration, {
-        algorithm,
+        method,
+        travelSource,
         customerCount: dayCustomers.length,
-        totalDistance: route.totalDistance,
-        totalTime: route.totalTime
       });
 
       return route;
@@ -164,8 +194,8 @@ class RouteOptimizer {
       monitoring.reportError({
         message: 'Route optimization failed',
         severity: 'medium',
-        metadata: { 
-          date, 
+        metadata: {
+          date,
           customerCount: normalizedCustomers.length,
           error: error instanceof Error ? error.message : 'Unknown error'
         }
@@ -175,30 +205,35 @@ class RouteOptimizer {
   }
 
   // ============================================
-  // Optimization Algorithms
+  // Ordering
   // ============================================
 
-  private async nearestNeighbor(
-    customers: Customer[],
-    options: RouteOptimizationOptions
-  ): Promise<Customer[]> {
-    if (customers.length <= 1) return customers;
+  private sortBySavedOrder(customers: Customer[]): Customer[] {
+    return customers
+      .map((customer, index) => ({ customer, index }))
+      .sort((a, b) => {
+        const ao = a.customer.sortOrder;
+        const bo = b.customer.sortOrder;
+        if (ao !== undefined && bo !== undefined && ao !== bo) return ao - bo;
+        if (ao !== undefined && bo === undefined) return -1;
+        if (ao === undefined && bo !== undefined) return 1;
+        return a.index - b.index;
+      })
+      .map(({ customer }) => customer);
+  }
 
+  private async nearestNeighbor(customers: Customer[], startLocation?: Location): Promise<Customer[]> {
     const unvisited = [...customers];
     const route: Customer[] = [];
-    
-    // Start from the specified start location or first customer
-    let currentLocation = options.startLocation || customers[0].location!;
-    
-    // If we have a start location, find the nearest customer to start with
-    if (options.startLocation) {
-      const nearest = await this.findNearestCustomer(currentLocation, unvisited);
-      route.push(nearest);
-      unvisited.splice(unvisited.indexOf(nearest), 1);
-      currentLocation = nearest.location!;
+    let currentLocation: Location | undefined = startLocation;
+
+    if (!currentLocation) {
+      // Begin at the user's first saved stop.
+      const first = unvisited.shift()!;
+      route.push(first);
+      currentLocation = first.location!;
     }
 
-    // Continue with nearest neighbor
     while (unvisited.length > 0) {
       const nearest = await this.findNearestCustomer(currentLocation, unvisited);
       route.push(nearest);
@@ -209,112 +244,14 @@ class RouteOptimizer {
     return route;
   }
 
-  private async geneticAlgorithm(
-    customers: Customer[],
-    options: RouteOptimizationOptions
-  ): Promise<Customer[]> {
-    const populationSize = Math.min(50, Math.max(10, customers.length * 2));
-    const generations = Math.min(100, customers.length * 5);
-    const mutationRate = 0.1;
-    const eliteSize = Math.floor(populationSize * 0.2);
-
-    // Initialize population
-    let population = await this.initializePopulation(customers, populationSize);
-
-    for (let gen = 0; gen < generations; gen++) {
-      // Evaluate fitness
-      const fitness = await Promise.all(
-        population.map(route => this.calculateRouteFitness(route, options))
-      );
-
-      // Sort by fitness (lower is better)
-      const sortedIndices = fitness
-        .map((fit, index) => ({ fitness: fit, index }))
-        .sort((a, b) => a.fitness - b.fitness)
-        .map(item => item.index);
-
-      // Select elite
-      const newPopulation = sortedIndices
-        .slice(0, eliteSize)
-        .map(index => [...population[index]]);
-
-      // Generate offspring
-      while (newPopulation.length < populationSize) {
-        const parent1 = population[sortedIndices[Math.floor(Math.random() * eliteSize)]];
-        const parent2 = population[sortedIndices[Math.floor(Math.random() * eliteSize)]];
-        
-        let offspring = this.crossover(parent1, parent2);
-        
-        if (Math.random() < mutationRate) {
-          offspring = this.mutate(offspring);
-        }
-        
-        newPopulation.push(offspring);
-      }
-
-      population = newPopulation;
-    }
-
-    // Return best route
-    const finalFitness = await Promise.all(
-      population.map(route => this.calculateRouteFitness(route, options))
-    );
-    const bestIndex = finalFitness.indexOf(Math.min(...finalFitness));
-    
-    return population[bestIndex];
-  }
-
-  private async simulatedAnnealing(
-    customers: Customer[],
-    options: RouteOptimizationOptions
-  ): Promise<Customer[]> {
-    let currentRoute = await this.nearestNeighbor(customers, options);
-    let currentFitness = await this.calculateRouteFitness(currentRoute, options);
-    
-    let bestRoute = [...currentRoute];
-    let bestFitness = currentFitness;
-    
-    const maxIterations = customers.length * 100;
-    const initialTemp = 1000;
-    const coolingRate = 0.995;
-    let temperature = initialTemp;
-
-    for (let i = 0; i < maxIterations; i++) {
-      // Generate neighbor solution
-      const neighborRoute = this.generateNeighbor(currentRoute);
-      const neighborFitness = await this.calculateRouteFitness(neighborRoute, options);
-      
-      // Accept or reject the neighbor
-      const delta = neighborFitness - currentFitness;
-      
-      if (delta < 0 || Math.random() < Math.exp(-delta / temperature)) {
-        currentRoute = neighborRoute;
-        currentFitness = neighborFitness;
-        
-        if (currentFitness < bestFitness) {
-          bestRoute = [...currentRoute];
-          bestFitness = currentFitness;
-        }
-      }
-      
-      temperature *= coolingRate;
-    }
-
-    return bestRoute;
-  }
-
-  // ============================================
-  // Helper Functions for Algorithms
-  // ============================================
-
   private async findNearestCustomer(location: Location, customers: Customer[]): Promise<Customer> {
     let nearest = customers[0];
-    let minDistance = (await this.getDistanceAndDuration(location, nearest.location!)).duration;
+    let best = this.travelCost(await this.getTravel(location, nearest.location!));
 
     for (const customer of customers.slice(1)) {
-      const distance = (await this.getDistanceAndDuration(location, customer.location!)).duration;
-      if (distance < minDistance) {
-        minDistance = distance;
+      const cost = this.travelCost(await this.getTravel(location, customer.location!));
+      if (cost < best) {
+        best = cost;
         nearest = customer;
       }
     }
@@ -322,251 +259,136 @@ class RouteOptimizer {
     return nearest;
   }
 
-  private async initializePopulation(customers: Customer[], size: number): Promise<Customer[][]> {
-    const population: Customer[][] = [];
-    
-    // Add one nearest neighbor solution
-    population.push(await this.nearestNeighbor(customers, {}));
-    
-    // Add random solutions
-    for (let i = 1; i < size; i++) {
-      const shuffled = [...customers];
-      for (let j = shuffled.length - 1; j > 0; j--) {
-        const k = Math.floor(Math.random() * (j + 1));
-        [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
-      }
-      population.push(shuffled);
-    }
-
-    return population;
-  }
-
-  private crossover(parent1: Customer[], parent2: Customer[]): Customer[] {
-    const start = Math.floor(Math.random() * parent1.length);
-    const end = Math.floor(Math.random() * (parent1.length - start)) + start;
-    
-    const offspring = new Array(parent1.length);
-    const segment = parent1.slice(start, end + 1);
-    
-    // Copy segment from parent1
-    for (let i = start; i <= end; i++) {
-      offspring[i] = parent1[i];
-    }
-    
-    // Fill remaining positions from parent2
-    let parent2Index = 0;
-    for (let i = 0; i < offspring.length; i++) {
-      if (offspring[i] === undefined) {
-        while (segment.includes(parent2[parent2Index])) {
-          parent2Index++;
-        }
-        offspring[i] = parent2[parent2Index];
-        parent2Index++;
-      }
-    }
-    
-    return offspring;
-  }
-
-  private mutate(route: Customer[]): Customer[] {
-    const mutated = [...route];
-    const i = Math.floor(Math.random() * mutated.length);
-    const j = Math.floor(Math.random() * mutated.length);
-    
-    [mutated[i], mutated[j]] = [mutated[j], mutated[i]];
-    
-    return mutated;
-  }
-
-  private generateNeighbor(route: Customer[]): Customer[] {
-    const neighbor = [...route];
-    
-    // Random swap
-    if (Math.random() < 0.5) {
-      const i = Math.floor(Math.random() * neighbor.length);
-      const j = Math.floor(Math.random() * neighbor.length);
-      [neighbor[i], neighbor[j]] = [neighbor[j], neighbor[i]];
-    } else {
-      // Random reverse
-      const start = Math.floor(Math.random() * neighbor.length);
-      const end = Math.floor(Math.random() * (neighbor.length - start)) + start;
-      const segment = neighbor.slice(start, end + 1).reverse();
-      neighbor.splice(start, segment.length, ...segment);
-    }
-    
-    return neighbor;
-  }
-
-  private async calculateRouteFitness(route: Customer[], options: RouteOptimizationOptions): Promise<number> {
-    if (route.length === 0) return 0;
-
-    let totalDistance = 0;
-    let totalTime = 0;
-    let timeWindowPenalty = 0;
-    let priorityBonus = 0;
-
-    let currentLocation = options.startLocation || route[0]?.location;
-    let currentTime = this.parseTime(options.startTime || '08:00');
-
-    for (const customer of route) {
-      if (currentLocation && customer.location) {
-        const { distance, duration } = await this.getDistanceAndDuration(currentLocation, customer.location);
-        totalDistance += distance;
-        totalTime += duration;
-        currentTime += duration;
-
-        // Time window penalty
-        if (options.prioritizeTimeWindows && customer.timeWindow) {
-          const windowStart = this.parseTime(customer.timeWindow.start);
-          const windowEnd = this.parseTime(customer.timeWindow.end);
-          
-          if (currentTime < windowStart) {
-            timeWindowPenalty += (windowStart - currentTime) * 2; // Wait penalty
-            currentTime = windowStart;
-          } else if (currentTime > windowEnd) {
-            timeWindowPenalty += (currentTime - windowEnd) * 5; // Late penalty
-          }
-        }
-
-        // Priority bonus
-        if (options.prioritizeHighPriority) {
-          if (customer.priority === 'high') {
-            priorityBonus -= 10; // Negative because lower fitness is better
-          } else if (customer.priority === 'medium') {
-            priorityBonus -= 5;
-          }
-        }
-
-        currentTime += this.getEstimatedDuration(customer);
-        totalTime += this.getEstimatedDuration(customer);
-        currentLocation = customer.location;
-      }
-    }
-
-    // Add distance to end location if specified
-    if (options.endLocation && currentLocation) {
-      const { distance } = await this.getDistanceAndDuration(currentLocation, options.endLocation);
-      totalDistance += distance;
-    }
-
-    // Fitness function (lower is better)
-    return totalDistance + (totalTime / 60) + timeWindowPenalty + priorityBonus;
+  private travelCost(travel: TravelResult): number {
+    return travel.duration ?? travel.distance;
   }
 
   // ============================================
-  // Route Calculation
+  // Route details
   // ============================================
 
-  private async calculateRouteDetails(
+  private async buildRoute(
     customers: Customer[],
     date: string,
-    options: RouteOptimizationOptions
+    options: RouteOptimizationOptions,
+    method: OptimizedRoute['optimizationMethod'],
+    travelSource: TravelDataSource
   ): Promise<OptimizedRoute> {
     const stops: RouteStop[] = [];
+    const hasDistances = travelSource !== 'none';
+    const hasDriveTimes = travelSource === 'road';
     let totalDistance = 0;
     let totalTime = 0;
     let totalTravelTime = 0;
     let totalServiceTime = 0;
     let totalWaitTime = 0;
 
-    let currentLocation = options.startLocation || customers[0]?.location;
+    let currentLocation: Location | undefined = options.startLocation || undefined;
     let currentTime = this.parseTime(options.startTime || '08:00');
 
-    for (let i = 0; i < customers.length; i++) {
-      const customer = customers[i];
-      let travelTime = 0;
-      let distance = 0;
+    for (const customer of customers) {
+      let travelTime: number | null = null;
+      let distance: number | null = null;
+      let stopTravelSource: TravelDataSource = 'none';
       const serviceDuration = this.getEstimatedDuration(customer);
 
-      if (currentLocation && customer.location) {
-        const result = await this.getDistanceAndDuration(currentLocation, customer.location);
-        travelTime = result.duration;
+      if (hasDistances && currentLocation && customer.location) {
+        const result = await this.getTravel(currentLocation, customer.location);
         distance = result.distance;
-        totalDistance += distance;
-        totalTime += travelTime;
-        totalTravelTime += travelTime;
-        currentTime += travelTime;
+        totalDistance += result.distance;
+        stopTravelSource = result.source;
+        if (hasDriveTimes && result.duration !== null) {
+          travelTime = result.duration;
+          totalTime += travelTime;
+          totalTravelTime += travelTime;
+          currentTime += travelTime;
+        }
+      } else if (hasDistances && !currentLocation) {
+        // First stop with no start location: nothing to travel from.
+        distance = 0;
+        travelTime = hasDriveTimes ? 0 : null;
+        stopTravelSource = travelSource;
       }
 
-      // Handle time windows
-      if (customer.timeWindow) {
+      if (hasDriveTimes && customer.timeWindow) {
         const windowStart = this.parseTime(customer.timeWindow.start);
         if (currentTime < windowStart) {
           const waitTime = windowStart - currentTime;
           totalTime += waitTime;
           totalWaitTime += waitTime;
-          currentTime = windowStart; // Wait until window opens
+          currentTime = windowStart;
         }
       }
 
-      const arrivalTime = this.formatTime(currentTime);
+      const arrivalTime = hasDriveTimes ? this.formatTime(currentTime) : null;
       currentTime += serviceDuration;
       totalTime += serviceDuration;
       totalServiceTime += serviceDuration;
-      const departureTime = this.formatTime(currentTime);
+      const departureTime = hasDriveTimes ? this.formatTime(currentTime) : null;
 
-      stops.push({
-        customer,
-        arrivalTime,
-        departureTime,
-        travelTime,
-        distance
-      });
+      stops.push({ customer, arrivalTime, departureTime, travelTime, distance, travelSource: stopTravelSource });
 
-      currentLocation = customer.location;
+      if (customer.location) currentLocation = customer.location;
     }
 
     return {
-      id: `route_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `route_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       date,
       stops,
-      totalDistance,
+      totalDistance: hasDistances ? totalDistance : null,
       totalTime,
-      totalTravelTime,
+      totalTravelTime: hasDriveTimes ? totalTravelTime : null,
       totalServiceTime,
       totalWaitTime,
-      startLocation: options.startLocation,
-      endLocation: options.endLocation,
-      optimizationMethod: options.algorithm || 'nearest-neighbor',
+      startLocation: options.startLocation || undefined,
+      endLocation: options.endLocation || undefined,
+      optimizationMethod: method,
+      travelDataSource: travelSource,
       createdAt: new Date().toISOString(),
       provider: this.provider.name,
       geocoding: {
         requested: this.diagnostics.requested,
         remote: this.diagnostics.remote,
         cached: this.diagnostics.cached,
-        fallback: this.diagnostics.fallback,
+        unresolved: this.diagnostics.unresolved,
       },
-      routing: { remote: this.diagnostics.routingRemote, fallback: this.diagnostics.routingFallback },
+      routing: { remote: this.diagnostics.routingRemote, straightLine: this.diagnostics.routingStraightLine },
       warnings: [...new Set(this.diagnostics.warnings)],
     };
   }
 
   // ============================================
-  // Geocoding & Distance Calculation
+  // Geocoding & travel
   // ============================================
 
   private async ensureLocations(customers: Customer[]): Promise<Customer[]> {
-    const customersWithLocations: Customer[] = [];
-
+    const result: Customer[] = [];
     for (const customer of customers) {
       if (customer.location) {
-        customersWithLocations.push(customer);
+        result.push(customer);
         continue;
       }
-
+      if (!this.hasMapProvider()) {
+        // No provider: the location stays unknown. Never guess.
+        result.push(customer);
+        continue;
+      }
       const location = await this.geocodeAddress(customer.address);
-      customersWithLocations.push({ ...customer, location });
+      result.push(location ? { ...customer, location } : customer);
     }
-
-    return customersWithLocations;
+    return result;
   }
 
-  /** Resolve an address through the configured provider; never blocks offline use. */
-  async geocodeAddress(address: string): Promise<Location> {
+  /**
+   * Resolve an address through the configured map provider. Returns null
+   * when no provider is configured or the lookup fails — a location is
+   * never invented.
+   */
+  async geocodeAddress(address: string): Promise<Location | null> {
     const normalizedAddress = (address || '').trim().toLowerCase();
+    if (!normalizedAddress || !this.hasMapProvider()) return null;
     this.diagnostics.requested += 1;
 
-    // Check cache first
     if (this.geocodeCache.has(normalizedAddress)) {
       const cached = this.geocodeCache.get(normalizedAddress)!;
       this.diagnostics.cached += 1;
@@ -575,63 +397,64 @@ class RouteOptimizer {
 
     try {
       const location = await this.provider.geocode(address);
-      if (location.source === 'remote') this.diagnostics.remote += 1;
-      else if (location.source === 'cache') this.diagnostics.cached += 1;
-      else this.diagnostics.fallback += 1;
+      if (location.source === 'cache') this.diagnostics.cached += 1;
+      else this.diagnostics.remote += 1;
       this.geocodeCache.set(normalizedAddress, location);
       return location;
-    } catch (error) {
-      const fallback = deterministicGeocode(address);
-      this.diagnostics.fallback += 1;
-      this.diagnostics.warnings.push(`Geocoding unavailable for ${address || 'an address'}; using an estimated location.`);
-      this.geocodeCache.set(normalizedAddress, fallback);
-      return fallback;
+    } catch {
+      this.diagnostics.unresolved += 1;
+      this.diagnostics.warnings.push(`Could not locate ${address || 'an address'} on the map.`);
+      return null;
     }
   }
 
-  private calculateDistance(loc1: Location, loc2: Location): number {
-    const R = 3959; // Earth's radius in miles
-    const dLat = this.toRadians(loc2.latitude - loc1.latitude);
-    const dLon = this.toRadians(loc2.longitude - loc1.longitude);
-    
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(this.toRadians(loc1.latitude)) * Math.cos(this.toRadians(loc2.latitude)) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  private async getDistanceAndDuration(
-    from: Location,
-    to: Location
-  ): Promise<{ distance: number; duration: number }> {
+  private async getTravel(from: Location, to: Location): Promise<TravelResult> {
     const cacheKey = this.routeCacheKey(from, to);
-    
-    if (this.distanceCache.has(cacheKey)) {
-      return this.distanceCache.get(cacheKey)!;
-    }
+    const cached = this.distanceCache.get(cacheKey);
+    if (cached) return cached;
 
-    const estimate = await this.provider.estimateTravel(from as ProviderLocation, to as ProviderLocation);
-    if (estimate.source === 'remote') this.diagnostics.routingRemote += 1;
-    else this.diagnostics.routingFallback += 1;
-    const result = { distance: estimate.distance, duration: estimate.duration };
+    let result: TravelResult;
+    try {
+      const estimate = await this.provider.estimateTravel(from as ProviderLocation, to as ProviderLocation);
+      result = estimate.source === 'remote' && estimate.duration !== null
+        ? { distance: estimate.distance, duration: estimate.duration, source: 'road' }
+        : { distance: estimate.distance, duration: null, source: 'straight-line' };
+    } catch {
+      result = { distance: straightLineMiles(from, to), duration: null, source: 'straight-line' };
+    }
+    if (result.source === 'road') this.diagnostics.routingRemote += 1;
+    else this.diagnostics.routingStraightLine += 1;
     this.distanceCache.set(cacheKey, result);
-    
     return result;
+  }
+
+  /** Road data only counts when every leg came back from the live provider. */
+  private async probeTravelSource(customers: Customer[], startLocation?: Location): Promise<TravelDataSource> {
+    const points = [...(startLocation ? [startLocation] : []), ...customers.map((c) => c.location!)];
+    if (points.length < 2) return this.hasMapProvider() ? 'road' : 'straight-line';
+    for (let i = 1; i < points.length; i += 1) {
+      const leg = await this.getTravel(points[i - 1], points[i]);
+      if (leg.source !== 'road') {
+        if (this.hasMapProvider()) {
+          this.diagnostics.warnings.push('Live routing is unavailable; showing straight-line distances without drive times.');
+        }
+        return 'straight-line';
+      }
+    }
+    return 'road';
   }
 
   private routeCacheKey(from: Location, to: Location): string {
     return `${from.latitude},${from.longitude}-${to.latitude},${to.longitude}`;
   }
 
-  private async prefetchTravelMatrix(customers: Customer[], options: RouteOptimizationOptions): Promise<void> {
+  private async prefetchTravelMatrix(customers: Customer[], startLocation?: Location, endLocation?: Location): Promise<void> {
     const estimateMatrix = this.provider.estimateTravelMatrix;
     if (!estimateMatrix) return;
     const locations = [
-      ...(options.startLocation ? [options.startLocation] : []),
+      ...(startLocation ? [startLocation] : []),
       ...customers.map((customer) => customer.location!).filter(Boolean),
-      ...(options.endLocation ? [options.endLocation] : []),
+      ...(endLocation ? [endLocation] : []),
     ] as Location[];
     if (locations.length < 2) return;
 
@@ -639,67 +462,19 @@ class RouteOptimizer {
       const matrix = await estimateMatrix.call(this.provider, locations as ProviderLocation[]);
       matrix.forEach((row, fromIndex) => row.forEach((estimate, toIndex) => {
         if (!estimate || fromIndex === toIndex) return;
-        this.distanceCache.set(this.routeCacheKey(locations[fromIndex], locations[toIndex]), {
-          distance: estimate.distance,
-          duration: estimate.duration,
-        });
+        const result: TravelResult = estimate.source === 'remote' && estimate.duration !== null
+          ? { distance: estimate.distance, duration: estimate.duration, source: 'road' }
+          : { distance: estimate.distance, duration: null, source: 'straight-line' };
+        this.distanceCache.set(this.routeCacheKey(locations[fromIndex], locations[toIndex]), result);
       }));
-      const source = matrix[0]?.[1]?.source;
-      if (source === 'remote') this.diagnostics.routingRemote += 1;
-      else this.diagnostics.routingFallback += 1;
-      if (source === 'fallback') {
-        this.diagnostics.warnings.push('Live routing is unavailable; using straight-line travel estimates.');
-      }
     } catch {
-      // Pairwise calls remain available if a provider matrix is unavailable.
-      this.diagnostics.warnings.push('Live route matrix unavailable; using pairwise estimates.');
+      // Pairwise requests remain available if a provider matrix is unavailable.
     }
   }
 
   // ============================================
   // Utility Functions
   // ============================================
-
-  private toRadians(degrees: number): number {
-    return degrees * (Math.PI / 180);
-  }
-
-  private hashString(value: string): number {
-    let hash = 0;
-    for (let i = 0; i < value.length; i++) {
-      hash = ((hash << 5) - hash) + value.charCodeAt(i);
-      hash |= 0;
-    }
-    return Math.abs(hash);
-  }
-
-  private parseAddressComponents(normalizedAddress: string): {
-    zipCode: string | null;
-    localityKey: string;
-    streetName: string;
-    houseNumber: number | null;
-  } {
-    const safeAddress = normalizedAddress || '';
-    const parts = safeAddress.split(',').map((part) => part.trim()).filter(Boolean);
-    const streetPart = parts[0] || safeAddress;
-    const localityKey = parts.slice(1).join(',') || '';
-    const zipMatch = safeAddress.match(/\b\d{5}(?:-\d{4})?\b/);
-    const zipCode = zipMatch ? zipMatch[0].slice(0, 5) : null;
-
-    const houseMatch = streetPart.match(/\b\d{1,6}\b/);
-    const parsedHouse = houseMatch ? Number(houseMatch[0]) : NaN;
-    const houseNumber = Number.isFinite(parsedHouse) ? parsedHouse : null;
-
-    const streetName = streetPart
-      .replace(/\b\d{1,6}\b/g, ' ')
-      .replace(/\b(apt|apartment|unit|ste|suite|#)\s*[a-z0-9-]+\b/g, ' ')
-      .replace(/\b(off|near|at|by)\b/g, ' ')
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim() || 'unknown-street';
-
-    return { zipCode, localityKey, streetName, houseNumber };
-  }
 
   private normalizeDayName(day: string | null | undefined): string {
     if (!day) return '';
@@ -761,11 +536,15 @@ class RouteOptimizer {
       `Customer ${id}`;
     const address = typeof customerRecord.address === 'string' ? customerRecord.address : '';
 
+    // Real coordinates only: a stored location object or latitude/longitude fields.
     const rawLocation = customerRecord.location as Record<string, unknown> | undefined;
-    const latitude = Number(rawLocation?.latitude ?? rawLocation?.lat);
-    const longitude = Number(rawLocation?.longitude ?? rawLocation?.lng);
-    const location = Number.isFinite(latitude) && Number.isFinite(longitude)
-      ? { latitude, longitude, address }
+    const latitude = Number(rawLocation?.latitude ?? rawLocation?.lat ?? customerRecord.latitude ?? customerRecord.lat);
+    const longitude = Number(rawLocation?.longitude ?? rawLocation?.lng ?? customerRecord.longitude ?? customerRecord.lng);
+    const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude)
+      && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+      && !(latitude === 0 && longitude === 0);
+    const location: Location | undefined = hasCoordinates
+      ? { latitude, longitude, address, source: 'provided' }
       : undefined;
 
     const normalizedServiceDay = this.normalizeDayName(
@@ -777,6 +556,8 @@ class RouteOptimizer {
       return null;
     }
 
+    const sortOrderRaw = Number(customerRecord.sortOrder ?? customerRecord.sort_order);
+
     return {
       id,
       name,
@@ -785,6 +566,9 @@ class RouteOptimizer {
       serviceDay: normalizedServiceDay,
       priority: this.normalizePriority(customerRecord.priority),
       estimatedDuration: this.getEstimatedDuration(customerRecord),
+      sortOrder: customerRecord.sortOrder != null || customerRecord.sort_order != null
+        ? (Number.isFinite(sortOrderRaw) ? sortOrderRaw : undefined)
+        : undefined,
       timeWindow: this.normalizeTimeWindow(
         (customerRecord.timeWindow as Record<string, unknown> | undefined) ??
         (customerRecord.time_window as Record<string, unknown> | undefined)
@@ -881,66 +665,8 @@ class RouteOptimizer {
     const day = String(parsed.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
-
-  private createEmptyRoute(date: string, options: RouteOptimizationOptions): OptimizedRoute {
-    return {
-      id: `route_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      date,
-      stops: [],
-      totalDistance: 0,
-      totalTime: 0,
-      totalTravelTime: 0,
-      totalServiceTime: 0,
-      totalWaitTime: 0,
-      startLocation: options.startLocation,
-      endLocation: options.endLocation,
-      optimizationMethod: options.algorithm || 'nearest-neighbor',
-      createdAt: new Date().toISOString(),
-      provider: this.provider.name,
-      geocoding: {
-        requested: this.diagnostics.requested,
-        remote: this.diagnostics.remote,
-        cached: this.diagnostics.cached,
-        fallback: this.diagnostics.fallback,
-      },
-      routing: { remote: this.diagnostics.routingRemote, fallback: this.diagnostics.routingFallback },
-      warnings: [...new Set(this.diagnostics.warnings)],
-    };
-  }
-
-  // ============================================
-  // Route Management
-  // ============================================
-
-  saveRoute(route: OptimizedRoute): void {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    const routes = this.getSavedRoutes();
-    routes.push(route);
-    localStorage.setItem('optimized_routes', JSON.stringify(routes));
-  }
-
-  getSavedRoutes(): OptimizedRoute[] {
-    if (typeof window === 'undefined' || !window.localStorage) return [];
-    try {
-      const stored = localStorage.getItem('optimized_routes');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  getRouteForDate(date: string): OptimizedRoute | null {
-    const routes = this.getSavedRoutes();
-    return routes.find(route => route.date === date) || null;
-  }
-
-  deleteRoute(routeId: string): void {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    const routes = this.getSavedRoutes();
-    const filtered = routes.filter(route => route.id !== routeId);
-    localStorage.setItem('optimized_routes', JSON.stringify(filtered));
-  }
 }
 
 // Global route optimizer instance
 export const routeOptimizer = new RouteOptimizer();
+export { RouteOptimizer };

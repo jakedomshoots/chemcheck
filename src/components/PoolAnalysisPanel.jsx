@@ -32,6 +32,7 @@ import {
   Save
 } from 'lucide-react';
 import { analyzePool, exportPoolAnalysis, downloadExport } from '@/lib/ai-summarizer';
+import { readingToStatus } from '@/lib/chemStatus';
 import { format, parseISO } from 'date-fns';
 
 const trendIcons = {
@@ -78,6 +79,37 @@ function usePrefersReducedMotion() {
 // Simple cache for analysis results (persists during session)
 const analysisCache = new Map();
 
+export const ANALYZED_CHEMICALS = ['ph', 'chlorine', 'alkalinity', 'stabilizer'];
+
+function finiteNumber(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+/**
+ * Normalize a stored service log for the analyzer. A chemical that was not
+ * tested stays undefined ("unknown") — it is never defaulted to 'good',
+ * which would inflate health scores. When only a numeric value was stored,
+ * the status is derived from it. Numeric values are passed through so
+ * dosing can be direction-aware and proportional.
+ */
+export function toAnalysisLog(log, poolType) {
+  const out = {
+    id: log._id || log.id,
+    service_date: log.service_date,
+    salt: log.salt,
+    notes: log.notes,
+  };
+  for (const key of ANALYZED_CHEMICALS) {
+    const value = finiteNumber(log[`${key}_value`]);
+    const stored = readingToStatus(key, log[key], poolType);
+    out[key] = stored ?? (value !== undefined ? readingToStatus(key, value, poolType) : undefined);
+    out[`${key}_value`] = value;
+  }
+  return out;
+}
+
 // Sparkline component for chemical trends
 function ChemicalSparkline({ readings, color = 'var(--brand)' }) {
   if (!readings || readings.length < 2) return null;
@@ -86,13 +118,15 @@ function ChemicalSparkline({ readings, color = 'var(--brand)' }) {
   const height = 24;
   const padding = 2;
 
-  // Normalize readings to 0-100 scale
-  const normalizedReadings = readings.map(r => {
-    if (r === 'good') return 100;
-    if (r === 'low' || r === 'high') return 50;
-    if (r === 'critical') return 0;
-    return 50;
-  });
+  // Normalize readings to 0-100 scale; untested visits are skipped
+  const normalizedReadings = readings
+    .filter(r => r === 'good' || r === 'low' || r === 'high' || r === 'critical')
+    .map(r => {
+      if (r === 'good') return 100;
+      if (r === 'critical') return 0;
+      return 50;
+    });
+  if (normalizedReadings.length < 2) return null;
 
   const points = normalizedReadings.slice(-8).map((val, i, arr) => {
     const x = padding + (i / (arr.length - 1)) * (width - padding * 2);
@@ -249,22 +283,13 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
         throw new Error('No service history available for analysis');
       }
 
-      // Use the new AI Pool Summarizer
+      // Rule-based analysis of logged readings (no weather data is used)
       const result = analyzePool({
         customerId: customer._id,
         customerName: customer.full_name,
         poolType: customer.pool_type || 'standard',
         poolGallons: customer.pool_gallons || null,
-        serviceLogs: serviceLogs.map(log => ({
-          id: log._id || log.id,
-          service_date: log.service_date,
-          ph: log.ph || 'good',
-          chlorine: log.chlorine || 'good',
-          alkalinity: log.alkalinity || 'good',
-          stabilizer: log.stabilizer || 'good',
-          salt: log.salt,
-          notes: log.notes
-        })),
+        serviceLogs: serviceLogs.map(log => toAnalysisLog(log, customer.pool_type)),
         includeWeather: false,
         includeCosts: true,
         includeLearning: true
@@ -384,6 +409,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
               <div className="min-w-0 flex-1">
                 <h2 className="text-lg sm:text-xl font-semibold tracking-[-0.025em] text-ink truncate">Pool Analysis</h2>
                 <p className="text-xs sm:text-sm text-ink-muted truncate">{customer.full_name} • {analysis?.totalServices || 0} services analyzed</p>
+                <p className="text-xs text-ink-muted">Automated, rule-based analysis of logged readings. Verify readings before dosing.</p>
               </div>
             </div>
             {/* Action buttons - separate row for mobile */}
@@ -425,12 +451,16 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
             {expandedSections.healthScore && healthScore && (
               <div className="px-4 pb-4">
                 <div className="flex items-center justify-center gap-6 mb-4">
-                  {/* Animated Score Ring */}
-                  <AnimatedScoreRing
-                    score={healthScore.score}
-                    grade={healthScore.grade}
-                    gradeStyle={gradeStyle}
-                  />
+                  {/* Animated Score Ring (only when at least one chemical was tested) */}
+                  {healthScore.breakdown && healthScore.breakdown.length > 0 ? (
+                    <AnimatedScoreRing
+                      score={healthScore.score}
+                      grade={healthScore.grade}
+                      gradeStyle={gradeStyle}
+                    />
+                  ) : (
+                    <p className="text-sm font-medium text-ink-muted">No tested readings to score yet.</p>
+                  )}
 
                   {/* Score Details */}
                   <div className="space-y-2">
@@ -449,24 +479,35 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
                   </div>
                 </div>
 
-                {/* Chemical Breakdown with Sparklines */}
-                {healthScore.breakdown && healthScore.breakdown.length > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {healthScore.breakdown.map((item) => {
-                      // Get readings history for this chemical from service logs
-                      const readings = serviceLogs?.slice(0, 8).map(log => log[item.chemical]).reverse() || [];
-                      const sparkColor = item.score >= 80 ? 'var(--status-ok)' : item.score >= 50 ? 'var(--status-watch)' : 'var(--status-critical)';
-
+                {/* Chemical Breakdown with Sparklines. Chemicals with no
+                    tested readings are shown as "Not tested" and are excluded
+                    from the score. */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {ANALYZED_CHEMICALS.map((chemical) => {
+                    const item = healthScore.breakdown?.find((b) => b.chemical === chemical);
+                    if (!item) {
                       return (
-                        <div key={item.chemical} className="bg-surface-2 p-3 rounded-lg text-center">
-                          <div className="text-xs text-ink-secondary capitalize mb-1">{item.chemical}</div>
-                          <div className="font-data text-xl font-semibold text-ink">{Math.round(item.score)}</div>
-                          <ChemicalSparkline readings={readings} color={sparkColor} />
+                        <div key={chemical} className="bg-surface-2 p-3 rounded-lg text-center" data-testid={`breakdown-${chemical}`}>
+                          <div className="text-xs text-ink-secondary capitalize mb-1">{chemical}</div>
+                          <div className="text-sm font-medium text-ink-muted">Not tested</div>
                         </div>
                       );
-                    })}
-                  </div>
-                )}
+                    }
+                    // Get readings history for this chemical from service logs
+                    const readings = serviceLogs?.slice(0, 8)
+                      .map(log => toAnalysisLog(log, customer.pool_type)[chemical])
+                      .reverse() || [];
+                    const sparkColor = item.score >= 80 ? 'var(--status-ok)' : item.score >= 50 ? 'var(--status-watch)' : 'var(--status-critical)';
+
+                    return (
+                      <div key={chemical} className="bg-surface-2 p-3 rounded-lg text-center" data-testid={`breakdown-${chemical}`}>
+                        <div className="text-xs text-ink-secondary capitalize mb-1">{chemical}</div>
+                        <div className="font-data text-xl font-semibold text-ink">{Math.round(item.score)}</div>
+                        <ChemicalSparkline readings={readings} color={sparkColor} />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </Card>
@@ -480,7 +521,7 @@ export default function PoolAnalysisPanel({ customer, serviceLogs, onClose }) {
               >
                 <div className="flex items-center gap-2">
                   <Eye className="w-5 h-5 text-brand-ink" />
-                  <h3 className="text-lg font-semibold text-ink">Predictive Insights</h3>
+                  <h3 className="text-lg font-semibold text-ink">Trend Outlook</h3>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${predictiveInsights.overallOutlook === 'stable' ? 'bg-surface-2 text-ok' :
                     predictiveInsights.overallOutlook === 'attention-needed' ? 'bg-surface-2 text-watch' :
                       'bg-surface-2 text-critical'
