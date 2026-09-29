@@ -1,89 +1,77 @@
-import { mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { internalMutation } from "./_generated/server";
+import { isActiveMembership, normalizeEmail } from "./access";
+
+const DEFAULT_BATCH_SIZE = 200;
+const MAX_BATCH_SIZE = 500;
 
 /**
- * One-time backfill: sets `business_id` on all customers that belong to the
- * authenticated user's business but were synced from Dexie without it.
+ * Backfill: sets `business_id` on customers of ONE business that were synced
+ * from Dexie without it. Only customers whose `created_by` is the business
+ * owner or an active member are adopted; legacy "local"/empty rows are never
+ * claimed because their tenant cannot be proven.
  *
- * Run from the Convex Dashboard → Functions → backfillCustomerBusinessId:run
+ * Internal only. Run from the Convex Dashboard -> Functions ->
+ * backfillCustomerBusinessId:run with { business_id }, repeating with the
+ * returned `continueCursor` until `isDone` is true.
  */
-export const run = mutation({
-    args: {},
-    handler: async (ctx) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity?.email) {
-            throw new Error("Not authenticated or email missing from token");
-        }
-
-        const userEmail = identity.email;
-
-        // 1. Find the user's business (as owner or team member)
-        const teamMember = await ctx.db
-            .query("team_members")
-            .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-            .filter((q: any) => q.eq(q.field("is_active"), true))
-            .first();
-
-        let business: any = null;
-        if (teamMember) {
-            business = await ctx.db.get(teamMember.business_id);
-        }
+export const run = internalMutation({
+    args: {
+        business_id: v.id("businesses"),
+        cursor: v.optional(v.string()),
+        batch_size: v.optional(v.number()),
+        dry_run: v.optional(v.boolean()),
+    },
+    handler: async (ctx, args) => {
+        const business = await ctx.db.get(args.business_id);
         if (!business) {
-            business = await ctx.db
-                .query("businesses")
-                .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-                .first();
+            return { patched: 0, isDone: true, continueCursor: null, message: "Business not found." };
         }
 
-        if (!business) {
-            return { patched: 0, message: "No business found for this user." };
-        }
-
-        // 2. Collect allowed emails (owner + active team members)
+        // Allowed creators: owner + active (accepted) team members.
         const members = await ctx.db
             .query("team_members")
-            .withIndex("by_business", (q: any) => q.eq("business_id", business._id))
-            .filter((q: any) => q.eq(q.field("is_active"), true))
+            .withIndex("by_business", (q) => q.eq("business_id", business._id))
             .collect();
-
-        const allowedEmails = new Set<string>();
-        allowedEmails.add(String(business.owner_email || "").trim().toLowerCase());
-        for (const m of members) {
-            if (m.user_email) {
-                allowedEmails.add(String(m.user_email).trim().toLowerCase());
+        const allowedEmails = new Set<string>([normalizeEmail(business.owner_email)]);
+        for (const member of members) {
+            if (isActiveMembership(member) && member.user_email) {
+                allowedEmails.add(normalizeEmail(member.user_email));
             }
         }
+        allowedEmails.delete("");
 
         const businessId = String(business._id);
+        const batchSize = Math.max(1, Math.min(Math.floor(args.batch_size ?? DEFAULT_BATCH_SIZE), MAX_BATCH_SIZE));
 
-        // 3. Find customers with no business_id that were created by an allowed email
-        //    OR created_by is "local" (legacy Dexie sync without auth)
-        const allCustomers = await ctx.db.query("customers").collect();
+        // Only legacy rows (no business_id) are candidates; page through them.
+        const page = await ctx.db
+            .query("customers")
+            .withIndex("by_business", (q) => q.eq("business_id", undefined))
+            .paginate({ cursor: args.cursor ?? null, numItems: batchSize });
+
         let patched = 0;
+        for (const customer of page.page) {
+            if (customer.business_id) continue;
+            const createdBy = normalizeEmail(customer.created_by);
+            if (!createdBy || !allowedEmails.has(createdBy)) continue;
 
-        for (const customer of allCustomers) {
-            const existingBizId = customer.business_id ? String(customer.business_id) : "";
-            if (existingBizId) continue; // already has business_id
-
-            const createdBy = String(customer.created_by || "").trim().toLowerCase();
-
-            // Patch if created_by matches an allowed email OR is "local" / empty
-            const isLegacyLocal = !createdBy || createdBy === "local";
-            const isAllowedEmail = createdBy && allowedEmails.has(createdBy);
-
-            if (!isLegacyLocal && !isAllowedEmail) continue;
-
+            patched++;
+            if (args.dry_run) continue;
             await ctx.db.patch(customer._id, {
                 business_id: businessId,
                 // Normalize created_by to the owner email for consistency
                 created_by: business.owner_email,
             });
-            patched++;
         }
 
         return {
             patched,
+            processed: page.page.length,
             businessId,
-            message: `Backfilled ${patched} customer(s) with business_id.`,
+            continueCursor: page.continueCursor,
+            isDone: page.isDone,
+            message: `${args.dry_run ? "Would backfill" : "Backfilled"} ${patched} customer(s) with business_id.`,
         };
     },
 });

@@ -39,6 +39,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import PendingInvitesPrompt from '@/components/settings/PendingInvitesPrompt';
 import { getTheme, setTheme } from '@/lib/theme';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -791,6 +792,8 @@ export default function Settings() {
           <h1 className="text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl">Settings</h1>
           <p className="mt-1 text-sm font-medium text-ink-muted">Manage your business and account</p>
         </div>
+
+        <PendingInvitesPrompt />
 
       <div className="lg:hidden mb-4">
         <label htmlFor="settings-section" className="sr-only">Settings section</label>

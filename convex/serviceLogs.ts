@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { FIELD_WRITE_ROLES, assertCustomerAccess, getAccessContext } from "./access";
 import { validateLsiFields, validateLsiUpdate } from "./validation";
 import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
 
@@ -73,13 +74,15 @@ export const list = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
+        // Service logs are keyed by tenant (customer owner email).
+        const tenantEmail = (await getAccessContext(ctx, identity.email!)).tenantEmail;
         const descending = args.order === "-service_date";
         const numItems = clampLimit(args.limit);
 
         return await ctx.db
             .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!)
+                q.eq("created_by", tenantEmail)
             )
             .order(descending ? "desc" : "asc")
             .paginate({ cursor: args.cursor ?? null, numItems });
@@ -112,10 +115,11 @@ export const filter = query({
         }
 
         const numItems = clampLimit(args.limit);
+        const tenantEmail = (await getAccessContext(ctx, identity.email!)).tenantEmail;
         const result = await ctx.db
             .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!)
+                q.eq("created_by", tenantEmail)
             )
             .order("desc")
             .paginate({ cursor: args.cursor ?? null, numItems });
@@ -151,11 +155,8 @@ export const getByCustomer = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        // Verify customer belongs to the caller's tenant (creator or active member)
+        await assertCustomerAccess(ctx, args.customer_id, identity.email!);
 
         if (args.pool_id) {
             const pool = await ctx.db.get(args.pool_id);
@@ -188,10 +189,11 @@ export const getByDate = query({
         if (!identity) throw new Error("Not authenticated");
 
         const numItems = clampLimit(args.limit);
+        const tenantEmail = (await getAccessContext(ctx, identity.email!)).tenantEmail;
         return await ctx.db
             .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!).eq("service_date", args.service_date)
+                q.eq("created_by", tenantEmail).eq("service_date", args.service_date)
             )
             .paginate({ cursor: args.cursor ?? null, numItems });
     },
@@ -246,11 +248,10 @@ export const create = mutation({
         // Enforce rate limiting (database-backed for distributed rate limiting)
         await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
 
-        // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        // Verify customer belongs to the caller's tenant; technicians may log service.
+        const { customer } = await assertCustomerAccess(ctx, args.customer_id, identity.email!, {
+            roles: FIELD_WRITE_ROLES,
+        });
 
         if (args.pool_id) {
             const pool = await ctx.db.get(args.pool_id);
@@ -359,10 +360,9 @@ export const update = mutation({
         const log = await ctx.db.get(args.id);
         if (!log) throw new Error("Service log not found");
 
-        const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Access denied");
-        }
+        const { customer } = await assertCustomerAccess(ctx, log.customer_id, identity.email!, {
+            roles: FIELD_WRITE_ROLES,
+        });
 
         validateLsiUpdate(log, args);
 
@@ -407,10 +407,9 @@ export const remove = mutation({
         const log = await ctx.db.get(args.id);
         if (!log) throw new Error("Service log not found");
 
-        const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Access denied");
-        }
+        await assertCustomerAccess(ctx, log.customer_id, identity.email!, {
+            roles: FIELD_WRITE_ROLES,
+        });
 
         await ctx.db.delete(args.id);
     },

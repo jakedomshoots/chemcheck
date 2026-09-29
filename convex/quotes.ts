@@ -2,6 +2,28 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { validateEmail, validatePhone } from "./validation";
 import { normalizeTaxRate } from "./tax";
+import { enforceRateLimit } from "./rateLimit";
+import { CUSTOMER_WRITE_ROLES, assertCustomerAccess, getAccessContext, normalizeEmail } from "./access";
+import { computeTotals, normalizeLineItems, roundCurrency } from "./lineItems";
+import { checkoutPaymentMismatch } from "./stripeSubscriptionState";
+
+/** Roles allowed to create and manage quotes (billing documents). */
+const QUOTE_WRITE_ROLES = CUSTOMER_WRITE_ROLES;
+
+async function assertQuoteAccess(ctx: any, quote: any, userEmail: string, write = false): Promise<any | null> {
+  const customer = await ctx.db.get(quote.customer_id);
+  if (!customer) {
+    if (normalizeEmail(quote.created_by) === normalizeEmail(userEmail)) return null;
+    throw new Error("Access denied");
+  }
+  const { customer: accessible } = await assertCustomerAccess(
+    ctx,
+    customer,
+    userEmail,
+    write ? { roles: QUOTE_WRITE_ROLES } : {}
+  );
+  return accessible;
+}
 
 const VALID_STATUSES = ["draft", "sent", "approved", "declined", "converted"] as const;
 const VALID_DEPOSIT_STATUSES = ["not_required", "pending", "paid"] as const;
@@ -97,7 +119,8 @@ export const list = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const email = identity.email!;
+    // Quotes are keyed by tenant (business owner email, or the solo user).
+    const email = (await getAccessContext(ctx, identity.email!)).tenantEmail;
     const numItems = clampPageSize(args.numItems);
     let quoteQuery;
 
@@ -147,7 +170,8 @@ export const create = mutation({
       description: v.string(),
       quantity: v.number(),
       unit_price: v.number(),
-      amount: v.number(),
+      // Ignored: amounts are recomputed server-side from quantity x unit_price.
+      amount: v.optional(v.number()),
     })),
     tax_rate: v.optional(v.number()),
     deposit_required: v.optional(v.number()),
@@ -157,27 +181,29 @@ export const create = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
-      throw new Error("Customer not found or access denied");
-    }
+    await enforceRateLimit(ctx, identity.email!, "quote.write");
 
-    const subtotal = Number(args.line_items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
-    const taxRate = normalizeTaxRate(args.tax_rate);
-    const tax = Number((subtotal * taxRate).toFixed(2));
-    const total = Number((subtotal + tax).toFixed(2));
+    const { customer } = await assertCustomerAccess(ctx, args.customer_id, identity.email!, {
+      roles: QUOTE_WRITE_ROLES,
+    });
+
+    const lineItems = normalizeLineItems(args.line_items);
+    const { subtotal, tax, total } = computeTotals(lineItems, normalizeTaxRate(args.tax_rate));
 
     const hasDeposit = Number.isFinite(args.deposit_required);
-    const depositRequired = hasDeposit ? Math.max(0, args.deposit_required ?? 0) : undefined;
+    const depositRequired = hasDeposit
+      ? roundCurrency(Math.min(total, Math.max(0, args.deposit_required ?? 0)))
+      : undefined;
 
     const now = Date.now();
     const quoteId = await ctx.db.insert("quotes", {
       customer_id: args.customer_id,
-      created_by: identity.email!,
+      // Keyed by tenant so every team member with billing access sees it.
+      created_by: customer.created_by || identity.email!,
       title: args.title.trim(),
       description: args.description?.trim(),
       status: "draft",
-      line_items: args.line_items,
+      line_items: lineItems,
       subtotal,
       tax,
       total,
@@ -208,13 +234,15 @@ export const updateStatus = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "quote.write");
+
     validateStatus(args.status);
     validateDepositStatus(args.deposit_status);
     validateDepositSource(args.deposit_paid_source);
 
     const quote = await ctx.db.get(args.id);
     if (!quote) throw new Error("Quote not found");
-    if (quote.created_by !== identity.email) throw new Error("Access denied");
+    await assertQuoteAccess(ctx, quote, identity.email!, true);
 
     const nextDepositStatus = args.deposit_status ?? quote.deposit_status;
     if (quote.deposit_required && quote.deposit_required > 0 && args.status === "converted" && nextDepositStatus !== "paid") {
@@ -256,9 +284,12 @@ export const convertToWorkOrder = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "quote.write");
+
     const quote = await ctx.db.get(args.id);
     if (!quote) throw new Error("Quote not found");
-    if (quote.created_by !== identity.email) throw new Error("Access denied");
+    const customer = await assertQuoteAccess(ctx, quote, identity.email!, true);
+    if (!customer) throw new Error("Customer not found or access denied");
 
     if (quote.converted_work_order_id) {
       return {
@@ -276,10 +307,14 @@ export const convertToWorkOrder = mutation({
     }
 
     const now = Date.now();
+    const businessId = customer.business_id
+      ? ctx.db.normalizeId("businesses", String(customer.business_id)) ?? undefined
+      : undefined;
     const workOrderId = await ctx.db.insert("workOrders", {
       customer_id: quote.customer_id,
-      business_id: undefined,
-      created_by: identity.email!,
+      // Match workOrders.create so business-scoped lists include converted jobs.
+      business_id: businessId,
+      created_by: customer.created_by || identity.email!,
       title: quote.title,
       description: quote.description,
       status: "scheduled",
@@ -314,14 +349,13 @@ export const getForDepositPayment = internalQuery({
   },
   handler: async (ctx, args) => {
     const quote = await ctx.db.get(args.id);
-    if (!quote || quote.created_by !== args.user_email) {
+    if (!quote) {
       throw new Error("Quote not found or access denied");
     }
 
-    const customer = await ctx.db.get(quote.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { customer } = await assertCustomerAccess(ctx, quote.customer_id, args.user_email, {
+      roles: QUOTE_WRITE_ROLES,
+    });
 
     return { quote, customer };
   },
@@ -338,14 +372,13 @@ export const storeDepositCheckoutLink = internalMutation({
   },
   handler: async (ctx, args) => {
     const quote = await ctx.db.get(args.id);
-    if (!quote || quote.created_by !== args.user_email) {
+    if (!quote) {
       throw new Error("Quote not found or access denied");
     }
 
-    const customer = await ctx.db.get(quote.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { customer } = await assertCustomerAccess(ctx, quote.customer_id, args.user_email, {
+      roles: QUOTE_WRITE_ROLES,
+    });
 
     const now = Date.now();
     await ctx.db.patch(args.id, {
@@ -379,7 +412,7 @@ export const storeDepositCheckoutLink = internalMutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
-      created_by: args.user_email,
+      created_by: quote.created_by,
       created_at: now,
       updated_at: now,
     });
@@ -413,5 +446,41 @@ export const markDepositPaidFromStripe = internalMutation({
     });
 
     return args.quote_id;
+  },
+});
+
+/**
+ * Webhook path for a paid platform deposit Checkout Session. Records the
+ * deposit only when the quote exists and the session paid exactly the
+ * deposit in USD; returns the reason otherwise.
+ */
+export const markDepositPaidFromStripeCheckout = internalMutation({
+  args: {
+    quote_id: v.string(),
+    amount_total: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    stripe_checkout_session_id: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const quoteId = ctx.db.normalizeId("quotes", args.quote_id);
+    const quote = quoteId ? await ctx.db.get(quoteId) : null;
+    if (!quoteId || !quote) return { applied: false, reason: "not_found" };
+    if (quote.deposit_status === "paid") return { applied: false, reason: "already_paid" };
+
+    const mismatch = checkoutPaymentMismatch(quote.deposit_required ?? 0, {
+      amount_total: args.amount_total,
+      currency: args.currency,
+    });
+    if (mismatch) return { applied: false, reason: mismatch };
+
+    const now = Date.now();
+    await ctx.db.patch(quoteId, {
+      deposit_status: "paid",
+      deposit_paid_at: quote.deposit_paid_at ?? now,
+      deposit_paid_source: "stripe",
+      deposit_checkout_session_id: args.stripe_checkout_session_id ?? quote.deposit_checkout_session_id,
+      updated_at: now,
+    });
+    return { applied: true, reason: null };
   },
 });

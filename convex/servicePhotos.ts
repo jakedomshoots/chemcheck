@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { enforceRateLimit } from "./rateLimit";
+import { FIELD_WRITE_ROLES, assertCustomerAccess } from "./access";
 
 const runtimeEnv =
   process.env.CONVEX_DEPLOYMENT_ENV ||
@@ -17,19 +18,28 @@ const allowUnauthenticatedPhotoUpload =
  * Requirements: 2.4 - Prevent modification of photo metadata after capture
  */
 
-// Helper: Verify service log ownership
+// Helper: Verify service log access (customer creator or active team member)
 async function verifyServiceLogOwnership(
   ctx: any,
   serviceLogId: Id<"serviceLogs">,
-  userEmail: string
+  userEmail: string,
+  write = false
 ): Promise<{ serviceLog: any; customer: any }> {
   const serviceLog = await ctx.db.get(serviceLogId);
   if (!serviceLog) {
     throw new Error("Service log not found");
   }
 
-  const customer = await ctx.db.get(serviceLog.customer_id);
-  if (!customer || customer.created_by !== userEmail) {
+  let customer: any;
+  try {
+    ({ customer } = await assertCustomerAccess(
+      ctx,
+      serviceLog.customer_id,
+      userEmail,
+      write ? { roles: FIELD_WRITE_ROLES } : {}
+    ));
+  } catch (error) {
+    if (error instanceof Error && error.message === "Insufficient role permissions") throw error;
     throw new Error("Access denied");
   }
 
@@ -59,18 +69,37 @@ async function verifyServiceLogCustomerLink(
   return { serviceLog, customer };
 }
 
-// Helper: Verify customer ownership
+// Helper: Verify customer access (creator or active team member)
 async function verifyCustomerOwnership(
   ctx: any,
   customerId: Id<"customers">,
-  userEmail: string
+  userEmail: string,
+  write = false
 ): Promise<any> {
-  const customer = await ctx.db.get(customerId);
-  if (!customer || customer.created_by !== userEmail) {
-    throw new Error("Customer not found or access denied");
-  }
+  const { customer } = await assertCustomerAccess(
+    ctx,
+    customerId,
+    userEmail,
+    write ? { roles: FIELD_WRITE_ROLES } : {}
+  );
   return customer;
 }
+
+/**
+ * A storage file may back at most one photo record. Without this, a caller
+ * could reference another tenant's storage id and later delete it.
+ */
+async function assertStorageIdUnclaimed(ctx: any, storageId: Id<"_storage">): Promise<void> {
+  const existing = await ctx.db
+    .query("servicePhotos")
+    .withIndex("by_storage_id", (q: any) => q.eq("storage_id", storageId))
+    .first();
+  if (existing) {
+    throw new Error("Invalid storage_id: file is already attached to a photo");
+  }
+}
+
+const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
 
 /**
  * Generate a URL for uploading a photo to Convex storage
@@ -112,9 +141,11 @@ export const uploadPhoto = mutation({
       // Enforce rate limiting (database-backed for distributed rate limiting)
       await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
 
-      // Verify ownership of service log and customer
-      await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!);
-      await verifyCustomerOwnership(ctx, args.customer_id, identity.email!);
+      // Verify access to the service log and that it belongs to the given customer
+      const { serviceLog } = await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email!, true);
+      if (serviceLog.customer_id !== args.customer_id) {
+        throw new Error("Service log does not belong to customer");
+      }
     } else {
       if (!allowUnauthenticatedPhotoUpload) {
         throw new Error("Not authenticated");
@@ -137,10 +168,19 @@ export const uploadPhoto = mutation({
 
     // Validate storage_id exists before creating photo record
     // This prevents orphaned metadata referencing non-existent files
-    const storageUrl = await ctx.storage.getUrl(args.storage_id);
-    if (!storageUrl) {
+    const metadata = await ctx.db.system.get(args.storage_id);
+    if (!metadata) {
       throw new Error("Invalid storage_id: file does not exist in storage");
     }
+    if (typeof metadata.contentType === "string" && metadata.contentType && !metadata.contentType.startsWith("image/")) {
+      throw new Error("Invalid storage_id: file is not an image");
+    }
+    if (typeof metadata.size === "number" && metadata.size > MAX_PHOTO_BYTES) {
+      throw new Error("Invalid storage_id: file is too large");
+    }
+
+    // A storage file can only be claimed by one photo record.
+    await assertStorageIdUnclaimed(ctx, args.storage_id);
 
     // Create the photo record
     const photoId = await ctx.db.insert("servicePhotos", {
@@ -304,7 +344,7 @@ export const deletePhoto = mutation({
     }
 
     // Verify ownership through customer
-    await verifyCustomerOwnership(ctx, photo.customer_id, identity.email!);
+    await verifyCustomerOwnership(ctx, photo.customer_id, identity.email!, true);
 
     // Delete database record first, then storage
     // This ordering ensures that if storage deletion fails, we don't have
@@ -316,8 +356,19 @@ export const deletePhoto = mutation({
 
     await ctx.db.delete(args.photo_id);
 
+    // Only delete the file if no other photo record references it (legacy
+    // rows could share a storage id before uniqueness was enforced).
+    const otherReference = await ctx.db
+      .query("servicePhotos")
+      .withIndex("by_storage_id", (q) => q.eq("storage_id", storageId))
+      .first();
+
     try {
-      await ctx.storage.delete(storageId);
+      if (otherReference) {
+        console.warn(`Storage ${storageId} is still referenced by photo ${otherReference._id}; not deleting file.`);
+      } else {
+        await ctx.storage.delete(storageId);
+      }
     } catch (storageError) {
       // Log the inconsistency - storage file may be orphaned
       // This is safer than the reverse (orphaned metadata pointing to deleted file)

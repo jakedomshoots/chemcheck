@@ -1,5 +1,40 @@
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { fetchProvider, requireStripeConfig } from "./providerConfig";
+import {
+  eventCreatedMs,
+  invoiceSubscriptionId,
+  statusAfterPaymentFailed,
+  statusAfterPaymentSucceeded,
+  subscriptionUpsertFields,
+} from "./stripeSubscriptionState";
+
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Fetch the current subscription from Stripe so status changes reflect the
+ * live object rather than assumptions. Returns null when Stripe is not
+ * configured or the request fails (callers then fall back conservatively).
+ */
+async function fetchLiveSubscription(subscriptionId: string): Promise<Record<string, any> | null> {
+  try {
+    const { secretKey } = requireStripeConfig();
+    const response = await fetchProvider(
+      `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+      { method: "GET", headers: { Authorization: `Bearer ${secretKey}` } }
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data && typeof data === "object" && data.object === "subscription" ? data : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * SECURITY: Webhook error types for structured logging
@@ -369,77 +404,87 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
     const eventId = typeof event.id === "string" ? event.id : "";
     const eventType = typeof event.type === "string" ? event.type : "unknown";
 
+    // Connected-account (Stripe Connect) events are handled by the Connect
+    // webhook endpoint; never apply them to platform records here.
+    if (typeof event.account === "string" && event.account) {
+      console.log(`[Webhook] Ignoring connected-account event ${eventId} (${eventType})`);
+      return jsonResponse({ received: true, ignored: "connected_account" });
+    }
+
     if (eventId) {
-      const existingEvent = await ctx.runQuery(internal.stripeEvents.getByEventId, {
-        event_id: eventId,
-      });
-
-      if (existingEvent?.status === "processed") {
-        console.log(`[Webhook] Duplicate processed event ignored: ${eventId}`);
-        return new Response(JSON.stringify({ received: true, duplicate: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      await ctx.runMutation(internal.stripeEvents.recordProcessing, {
+      // Atomic insert-if-absent claim: concurrent deliveries of the same
+      // event cannot both pass this point.
+      const { decision } = await ctx.runMutation(internal.stripeEvents.claimEvent, {
         event_id: eventId,
         event_type: eventType,
       });
+
+      if (decision === "duplicate") {
+        console.log(`[Webhook] Duplicate processed event ignored: ${eventId}`);
+        return jsonResponse({ received: true, duplicate: true });
+      }
+      if (decision === "in_progress") {
+        // Another delivery is processing it; a non-2xx makes Stripe retry later.
+        return new Response("Event is already being processed", { status: 409 });
+      }
     }
+
+    const env = process.env as Record<string, string | undefined>;
+    const eventCreated = eventCreatedMs(event);
 
     switch (event.type) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = event.data.object;
-        await ctx.runMutation(internal.subscriptions.upsert, {
-          business_id: subscription.metadata?.business_id || undefined,
-          user_email: subscription.metadata?.user_email || "",
-          stripe_customer_id: subscription.customer,
-          stripe_subscription_id: subscription.id,
-          plan_id: subscription.metadata?.plan_id || "starter",
-          status: subscription.status,
-          current_period_start: subscription.current_period_start * 1000,
-          current_period_end: subscription.current_period_end * 1000,
-          cancel_at_period_end: subscription.cancel_at_period_end,
-          trial_end: subscription.trial_end ? subscription.trial_end * 1000 : undefined,
+        const result = await ctx.runMutation(internal.subscriptions.upsert, {
+          ...(subscriptionUpsertFields(subscription, env) as any),
+          event_created: eventCreated,
         });
-        console.log(`[Webhook] Processed ${event.type} for subscription:`, subscription.id);
+        console.log(`[Webhook] Processed ${event.type} for subscription:`, subscription.id, result.applied ? "" : "(stale, skipped)");
         break;
       }
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
-        await ctx.runMutation(internal.subscriptions.upsert, {
-          business_id: subscription.metadata?.business_id || undefined,
-          user_email: subscription.metadata?.user_email || "",
-          stripe_customer_id: subscription.customer,
-          stripe_subscription_id: subscription.id,
-          plan_id: subscription.metadata?.plan_id || "starter",
-          status: "canceled",
-          current_period_start: subscription.current_period_start * 1000,
-          current_period_end: subscription.current_period_end * 1000,
-          cancel_at_period_end: true,
+        const result = await ctx.runMutation(internal.subscriptions.upsert, {
+          ...(subscriptionUpsertFields(subscription, env, {
+            status: "canceled",
+            cancel_at_period_end: true,
+          }) as any),
           trial_end: undefined,
+          event_created: eventCreated,
         });
-        console.log(`[Webhook] Processed subscription deletion:`, subscription.id);
+        console.log(`[Webhook] Processed subscription deletion:`, subscription.id, result.applied ? "" : "(stale, skipped)");
         break;
       }
 
       case "invoice.payment_succeeded": {
         const invoice = event.data.object;
-        const stripeSubscriptionId =
-          typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+        const stripeSubscriptionId = invoiceSubscriptionId(invoice);
         if (stripeSubscriptionId) {
           const subscription = await ctx.runQuery(internal.subscriptions.getByStripeSubscription, {
             stripe_subscription_id: stripeSubscriptionId,
           });
 
           if (subscription) {
-            await ctx.runMutation(internal.subscriptions.updateStatus, {
-              subscription_id: subscription._id,
-              status: "active",
-            });
+            // Prefer the live subscription state from Stripe; a successful
+            // invoice payment must never resurrect a canceled subscription.
+            const live = await fetchLiveSubscription(stripeSubscriptionId);
+            if (live) {
+              await ctx.runMutation(internal.subscriptions.upsert, {
+                ...(subscriptionUpsertFields(live, env) as any),
+                event_created: eventCreated,
+              });
+            } else {
+              const nextStatus = statusAfterPaymentSucceeded(subscription.status);
+              if (nextStatus) {
+                await ctx.runMutation(internal.subscriptions.updateStatus, {
+                  subscription_id: subscription._id,
+                  status: nextStatus,
+                  event_created: eventCreated,
+                });
+              }
+            }
           }
         }
 
@@ -451,8 +496,7 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
         const invoice = event.data.object;
         const stripeCustomerId =
           typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
-        const stripeSubscriptionId =
-          typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+        const stripeSubscriptionId = invoiceSubscriptionId(invoice);
         let userEmail = invoice.metadata?.user_email || invoice.customer_email || "";
 
         // Try to resolve from existing subscription records.
@@ -471,10 +515,14 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
 
         if (subscription) {
           userEmail = userEmail || subscription.user_email;
-          await ctx.runMutation(internal.subscriptions.updateStatus, {
-            subscription_id: subscription._id,
-            status: "past_due",
-          });
+          const nextStatus = statusAfterPaymentFailed(subscription.status);
+          if (nextStatus) {
+            await ctx.runMutation(internal.subscriptions.updateStatus, {
+              subscription_id: subscription._id,
+              status: nextStatus,
+              event_created: eventCreated,
+            });
+          }
         }
 
         if (userEmail) {
@@ -518,6 +566,8 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
             : typeof session?.payment_intent?.id === "string"
               ? session.payment_intent.id
               : undefined;
+        const amountTotal = typeof session?.amount_total === "number" ? session.amount_total : undefined;
+        const currency = typeof session?.currency === "string" ? session.currency : undefined;
 
         if (paymentStatus !== "paid") {
           console.log("[Webhook] checkout.session event received before payment was settled:", {
@@ -532,23 +582,44 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
         if (paymentType === "invoice") {
           const invoiceId = getMetadataValue(session?.metadata, "invoice_id");
           if (invoiceId) {
-            await ctx.runMutation(internal.invoices.markPaidFromStripe, {
-              invoice_id: invoiceId as any,
+            // Verifies the invoice exists and amount/currency match before settling.
+            const result = await ctx.runMutation(internal.invoices.markPaidFromStripeCheckout, {
+              invoice_id: invoiceId,
+              amount_total: amountTotal,
+              currency,
               stripe_checkout_session_id: stripeCheckoutSessionId,
               stripe_payment_intent_id: stripePaymentIntentId,
             });
-            console.log("[Webhook] Marked invoice paid from checkout session:", stripeCheckoutSessionId);
+            if (result.applied) {
+              console.log("[Webhook] Marked invoice paid from checkout session:", stripeCheckoutSessionId);
+            } else {
+              logWebhookError("HANDLER_ERROR", {
+                reason: `invoice_checkout_not_applied:${result.reason}`,
+                stripeCheckoutSessionId,
+                invoiceId,
+              });
+            }
           } else {
             console.log("[Webhook] Missing invoice_id metadata on checkout session:", stripeCheckoutSessionId);
           }
         } else if (paymentType === "quote_deposit") {
           const quoteId = getMetadataValue(session?.metadata, "quote_id");
           if (quoteId) {
-            await ctx.runMutation(internal.quotes.markDepositPaidFromStripe, {
-              quote_id: quoteId as any,
+            const result = await ctx.runMutation(internal.quotes.markDepositPaidFromStripeCheckout, {
+              quote_id: quoteId,
+              amount_total: amountTotal,
+              currency,
               stripe_checkout_session_id: stripeCheckoutSessionId,
             });
-            console.log("[Webhook] Marked quote deposit paid from checkout session:", stripeCheckoutSessionId);
+            if (result.applied) {
+              console.log("[Webhook] Marked quote deposit paid from checkout session:", stripeCheckoutSessionId);
+            } else {
+              logWebhookError("HANDLER_ERROR", {
+                reason: `deposit_checkout_not_applied:${result.reason}`,
+                stripeCheckoutSessionId,
+                quoteId,
+              });
+            }
           } else {
             console.log("[Webhook] Missing quote_id metadata on checkout session:", stripeCheckoutSessionId);
           }
@@ -571,10 +642,7 @@ export const handleStripeWebhook = httpAction(async (ctx, request) => {
       });
     }
 
-    return new Response(JSON.stringify({ received: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ received: true });
   } catch (err) {
     const eventId = typeof event?.id === "string" ? event.id : "";
     if (eventId) {

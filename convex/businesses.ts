@@ -1,5 +1,15 @@
 import { v } from "convex/values";
 import { query, mutation, internalQuery } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import {
+  getMembershipsForEmail,
+  isActiveMembership,
+  isPendingMembership,
+  normalizeEmail,
+  resolveBusinessForUser,
+} from "./access";
+import { assertCanAddTeamMember } from "./planLimits";
+import { enforceRateLimit } from "./rateLimit";
 
 // Valid role values for team members
 const VALID_ROLES = ['owner', 'admin', 'technician', 'viewer'] as const;
@@ -16,27 +26,11 @@ export const getCurrent = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
+    if (!identity?.email) return null;
 
-    // First check if user is a team member
-    const teamMember = await ctx.db
-      .query("team_members")
-      .withIndex("by_user_email", (q) => q.eq("user_email", identity.email!))
-      .filter((q) => q.eq(q.field("is_active"), true))
-      .first();
-
-    if (teamMember) {
-      const teamBusiness = await ctx.db.get(teamMember.business_id);
-      if (teamBusiness) return teamBusiness;
-    }
-
-    // Check if user owns a business
-    const ownedBusiness = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", identity.email!))
-      .first();
-
-    return ownedBusiness;
+    // Accepted (active) memberships first, then an owned business. Pending
+    // invites never switch the caller into another tenant.
+    return await resolveBusinessForUser(ctx, identity.email);
   },
 });
 
@@ -68,6 +62,8 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email!, "business.write");
 
     // Check if user already has a business
     const existingBusiness = await ctx.db
@@ -112,6 +108,7 @@ export const create = mutation({
       name: identity.name || "Owner",
       role: "owner",
       is_active: true,
+      status: "active",
       invited_at: now,
       joined_at: now,
     });
@@ -156,6 +153,8 @@ export const updateSettings = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email!, "business.write");
 
     const business = await ctx.db
       .query("businesses")
@@ -204,6 +203,8 @@ export const update = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "business.write");
+
     const business = await ctx.db
       .query("businesses")
       .withIndex("by_owner_email", (q) => q.eq("owner_email", identity.email!))
@@ -244,7 +245,8 @@ export const getTeamMembers = query({
   },
 });
 
-// Invite a team member
+// Invite a team member. The invite grants no access until the invitee
+// accepts it with acceptInvite (their signed-in email must match).
 export const inviteTeamMember = mutation({
   args: {
     email: v.string(),
@@ -255,6 +257,8 @@ export const inviteTeamMember = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "team.invite");
+
     const business = await ctx.db
       .query("businesses")
       .withIndex("by_owner_email", (q) => q.eq("owner_email", identity.email!))
@@ -262,17 +266,6 @@ export const inviteTeamMember = mutation({
 
     if (!business) {
       throw new Error("Business not found or access denied");
-    }
-
-    // Check if already a member
-    const existingMember = await ctx.db
-      .query("team_members")
-      .withIndex("by_business", (q) => q.eq("business_id", business._id))
-      .filter((q) => q.eq(q.field("user_email"), args.email))
-      .first();
-
-    if (existingMember) {
-      throw new Error("User is already a team member");
     }
 
     // Validate role
@@ -283,18 +276,167 @@ export const inviteTeamMember = mutation({
       throw new Error("Cannot assign 'owner' role to team members. Use transfer ownership instead.");
     }
 
+    const inviteEmail = normalizeEmail(args.email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail) || inviteEmail.length > 254) {
+      throw new Error("A valid email address is required");
+    }
+    if (inviteEmail === normalizeEmail(business.owner_email)) {
+      throw new Error("The business owner is already a team member");
+    }
+
+    // Check if already a member / invited
+    const existingMember = (await getMembershipsForEmail(ctx, inviteEmail)).find(
+      (member) => String(member.business_id) === String(business._id)
+    );
+
+    if (existingMember && isActiveMembership(existingMember)) {
+      throw new Error("User is already a team member");
+    }
+    if (existingMember && isPendingMembership(existingMember)) {
+      throw new Error("This user already has a pending invite");
+    }
+
+    await assertCanAddTeamMember(ctx, business, 1);
+
+    const now = Date.now();
+    if (existingMember) {
+      // Re-invite a previously removed/declined/left member.
+      await ctx.db.patch(existingMember._id, {
+        name: args.name,
+        role: args.role,
+        is_active: false,
+        status: "pending",
+        invited_at: now,
+        joined_at: undefined,
+      });
+      return existingMember._id;
+    }
+
     return await ctx.db.insert("team_members", {
       business_id: business._id,
-      user_email: args.email,
+      user_email: inviteEmail,
       name: args.name,
       role: args.role,
-      is_active: true,
-      invited_at: Date.now(),
+      is_active: false,
+      status: "pending",
+      invited_at: now,
     });
   },
 });
 
-// Remove a team member
+// Pending invites addressed to the signed-in user.
+export const listMyInvites = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) return [];
+
+    const invites = (await getMembershipsForEmail(ctx, identity.email)).filter(isPendingMembership);
+    const results = [];
+    for (const invite of invites) {
+      const business = await ctx.db.get(invite.business_id as Id<"businesses">);
+      if (!business) continue;
+      results.push({
+        _id: invite._id,
+        business_id: invite.business_id,
+        business_name: business.name,
+        owner_email: business.owner_email,
+        role: invite.role,
+        invited_at: invite.invited_at,
+      });
+    }
+    return results;
+  },
+});
+
+async function getOwnInvite(ctx: any, memberId: any, email: string | undefined) {
+  const invite = await ctx.db.get(memberId);
+  if (!invite || !email || normalizeEmail(invite.user_email) !== normalizeEmail(email)) {
+    throw new Error("Invite not found");
+  }
+  if (!isPendingMembership(invite)) {
+    throw new Error("This invite is no longer pending");
+  }
+  return invite;
+}
+
+// Accept a pending invite addressed to the signed-in user's email.
+export const acceptInvite = mutation({
+  args: { memberId: v.id("team_members") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email, "team.write");
+
+    const invite = await getOwnInvite(ctx, args.memberId, identity.email);
+    const business = await ctx.db.get(invite.business_id as Id<"businesses">);
+    if (!business) throw new Error("This business no longer exists");
+
+    // A user works in one business at a time; leave the current team first.
+    const memberships = await getMembershipsForEmail(ctx, identity.email);
+    const otherTeam = memberships.find(
+      (member) =>
+        isActiveMembership(member) &&
+        member.role !== "owner" &&
+        String(member.business_id) !== String(invite.business_id)
+    );
+    if (otherTeam) {
+      throw new Error("Leave your current team before joining another business");
+    }
+
+    await ctx.db.patch(invite._id, {
+      is_active: true,
+      status: "active",
+      joined_at: Date.now(),
+    });
+    return invite.business_id;
+  },
+});
+
+// Decline a pending invite addressed to the signed-in user's email.
+export const declineInvite = mutation({
+  args: { memberId: v.id("team_members") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email, "team.write");
+
+    const invite = await getOwnInvite(ctx, args.memberId, identity.email);
+    await ctx.db.patch(invite._id, { is_active: false, status: "declined" });
+    return invite._id;
+  },
+});
+
+// Leave the business the signed-in user joined as a team member.
+export const leaveBusiness = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email, "team.write");
+
+    const memberships = (await getMembershipsForEmail(ctx, identity.email)).filter(isActiveMembership);
+    let membership: any = null;
+    for (const candidate of memberships) {
+      if (candidate.role === "owner") continue;
+      const business = await ctx.db.get(candidate.business_id as Id<"businesses">);
+      if (business && normalizeEmail(business.owner_email) === normalizeEmail(identity.email)) continue;
+      membership = candidate;
+      break;
+    }
+    if (!membership) {
+      throw new Error("You are not a team member of another business. Owners cannot leave their own business.");
+    }
+
+    await ctx.db.patch(membership._id, { is_active: false, status: "left" });
+    return membership.business_id;
+  },
+});
+
+// Remove a team member (or revoke a pending invite)
 export const removeTeamMember = mutation({
   args: {
     memberId: v.id("team_members"),
@@ -302,6 +444,8 @@ export const removeTeamMember = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email!, "team.write");
 
     const member = await ctx.db.get(args.memberId);
     if (!member) throw new Error("Team member not found");
@@ -316,6 +460,6 @@ export const removeTeamMember = mutation({
       throw new Error("Cannot remove the business owner");
     }
 
-    await ctx.db.patch(args.memberId, { is_active: false });
+    await ctx.db.patch(args.memberId, { is_active: false, status: "removed" });
   },
 });

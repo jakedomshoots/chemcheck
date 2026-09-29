@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { query, internalMutation } from "./_generated/server";
-import { Id, Doc } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 
 // ============================================
 // Database-Backed Rate Limiting for Convex
@@ -21,6 +21,14 @@ const DEFAULT_RATE_LIMITS: Record<string, { maxRequests: number; windowMs: numbe
   'serviceLog.delete': { maxRequests: 20, windowMs: 60000 },  // 20 per minute
   'note.create': { maxRequests: 50, windowMs: 60000 },        // 50 per minute
   'chemical.create': { maxRequests: 100, windowMs: 60000 },   // 100 per minute
+  'invoice.write': { maxRequests: 60, windowMs: 60000 },      // 60 per minute
+  'quote.write': { maxRequests: 60, windowMs: 60000 },        // 60 per minute
+  'workOrder.write': { maxRequests: 100, windowMs: 60000 },   // 100 per minute
+  'business.write': { maxRequests: 30, windowMs: 60000 },     // 30 per minute
+  'team.invite': { maxRequests: 10, windowMs: 60000 },        // 10 per minute
+  'team.write': { maxRequests: 30, windowMs: 60000 },         // 30 per minute
+  'pool.write': { maxRequests: 60, windowMs: 60000 },         // 60 per minute
+  'equipment.write': { maxRequests: 60, windowMs: 60000 },    // 60 per minute
 
   // Queries (reads) - more lenient
   'query.list': { maxRequests: 200, windowMs: 60000 },        // 200 per minute
@@ -40,9 +48,9 @@ const DEFAULT_RATE_LIMITS: Record<string, { maxRequests: number; windowMs: numbe
  * @param action - The action to get rate limit for (e.g., 'customer.create')
  * @returns Rate limit configuration with maxRequests and windowMs
  */
-function getRateLimit(action: string): { maxRequests: number; windowMs: number } {
+export function getRateLimit(action: string): { maxRequests: number; windowMs: number } {
   // Convert action to env var name: customer.create -> RATE_LIMIT_CUSTOMER_CREATE
-  const envKey = `RATE_LIMIT_${action.toUpperCase().replace('.', '_')}`;
+  const envKey = `RATE_LIMIT_${action.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
   const envValue = process.env[envKey];
 
   if (envValue) {
@@ -65,10 +73,6 @@ function getRateLimit(action: string): { maxRequests: number; windowMs: number }
   return DEFAULT_RATE_LIMITS[action] || DEFAULT_RATE_LIMITS['default'];
 }
 
-// For backwards compatibility, export the legacy constant
-// New code should use getRateLimit() function
-const RATE_LIMITS = DEFAULT_RATE_LIMITS;
-
 // Exponential backoff configuration for repeated violations
 const BACKOFF_CONFIG = {
   baseMultiplier: 2,       // Double the wait time for each violation
@@ -76,8 +80,6 @@ const BACKOFF_CONFIG = {
   violationWindowMs: 300000, // Track violations over 5 minutes
   maxViolations: 5         // After 5 violations, apply max penalty
 };
-
-type RateLimitAction = keyof typeof RATE_LIMITS;
 
 /**
  * Check rate limit and increment counter atomically using database
@@ -95,14 +97,15 @@ export const checkAndConsumeRateLimit = internalMutation({
     resetIn: number;
     retryAfter?: number;
   }> => {
-    const config = RATE_LIMITS[args.action as RateLimitAction] || RATE_LIMITS.default;
+    const config = getRateLimit(args.action);
     const now = Date.now();
 
     // Primary key based on user
     const userKey = `${args.userId}:${args.action}`;
 
-    // Check user-based rate limit
-    const userResult = await checkRateLimitInternal(ctx, userKey, config, now);
+    // Check user-based rate limit. This internal mutation returns instead of
+    // throwing, so violation records written here persist and feed backoff.
+    const userResult = await checkRateLimitInternal(ctx, userKey, config, now, true);
 
     // If IP is provided, also check IP-based rate limiting (stricter limits)
     if (args.clientIp) {
@@ -112,7 +115,7 @@ export const checkAndConsumeRateLimit = internalMutation({
         maxRequests: config.maxRequests * 2,
         windowMs: config.windowMs
       };
-      const ipResult = await checkRateLimitInternal(ctx, ipKey, ipConfig, now);
+      const ipResult = await checkRateLimitInternal(ctx, ipKey, ipConfig, now, true);
 
       // If either limit is exceeded, deny the request
       if (!ipResult.allowed) {
@@ -125,13 +128,32 @@ export const checkAndConsumeRateLimit = internalMutation({
 });
 
 /**
- * Internal helper to check and update rate limit in database
+ * Backoff multiplier for a denied request.
+ *
+ * Violations recorded inside a mutation that then throws are rolled back, so
+ * the enforcing path cannot rely on persisted violation rows. Instead we use
+ * the persisted violation record when one exists (written by the non-throwing
+ * checkAndConsumeRateLimit path) and otherwise fall back to 1x: the caller
+ * must simply wait for the current window to reset.
+ */
+export function computeBackoffMultiplier(violationCount: number): number {
+  if (!Number.isFinite(violationCount) || violationCount <= 0) return 1;
+  const count = Math.min(violationCount, BACKOFF_CONFIG.maxViolations);
+  return Math.min(Math.pow(BACKOFF_CONFIG.baseMultiplier, count), BACKOFF_CONFIG.maxMultiplier);
+}
+
+/**
+ * Internal helper to check and update rate limit in database.
+ *
+ * `persistViolation` must only be true when the calling mutation returns
+ * normally on denial; a thrown error rolls the violation write back anyway.
  */
 async function checkRateLimitInternal(
   ctx: any,
   key: string,
   config: { maxRequests: number; windowMs: number },
-  now: number
+  now: number,
+  persistViolation = false
 ): Promise<{ allowed: boolean; remaining: number; resetIn: number; retryAfter?: number }> {
   // Query existing rate limit entry
   const existing = await ctx.db
@@ -145,14 +167,8 @@ async function checkRateLimitInternal(
     .withIndex("by_key", (q: any) => q.eq("key", key))
     .first();
 
-  let backoffMultiplier = 1;
-  if (violationEntry && now < violationEntry.expires_at) {
-    const violationCount = Math.min(violationEntry.count, BACKOFF_CONFIG.maxViolations);
-    backoffMultiplier = Math.min(
-      Math.pow(BACKOFF_CONFIG.baseMultiplier, violationCount),
-      BACKOFF_CONFIG.maxMultiplier
-    );
-  }
+  const backoffMultiplier =
+    violationEntry && now < violationEntry.expires_at ? computeBackoffMultiplier(violationEntry.count) : 1;
 
   // If no entry or window has passed, create/reset
   if (!existing || now > existing.reset_time) {
@@ -185,8 +201,10 @@ async function checkRateLimitInternal(
 
   // Check if limit exceeded
   if (existing.count >= config.maxRequests) {
-    // Record violation for exponential backoff
-    await recordViolation(ctx, key, now);
+    // Record violation for exponential backoff (only where it can persist).
+    if (persistViolation) {
+      await recordViolation(ctx, key, now);
+    }
 
     const baseResetIn = Math.ceil((existing.reset_time - now) / 1000);
     const retryAfter = Math.ceil(baseResetIn * backoffMultiplier);
@@ -247,8 +265,10 @@ async function recordViolation(ctx: any, key: string, now: number): Promise<void
 }
 
 /**
- * Wrapper function to enforce rate limiting in mutations
- * Throws an error if rate limit exceeded with exponential backoff
+ * Wrapper function to enforce rate limiting in mutations.
+ * Throws when the limit is exceeded. Because the throw rolls back every write
+ * made by the mutation, nothing is persisted on denial; the retry hint is the
+ * remaining time in the current window (scaled by any persisted backoff).
  */
 export async function enforceRateLimitInMutation(
   ctx: any,
@@ -256,7 +276,7 @@ export async function enforceRateLimitInMutation(
   action: string,
   clientIp?: string
 ): Promise<void> {
-  const config = RATE_LIMITS[action as RateLimitAction] || RATE_LIMITS.default;
+  const config = getRateLimit(action);
   const now = Date.now();
 
   // Check user-based limit
@@ -308,7 +328,8 @@ export const getRateLimitStatus = query({
     const status: Record<string, { action: string; remaining: number; resetIn: number; limit: number }> = {};
     const now = Date.now();
 
-    for (const [action, config] of Object.entries(RATE_LIMITS)) {
+    for (const action of Object.keys(DEFAULT_RATE_LIMITS)) {
+      const config = getRateLimit(action);
       const key = `${identity.email}:${action}`;
       const entry = await ctx.db
         .query("rateLimits")
@@ -342,43 +363,37 @@ export const getRateLimitStatus = query({
  */
 export const cleanupExpiredRateLimits = internalMutation({
   args: {},
-  handler: async (ctx): Promise<{ cleaned: number }> => {
+  handler: async (ctx): Promise<{ cleaned: number; hasMore: boolean }> => {
     const now = Date.now();
     let cleaned = 0;
-    const BATCH_SIZE = 100;
+    const BATCH_SIZE = 500;
 
-    // Clean up expired rate limit entries (older than 1 day) in batches so a
-    // single cron run can clear the full backlog.
-    while (true) {
-      const expiredLimits = await ctx.db
-        .query("rateLimits")
-        .filter((q) => q.lt(q.field("reset_time"), now - 86400000))
-        .take(BATCH_SIZE);
-
-      if (expiredLimits.length === 0) break;
-
-      for (const entry of expiredLimits) {
-        await ctx.db.delete(entry._id);
-        cleaned++;
-      }
+    // Indexed range scans keep each run bounded; if a full batch was removed,
+    // schedule a follow-up run to clear the remaining backlog.
+    const expiredLimits = await ctx.db
+      .query("rateLimits")
+      .withIndex("by_reset_time", (q) => q.lt("reset_time", now - 86400000))
+      .take(BATCH_SIZE);
+    for (const entry of expiredLimits) {
+      await ctx.db.delete(entry._id);
+      cleaned++;
     }
 
-    // Clean up expired violation entries in batches.
-    while (true) {
-      const expiredViolations = await ctx.db
-        .query("rateLimitViolations")
-        .filter((q) => q.lt(q.field("expires_at"), now))
-        .take(BATCH_SIZE);
-
-      if (expiredViolations.length === 0) break;
-
-      for (const entry of expiredViolations) {
-        await ctx.db.delete(entry._id);
-        cleaned++;
-      }
+    const expiredViolations = await ctx.db
+      .query("rateLimitViolations")
+      .withIndex("by_expires_at", (q) => q.lt("expires_at", now))
+      .take(BATCH_SIZE);
+    for (const entry of expiredViolations) {
+      await ctx.db.delete(entry._id);
+      cleaned++;
     }
 
-    return { cleaned };
+    const hasMore = expiredLimits.length === BATCH_SIZE || expiredViolations.length === BATCH_SIZE;
+    if (hasMore) {
+      await ctx.scheduler.runAfter(0, internal.rateLimit.cleanupExpiredRateLimits, {});
+    }
+
+    return { cleaned, hasMore };
   }
 });
 
@@ -448,5 +463,5 @@ export async function enforceRateLimit(
   await enforceRateLimitInMutation(ctx, userId, action, clientIp);
 }
 
-// Export rate limit configuration for external use
-export const RATE_LIMIT_CONFIG = RATE_LIMITS;
+// Export default rate limit configuration for external use
+export const RATE_LIMIT_CONFIG = DEFAULT_RATE_LIMITS;
