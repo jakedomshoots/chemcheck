@@ -2,8 +2,86 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { validateEmail, validatePhone } from "./validation";
 import { normalizeTaxRate } from "./tax";
+import { enforceRateLimit } from "./rateLimit";
+import {
+  CUSTOMER_WRITE_ROLES,
+  assertBusinessRole,
+  assertCustomerAccess,
+  canAccessCustomer,
+  getAccessContext,
+  normalizeEmail,
+} from "./access";
+import { computeTotals, normalizeLineItems } from "./lineItems";
+import { checkoutPaymentMismatch } from "./stripeSubscriptionState";
 
 const VALID_STATUSES = ["draft", "sent", "paid", "cancelled"] as const;
+/** Roles allowed to create, send and settle invoices. */
+const BILLING_WRITE_ROLES = CUSTOMER_WRITE_ROLES;
+
+/**
+ * Allowed manual status transitions. "paid" is only reachable through
+ * markPaid / Stripe, and paid/cancelled invoices are terminal.
+ */
+const INVOICE_TRANSITIONS: Record<string, readonly string[]> = {
+  draft: ["draft", "sent", "cancelled"],
+  sent: ["sent", "draft", "cancelled"],
+  paid: ["paid"],
+  cancelled: ["cancelled"],
+};
+
+export function canTransitionInvoice(from: string, to: string): boolean {
+  return (INVOICE_TRANSITIONS[from] ?? []).includes(to);
+}
+
+export function assertInvoiceTransition(from: string, to: string): void {
+  if (!canTransitionInvoice(from, to)) {
+    throw new Error(`Invoice cannot move from "${from}" to "${to}"`);
+  }
+}
+
+const ALLOWED_PAYMENT_HOST_SUFFIX = ".stripe.com";
+
+/** Only https Stripe-hosted payment pages may be stored as an invoice payment link. */
+export function validatePaymentUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(String(url).trim());
+  } catch {
+    throw new Error("Invalid payment URL");
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== "https:" || !(host === "stripe.com" || host.endsWith(ALLOWED_PAYMENT_HOST_SUFFIX))) {
+    throw new Error("Payment URL must be an https Stripe payment link");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("Invalid payment URL");
+  }
+  return parsed.toString();
+}
+
+/**
+ * An invoice is only settled at creation when a verified paid deposit covers
+ * its whole amount; zero-value invoices otherwise stay in draft.
+ */
+export function initialInvoiceStatus(total: number, depositApplied: number): "draft" | "paid" {
+  return total <= 0 && depositApplied > 0 ? "paid" : "draft";
+}
+
+async function assertInvoiceAccess(ctx: any, invoice: any, userEmail: string, write = false): Promise<any | null> {
+  const customer = await ctx.db.get(invoice.customer_id);
+  if (!customer) {
+    // Orphaned invoice (customer deleted): only its tenant key may see it.
+    if (normalizeEmail(invoice.created_by) === normalizeEmail(userEmail)) return null;
+    throw new Error("Access denied");
+  }
+  const { customer: accessible } = await assertCustomerAccess(
+    ctx,
+    customer,
+    userEmail,
+    write ? { roles: BILLING_WRITE_ROLES } : {}
+  );
+  return accessible;
+}
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_BACKFILL_BATCH_SIZE = 100;
 const MAX_BACKFILL_BATCH_SIZE = 500;
@@ -138,21 +216,24 @@ export const list = query({
     if (!identity) throw new Error("Not authenticated");
 
     const numItems = clampPageSize(args.numItems);
-    const email = identity.email!;
+    // Invoices are keyed by tenant (business owner email, or the solo user).
+    const email = (await getAccessContext(ctx, identity.email!)).tenantEmail;
+    const customerId = args.customer_id;
+    const status = args.status;
 
     let query;
     // Prefer the most selective index, then apply any remaining filters in JS.
-    if (args.customer_id) {
+    if (customerId) {
       query = ctx.db
         .query("invoices")
         .withIndex("by_created_by_and_customer", (q) =>
-          q.eq("created_by", email).eq("customer_id", args.customer_id)
+          q.eq("created_by", email).eq("customer_id", customerId)
         );
-    } else if (args.status) {
+    } else if (status) {
       query = ctx.db
         .query("invoices")
         .withIndex("by_created_by_and_status", (q) =>
-          q.eq("created_by", email).eq("status", args.status)
+          q.eq("created_by", email).eq("status", status)
         );
     } else {
       query = ctx.db
@@ -191,7 +272,7 @@ export const get = query({
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    await assertInvoiceAccess(ctx, invoice, identity.email!);
 
     return invoice;
   },
@@ -204,14 +285,13 @@ export const getForPayment = internalQuery({
   },
   handler: async (ctx, args) => {
     const invoice = await ctx.db.get(args.id);
-    if (!invoice || invoice.created_by !== args.user_email) {
+    if (!invoice) {
       throw new Error("Invoice not found or access denied");
     }
 
-    const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { customer } = await assertCustomerAccess(ctx, invoice.customer_id, args.user_email, {
+      roles: BILLING_WRITE_ROLES,
+    });
 
     return { invoice, customer };
   },
@@ -226,7 +306,8 @@ export const createDraft = mutation({
       description: v.string(),
       quantity: v.number(),
       unit_price: v.number(),
-      amount: v.number(),
+      // Ignored: amounts are recomputed server-side from quantity x unit_price.
+      amount: v.optional(v.number()),
     })),
     tax_rate: v.optional(v.number()),
     due_date: v.optional(v.string()),
@@ -236,10 +317,12 @@ export const createDraft = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
-      throw new Error("Customer not found or access denied");
-    }
+    await enforceRateLimit(ctx, identity.email!, "invoice.write");
+
+    const { customer } = await assertCustomerAccess(ctx, args.customer_id, identity.email!, {
+      roles: BILLING_WRITE_ROLES,
+    });
+    const lineItems = normalizeLineItems(args.line_items);
 
     let resolvedWorkOrderId = args.work_order_id;
     let resolvedSourceQuoteId = args.source_quote_id;
@@ -247,7 +330,7 @@ export const createDraft = mutation({
 
     if (resolvedSourceQuoteId) {
       const quote = await ctx.db.get(resolvedSourceQuoteId);
-      if (!quote || quote.created_by !== identity.email) {
+      if (!quote) {
         throw new Error("Quote not found or access denied");
       }
       if (quote.customer_id !== args.customer_id) {
@@ -259,7 +342,7 @@ export const createDraft = mutation({
 
     if (resolvedWorkOrderId) {
       const workOrder = await ctx.db.get(resolvedWorkOrderId);
-      if (!workOrder || workOrder.created_by !== identity.email) {
+      if (!workOrder) {
         throw new Error("Work order not found or access denied");
       }
       if (workOrder.customer_id !== args.customer_id) {
@@ -284,7 +367,7 @@ export const createDraft = mutation({
 
     if (resolvedSourceQuoteId) {
       const quote = await ctx.db.get(resolvedSourceQuoteId);
-      if (!quote || quote.created_by !== identity.email) {
+      if (!quote) {
         throw new Error("Quote not found or access denied");
       }
       if (quote.customer_id !== args.customer_id) {
@@ -304,30 +387,28 @@ export const createDraft = mutation({
       }
     }
 
-    const subtotal = Number(args.line_items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
-    const taxRate = normalizeTaxRate(args.tax_rate);
-    const tax = Number((subtotal * taxRate).toFixed(2));
-    const grossTotal = Number((subtotal + tax).toFixed(2));
-    const depositApplied = Number(
-      (
-        resolvedQuote?.deposit_status === "paid" && resolvedQuote?.deposit_required && resolvedQuote.deposit_required > 0
-          ? Math.min(grossTotal, resolvedQuote.deposit_required)
-          : 0
-      ).toFixed(2)
+    const paidDeposit =
+      resolvedQuote?.deposit_status === "paid" && resolvedQuote?.deposit_required && resolvedQuote.deposit_required > 0
+        ? resolvedQuote.deposit_required
+        : 0;
+    const { subtotal, tax, depositApplied, total } = computeTotals(
+      lineItems,
+      normalizeTaxRate(args.tax_rate),
+      paidDeposit
     );
-    const total = Number((grossTotal - depositApplied).toFixed(2));
     const now = Date.now();
-    const initialStatus = total <= 0 ? "paid" : "draft";
-    const resolvedNotes = resolveInvoiceNotes(args.notes, args.line_items, undefined);
+    const initialStatus = initialInvoiceStatus(total, depositApplied);
+    const resolvedNotes = resolveInvoiceNotes(args.notes, lineItems, undefined);
 
     const invoiceId = await ctx.db.insert("invoices", {
       customer_id: args.customer_id,
       work_order_id: resolvedWorkOrderId,
       source_quote_id: resolvedSourceQuoteId,
       service_log_id: undefined,
-      created_by: identity.email!,
+      // Keyed by tenant so every team member with billing access sees it.
+      created_by: customer.created_by || identity.email!,
       status: initialStatus,
-      line_items: args.line_items,
+      line_items: lineItems,
       subtotal,
       tax,
       deposit_applied: depositApplied > 0 ? depositApplied : undefined,
@@ -462,7 +543,15 @@ export const batchCreateFromCompletedWorkOrders = mutation({
       throw new Error("From date must be on or before To date");
     }
 
-    const defaultUnitPrice = Math.max(0, args.unit_price ?? 120);
+    await enforceRateLimit(ctx, identity.email!, "invoice.write");
+    const access = await assertBusinessRole(ctx, identity.email!, BILLING_WRITE_ROLES);
+    const tenantEmail = access.tenantEmail;
+
+    const requestedUnitPrice = args.unit_price ?? 120;
+    if (!Number.isFinite(requestedUnitPrice) || requestedUnitPrice < 0 || requestedUnitPrice > 1_000_000) {
+      throw new Error("Unit price must be a non-negative amount");
+    }
+    const defaultUnitPrice = requestedUnitPrice;
     const defaultTaxRate = normalizeTaxRate(args.tax_rate);
     const dueInDays = Math.max(0, Math.min(60, Math.floor(args.due_in_days ?? 7)));
     const limit = Math.max(1, Math.min(200, Math.floor(args.limit ?? 100)));
@@ -471,7 +560,7 @@ export const batchCreateFromCompletedWorkOrders = mutation({
       .query("workOrders")
       .withIndex("by_created_by_and_scheduled_date", (q) =>
         q
-          .eq("created_by", identity.email!)
+          .eq("created_by", tenantEmail)
           .gte("scheduled_date", args.from_date)
           .lte("scheduled_date", args.to_date)
       )
@@ -506,7 +595,7 @@ export const batchCreateFromCompletedWorkOrders = mutation({
         let linkedQuote: any = null;
         if (workOrder.source_quote_id) {
           const quote = await ctx.db.get(workOrder.source_quote_id);
-          if (quote && quote.created_by === identity.email) {
+          if (quote && quote.customer_id === workOrder.customer_id) {
             linkedQuote = quote;
           }
         }
@@ -527,30 +616,22 @@ export const batchCreateFromCompletedWorkOrders = mutation({
           }
         }
 
-        const lineItems = [
+        const lineItems = normalizeLineItems([
           {
             description: workOrder.title,
             quantity: 1,
             unit_price: defaultUnitPrice,
-            amount: Number(defaultUnitPrice.toFixed(2)),
           },
-        ];
+        ]);
 
-        const subtotal = Number(lineItems.reduce((sum: number, item: any) => sum + item.amount, 0).toFixed(2));
-        const taxRate = defaultTaxRate;
-        const tax = Number((subtotal * taxRate).toFixed(2));
-        const grossTotal = Number((subtotal + tax).toFixed(2));
-        const depositApplied = Number(
-          (
-            linkedQuote?.deposit_status === "paid" && linkedQuote?.deposit_required && linkedQuote.deposit_required > 0
-              ? Math.min(grossTotal, linkedQuote.deposit_required)
-              : 0
-          ).toFixed(2)
-        );
-        const total = Number((grossTotal - depositApplied).toFixed(2));
+        const paidDeposit =
+          linkedQuote?.deposit_status === "paid" && linkedQuote?.deposit_required && linkedQuote.deposit_required > 0
+            ? linkedQuote.deposit_required
+            : 0;
+        const { subtotal, tax, depositApplied, total } = computeTotals(lineItems, defaultTaxRate, paidDeposit);
 
         const now = Date.now();
-        const initialStatus = total <= 0 ? "paid" : "draft";
+        const initialStatus = initialInvoiceStatus(total, depositApplied);
         const dueDate = getDatePlusDays(workOrder.scheduled_date, dueInDays);
         const notes = resolveInvoiceNotes(linkedQuote?.description || workOrder.description, lineItems, workOrder.title);
 
@@ -559,7 +640,7 @@ export const batchCreateFromCompletedWorkOrders = mutation({
           work_order_id: workOrder._id,
           source_quote_id: linkedQuote?._id || workOrder.source_quote_id,
           service_log_id: undefined,
-          created_by: identity.email!,
+          created_by: tenantEmail,
           status: initialStatus,
           line_items: lineItems,
           subtotal,
@@ -606,6 +687,8 @@ export const updateStatus = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "invoice.write");
+
     validateStatus(args.status);
     if (args.status === "paid") {
       throw new Error("Payment status cannot be updated here");
@@ -613,14 +696,18 @@ export const updateStatus = mutation({
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    await assertInvoiceAccess(ctx, invoice, identity.email!, true);
+    assertInvoiceTransition(invoice.status, args.status);
+
+    // Clients may only attach Stripe-hosted payment links; server flows set
+    // payment URLs through sendInvoice / finalizeSend.
+    const paymentUrl = args.payment_url !== undefined ? validatePaymentUrl(args.payment_url) : invoice.payment_url;
 
     const now = Date.now();
     await ctx.db.patch(args.id, {
       status: args.status,
-      sent_at: args.status === "sent" ? now : invoice.sent_at,
-      paid_at: args.status === "paid" ? now : invoice.paid_at,
-      payment_url: args.payment_url ?? invoice.payment_url,
+      sent_at: args.status === "sent" ? invoice.sent_at ?? now : invoice.sent_at,
+      payment_url: paymentUrl,
       updated_at: now,
     });
 
@@ -639,17 +726,17 @@ export const sendInvoice = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "invoice.write");
+
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       throw new Error("Cannot send an invoice that is paid or cancelled");
     }
 
-    const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { customer } = await assertCustomerAccess(ctx, invoice.customer_id, identity.email!, {
+      roles: BILLING_WRITE_ROLES,
+    });
 
     const configuredBaseUrl = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
     const paymentUrl = configuredBaseUrl
@@ -687,7 +774,7 @@ export const sendInvoice = mutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
-      created_by: identity.email!,
+      created_by: invoice.created_by,
       created_at: now,
       updated_at: now,
     });
@@ -711,7 +798,7 @@ export const finalizeSend = internalMutation({
   },
   handler: async (ctx, args) => {
     const invoice = await ctx.db.get(args.id);
-    if (!invoice || invoice.created_by !== args.user_email) {
+    if (!invoice) {
       throw new Error("Invoice not found or access denied");
     }
 
@@ -719,10 +806,9 @@ export const finalizeSend = internalMutation({
       throw new Error("Cannot send an invoice that is paid or cancelled");
     }
 
-    const customer = await ctx.db.get(invoice.customer_id);
-    if (!customer || customer.created_by !== args.user_email) {
-      throw new Error("Customer not found or access denied");
-    }
+    const { customer } = await assertCustomerAccess(ctx, invoice.customer_id, args.user_email, {
+      roles: BILLING_WRITE_ROLES,
+    });
 
     const now = Date.now();
     await ctx.db.patch(args.id, {
@@ -756,7 +842,7 @@ export const finalizeSend = internalMutation({
       provider: undefined,
       provider_message_id: undefined,
       error: undefined,
-      created_by: args.user_email,
+      created_by: invoice.created_by,
       created_at: now,
       updated_at: now,
     });
@@ -776,9 +862,14 @@ export const markPaid = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "invoice.write");
+
     const invoice = await ctx.db.get(args.id);
     if (!invoice) throw new Error("Invoice not found");
-    if (invoice.created_by !== identity.email) throw new Error("Access denied");
+    await assertInvoiceAccess(ctx, invoice, identity.email!, true);
+    if (invoice.status !== "draft" && invoice.status !== "sent") {
+      throw new Error(`Invoice cannot be marked paid from "${invoice.status}"`);
+    }
     if (!canManuallyMarkInvoicePaid(invoice)) {
       throw new Error("This invoice is linked to Stripe. It will be marked paid automatically after Stripe confirms payment.");
     }
@@ -817,7 +908,44 @@ export const markPaidFromStripe = internalMutation({
   },
 });
 
-const REMINDER_STATUSES = ["queued", "sent", "delivered", "failed"] as const;
+/**
+ * Webhook path for a paid platform Checkout Session. Settles the invoice only
+ * when it exists and the session paid exactly the amount due in USD; returns
+ * the reason otherwise so the webhook can acknowledge without retry loops.
+ */
+export const markPaidFromStripeCheckout = internalMutation({
+  args: {
+    invoice_id: v.string(),
+    amount_total: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    stripe_checkout_session_id: v.optional(v.string()),
+    stripe_payment_intent_id: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const invoiceId = ctx.db.normalizeId("invoices", args.invoice_id);
+    const invoice = invoiceId ? await ctx.db.get(invoiceId) : null;
+    if (!invoiceId || !invoice) return { applied: false, reason: "not_found" };
+    if (invoice.status === "paid") return { applied: false, reason: "already_paid" };
+
+    const mismatch = checkoutPaymentMismatch(invoice.total, {
+      amount_total: args.amount_total,
+      currency: args.currency,
+    });
+    if (mismatch) return { applied: false, reason: mismatch };
+
+    const now = Date.now();
+    await ctx.db.patch(invoiceId, {
+      status: "paid",
+      paid_at: invoice.paid_at ?? now,
+      stripe_checkout_session_id: args.stripe_checkout_session_id ?? invoice.stripe_checkout_session_id,
+      stripe_payment_intent_id: args.stripe_payment_intent_id ?? invoice.stripe_payment_intent_id,
+      updated_at: now,
+    });
+    return { applied: true, reason: null };
+  },
+});
+
+const REMINDER_STATUSES =["queued", "sent", "delivered", "failed"] as const;
 const MAX_REMINDER_COMM_SCAN_PER_STATUS = 500;
 const MAX_SENT_INVOICE_SCAN = 200;
 const MAX_REMINDERS_QUEUED = 50;
@@ -828,7 +956,10 @@ export const queueUnpaidReminders = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const email = identity.email!;
+    await enforceRateLimit(ctx, identity.email!, "invoice.write");
+    const access = await assertBusinessRole(ctx, identity.email!, BILLING_WRITE_ROLES);
+    // Invoices and their reminders are keyed by tenant.
+    const email = access.tenantEmail;
     const now = Date.now();
     const today = new Date().toISOString().slice(0, 10);
 
@@ -881,7 +1012,7 @@ export const queueUnpaidReminders = mutation({
       }
 
       const customer = await ctx.db.get(invoice.customer_id);
-      if (!customer || customer.created_by !== email) continue;
+      if (!customer || !(await canAccessCustomer(ctx, customer, identity.email!))) continue;
 
       const destination = resolveReminderDestination(customer);
       if (!destination) continue;

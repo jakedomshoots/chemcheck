@@ -1,53 +1,23 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { normalizeTaxRate } from "./tax";
+import { enforceRateLimit } from "./rateLimit";
+import {
+  FIELD_WRITE_ROLES,
+  assertBusinessRole as assertBusinessRoleShared,
+  canAccessCustomer as canAccessCustomerShared,
+  getRoleInBusiness,
+  normalizeEmail,
+  resolveBusinessForUser,
+} from "./access";
 
 const VALID_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
-const WORK_ORDER_WRITE_ROLES = new Set(["owner", "admin", "technician"]);
+const WORK_ORDER_WRITE_ROLES = FIELD_WRITE_ROLES;
 
 async function resolveBusinessContext(ctx: any, userEmail: string) {
-  const teamMember = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-
-  if (teamMember) {
-    const teamBusiness = await ctx.db.get(teamMember.business_id);
-    if (teamBusiness) return teamBusiness;
-  }
-
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-    .first();
-}
-
-async function getActiveBusinessMemberEmails(
-  ctx: any,
-  businessId: any,
-  ownerEmail: string
-): Promise<Set<string>> {
-  const members = await ctx.db
-    .query("team_members")
-    .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .collect();
-
-  const emails = new Set<string>([ownerEmail]);
-  for (const member of members) {
-    if (member.user_email) {
-      emails.add(member.user_email);
-    }
-  }
-  return emails;
-}
-
-async function getAllowedCreatedByEmails(ctx: any, userEmail: string): Promise<Set<string>> {
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return new Set([userEmail]);
-  return await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
+  // Only accepted (active) memberships count; pending invites never grant access.
+  return await resolveBusinessForUser(ctx, userEmail);
 }
 
 async function accessibleWorkOrdersQuery(
@@ -86,48 +56,21 @@ function clampWorkOrderPageSize(numItems: number | undefined): number {
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-  if (!customer) return false;
-  if (customer.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(customer.created_by);
+  return await canAccessCustomerShared(ctx, customer, userEmail);
 }
 
 async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): Promise<boolean> {
   if (!workOrder) return false;
-  if (workOrder.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(workOrder.created_by);
+  if (normalizeEmail(workOrder.created_by) === normalizeEmail(userEmail)) return true;
+  if (workOrder.business_id) {
+    const business = await ctx.db.get(workOrder.business_id);
+    if (await getRoleInBusiness(ctx, business, userEmail)) return true;
+  }
+  return await canAccessCustomerShared(ctx, workOrder.customer_id, userEmail);
 }
 
-async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
-  const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
-  const ownerEmail = String(business?.owner_email || "").trim().toLowerCase();
-  if (ownerEmail && normalizedUserEmail === ownerEmail) {
-    return "owner";
-  }
-
-  const member = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) =>
-      q.and(
-        q.eq(q.field("business_id"), business._id),
-        q.eq(q.field("is_active"), true),
-      )
-    )
-    .first();
-
-  return member?.role || null;
-}
-
-async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set<string>): Promise<void> {
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return;
-
-  const role = await getBusinessRole(ctx, business, userEmail);
-  if (!role || !allowedRoles.has(role)) {
-    throw new Error("Insufficient role permissions");
-  }
+async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: readonly string[]): Promise<void> {
+  await assertBusinessRoleShared(ctx, userEmail, allowedRoles);
 }
 
 function normalizeWorkOrderDate(value: unknown): string {
@@ -180,10 +123,10 @@ export const list = query({
     let workOrders = pageResult.page;
 
     if (args.status) {
-      workOrders = workOrders.filter((item) => item.status === args.status);
+      workOrders = workOrders.filter((item: { status?: string }) => item.status === args.status);
     }
 
-    workOrders.sort((a, b) => {
+    workOrders.sort((a: unknown, b: unknown) => {
       const aDate = normalizeWorkOrderDate((a as { scheduled_date?: unknown }).scheduled_date);
       const bDate = normalizeWorkOrderDate((b as { scheduled_date?: unknown }).scheduled_date);
       const dateDiff = aDate.localeCompare(bDate);
@@ -230,6 +173,8 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email!, "workOrder.write");
 
     const customer = await ctx.db.get(args.customer_id);
     if (!customer) {
@@ -283,6 +228,8 @@ export const update = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "workOrder.write");
+
     const current = await ctx.db.get(args.id);
     if (!current) throw new Error("Work order not found");
     if (!(await canAccessWorkOrder(ctx, current, identity.email!))) throw new Error("Access denied");
@@ -322,6 +269,8 @@ export const complete = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
+    await enforceRateLimit(ctx, identity.email!, "workOrder.write");
+
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");
     if (!(await canAccessWorkOrder(ctx, workOrder, identity.email!))) throw new Error("Access denied");
@@ -349,7 +298,7 @@ export const complete = mutation({
       const quote = await ctx.db.get(workOrder.source_quote_id);
       if (
         quote &&
-        quote.created_by === identity.email &&
+        quote.customer_id === workOrder.customer_id &&
         quote.deposit_required &&
         quote.deposit_required > 0 &&
         quote.deposit_status !== "paid"
@@ -357,7 +306,7 @@ export const complete = mutation({
         invoiceBlockedReason = "deposit_pending";
       } else if (
         quote &&
-        quote.created_by === identity.email &&
+        quote.customer_id === workOrder.customer_id &&
         quote.deposit_status === "paid" &&
         quote.deposit_required &&
         quote.deposit_required > 0
@@ -374,6 +323,9 @@ export const complete = mutation({
     let invoiceId = existingInvoice?._id;
     if (!invoiceId && !invoiceBlockedReason) {
       const unitPrice = args.unit_price ?? 120;
+      if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) {
+        throw new Error("Unit price must be a non-negative amount");
+      }
       const quantity = 1;
       const subtotal = Number((unitPrice * quantity).toFixed(2));
       const taxRate = normalizeTaxRate(args.tax_rate);
@@ -381,7 +333,8 @@ export const complete = mutation({
       const grossTotal = Number((subtotal + tax).toFixed(2));
       const safeDepositApplied = Number(Math.min(grossTotal, depositApplied).toFixed(2));
       const total = Number((grossTotal - safeDepositApplied).toFixed(2));
-      const initialStatus = total <= 0 ? "paid" : "draft";
+      // Only a verified paid deposit that covers the whole amount settles the invoice.
+      const initialStatus = total <= 0 && safeDepositApplied > 0 ? "paid" : "draft";
       const notes = workOrder.description?.trim() || workOrder.title;
 
       invoiceId = await ctx.db.insert("invoices", {
@@ -389,7 +342,8 @@ export const complete = mutation({
         work_order_id: args.id,
         source_quote_id: workOrder.source_quote_id,
         service_log_id: undefined,
-        created_by: identity.email!,
+        // Invoices are keyed by the tenant (customer owner) so the whole team sees them.
+        created_by: customer.created_by || identity.email!,
         status: initialStatus,
         line_items: [
           {
@@ -453,6 +407,8 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
+    await enforceRateLimit(ctx, identity.email!, "workOrder.write");
 
     const workOrder = await ctx.db.get(args.id);
     if (!workOrder) throw new Error("Work order not found");

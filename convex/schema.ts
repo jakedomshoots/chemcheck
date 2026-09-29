@@ -179,6 +179,8 @@ export default defineSchema({
     current_period_end: v.number(),
     cancel_at_period_end: v.boolean(),
     trial_end: v.optional(v.number()),
+    // Stripe `event.created` (ms) of the last applied webhook; older events are ignored.
+    last_event_created: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
   })
@@ -201,7 +203,8 @@ export default defineSchema({
     created_at: v.number(),
   })
     .index("by_service_log", ["service_log_id"])
-    .index("by_customer", ["customer_id"]),
+    .index("by_customer", ["customer_id"])
+    .index("by_storage_id", ["storage_id"]),
 
   // Business/Tenant table for multi-tenancy
   businesses: defineTable({
@@ -257,8 +260,11 @@ export default defineSchema({
     business_id: v.id("businesses"),
     user_email: v.string(),
     name: v.string(),
-    role: v.string(), // owner, admin, employee
+    role: v.string(), // owner, admin, technician, viewer
     is_active: v.boolean(),
+    // Invite lifecycle: pending (invited, grants no access) | active | declined | removed | left.
+    // Legacy rows without status are treated as active when is_active is true.
+    status: v.optional(v.string()),
     invited_at: v.number(),
     joined_at: v.optional(v.number()),
   })

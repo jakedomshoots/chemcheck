@@ -1,44 +1,25 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
-
-const WRITE_ROLES = new Set(["owner", "admin", "technician"]);
+import { enforceRateLimit } from "./rateLimit";
+import {
+  FIELD_WRITE_ROLES,
+  assertCustomerAccess,
+  canAccessCustomer as canAccessCustomerShared,
+  resolveBusinessForUser,
+} from "./access";
 
 async function resolveBusiness(ctx: any, email: string) {
-  const member = await ctx.db.query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-  if (member) return await ctx.db.get(member.business_id);
-  return await ctx.db.query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", email))
-    .first();
+  // Only accepted (active) memberships count; pending invites never grant access.
+  return await resolveBusinessForUser(ctx, email);
 }
 
 async function canAccessCustomer(ctx: any, customer: any, email: string) {
   if (!customer) return false;
-  const business = await resolveBusiness(ctx, email);
-  if (business) {
-    if (String(customer.business_id || "") === String(business._id)) return true;
-    // Legacy customers may not have business_id until the existing backfill
-    // runs; allow the owner/member email path during that migration window.
-    return String(customer.created_by || "").toLowerCase() === String(business.owner_email || "").toLowerCase();
-  }
-  return String(customer.created_by || "").toLowerCase() === String(email).toLowerCase();
+  return await canAccessCustomerShared(ctx, customer, email);
 }
 
-async function assertWriteAccess(ctx: any, email: string) {
-  const business = await resolveBusiness(ctx, email);
-  if (!business) return;
-  const isOwner = String(business.owner_email).toLowerCase() === String(email).toLowerCase();
-  if (isOwner) return;
-  const member = await ctx.db.query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
-    .filter((q: any) => q.and(
-      q.eq(q.field("business_id"), business._id),
-      q.eq(q.field("is_active"), true),
-    ))
-    .first();
-  if (!member || !WRITE_ROLES.has(member.role)) throw new Error("Insufficient role permissions");
+async function assertWriteAccess(ctx: any, customer: any, email: string) {
+  await assertCustomerAccess(ctx, customer, email, { roles: FIELD_WRITE_ROLES });
 }
 
 async function getOwnedPool(ctx: any, poolId: any, email: string) {
@@ -87,9 +68,10 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) throw new Error("Not authenticated");
+    await enforceRateLimit(ctx, identity.email, "pool.write");
     const customer = await ctx.db.get(args.customer_id);
     if (!(await canAccessCustomer(ctx, customer, identity.email))) throw new Error("Access denied");
-    await assertWriteAccess(ctx, identity.email);
+    await assertWriteAccess(ctx, customer, identity.email);
     if (!args.name.trim()) throw new Error("Pool name is required");
     if (!args.service_day.trim()) throw new Error("Service day is required");
     const business = await resolveBusiness(ctx, identity.email);
@@ -101,7 +83,7 @@ export const create = mutation({
       pool_type: args.pool_type.trim(),
       surface_type: args.surface_type.trim(),
       active: true,
-      business_id: business ? String(business._id) : customer!.business_id,
+      business_id: customer!.business_id ?? (business ? String(business._id) : undefined),
       created_at: now,
       updated_at: now,
     });
@@ -124,8 +106,9 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) throw new Error("Not authenticated");
-    await getOwnedPool(ctx, args.id, identity.email);
-    await assertWriteAccess(ctx, identity.email);
+    await enforceRateLimit(ctx, identity.email, "pool.write");
+    const { customer } = await getOwnedPool(ctx, args.id, identity.email);
+    await assertWriteAccess(ctx, customer, identity.email);
     const { id, ...updates } = args;
     if (updates.name !== undefined && !updates.name.trim()) throw new Error("Pool name is required");
     await ctx.db.patch(id, { ...updates, updated_at: Date.now() });
@@ -138,8 +121,9 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) throw new Error("Not authenticated");
-    const { pool } = await getOwnedPool(ctx, args.id, identity.email);
-    await assertWriteAccess(ctx, identity.email);
+    await enforceRateLimit(ctx, identity.email, "pool.write");
+    const { pool, customer } = await getOwnedPool(ctx, args.id, identity.email);
+    await assertWriteAccess(ctx, customer, identity.email);
     const equipment = await ctx.db.query("equipment")
       .withIndex("by_pool", (q: any) => q.eq("pool_id", pool._id))
       .collect();

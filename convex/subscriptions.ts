@@ -2,6 +2,9 @@ import { v } from "convex/values";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { fetchProvider, requireStripeConfig } from "./providerConfig";
+import { resolveBusinessForUser } from "./access";
+import { getCustomerUsage, limitsForSubscription } from "./planLimits";
+import { shouldApplyEvent } from "./stripeSubscriptionState";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const DEFAULT_BATCH_SIZE = 100;
@@ -59,16 +62,8 @@ async function stripeRequest(path: string, secretKey: string, form?: URLSearchPa
 }
 
 async function currentBusiness(ctx: any, email: string) {
-  const membership = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-  if (membership) return await ctx.db.get(membership.business_id);
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", email))
-    .first();
+  // Only accepted (active) memberships count; pending invites never grant access.
+  return await resolveBusinessForUser(ctx, email);
 }
 
 async function ownedBusiness(ctx: any, email: string) {
@@ -106,38 +101,58 @@ export const upsert = internalMutation({
     user_email: v.string(),
     stripe_customer_id: v.string(),
     stripe_subscription_id: v.string(),
-    plan_id: v.string(),
+    // Omitted when the plan cannot be resolved; the stored plan is then kept.
+    plan_id: v.optional(v.string()),
     status: subscriptionStatuses,
-    current_period_start: v.number(),
-    current_period_end: v.number(),
+    // Omitted when Stripe did not send them; stored values are then kept.
+    current_period_start: v.optional(v.number()),
+    current_period_end: v.optional(v.number()),
     cancel_at_period_end: v.boolean(),
     trial_end: v.optional(v.number()),
+    // Stripe event.created in ms; older events than the last applied one are ignored.
+    event_created: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("subscriptions")
       .withIndex("by_stripe_subscription", (q) => q.eq("stripe_subscription_id", args.stripe_subscription_id))
       .first();
+    const now = Date.now();
     if (existing) {
+      if (!shouldApplyEvent(existing.last_event_created, args.event_created)) {
+        return { id: existing._id, applied: false };
+      }
       await ctx.db.patch(existing._id, {
         business_id: args.business_id ?? existing.business_id,
         user_email: args.user_email || existing.user_email,
         stripe_customer_id: args.stripe_customer_id,
         status: args.status,
-        plan_id: args.plan_id,
-        current_period_start: args.current_period_start,
-        current_period_end: args.current_period_end,
+        plan_id: args.plan_id ?? existing.plan_id,
+        current_period_start: args.current_period_start ?? existing.current_period_start,
+        current_period_end: args.current_period_end ?? existing.current_period_end,
         cancel_at_period_end: args.cancel_at_period_end,
         trial_end: args.trial_end,
-        updated_at: Date.now(),
+        last_event_created: args.event_created ?? existing.last_event_created,
+        updated_at: now,
       });
-      return existing._id;
+      return { id: existing._id, applied: true };
     }
-    return await ctx.db.insert("subscriptions", {
-      ...args,
-      created_at: Date.now(),
-      updated_at: Date.now(),
+    const id = await ctx.db.insert("subscriptions", {
+      business_id: args.business_id,
+      user_email: args.user_email,
+      stripe_customer_id: args.stripe_customer_id,
+      stripe_subscription_id: args.stripe_subscription_id,
+      plan_id: args.plan_id ?? "starter",
+      status: args.status,
+      current_period_start: args.current_period_start ?? now,
+      current_period_end: args.current_period_end ?? now,
+      cancel_at_period_end: args.cancel_at_period_end,
+      trial_end: args.trial_end,
+      last_event_created: args.event_created,
+      created_at: now,
+      updated_at: now,
     });
+    return { id, applied: true };
   },
 });
 
@@ -158,9 +173,23 @@ export const getByStripeCustomer = internalQuery({
 });
 
 export const updateStatus = internalMutation({
-  args: { subscription_id: v.id("subscriptions"), status: subscriptionStatuses },
+  args: {
+    subscription_id: v.id("subscriptions"),
+    status: subscriptionStatuses,
+    event_created: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.subscription_id, { status: args.status, updated_at: Date.now() });
+    const existing = await ctx.db.get(args.subscription_id);
+    if (!existing) return { applied: false };
+    if (!shouldApplyEvent(existing.last_event_created, args.event_created)) {
+      return { applied: false };
+    }
+    await ctx.db.patch(args.subscription_id, {
+      status: args.status,
+      last_event_created: args.event_created ?? existing.last_event_created,
+      updated_at: Date.now(),
+    });
+    return { applied: true };
   },
 });
 
@@ -300,19 +329,12 @@ export const checkLimit = query({
       .query("subscriptions")
       .withIndex("by_business", (q) => q.eq("business_id", business._id))
       .first();
-    const planLimits: Record<string, { users: number; customers: number }> = {
-      starter: { users: 1, customers: 50 },
-      professional: { users: 3, customers: 200 },
-      business: { users: -1, customers: -1 },
-    };
-    const limits = subscription ? planLimits[subscription.plan_id] || planLimits.starter : { users: 1, customers: 10 };
+    // Same limits the server enforces in planLimits.ts.
+    const limits = limitsForSubscription(subscription);
     const limit = limits[args.limitType];
     let current = 0;
     if (args.limitType === "customers") {
-      current = (await ctx.db
-        .query("customers")
-        .withIndex("by_business", (q) => q.eq("business_id", String(business._id)))
-        .collect()).length;
+      current = (await getCustomerUsage(ctx, business)).current;
     }
     return { allowed: limit === -1 || current < limit, current, limit: limit === -1 ? Infinity : limit };
   },

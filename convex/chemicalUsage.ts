@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { FIELD_WRITE_ROLES, assertCustomerAccess } from "./access";
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
@@ -51,11 +52,8 @@ export const filter = query({
         if (!identity) throw new Error("Not authenticated");
 
         if (args.customer_id) {
-            // Verify ownership first
-            const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Customer not found or access denied");
-            }
+            // Verify access first
+            await assertCustomerAccess(ctx, args.customer_id, identity.email!);
         }
 
         if (args.pool_id) {
@@ -93,11 +91,8 @@ export const getByCustomer = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        // Verify customer belongs to the caller's tenant (creator or active member)
+        await assertCustomerAccess(ctx, args.customer_id, identity.email!);
 
         if (args.pool_id) {
             const pool = await ctx.db.get(args.pool_id);
@@ -131,11 +126,8 @@ export const create = mutation({
         // Enforce rate limiting (database-backed for distributed rate limiting)
         await enforceRateLimit(ctx, identity.email!, 'chemical.create');
 
-        // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        // Verify customer belongs to the caller's tenant; technicians may record usage.
+        await assertCustomerAccess(ctx, args.customer_id, identity.email!, { roles: FIELD_WRITE_ROLES });
 
         if (args.pool_id) {
             const pool = await ctx.db.get(args.pool_id);
@@ -176,14 +168,16 @@ export const update = mutation({
         const record = await ctx.db.get(args.id);
         if (!record) throw new Error("Chemical usage record not found");
 
-        const customer = await ctx.db.get(record.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Access denied");
+        await assertCustomerAccess(ctx, record.customer_id, identity.email!, { roles: FIELD_WRITE_ROLES });
+        // Moving a record to another customer requires access to that customer too.
+        const targetCustomerId = args.customer_id ?? record.customer_id;
+        if (targetCustomerId !== record.customer_id) {
+            await assertCustomerAccess(ctx, targetCustomerId, identity.email!, { roles: FIELD_WRITE_ROLES });
         }
 
         if (args.pool_id) {
             const pool = await ctx.db.get(args.pool_id);
-            if (!pool || pool.customer_id !== record.customer_id || !pool.active) throw new Error("Pool not found or does not belong to customer");
+            if (!pool || pool.customer_id !== targetCustomerId || !pool.active) throw new Error("Pool not found or does not belong to customer");
         }
 
         const { id, ...updates } = args;
@@ -207,10 +201,7 @@ export const remove = mutation({
         const record = await ctx.db.get(args.id);
         if (!record) throw new Error("Chemical usage record not found");
 
-        const customer = await ctx.db.get(record.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Access denied");
-        }
+        await assertCustomerAccess(ctx, record.customer_id, identity.email!, { roles: FIELD_WRITE_ROLES });
 
         await ctx.db.delete(args.id);
     },

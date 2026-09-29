@@ -1,6 +1,17 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { FIELD_WRITE_ROLES, assertCustomerAccess, normalizeEmail } from "./access";
+
+async function assertNoteAccess(ctx: any, note: any, userEmail: string): Promise<void> {
+    if (note.customer_id) {
+        // Customer-linked notes are shared with the customer's team.
+        await assertCustomerAccess(ctx, note.customer_id, userEmail, { roles: FIELD_WRITE_ROLES });
+    } else if (normalizeEmail(note.created_by) !== normalizeEmail(userEmail)) {
+        // General notes are private to their author.
+        throw new Error("Access denied: cannot modify another user's note");
+    }
+}
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
@@ -71,11 +82,8 @@ export const filter = query({
         if (!identity) throw new Error("Not authenticated");
 
         if (args.customer_id !== undefined) {
-            // Verify ownership first
-            const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Customer not found or access denied");
-            }
+            // Verify access first
+            await assertCustomerAccess(ctx, args.customer_id, identity.email!);
         }
 
         if (args.pool_id) {
@@ -115,11 +123,8 @@ export const getByCustomer = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
 
-        // Verify customer belongs to current user (tenant isolation)
-        const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
-            throw new Error("Customer not found or access denied");
-        }
+        // Verify customer belongs to the caller's tenant (creator or active member)
+        await assertCustomerAccess(ctx, args.customer_id, identity.email!);
 
         return await ctx.db
             .query("notes")
@@ -155,10 +160,7 @@ export const create = mutation({
 
         // If note is linked to a customer, verify ownership (tenant isolation)
         if (args.customer_id) {
-            const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Customer not found or access denied");
-            }
+            await assertCustomerAccess(ctx, args.customer_id, identity.email!, { roles: FIELD_WRITE_ROLES });
         }
 
         if (args.pool_id) {
@@ -203,18 +205,11 @@ export const update = mutation({
         const note = await ctx.db.get(args.id);
         if (!note) throw new Error("Note not found");
 
-        // SECURITY: Verify ownership - check both customer-linked and general notes
-        if (note.customer_id) {
-            // Note is linked to a customer - verify customer ownership
-            const customer = await ctx.db.get(note.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Access denied");
-            }
-        } else {
-            // General note (no customer_id) - verify created_by matches user
-            if (note.created_by !== identity.email) {
-                throw new Error("Access denied: cannot modify another user's note");
-            }
+        // SECURITY: Verify access - check both customer-linked and general notes
+        await assertNoteAccess(ctx, note, identity.email!);
+        // Re-linking a note to another customer requires access to that customer too.
+        if (args.customer_id && args.customer_id !== note.customer_id) {
+            await assertCustomerAccess(ctx, args.customer_id, identity.email!, { roles: FIELD_WRITE_ROLES });
         }
 
         const { id, ...updates } = args;
@@ -238,19 +233,8 @@ export const remove = mutation({
         const note = await ctx.db.get(args.id);
         if (!note) throw new Error("Note not found");
 
-        // SECURITY: Verify ownership - check both customer-linked and general notes
-        if (note.customer_id) {
-            // Note is linked to a customer - verify customer ownership
-            const customer = await ctx.db.get(note.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
-                throw new Error("Access denied");
-            }
-        } else {
-            // General note (no customer_id) - verify created_by matches user
-            if (note.created_by !== identity.email) {
-                throw new Error("Access denied: cannot delete another user's note");
-            }
-        }
+        // SECURITY: Verify access - check both customer-linked and general notes
+        await assertNoteAccess(ctx, note, identity.email!);
 
         await ctx.db.delete(args.id);
     },

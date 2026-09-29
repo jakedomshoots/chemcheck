@@ -1,51 +1,22 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import {
+    CUSTOMER_WRITE_ROLES,
+    assertCustomerAccess,
+    canAccessCustomer as canAccessCustomerShared,
+    getRoleInBusiness,
+    normalizeEmail,
+    resolveBusinessForUser,
+} from "./access";
+import { assertCanAddCustomers } from "./planLimits";
 import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
 
-const CUSTOMER_WRITE_ROLES = new Set(["owner", "admin"]);
 const DEFAULT_LIST_LIMIT = 100;
 
-function normalizeEmail(email: any): string {
-    return String(email || "").trim().toLowerCase();
-}
-
 async function resolveBusinessContext(ctx: any, userEmail: string) {
-    const teamMember = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .first();
-
-    if (teamMember) {
-        const teamBusiness = await ctx.db.get(teamMember.business_id);
-        if (teamBusiness) return teamBusiness;
-    }
-
-    return await ctx.db
-        .query("businesses")
-        .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-        .first();
-}
-
-async function getActiveBusinessMemberEmails(
-    ctx: any,
-    businessId: any,
-    ownerEmail: string
-): Promise<Set<string>> {
-    const members = await ctx.db
-        .query("team_members")
-        .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .collect();
-
-    const emails = new Set<string>([ownerEmail]);
-    for (const member of members) {
-        if (member.user_email) {
-            emails.add(member.user_email);
-        }
-    }
-    return emails;
+    // Only accepted (active) memberships count; pending invites never grant access.
+    return await resolveBusinessForUser(ctx, userEmail);
 }
 
 async function getAccessibleCustomersQuery(ctx: any, userEmail: string) {
@@ -70,47 +41,12 @@ async function getAccessibleCustomersQuery(ctx: any, userEmail: string) {
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-    if (!customer) return false;
-
-    const business = await resolveBusinessContext(ctx, userEmail);
-    if (business) {
-        return String(customer.business_id || "") === String(business._id);
-    }
-
-    const normalizedUserEmail = normalizeEmail(userEmail);
-    const createdBy = normalizeEmail(customer.created_by);
-    return createdBy === normalizedUserEmail;
+    return await canAccessCustomerShared(ctx, customer, userEmail);
 }
 
-async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
-    const normalizedUserEmail = normalizeEmail(userEmail);
-    const ownerEmail = normalizeEmail(business?.owner_email);
-    if (ownerEmail && normalizedUserEmail === ownerEmail) {
-        return "owner";
-    }
-
-    const member = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) =>
-            q.and(
-                q.eq(q.field("business_id"), business._id),
-                q.eq(q.field("is_active"), true)
-            )
-        )
-        .first();
-
-    return member?.role || null;
-}
-
-async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set<string>): Promise<void> {
-    const business = await resolveBusinessContext(ctx, userEmail);
-    if (!business) return;
-
-    const role = await getBusinessRole(ctx, business, userEmail);
-    if (!role || !allowedRoles.has(role)) {
-        throw new Error("Insufficient role permissions");
-    }
+// Throws unless the caller holds one of `allowedRoles` in the customer's business.
+async function assertBusinessRole(ctx: any, customer: any, userEmail: string, allowedRoles: readonly string[]): Promise<void> {
+    await assertCustomerAccess(ctx, customer, userEmail, { roles: allowedRoles });
 }
 
 // Count accessible customers for the current user, bounded by a safe cap.
@@ -277,6 +213,15 @@ export const create = mutation({
         // This cannot be bypassed by attackers sending data directly to Convex
         const validatedData = validateCustomerCreate(args);
         const business = await resolveBusinessContext(ctx, identity.email!);
+        if (business) {
+            // Creating customer records is limited to owners/admins, matching update/remove.
+            const role = await getRoleInBusiness(ctx, business, identity.email!);
+            if (!role || !CUSTOMER_WRITE_ROLES.includes(role)) {
+                throw new Error("Insufficient role permissions");
+            }
+        }
+        // Server-side plan enforcement (the client-side check is advisory only).
+        await assertCanAddCustomers(ctx, business ?? identity.email!, 1);
         const createdBy = business ? business.owner_email : identity.email!;
         const businessId = business ? String(business._id) : undefined;
 
@@ -344,7 +289,7 @@ export const update = mutation({
         if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
-        await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
+        await assertBusinessRole(ctx, customer, identity.email!, CUSTOMER_WRITE_ROLES);
 
         const { id, report_settings, ...otherArgs } = args;
 
@@ -411,7 +356,7 @@ export const remove = mutation({
         if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
-        await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
+        await assertBusinessRole(ctx, customer, identity.email!, CUSTOMER_WRITE_ROLES);
 
         await ctx.db.delete(args.id);
     },

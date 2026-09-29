@@ -1,25 +1,29 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { enforceRateLimit } from "./rateLimit";
+import {
+  FIELD_WRITE_ROLES,
+  assertCustomerAccess,
+  canAccessCustomer,
+  resolveBusinessForUser,
+} from "./access";
 
 async function resolveBusiness(ctx: any, email: string) {
-  const member = await ctx.db.query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
-    .filter((q: any) => q.eq(q.field("is_active"), true)).first();
-  if (member) return await ctx.db.get(member.business_id);
-  return await ctx.db.query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", email)).first();
+  // Only accepted (active) memberships count; pending invites never grant access.
+  return await resolveBusinessForUser(ctx, email);
 }
 
-async function getOwnedPool(ctx: any, poolId: any, email: string) {
+async function getOwnedPool(ctx: any, poolId: any, email: string, write = false) {
   const pool = await ctx.db.get(poolId);
   if (!pool) throw new Error("Pool not found");
   const customer = await ctx.db.get(pool.customer_id);
   if (!customer) throw new Error("Customer not found");
-  const business = await resolveBusiness(ctx, email);
-  const owns = business
-    ? String(customer.business_id || "") === String(business._id) || String(customer.created_by || "").toLowerCase() === String(business.owner_email || "").toLowerCase()
-    : String(customer.created_by || "").toLowerCase() === String(email).toLowerCase();
-  if (!owns) throw new Error("Access denied");
+  try {
+    await assertCustomerAccess(ctx, customer, email, write ? { roles: FIELD_WRITE_ROLES } : {});
+  } catch (error) {
+    if (error instanceof Error && error.message === "Insufficient role permissions") throw error;
+    throw new Error("Access denied");
+  }
   return { pool, customer };
 }
 
@@ -40,13 +44,9 @@ export const listByCustomer = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) throw new Error("Not authenticated");
-    const business = await resolveBusiness(ctx, identity.email);
     const customer = await ctx.db.get(args.customer_id);
     if (!customer) throw new Error("Customer not found");
-    const owns = business
-      ? String(customer.business_id || "") === String(business._id) || String(customer.created_by || "").toLowerCase() === String(business.owner_email || "").toLowerCase()
-      : String(customer.created_by || "").toLowerCase() === String(identity.email).toLowerCase();
-    if (!owns) throw new Error("Access denied");
+    if (!(await canAccessCustomer(ctx, customer, identity.email))) throw new Error("Access denied");
     return await ctx.db.query("equipment")
       .withIndex("by_customer", (q: any) => q.eq("customer_id", args.customer_id)).collect();
   },
@@ -69,7 +69,8 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) throw new Error("Not authenticated");
-    const { pool, customer } = await getOwnedPool(ctx, args.pool_id, identity.email);
+    await enforceRateLimit(ctx, identity.email, "equipment.write");
+    const { pool, customer } = await getOwnedPool(ctx, args.pool_id, identity.email, true);
     if (!args.equipment_type.trim() || !args.name.trim()) throw new Error("Equipment type and name are required");
     const business = await resolveBusiness(ctx, identity.email);
     const now = Date.now();
@@ -79,7 +80,7 @@ export const create = mutation({
       name: args.name.trim(),
       status: args.status || "active",
       customer_id: customer._id,
-      business_id: business ? String(business._id) : customer.business_id,
+      business_id: customer.business_id ?? (business ? String(business._id) : undefined),
       created_at: now,
       updated_at: now,
     });
@@ -105,7 +106,8 @@ export const update = mutation({
     if (!identity?.email) throw new Error("Not authenticated");
     const equipment = await ctx.db.get(args.id);
     if (!equipment) throw new Error("Equipment not found");
-    await getOwnedPool(ctx, equipment.pool_id, identity.email);
+    await enforceRateLimit(ctx, identity.email, "equipment.write");
+    await getOwnedPool(ctx, equipment.pool_id, identity.email, true);
     const { id, ...updates } = args;
     if (updates.name !== undefined && !updates.name.trim()) throw new Error("Equipment name is required");
     await ctx.db.patch(id, { ...updates, updated_at: Date.now() });
@@ -120,7 +122,8 @@ export const remove = mutation({
     if (!identity?.email) throw new Error("Not authenticated");
     const equipment = await ctx.db.get(args.id);
     if (!equipment) throw new Error("Equipment not found");
-    await getOwnedPool(ctx, equipment.pool_id, identity.email);
+    await enforceRateLimit(ctx, identity.email, "equipment.write");
+    await getOwnedPool(ctx, equipment.pool_id, identity.email, true);
     await ctx.db.patch(args.id, { status: "retired", updated_at: Date.now() });
     return args.id;
   },
