@@ -2,13 +2,17 @@
  * Provider abstraction for route geocoding and travel-time estimates.
  *
  * The app deliberately keeps this behind a small interface. A browser build
- * can use a restricted, public map token or a same-origin proxy while tests
- * and offline field use can use the deterministic provider. Never put a
+ * can use a restricted, public map token or a same-origin proxy. Never put a
  * server-only secret in a VITE_* variable.
+ *
+ * Without a configured map provider ('fallback') this module NEVER invents
+ * coordinates or drive times: geocoding is unavailable, and travel between
+ * two REAL coordinates (e.g. ones stored on a customer) is reported only as a
+ * straight-line distance with no drive time.
  */
 
 export type RouteProviderName = 'osrm' | 'mapbox' | 'proxy' | 'fallback';
-export type LocationSource = 'remote' | 'cache' | 'fallback' | 'provided';
+export type LocationSource = 'remote' | 'cache' | 'provided';
 
 export interface ProviderLocation {
   latitude: number;
@@ -20,10 +24,20 @@ export interface ProviderLocation {
 }
 
 export interface TravelEstimate {
+  /** Miles (road distance for 'remote', great-circle distance for 'straight-line'). */
   distance: number;
-  duration: number;
-  source: 'remote' | 'fallback';
+  /** Driving minutes, or null when only a straight-line distance is known. */
+  duration: number | null;
+  source: 'remote' | 'straight-line';
   provider?: string;
+}
+
+/** Thrown when an address cannot be resolved to real coordinates. */
+export class GeocodingUnavailableError extends Error {
+  constructor(message = 'No map provider is configured for address lookup') {
+    super(message);
+    this.name = 'GeocodingUnavailableError';
+  }
 }
 
 export interface RouteProvider {
@@ -43,7 +57,6 @@ export interface RouteProviderConfig {
   cacheTtlMs: number;
 }
 
-const FALLBACK_ORIGIN = { latitude: 34.0522, longitude: -118.2437 };
 const GEOCODE_CACHE_KEY = 'chemcheck.route.geocode.v1';
 const DEFAULT_TIMEOUT_MS = 6500;
 const DEFAULT_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
@@ -100,42 +113,11 @@ function normalizeAddress(address: string): string {
   return String(address || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = ((hash << 5) - hash) + value.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-/** Deterministic last-resort location. It is intentionally marked fallback. */
-export function deterministicGeocode(address: string): ProviderLocation {
-  const normalized = normalizeAddress(address);
-  const parts = normalized.split(',').map((part) => part.trim()).filter(Boolean);
-  const streetPart = parts[0] || normalized;
-  const locality = parts.slice(1).join(',') || 'default-locality';
-  const zipCode = normalized.match(/\b\d{5}(?:-\d{4})?\b/)?.[0]?.slice(0, 5);
-  const streetName = streetPart
-    .replace(/\b\d{1,6}\b/g, ' ')
-    .replace(/\b(apt|apartment|unit|ste|suite|#)\s*[a-z0-9-]+\b/gi, ' ')
-    .replace(/\b(off|near|at|by)\b/gi, ' ')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim() || 'unknown-street';
-  const houseNumber = Number(streetPart.match(/\b\d{1,6}\b/)?.[0]);
-  const localityHash = hashString(zipCode || locality);
-  const baseLat = FALLBACK_ORIGIN.latitude + ((((localityHash % 10000) / 10000) - 0.5) * 0.16);
-  const baseLng = FALLBACK_ORIGIN.longitude + (((((Math.floor(localityHash / 10000)) % 10000) / 10000) - 0.5) * 0.16);
-  const streetHash = hashString(`${zipCode || locality}|${streetName}`);
-  const angle = ((streetHash % 360) * Math.PI) / 180;
-  const radius = ((((Math.floor(streetHash / 360)) % 1000) / 1000) - 0.5) * 0.02;
-  const latitude = baseLat + Math.cos(angle) * (radius + (Number.isFinite(houseNumber) ? (((houseNumber % 2000) - 1000) / 1000) * 0.0035 : 0));
-  const longitude = baseLng + Math.sin(angle) * (radius + (Number.isFinite(houseNumber) ? (((houseNumber % 2000) - 1000) / 1000) * 0.0035 : 0));
-  return { latitude, longitude, address, source: 'fallback', provider: 'deterministic' };
-}
-
-function haversineMiles(from: ProviderLocation, to: ProviderLocation): number {
+/** Great-circle distance in miles between two real coordinates. */
+export function straightLineMiles(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number }
+): number {
   const radians = Math.PI / 180;
   const dLat = (to.latitude - from.latitude) * radians;
   const dLng = (to.longitude - from.longitude) * radians;
@@ -144,13 +126,13 @@ function haversineMiles(from: ProviderLocation, to: ProviderLocation): number {
   return 3959 * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-function fallbackTravel(from: ProviderLocation, to: ProviderLocation): TravelEstimate {
-  const distance = haversineMiles(from, to);
+/** Straight-line distance only — no invented drive time. */
+function straightLineTravel(from: ProviderLocation, to: ProviderLocation): TravelEstimate {
   return {
-    distance,
-    duration: distance <= 0 ? 0 : Math.max(2, (distance / 30) * 60),
-    source: 'fallback',
-    provider: 'deterministic',
+    distance: straightLineMiles(from, to),
+    duration: null,
+    source: 'straight-line',
+    provider: 'straight-line',
   };
 }
 
@@ -193,29 +175,33 @@ function withTimeout(timeoutMs: number, signal?: AbortSignal): { signal: AbortSi
   };
 }
 
-class FallbackProvider implements RouteProvider {
+/**
+ * Used when no map provider is configured. It cannot geocode addresses and
+ * cannot estimate drive times; it only measures straight-line distance
+ * between coordinates the caller already has.
+ */
+class NoMapProvider implements RouteProvider {
   readonly name = 'fallback' as const;
-  async geocode(address: string): Promise<ProviderLocation> {
-    return deterministicGeocode(address);
+  async geocode(): Promise<ProviderLocation> {
+    throw new GeocodingUnavailableError();
   }
   async estimateTravel(from: ProviderLocation, to: ProviderLocation): Promise<TravelEstimate> {
-    return fallbackTravel(from, to);
+    return straightLineTravel(from, to);
   }
   async estimateTravelMatrix(locations: ProviderLocation[]): Promise<TravelEstimate[][]> {
-    return locations.map((from) => locations.map((to) => fallbackTravel(from, to)));
+    return locations.map((from) => locations.map((to) => straightLineTravel(from, to)));
   }
 }
 
 class RemoteProvider implements RouteProvider {
   readonly name: RouteProviderName;
-  private readonly fallback = new FallbackProvider();
   constructor(private readonly config: RouteProviderConfig) {
     this.name = config.provider;
   }
 
   async geocode(address: string, signal?: AbortSignal): Promise<ProviderLocation> {
     const cleanAddress = String(address || '').trim();
-    if (!cleanAddress) return deterministicGeocode(address);
+    if (!cleanAddress) throw new GeocodingUnavailableError('No address to look up');
     const cached = readCachedGeocode(cleanAddress, this.config.cacheTtlMs);
     if (cached) return cached;
 
@@ -355,16 +341,14 @@ class RemoteProvider implements RouteProvider {
 
 class CachedResilientProvider implements RouteProvider {
   readonly name: RouteProviderName;
-  constructor(private readonly remote: RouteProvider, private readonly fallback = new FallbackProvider()) {
+  constructor(private readonly remote: RouteProvider, private readonly fallback = new NoMapProvider()) {
     this.name = remote.name;
   }
+  /** Geocoding failures propagate: a location is never invented. */
   async geocode(address: string, signal?: AbortSignal): Promise<ProviderLocation> {
-    try {
-      return await this.remote.geocode(address, signal);
-    } catch {
-      return this.fallback.geocode(address);
-    }
+    return this.remote.geocode(address, signal);
   }
+  /** Routing failures degrade to a clearly-labelled straight-line distance (no drive time). */
   async estimateTravel(from: ProviderLocation, to: ProviderLocation, signal?: AbortSignal): Promise<TravelEstimate> {
     try {
       return await this.remote.estimateTravel(from, to, signal);
@@ -377,14 +361,18 @@ class CachedResilientProvider implements RouteProvider {
       if (!this.remote.estimateTravelMatrix) throw new Error('Provider does not support matrix routing');
       return await this.remote.estimateTravelMatrix(locations, signal);
     } catch {
-      if (this.fallback.estimateTravelMatrix) return this.fallback.estimateTravelMatrix(locations, signal);
-      return Promise.all(locations.map((from) => Promise.all(locations.map((to) => this.fallback.estimateTravel(from, to, signal)))));
+      return this.fallback.estimateTravelMatrix(locations);
     }
   }
 }
 
+/** True when a real map provider (not the no-map fallback) is configured. */
+export function isMapProviderConfigured(config: RouteProviderConfig = getRouteProviderConfig()): boolean {
+  return config.provider !== 'fallback';
+}
+
 export function createRouteProvider(config: RouteProviderConfig = getRouteProviderConfig()): RouteProvider {
-  if (config.provider === 'fallback') return new FallbackProvider();
+  if (config.provider === 'fallback') return new NoMapProvider();
   return new CachedResilientProvider(new RemoteProvider(config));
 }
 

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { format } from "date-fns";
 import { BrowserRouter } from "react-router-dom";
-import RouteOptimizer from "./RouteOptimizer";
+import RouteOptimizer, { describeStopTravel } from "./RouteOptimizer";
 
 const navigateMock = vi.fn();
 const optimizeRouteMock = vi.fn();
@@ -81,11 +81,14 @@ function buildRoute(customers, overrides = {}) {
         address: customer.address,
         location: customer.location,
       },
-      travelTime: index === 0 ? 0 : 8,
-      distance: index === 0 ? 0 : 3,
+      // Default: no map provider -> no travel data (the real optimizer never invents it).
+      travelTime: null,
+      distance: null,
+      travelSource: "none",
     })),
     totalTime: 95,
-    routing: { remote: 0, fallback: 1 },
+    travelDataSource: "none",
+    optimizationMethod: "saved-order",
     warnings: [],
     ...overrides,
   };
@@ -233,5 +236,49 @@ describe("Route Planner", () => {
     const addressButton = await screen.findByRole("button", { name: "Address Needed" });
     expect(addressButton).toBeDisabled();
     expect(screen.getByText(/1 stop has no service address/i)).toBeInTheDocument();
+  });
+
+  it("explains that a map provider is needed and shows no invented travel times", async () => {
+    const user = userEvent.setup();
+    mockCustomers = [
+      { _id: "s1", full_name: "Alpha", address: "1 A St", service_day: todayName },
+      { _id: "s2", full_name: "Bravo", address: "2 B St", service_day: todayName },
+    ];
+    renderPlanner();
+    expect(screen.getByTestId("map-provider-banner")).toHaveTextContent(/map provider/i);
+    expect(screen.getByTestId("map-provider-banner")).toHaveTextContent("VITE_ROUTE_PROVIDER");
+
+    const generateButton = await screen.findByRole("button", { name: "Generate Route Plan" });
+    await waitFor(() => expect(generateButton).toBeEnabled());
+    await user.click(generateButton);
+
+    const list = await screen.findByTestId("optimized-stop-list");
+    expect(within(list).queryByText(/min/)).not.toBeInTheDocument();
+    expect(screen.getByText("Saved stop order")).toBeInTheDocument();
+  });
+
+  it("lets the user reorder stops manually", async () => {
+    const user = userEvent.setup();
+    mockCustomers = [
+      { _id: "m1", full_name: "Alpha", address: "1 A St", service_day: todayName },
+      { _id: "m2", full_name: "Bravo", address: "2 B St", service_day: todayName },
+    ];
+    renderPlanner();
+    const generateButton = await screen.findByRole("button", { name: "Generate Route Plan" });
+    await waitFor(() => expect(generateButton).toBeEnabled());
+    await user.click(generateButton);
+
+    await user.click(await screen.findByRole("button", { name: "Move Bravo earlier" }));
+    const list = screen.getByTestId("optimized-stop-list");
+    expect(within(within(list).getByTestId("optimized-stop-1")).getByText("Bravo")).toBeInTheDocument();
+    expect(within(within(list).getByTestId("optimized-stop-2")).getByText("Alpha")).toBeInTheDocument();
+  });
+
+  it("labels travel honestly", () => {
+    expect(describeStopTravel({ travelSource: "road", travelTime: 7.6 }, 1, false)).toBe("~8 min drive");
+    expect(describeStopTravel({ travelSource: "straight-line", distance: 2.345, travelTime: null }, 1, false))
+      .toBe("2.3 mi straight-line (not a drive time)");
+    expect(describeStopTravel({ travelSource: "none", travelTime: null, distance: null }, 1, false)).toBeNull();
+    expect(describeStopTravel({ travelSource: "none" }, 0, false)).toBe("Start here");
   });
 });

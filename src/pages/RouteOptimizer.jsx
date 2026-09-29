@@ -19,12 +19,16 @@ import {
   RefreshCw,
   Settings,
   UserPlus,
+  ChevronUp,
+  ChevronDown,
+  Info,
 } from "lucide-react";
 import { PoolIcon, IconBadge } from "@/components/ui/iconography";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { routeOptimizer } from "@/lib/routeOptimizer";
+import { isMapProviderConfigured } from "@/lib/routeProvider";
 import { openNavigation } from "@/lib/mapNavigation";
 import {
   buildDurationProfile,
@@ -73,6 +77,29 @@ const formatMinutes = (minutes) => {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+};
+
+/**
+ * Travel label for a stop. Only real data is shown: live road drive time,
+ * or a clearly-labelled straight-line distance between stored coordinates.
+ * Nothing is shown when travel is unknown.
+ */
+export const describeStopTravel = (stop, index, hasStartLocation) => {
+  if (stop?.travelSource === "road" && Number.isFinite(stop.travelTime)) {
+    if (index === 0 && !hasStartLocation) return "Start here";
+    return `~${Math.round(stop.travelTime)} min drive${index === 0 ? " from business" : ""}`;
+  }
+  if (stop?.travelSource === "straight-line" && Number.isFinite(stop.distance)) {
+    if (index === 0 && !hasStartLocation) return "Start here";
+    return `${stop.distance.toFixed(1)} mi straight-line (not a drive time)${index === 0 ? " from business" : ""}`;
+  }
+  return index === 0 ? "Start here" : null;
+};
+
+const TRAVEL_SUMMARY = {
+  road: "Ordered by live drive times",
+  "straight-line": "Saved stop order · straight-line distances",
+  none: "Saved stop order",
 };
 
 const hasNavigableAddress = (address) => (
@@ -156,6 +183,7 @@ export default function RouteOptimizer() {
   const [routeWarnings, setRouteWarnings] = useState([]);
   const [routeError, setRouteError] = useState(null);
   const isMountedRef = useRef(true);
+  const mapProviderConfigured = useMemo(() => isMapProviderConfigured(), []);
 
   const daysOfWeek = useMemo(() => {
     const scheduledDays = customers
@@ -287,8 +315,9 @@ export default function RouteOptimizer() {
         return { ...customer, estimatedDuration };
       });
 
-      const startLocation = businessAddress
-        ? await routeOptimizer.geocodeAddress(businessAddress)
+      // Only a configured map provider can locate the business address; never guess.
+      const startLocation = businessAddress && mapProviderConfigured
+        ? (await routeOptimizer.geocodeAddress(businessAddress)) || undefined
         : undefined;
 
       const route = await routeOptimizer.optimizeRoute(customersForOptimization, targetDate, {
@@ -296,7 +325,6 @@ export default function RouteOptimizer() {
         startLocation,
         prioritizeTimeWindows: true,
         prioritizeHighPriority: true,
-        algorithm: "nearest-neighbor",
       });
 
       if (!isMountedRef.current || optimizationContextRef.current !== contextAtStart) {
@@ -314,15 +342,15 @@ export default function RouteOptimizer() {
       const optimizedStops = route.stops.map((stop, idx) => {
         const originalCustomer = customerById.get(String(stop.customer.id));
         const gateCodeText = originalCustomer?.gate_code ? `Gate code: ${originalCustomer.gate_code}` : null;
-        const travelLabel = idx === 0
-          ? (startLocation ? `~${Math.round(stop.travelTime)} min from business` : "Start here")
-          : `~${Math.round(stop.travelTime)} min`;
+        const travelLabel = describeStopTravel(stop, idx, Boolean(startLocation));
+        const hasDriveTime = stop.travelSource === "road" && Number.isFinite(stop.travelTime);
         return {
           position: idx + 1,
           customer_name: stop.customer.name || "Unnamed customer",
           customer_address: stop.customer.address || "No address on file",
           estimated_travel_time_from_previous: travelLabel,
-          raw_travel_time_minutes: Math.round(stop.travelTime),
+          // null when no real drive time is known — the UI then shows nothing.
+          raw_travel_time_minutes: hasDriveTime ? Math.round(stop.travelTime) : null,
           notes: gateCodeText,
           customer_location: stop.customer.location,
           customer: originalCustomer || stop.customer,
@@ -354,7 +382,8 @@ export default function RouteOptimizer() {
         total_service_minutes: totalMinutes,
         average_service_minutes: serviceSummary.timePerPoolMinutes,
         origin_address: startLocation ? businessAddress : null,
-        optimization_summary: route.routing?.remote > 0 ? "Live travel data" : "Estimated travel data",
+        optimization_summary: TRAVEL_SUMMARY[route.travelDataSource] || TRAVEL_SUMMARY.none,
+        travel_data_source: route.travelDataSource || "none",
       });
       setBuiltContextKey(contextAtStart);
       setRouteWarnings([...new Set(routeWarningsWithReadiness)]);
@@ -382,7 +411,28 @@ export default function RouteOptimizer() {
     optimizing,
     selectedDay,
     workingHoursStart,
+    mapProviderConfigured,
   ]);
+
+  /** Manual reorder of the generated plan (always available, e.g. without a map provider). */
+  const moveStop = useCallback((index, delta) => {
+    setOptimizedRoute((current) => {
+      if (!current) return current;
+      const target = index + delta;
+      if (target < 0 || target >= current.optimized_order.length) return current;
+      const order = [...current.optimized_order];
+      [order[index], order[target]] = [order[target], order[index]];
+      // Travel figures described the previous sequence; drop them after a manual move.
+      const renumbered = order.map((stop, i) => ({
+        ...stop,
+        position: i + 1,
+        estimated_travel_time_from_previous: i === 0 ? "Start here" : null,
+        raw_travel_time_minutes: null,
+      }));
+      return { ...current, optimized_order: renumbered, optimization_summary: "Custom stop order" };
+    });
+    setCurrentStopIndex(0);
+  }, []);
 
   const availableWorkingMinutes = useMemo(() => {
     const startMinutes = parseClockToMinutes(workingHoursStart);
@@ -460,6 +510,24 @@ export default function RouteOptimizer() {
           <p className="mt-1 text-sm font-medium text-ink-muted">Build a practical daily stop order from your saved customer list</p>
         </div>
       </div>
+
+      {!mapProviderConfigured && (
+        <div
+          data-testid="map-provider-banner"
+          role="note"
+          className="mb-4 flex items-start gap-2 rounded-raised border border-[var(--status-info-line)] bg-[var(--status-info-soft)] px-4 py-3 text-sm text-info"
+        >
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="leading-5">
+            <p className="font-semibold">Using your saved stop order</p>
+            <p className="mt-0.5 font-medium text-ink-secondary">
+              Automatic route optimization and drive-time estimates need a map provider. Your admin can connect one
+              (VITE_ROUTE_PROVIDER or VITE_ROUTE_PROXY_URL — see docs/ROUTE_PROVIDER_CONFIGURATION.md). You can still
+              reorder stops and navigate to each address.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-end">
@@ -610,7 +678,9 @@ export default function RouteOptimizer() {
             You have {dayCustomers.length} customer{dayCustomers.length !== 1 ? 's' : ''} scheduled for {selectedDay}.
           </p>
           <p className="mx-auto max-w-md text-xs font-medium leading-5 text-ink-muted">
-            Generate a stop sequence from the saved customer addresses. Service-time totals stay separate from travel estimates.
+            {mapProviderConfigured
+              ? "Generate a stop sequence from the saved customer addresses. Service-time totals stay separate from travel estimates."
+              : "Generate a plan from your saved stop order. Service-time totals are shown; drive times need a map provider."}
           </p>
         </div>
       ) : (
@@ -712,7 +782,7 @@ export default function RouteOptimizer() {
               <div className="flex items-center justify-between px-1 pb-2">
                 <h3 className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-ink-muted">Stop order</h3>
                 <span className="font-data text-xs font-semibold tabular-nums text-ink-muted">
-                  {optimizedRoute.optimized_order.length} optimized {optimizedRoute.optimized_order.length === 1 ? "stop" : "stops"}
+                  {optimizedRoute.optimized_order.length} {optimizedRoute.optimized_order.length === 1 ? "stop" : "stops"}
                 </span>
               </div>
 
@@ -749,6 +819,27 @@ export default function RouteOptimizer() {
                           <p className="mt-0.5 truncate text-xs font-medium text-ink-muted">
                             {stop.customer_address}
                           </p>
+                        </div>
+
+                        <div className="flex shrink-0 flex-col">
+                          <button
+                            type="button"
+                            onClick={() => moveStop(index, -1)}
+                            disabled={index === 0}
+                            aria-label={`Move ${stop.customer_name} earlier`}
+                            className="flex h-6 w-8 items-center justify-center rounded-control text-ink-muted hover:bg-surface-2 disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveStop(index, 1)}
+                            disabled={index === optimizedRoute.optimized_order.length - 1}
+                            aria-label={`Move ${stop.customer_name} later`}
+                            className="flex h-6 w-8 items-center justify-center rounded-control text-ink-muted hover:bg-surface-2 disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                          </button>
                         </div>
 
                         <Button
@@ -872,16 +963,18 @@ function RouteRunnerView({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-[var(--status-info-line)] bg-brand-softer p-3">
-            <Clock className="h-5 w-5 text-brand-ink" aria-hidden="true" />
-            <div>
-              <div className="text-sm font-medium text-brand-ink">
-                {isFirstStop
-                  ? `Est. ${currentStop.raw_travel_time_minutes || 0} min from start`
-                  : `Est. ${currentStop.raw_travel_time_minutes || 0} min from previous stop`}
+          {Number.isFinite(currentStop.raw_travel_time_minutes) && (
+            <div className="flex items-center gap-3 rounded-2xl border border-[var(--status-info-line)] bg-brand-softer p-3">
+              <Clock className="h-5 w-5 text-brand-ink" aria-hidden="true" />
+              <div>
+                <div className="text-sm font-medium text-brand-ink">
+                  {isFirstStop
+                    ? `~${currentStop.raw_travel_time_minutes} min drive from start`
+                    : `~${currentStop.raw_travel_time_minutes} min drive from previous stop`}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {currentStop.notes && (
             <div className="p-3 bg-[var(--status-watch-soft)] rounded-lg border border-[var(--status-watch-line)]">
