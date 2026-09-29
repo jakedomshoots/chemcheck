@@ -29,6 +29,8 @@ const DEFAULT_RATE_LIMITS: Record<string, { maxRequests: number; windowMs: numbe
   'team.write': { maxRequests: 30, windowMs: 60000 },         // 30 per minute
   'pool.write': { maxRequests: 60, windowMs: 60000 },         // 60 per minute
   'equipment.write': { maxRequests: 60, windowMs: 60000 },    // 60 per minute
+  'communication.sms': { maxRequests: 20, windowMs: 60000 },  // 20 per minute
+  'report.send': { maxRequests: 30, windowMs: 60000 },        // 30 per minute
 
   // Queries (reads) - more lenient
   'query.list': { maxRequests: 200, windowMs: 60000 },        // 200 per minute
