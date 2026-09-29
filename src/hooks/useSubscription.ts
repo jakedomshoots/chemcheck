@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { PlanId, SUBSCRIPTION_PLANS, Subscription } from '@/lib/stripe';
+import { PlanId, SUBSCRIPTION_PLANS, Subscription } from '@/lib/billingPlans';
 
 interface UseSubscriptionReturn {
   subscription: Subscription | null;
@@ -13,16 +13,20 @@ interface UseSubscriptionReturn {
   daysRemaining: number;
   canAccessFeature: (feature: string) => boolean;
   checkLimit: (type: 'users' | 'customers', count: number) => boolean;
+  /** True when billing is managed in Square (cancel / change plan available in-app). */
+  canManageInApp: boolean;
   createCheckoutSession: (planId: PlanId, isAnnual?: boolean) => Promise<void>;
-  createPortalSession: () => Promise<void>;
+  changePlan: (planId: PlanId, isAnnual?: boolean) => Promise<void>;
+  cancelSubscription: () => Promise<void>;
 }
 
 const FREE_TIER_LIMITS = { users: 1, customers: 10 };
 
 export function useSubscription(): UseSubscriptionReturn {
   const convexSubscription = useQuery(api.subscriptions.get);
-  const createStripeCheckoutSession = useAction(api.subscriptions.createCheckoutSession);
-  const createStripePortalSession = useAction(api.subscriptions.createPortalSession);
+  const createSquareCheckout = useAction(api.subscriptions.createCheckoutSession);
+  const changeSquarePlan = useAction(api.subscriptions.changePlan);
+  const cancelSquareSubscription = useAction(api.subscriptions.cancelSubscription);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +42,7 @@ export function useSubscription(): UseSubscriptionReturn {
       const rawPlanId = convexSubscription.plan_id as string;
       const planId: PlanId = rawPlanId in SUBSCRIPTION_PLANS ? rawPlanId as PlanId : 'starter';
       setSubscription({
-        id: convexSubscription.stripe_subscription_id,
+        id: convexSubscription.square_subscription_id ?? convexSubscription.stripe_subscription_id ?? String(convexSubscription._id),
         status: convexSubscription.status as Subscription['status'],
         planId,
         currentPeriodStart: new Date(convexSubscription.current_period_start),
@@ -56,6 +60,7 @@ export function useSubscription(): UseSubscriptionReturn {
   // Mirrors convex/planLimits.ts: only these statuses keep the paid plan's limits.
   const isEntitled = ['active', 'trialing', 'past_due'].includes(subscription?.status ?? '');
   const currentPlan = subscription?.planId && isEntitled ? SUBSCRIPTION_PLANS[subscription.planId] : null;
+  const canManageInApp = convexSubscription?.provider === 'square' && Boolean(convexSubscription?.square_subscription_id) && isEntitled;
   const daysRemaining = subscription?.currentPeriodEnd
     ? Math.max(0, Math.ceil((subscription.currentPeriodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
@@ -79,35 +84,37 @@ export function useSubscription(): UseSubscriptionReturn {
     return limit === -1 || count <= limit;
   }, [currentPlan]);
 
-  const createCheckoutSession = useCallback(async (planId: PlanId, isAnnual = false) => {
+  const runBillingAction = useCallback(async <T,>(fn: () => Promise<T>, fallbackMessage: string): Promise<T> => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await createStripeCheckoutSession({ plan_id: planId, interval: isAnnual ? 'year' : 'month' });
-      if (!result?.url) throw new Error('Stripe Checkout did not return a URL.');
-      window.location.assign(result.url);
+      return await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create checkout session');
+      setError(err instanceof Error ? err.message : fallbackMessage);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [createStripeCheckoutSession]);
+  }, []);
 
-  const createPortalSession = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await createStripePortalSession({});
-      if (!result?.url) throw new Error('Stripe billing portal did not return a URL.');
+  const createCheckoutSession = useCallback(async (planId: PlanId, isAnnual = false) => {
+    await runBillingAction(async () => {
+      const result = await createSquareCheckout({ plan_id: planId, interval: isAnnual ? 'year' : 'month' });
+      if (!result?.url) throw new Error('Square checkout did not return a URL.');
       window.location.assign(result.url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to open billing portal');
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [createStripePortalSession]);
+    }, 'Failed to start checkout');
+  }, [createSquareCheckout, runBillingAction]);
+
+  const changePlan = useCallback(async (planId: PlanId, isAnnual = false) => {
+    await runBillingAction(
+      () => changeSquarePlan({ plan_id: planId, interval: isAnnual ? 'year' : 'month' }),
+      'Failed to change plan',
+    );
+  }, [changeSquarePlan, runBillingAction]);
+
+  const cancelSubscription = useCallback(async () => {
+    await runBillingAction(() => cancelSquareSubscription({}), 'Failed to cancel subscription');
+  }, [cancelSquareSubscription, runBillingAction]);
 
   return {
     subscription,
@@ -119,7 +126,9 @@ export function useSubscription(): UseSubscriptionReturn {
     daysRemaining,
     canAccessFeature,
     checkLimit,
+    canManageInApp,
     createCheckoutSession,
-    createPortalSession,
+    changePlan,
+    cancelSubscription,
   };
 }

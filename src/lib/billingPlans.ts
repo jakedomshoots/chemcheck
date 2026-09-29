@@ -1,3 +1,8 @@
+/**
+ * Provider-neutral subscription plan catalog for display. Prices must match
+ * convex/squareSubscriptionState.ts (PLAN_MONTHLY_PRICE_USD) and the Square plan
+ * variations; limits must match convex/planLimits.ts.
+ */
 export const SUBSCRIPTION_PLANS = {
   starter: {
     id: 'starter',

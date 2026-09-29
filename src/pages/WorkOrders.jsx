@@ -307,9 +307,15 @@ function formatTimestamp(ts) {
 }
 
 function formatDepositSource(source) {
-  if (source === "stripe") return "Stripe";
+  if (source === "square") return "Square";
+  if (source === "stripe") return "Card (legacy)";
   if (source === "manual") return "Manual";
   return null;
+}
+
+function hasProviderPaymentLink(invoice) {
+  // stripe_checkout_session_id: legacy, pre-Square payment links.
+  return Boolean(invoice?.square_payment_link_id || invoice?.stripe_checkout_session_id);
 }
 
 function isValidEmailForSend(value) {
@@ -467,16 +473,20 @@ function WorkOrdersContent() {
 
     let cancelled = false;
 
-    const handleStripeReturn = async () => {
+    const handleSquareReturn = async () => {
       const url = new URL(window.location.href);
-      const paymentStatus = url.searchParams.get("stripe_payment");
-      const sessionId = url.searchParams.get("session_id");
+      const paymentStatus = url.searchParams.get("square_payment");
+      const invoiceId = url.searchParams.get("invoice_id");
+      const quoteId = url.searchParams.get("quote_id");
       if (!paymentStatus) return;
 
       if (paymentStatus === "invoice_success" || paymentStatus === "deposit_success") {
-        if (sessionId) {
+        const target = paymentStatus === "invoice_success"
+          ? (invoiceId ? { invoice_id: invoiceId } : null)
+          : (quoteId ? { quote_id: quoteId } : null);
+        if (target) {
           try {
-            const result = await syncCheckoutSessionStatus({ session_id: sessionId });
+            const result = await syncPaymentStatus(target);
             if (cancelled) return;
             if (result?.success && result?.synced) {
               toast.success("Payment received and synced.");
@@ -493,19 +503,18 @@ function WorkOrdersContent() {
         } else {
           toast.success(paymentStatus === "invoice_success" ? "Invoice payment received." : "Deposit payment received.");
         }
-      } else if (paymentStatus === "invoice_cancel" || paymentStatus === "deposit_cancel") {
-        toast.message("Payment was cancelled.");
       }
 
-      url.searchParams.delete("stripe_payment");
+      url.searchParams.delete("square_payment");
       url.searchParams.delete("invoice_id");
       url.searchParams.delete("quote_id");
-      url.searchParams.delete("session_id");
+      // Square may append its own checkout parameters to the redirect URL.
+      for (const key of ["transactionId", "orderId", "checkoutId", "referenceId"]) url.searchParams.delete(key);
       const newQuery = url.searchParams.toString();
       window.history.replaceState({}, "", `${url.pathname}${newQuery ? `?${newQuery}` : ""}${url.hash}`);
     };
 
-    void handleStripeReturn();
+    void handleSquareReturn();
     return () => {
       cancelled = true;
     };
@@ -571,8 +580,8 @@ function WorkOrdersContent() {
   const removeCloudWorkOrder = useMutation(api.workOrders.remove);
   const createCloudInvoiceDraft = useMutation(api.invoices.createDraft);
   const batchCreateCloudInvoices = useMutation(api.invoices.batchCreateFromCompletedWorkOrders);
-  const sendCloudInvoiceWithStripe = useAction(api.payments.sendInvoiceWithStripe);
-  const syncCloudCheckoutSessionStatus = useAction(api.payments.syncCheckoutSessionStatus);
+  const sendCloudInvoiceWithPaymentLink = useAction(api.payments.sendInvoiceWithPaymentLink);
+  const syncCloudPaymentStatus = useAction(api.payments.syncPaymentStatus);
   const deliverCloudCommunication = useAction(api.communications.deliver);
   const deliverCloudQueuedCommunications = useAction(api.communications.deliverQueued);
   const requeueCloudFailedCommunications = useMutation(api.communications.requeueFailed);
@@ -639,8 +648,8 @@ function WorkOrdersContent() {
   const removeWorkOrder = localDevMode ? localWorkOrders.removeWorkOrder : removeCloudWorkOrder;
   const createInvoiceDraft = localDevMode ? localWorkOrders.createInvoiceDraft : createCloudInvoiceDraft;
   const batchCreateFromCompletedWorkOrders = localDevMode ? localWorkOrders.batchCreateFromCompletedWorkOrders : batchCreateCloudInvoices;
-  const sendInvoiceWithStripe = localDevMode ? localOnlyAction : sendCloudInvoiceWithStripe;
-  const syncCheckoutSessionStatus = localDevMode ? localOnlyAction : syncCloudCheckoutSessionStatus;
+  const sendInvoiceWithPaymentLink = localDevMode ? localOnlyAction : sendCloudInvoiceWithPaymentLink;
+  const syncPaymentStatus = localDevMode ? localOnlyAction : syncCloudPaymentStatus;
   const deliverCommunication = localDevMode ? localOnlyAction : deliverCloudCommunication;
   const deliverQueuedCommunications = localDevMode ? localOnlyAction : deliverCloudQueuedCommunications;
   const requeueFailedCommunications = localDevMode ? localOnlyAction : requeueCloudFailedCommunications;
@@ -1252,7 +1261,7 @@ function WorkOrdersContent() {
       if (autoSend && Array.isArray(batchResult?.created_invoice_ids)) {
         for (const invoiceId of batchResult.created_invoice_ids) {
           try {
-            const sendResult = await sendInvoiceWithStripe({ id: invoiceId, base_url: baseUrl });
+            const sendResult = await sendInvoiceWithPaymentLink({ id: invoiceId, base_url: baseUrl });
             if (!sendResult?.payment_url && !sendResult?.communication_id) continue;
             if (sendResult.communication_id) {
               const delivery = await deliverCommunication({ id: sendResult.communication_id });
@@ -1757,7 +1766,7 @@ function WorkOrdersContent() {
       }
 
       const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
-      const result = await sendInvoiceWithStripe({
+      const result = await sendInvoiceWithPaymentLink({
         id: invoiceId,
         base_url: baseUrl,
         channel_override: hasOverride ? destinationOverride.channel : undefined,
@@ -1789,7 +1798,7 @@ function WorkOrdersContent() {
     setInvoiceActionId(invoice._id);
     try {
       const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
-      const result = await sendInvoiceWithStripe({ id: invoice._id, base_url: baseUrl, force_new_session: true });
+      const result = await sendInvoiceWithPaymentLink({ id: invoice._id, base_url: baseUrl, force_new_session: true });
       if (!result?.payment_url) {
         toast.message("Invoice is already paid in full.");
         return;
@@ -1821,8 +1830,8 @@ function WorkOrdersContent() {
   const handleMarkPaid = async (invoiceId) => {
     requireWorkOrdersCloud(workOrdersCloudState);
     const invoice = allInvoices.find((item) => String(item._id) === String(invoiceId));
-    if (invoice?.status === "sent" && invoice?.stripe_checkout_session_id) {
-      toast.error("Stripe-linked invoices are marked paid automatically after Stripe confirms payment.");
+    if (invoice?.status === "sent" && hasProviderPaymentLink(invoice)) {
+      toast.error("Invoices with a card payment link are marked paid automatically after Square confirms payment.");
       return;
     }
 
@@ -3157,7 +3166,7 @@ function WorkOrdersContent() {
                   : invoice.work_order_id
                     ? quoteByWorkOrderId.get(String(invoice.work_order_id))
                     : undefined;
-                const stripeManaged = cloudEnabled && invoice.status === "sent" && Boolean(invoice.stripe_checkout_session_id);
+                const providerManaged = cloudEnabled && invoice.status === "sent" && hasProviderPaymentLink(invoice);
                 const primaryDescription = getInvoicePrimaryDescription(invoice);
                 const noteText = String(invoice.notes || "").trim();
                 const secondaryNotes = noteText && noteText !== primaryDescription ? noteText : "";
@@ -3264,8 +3273,8 @@ function WorkOrdersContent() {
                         )}
                       </div>
                     )}
-                    {stripeManaged && (
-                      <p className="text-xs text-ink-muted mt-1">Awaiting Stripe payment confirmation.</p>
+                    {providerManaged && (
+                      <p className="text-xs text-ink-muted mt-1">Awaiting Square payment confirmation.</p>
                     )}
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
                       {invoice.status === "draft" && (
@@ -3277,7 +3286,7 @@ function WorkOrdersContent() {
                           {invoiceActionId === invoice._id ? "Sending..." : "Send"}
                         </Button>
                       )}
-                      {invoice.status === "sent" && !stripeManaged && (
+                      {invoice.status === "sent" && !providerManaged && (
                         <Button
                           variant="outline"
                           className="h-11 sm:h-7 text-sm sm:text-xs w-full sm:w-auto"

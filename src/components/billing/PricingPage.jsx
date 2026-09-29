@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Check, Zap, Building2, Rocket, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { SUBSCRIPTION_PLANS, formatPrice, getAnnualPrice } from '@/lib/stripe';
+import { SUBSCRIPTION_PLANS, formatPrice, getAnnualPrice } from '@/lib/billingPlans';
 import { useSubscription } from '@/hooks/useSubscription';
 import { getPlatform, isNativePlatform } from '@/lib/native/platform';
 import { cn } from '@/lib/utils';
@@ -19,16 +19,25 @@ export function PricingPage() {
   const {
     subscription,
     error,
+    canManageInApp,
     createCheckoutSession,
+    changePlan,
   } = useSubscription();
+  const [notice, setNotice] = useState('');
   const isNativeIos = isNativePlatform() && getPlatform() === 'ios';
 
   const handleSelectPlan = async (planId) => {
     if (isNativeIos) return;
 
     setLoadingPlan(planId);
+    setNotice('');
     try {
-      await createCheckoutSession(planId, isAnnual);
+      if (canManageInApp) {
+        await changePlan(planId, isAnnual);
+        setNotice('Plan change scheduled. It takes effect at the start of your next billing period.');
+      } else {
+        await createCheckoutSession(planId, isAnnual);
+      }
     } catch (err) {
       console.error('Checkout error:', err);
     } finally {
@@ -149,6 +158,8 @@ export function PricingPage() {
                     "Current Plan"
                   ) : isNativeIos ? (
                     "Plan changes are handled outside the iOS app"
+                  ) : canManageInApp ? (
+                    "Switch to this plan"
                   ) : (
                     "Start Free Trial"
                   )}
@@ -157,6 +168,12 @@ export function PricingPage() {
             );
           })}
         </div>
+
+        {notice && (
+          <div className="mt-6 rounded-2xl border border-line bg-surface-1 p-4 text-center text-sm font-medium text-ink-secondary shadow-sm" role="status">
+            {notice}
+          </div>
+        )}
 
         {error && (
           <div className="mt-6 rounded-2xl border border-[var(--status-critical-line)] bg-[var(--status-critical-soft)] p-4 text-center text-sm font-medium text-critical shadow-sm">
@@ -180,7 +197,7 @@ export function PricingPage() {
               {[
                 {
                   q: 'Can I change plans later?',
-                  a: 'Yes. Upgrade or downgrade at any time. Changes take effect immediately and we prorate your billing.',
+                  a: 'Yes. Switch plans at any time from this page. The new plan starts with your next billing period.',
                 },
                 {
                   q: 'What happens after my trial ends?',

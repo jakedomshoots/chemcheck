@@ -20,7 +20,7 @@
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { requireSquarePlatformConfig } from "./providerConfig";
+import { fetchProvider, requireSquarePlatformConfig } from "./providerConfig";
 import { paymentFacts, squareRequest, verifySquareSignature, type SquarePaymentFacts } from "./squareApi";
 import {
   eventCreatedMs,
@@ -145,6 +145,43 @@ async function applySubscription(ctx: ActionCtx, subscription: Record<string, an
   }
 }
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
+/** Tell the business owner a subscription charge failed (best effort). */
+async function sendPaymentFailedEmail(args: { to: string; businessName?: string; invoice: Record<string, any> }) {
+  const apiKey = process.env.MAILERSEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL;
+  if (!apiKey || !fromEmail || !args.to) return;
+  const businessName = args.businessName || "ChemCheck";
+  const cents = args.invoice?.payment_requests?.[0]?.computed_amount_money?.amount;
+  const amount = typeof cents === "number" && Number.isFinite(cents) ? `$${(cents / 100).toFixed(2)}` : "your subscription payment";
+  const invoiceUrl = typeof args.invoice?.public_url === "string" && /^https:\/\//.test(args.invoice.public_url) ? args.invoice.public_url : "";
+  const text = [
+    `Hi ${businessName},`,
+    "",
+    `We could not charge the card on file for your ChemCheck subscription (${amount}).`,
+    invoiceUrl ? `Pay or update your card here: ${invoiceUrl}` : "Please update your payment method to keep access uninterrupted.",
+  ].join("\n");
+  const html = `<p>Hi ${escapeHtml(businessName)},</p><p>We could not charge the card on file for your ChemCheck subscription (<strong>${escapeHtml(amount)}</strong>).</p>${
+    invoiceUrl ? `<p><a href="${escapeHtml(invoiceUrl)}">Pay or update your card</a></p>` : "<p>Please update your payment method to keep access uninterrupted.</p>"
+  }`;
+  const response = await fetchProvider("https://api.mailersend.com/v1/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      from: { email: fromEmail, name: "ChemCheck" },
+      to: [{ email: args.to }],
+      subject: "Action needed: ChemCheck subscription payment failed",
+      text,
+      html,
+    }),
+  });
+  if (!response.ok) console.error("[Square Webhook] Payment-failed email not sent", response.status);
+}
+
 async function applySubscriptionInvoice(
   ctx: ActionCtx,
   plan: Extract<SquareWebhookPlan, { kind: "subscription_invoice" }>,
@@ -170,6 +207,20 @@ async function applySubscriptionInvoice(
       status: nextStatus,
       event_created: eventCreated,
     });
+  }
+  if (plan.outcome === "failed") {
+    try {
+      const business = subscription.business_id
+        ? await ctx.runQuery(internal.businesses.getByIdInternal, { business_id: subscription.business_id })
+        : null;
+      await sendPaymentFailedEmail({
+        to: business?.email || subscription.user_email,
+        businessName: business?.name,
+        invoice: plan.invoice,
+      });
+    } catch (error) {
+      console.error("[Square Webhook] Payment-failed notification error", error instanceof Error ? error.message : String(error));
+    }
   }
 }
 

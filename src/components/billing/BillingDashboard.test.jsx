@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { BillingDashboard } from './BillingDashboard';
 
-const createPortalSession = vi.fn();
+const cancelSubscription = vi.fn();
+let canManageInApp = true;
 let nativePlatform = true;
 let platform = 'ios';
 
@@ -30,11 +31,12 @@ vi.mock('@/hooks/useSubscription', () => ({
       limits: { users: 3, customers: 200 },
     },
     daysRemaining: 10,
-    createPortalSession,
+    canManageInApp,
+    cancelSubscription,
   }),
 }));
 
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/billingPlans', () => ({
   SUBSCRIPTION_PLANS: {},
   formatPrice: (amount) => `$${amount}`,
 }));
@@ -46,27 +48,45 @@ vi.mock('@/lib/native/platform', () => ({
 
 describe('BillingDashboard', () => {
   beforeEach(() => {
-    createPortalSession.mockReset();
+    cancelSubscription.mockReset();
+    cancelSubscription.mockResolvedValue({ canceled: true });
     nativePlatform = true;
     platform = 'ios';
+    canManageInApp = true;
   });
 
-  it('does not expose Stripe portal actions inside the native iOS shell', () => {
+  it('does not expose billing actions inside the native iOS shell', () => {
     render(<BillingDashboard />);
 
-    expect(screen.queryByRole('button', { name: /manage subscription/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /cancel subscription/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /change plan/i })).not.toBeInTheDocument();
     expect(screen.getByText(/billing changes are handled outside the ios app/i)).toBeInTheDocument();
   });
 
-  it('keeps Stripe billing portal actions available on the web PWA path', () => {
+  it('offers change plan and a confirmed Square cancellation on the web PWA path', async () => {
     nativePlatform = false;
     platform = 'web';
 
     render(<BillingDashboard />);
 
-    fireEvent.click(screen.getByRole('button', { name: /manage subscription/i }));
+    expect(screen.getByRole('link', { name: /change plan/i })).toHaveAttribute('href', '/pricing');
+    expect(screen.getByText(/processed securely by Square/i)).toBeInTheDocument();
 
-    expect(createPortalSession).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/secure Stripe portal/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /cancel subscription/i }));
+    expect(cancelSubscription).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
+    });
+    expect(cancelSubscription).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides in-app cancellation for subscriptions not managed in Square', () => {
+    nativePlatform = false;
+    platform = 'web';
+    canManageInApp = false;
+
+    render(<BillingDashboard />);
+
+    expect(screen.queryByRole('button', { name: /cancel subscription/i })).not.toBeInTheDocument();
   });
 });

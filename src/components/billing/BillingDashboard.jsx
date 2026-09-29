@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { 
@@ -13,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSubscription } from '@/hooks/useSubscription';
-import { formatPrice } from '@/lib/stripe';
+import { formatPrice } from '@/lib/billingPlans';
 import { getPlatform, isNativePlatform } from '@/lib/native/platform';
 import { cn } from '@/lib/utils';
 
@@ -25,19 +26,26 @@ export function BillingDashboard() {
     isTrialing,
     currentPlan,
     daysRemaining,
-    createPortalSession,
+    canManageInApp,
+    cancelSubscription,
   } = useSubscription();
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [canceling, setCanceling] = useState(false);
 
   const customerCountData = useQuery(api.customers.count);
   const teamMemberCountData = useQuery(api.teamMembers.count);
   
   const isNativeIos = isNativePlatform() && getPlatform() === 'ios';
 
-  const handleManageBilling = async () => {
+  const handleCancel = async () => {
+    setCanceling(true);
     try {
-      await createPortalSession();
+      await cancelSubscription();
+      setConfirmingCancel(false);
     } catch (err) {
-      console.error('Portal error:', err);
+      console.error('Cancel subscription error:', err);
+    } finally {
+      setCanceling(false);
     }
   };
 
@@ -177,15 +185,44 @@ export function BillingDashboard() {
             ) : (
               <>
                 <Button
+                  asChild
                   variant="outline"
-                  onClick={handleManageBilling}
                   className="h-11 rounded-full border-line bg-white px-5 text-ink hover:border-[var(--status-info-line)] hover:bg-brand-softer hover:text-brand-ink"
                 >
-                  <CreditCard className="h-4 w-4" aria-hidden="true" />
-                  Manage Subscription
+                  <a href="/pricing">
+                    <CreditCard className="h-4 w-4" aria-hidden="true" />
+                    Change plan
+                  </a>
                 </Button>
+                {canManageInApp && !subscription.cancelAtPeriodEnd && (
+                  confirmingCancel ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-ink-secondary">Cancel at the end of this billing period?</span>
+                      <Button
+                        variant="outline"
+                        onClick={handleCancel}
+                        disabled={canceling}
+                        className="h-11 rounded-full border-[var(--status-critical-line)] px-5 text-critical"
+                      >
+                        {canceling ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                        Confirm cancellation
+                      </Button>
+                      <Button variant="ghost" onClick={() => setConfirmingCancel(false)} className="h-11 rounded-full px-4">
+                        Keep plan
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => setConfirmingCancel(true)}
+                      className="h-11 rounded-full border-line bg-white px-5 text-ink hover:text-critical"
+                    >
+                      Cancel subscription
+                    </Button>
+                  )
+                )}
                 <p className="self-center text-sm font-medium text-ink-secondary">
-                  Update payment details, invoices, and cancellation in the secure Stripe portal.
+                  Payments are processed securely by Square. Receipts are emailed by Square after each charge.
                 </p>
               </>
             )}

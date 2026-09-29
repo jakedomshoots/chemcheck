@@ -84,7 +84,7 @@ import {
   formatStorageBytes,
 } from '@/lib/proof-of-service';
 import { BottomNavigationSettings } from '@/components/settings/BottomNavigationSettings';
-import { StripeConnectCard } from '@/components/billing/StripeConnectCard';
+import { SquareConnectCard } from '@/components/billing/SquareConnectCard';
 
 function AppearanceSection() {
   const [theme, setThemeState] = useState(() => getTheme());
@@ -1319,19 +1319,19 @@ export default function Settings() {
                   </p>
                 </div>
 
-                <StripeConnectCard />
+                <SquareConnectCard />
 
                 {!providerStatus ? (
                   <div className="rounded-lg border border-line p-4 text-sm text-ink-secondary">Loading provider status...</div>
                 ) : (
                   <div className="space-y-3">
                     <ProviderStatusCard
-                      name="Stripe billing"
-                      description="Invoice and quote payment links plus subscription billing."
-                      status={providerStatus.stripe}
-                      onTest={() => handleTestProvider('stripe')}
-                      testing={testingProvider === 'stripe'}
-                      result={providerTestResults.stripe}
+                      name="Square payments"
+                      description="Platform subscription billing, seller OAuth, and the payment webhook."
+                      status={providerStatus.square}
+                      onTest={() => handleTestProvider('square')}
+                      testing={testingProvider === 'square'}
+                      result={providerTestResults.square}
                     />
                     <ProviderStatusCard
                       name="Mailersend email"
@@ -1355,7 +1355,7 @@ export default function Settings() {
                 <div className="rounded-lg bg-surface-2 p-4 text-xs text-ink-secondary space-y-1">
                   <p className="font-medium text-ink">Deployment checklist</p>
                   <p>Set provider secrets with <code>npx convex env set</code> (or the production deployment secret manager), never in Vite or source control.</p>
-                  <p>Use live Stripe keys and a registered <code>/stripe-webhook</code> endpoint for production billing.</p>
+                  <p>Use a production Square application with the <code>/square/webhook</code> subscription and <code>/square/oauth/callback</code> redirect URL registered.</p>
                   <p>Verify your Mailersend sending domain and Twilio sender before sending customer data.</p>
                 </div>
               </div>
