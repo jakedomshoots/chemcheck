@@ -267,25 +267,3 @@ export function analyzeWeatherImpact(
   const analyzer = new WeatherAnalyzer(config);
   return analyzer.analyze(forecast, poolHistory);
 }
-
-export function createSampleForecast(days: number = 7): WeatherForecast[] {
-  const conditions: WeatherCondition[] = ['sunny', 'cloudy', 'rain', 'storm'];
-  const forecast: WeatherForecast[] = [];
-  const today = new Date();
-
-  for (let i = 0; i < days; i++) {
-    const date = new Date(today);
-    date.setDate(date.getDate() + i);
-    
-    forecast.push({
-      date: date.toISOString().split('T')[0],
-      condition: conditions[i % conditions.length],
-      highTemp: 75 + Math.floor(Math.random() * 25),
-      lowTemp: 60 + Math.floor(Math.random() * 15),
-      precipitation: Math.random() < 0.3 ? Math.random() * 2 : 0,
-      humidity: 40 + Math.floor(Math.random() * 50),
-    });
-  }
-
-  return forecast;
-}

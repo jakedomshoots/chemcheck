@@ -112,6 +112,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/.worktrees/**',
+      '.claude/**',
       '**/e2e/**'
     ],
   },

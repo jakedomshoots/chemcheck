@@ -10,6 +10,7 @@ export default [
     ignores: [
       '**/node_modules/**',
       '**/.worktrees/**',
+      '.claude/**',
       '**/dist/**',
       '**/coverage/**',
       '**/playwright-report/**',

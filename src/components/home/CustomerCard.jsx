@@ -21,7 +21,7 @@ const chemicalReadingMeta = [
   { key: "salt", label: "Salt", suffix: " PPM" },
 ];
 
-function getChemicalReadings(log) {
+function getChemicalReadings(log, poolType) {
   if (!log) return [];
 
   return chemicalReadingMeta
@@ -32,14 +32,14 @@ function getChemicalReadings(log) {
         key,
         label,
         value: `${value}${suffix}`,
-        textToneClassName: chemicalTextToneClassName(key, value),
+        textToneClassName: chemicalTextToneClassName(key, value, poolType),
       };
     })
     .filter(Boolean);
 }
 
-function chemicalTextToneClassName(key, value) {
-  switch (statusToTone(readingToStatus(key, value))) {
+function chemicalTextToneClassName(key, value, poolType) {
+  switch (statusToTone(readingToStatus(key, value, poolType))) {
     case "ok":
       return "text-[var(--status-ok-ink)]";
     case "watch":
@@ -94,7 +94,7 @@ const CustomerCard = memo(function CustomerCard({
   const startLabel = isSkipped ? "Resume" : "Start";
   const skipLabel = isSkipped ? "Move back" : "Skip";
   const rowActionLabel = isCompleted ? "View" : startLabel;
-  const chemicalReadings = getChemicalReadings(lastWeekLog);
+  const chemicalReadings = getChemicalReadings(lastWeekLog, customer.pool_type);
   const displayStopNumber = String(stopNumber ?? 1).padStart(2, "0");
   const detailsId = `customer-details-${customer._id}`;
 
