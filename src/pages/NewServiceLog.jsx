@@ -19,7 +19,7 @@ import LastWeekChemistry from "@/components/servicelog/LastWeekChemistry";
 import LsiReadingFields from "@/components/servicelog/LsiReadingFields";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
 import { hapticSuccess } from "@/lib/haptics";
-import { CHEMICAL_CONFIGS } from "@/lib/chemStatus";
+import { CHEMICAL_CONFIGS, getChemicalConfig } from "@/lib/chemStatus";
 import { calculateServiceLogLsi, LSI_CALCULATION_VERSION } from "@/lib/lsi";
 import { transitionName } from "@/lib/viewTransitions";
 import { deleteUnlinkedPhotos, linkPhotosToServiceLog, getPhotos } from "@/lib/proof-of-service";
@@ -556,7 +556,9 @@ export default function NewServiceLog() {
         </div>
       </section>
 
-      <form onSubmit={handleSubmit}>
+      {/* noValidate: readings are validated in handleSubmit. Native number
+          constraints must never block saving an out-of-range reading. */}
+      <form onSubmit={handleSubmit} noValidate>
         {startTime && (
           <div
             className="sticky top-2 z-30 mb-4 rounded-full border border-line bg-surface-1 px-3 py-2 shadow-card"
@@ -667,7 +669,7 @@ export default function NewServiceLog() {
               onModeChange={(mode) => setFormData((current) => ({ ...current, stabilizer_mode: mode }))}
               numericValue={formData.stabilizer_value}
               onNumericValueChange={(val) => setFormData((current) => ({ ...current, stabilizer_value: val }))}
-              config={CHEMICAL_CONFIGS.stabilizer}
+              config={getChemicalConfig("stabilizer", customer?.pool_type) || CHEMICAL_CONFIGS.stabilizer}
               icon={<PoolIcon name="chemicals" className="h-4 w-4" />}
               testId="stabilizer-numeric-input"
             />
@@ -680,6 +682,9 @@ export default function NewServiceLog() {
                 </div>
                 <Input
                   type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
                   value={formData.salt}
                   onChange={(e) => setFormData({ ...formData, salt: e.target.value })}
                   placeholder="3200"

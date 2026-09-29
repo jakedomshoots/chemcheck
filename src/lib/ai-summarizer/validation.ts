@@ -18,6 +18,14 @@ export const BOUNDS = {
 } as const;
 
 export const CORRELATION_STRENGTH_THRESHOLD = 0.3;
+/**
+ * True only for a recorded out-of-range reading. Missing/untested readings
+ * (undefined, null, '') are NOT issues and must not be counted as such.
+ */
+export function isOutOfRangeReading(reading: unknown): boolean {
+  return reading === 'low' || reading === 'high' || reading === 'critical';
+}
+
 export function isValidChemical(chemical: unknown): chemical is ValidChemical {
   return typeof chemical === 'string' && VALID_CHEMICALS.includes(chemical as ValidChemical);
 }
@@ -162,13 +170,17 @@ export function validateServiceLog(log: unknown): log is ServiceLog {
 
   const l = log as Record<string, unknown>;
 
+  // A chemical may be untested on a visit (undefined/null). That is not
+  // invalid — analyzers skip it — but any recorded value must be known.
+  const readingOk = (r: unknown) => r === undefined || r === null || isValidReading(r);
+
   return (
     (typeof l.id === 'number' || typeof l.id === 'string') &&
     typeof l.service_date === 'string' &&
-    isValidReading(l.ph) &&
-    isValidReading(l.chlorine) &&
-    isValidReading(l.alkalinity) &&
-    isValidReading(l.stabilizer)
+    readingOk(l.ph) &&
+    readingOk(l.chlorine) &&
+    readingOk(l.alkalinity) &&
+    readingOk(l.stabilizer)
   );
 }
 

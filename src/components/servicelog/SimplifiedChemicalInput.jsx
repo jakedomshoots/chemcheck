@@ -31,7 +31,10 @@ export default function SimplifiedChemicalInput({
   config,
   testId,
 }) {
-  const { min, max, step, unit, hint, ranges } = config || {};
+  // Ideal-range values (config.min/max) are for status display only. The
+  // input itself accepts any physically plausible reading: out-of-range
+  // readings are exactly the ones a tech must be able to record.
+  const { inputMin = 0, inputMax, unit, hint, ranges } = config || {};
 
   const handleNumericChange = (e) => {
     const raw = e.target.value;
@@ -69,9 +72,9 @@ export default function SimplifiedChemicalInput({
             <Input
               type="number"
               inputMode="decimal"
-              min={min}
-              max={max}
-              step={step}
+              min={inputMin}
+              max={inputMax}
+              step="any"
               value={numericValue ?? ""}
               onChange={handleNumericChange}
               placeholder={hint || label}
@@ -116,6 +119,11 @@ export default function SimplifiedChemicalInput({
           </div>
           {hint && (
             <p className="mt-2 text-xs font-medium text-ink-muted">{hint}</p>
+          )}
+          {value === "critical" && (
+            <p className="mt-1 text-xs font-medium text-critical" role="note">
+              Switch to Numeric and enter the reading so dosing advice knows whether to raise or lower it.
+            </p>
           )}
         </div>
       )}

@@ -18,6 +18,7 @@ import {
   type DataQuality,
   scoreToGrade,
 } from './types';
+import { isOutOfRangeReading, isValidReading } from './validation';
 
 export const DEFAULT_HEALTH_SCORER_CONFIG: PoolHealthScorerConfig = {
   weights: {
@@ -111,7 +112,8 @@ export function extractChemicalReadings(
   chemical: keyof Pick<ServiceLog, 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'>
 ): ChemicalReading[] {
   return logs
-    .filter(log => log[chemical] !== undefined)
+    // Missing/untested readings are excluded from scoring (never assumed 'good').
+    .filter(log => isValidReading(log[chemical]))
     .map(log => log[chemical] as ChemicalReading);
 }
 
@@ -257,10 +259,10 @@ export function hasAllGoodReadings(logs: ServiceLog[]): boolean {
 
 export function hasMixedReadings(logs: ServiceLog[]): boolean {
   for (const log of logs) {
-    if (log.ph !== 'good') return true;
-    if (log.chlorine !== 'good') return true;
-    if (log.alkalinity !== 'good') return true;
-    if (log.stabilizer !== 'good') return true;
+    if (isOutOfRangeReading(log.ph)) return true;
+    if (isOutOfRangeReading(log.chlorine)) return true;
+    if (isOutOfRangeReading(log.alkalinity)) return true;
+    if (isOutOfRangeReading(log.stabilizer)) return true;
   }
   return false;
 }

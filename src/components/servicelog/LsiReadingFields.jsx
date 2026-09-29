@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { calculateServiceLogLsi, formatLsi } from '@/lib/lsi';
 
-function ReadingInput({ id, label, value, onChange, unit, min, max, step = 1, hint }) {
+function ReadingInput({ id, label, value, onChange, unit, min, max, step = 'any', hint }) {
   return (
     <div>
       <Label htmlFor={id} className="text-xs font-semibold text-ink-secondary">{label}</Label>

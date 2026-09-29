@@ -17,6 +17,7 @@ import {
   type ChemicalReading,
   type InterventionSource,
 } from './types';
+import { isOutOfRangeReading } from './validation';
 
 const MIN_PATTERN_SAMPLE_SIZE = 3;
 
@@ -136,16 +137,16 @@ function getChemicalReading(
 function buildConditionString(log: ServiceLog): string {
   const conditions: string[] = [];
 
-  if (log.ph !== 'good') {
+  if (isOutOfRangeReading(log.ph)) {
     conditions.push(`${log.ph} ph`);
   }
-  if (log.chlorine !== 'good') {
+  if (isOutOfRangeReading(log.chlorine)) {
     conditions.push(`${log.chlorine} chlorine`);
   }
-  if (log.alkalinity !== 'good') {
+  if (isOutOfRangeReading(log.alkalinity)) {
     conditions.push(`${log.alkalinity} alkalinity`);
   }
-  if (log.stabilizer !== 'good') {
+  if (isOutOfRangeReading(log.stabilizer)) {
     conditions.push(`${log.stabilizer} stabilizer`);
   }
 

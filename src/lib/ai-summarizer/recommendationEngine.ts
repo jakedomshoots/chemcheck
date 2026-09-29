@@ -3,7 +3,11 @@
  * 
  * Generates prioritized, actionable recommendations for pool service technicians.
  * Categorizes recommendations by urgency (immediate, this-visit, next-visit, long-term)
- * and calculates dosages based on pool size.
+ * and calculates dosages from pool size AND the deviation from target
+ * (see src/lib/poolChemistry.ts for the dosing constants and their sources).
+ * Dosing is direction-aware: a reading of 'critical' is resolved to
+ * critical_low / critical_high from the numeric value; without a value the
+ * engine asks for a retest instead of guessing.
  * 
  * Requirements: 6.1, 6.2, 6.3, 6.5
  * 
@@ -23,7 +27,9 @@ import {
   type RootCauseAnalysis,
   type PredictiveInsights,
   type RecommendationCategory,
+  type DirectionalReading,
 } from './types';
+import { classifyReading, isChemicalKey, planDose } from '../poolChemistry';
 import {
   isValidChemical,
   isValidReading,
@@ -45,41 +51,28 @@ const PRIORITY_LEVELS = {
 } as const;
 
 /**
- * Chemical dosage rates per 10,000 gallons
- * SECURITY: Only accessed via validated chemical names
+ * Readings the engine can act on: direction-aware statuses, plus
+ * 'critical_unknown' for a stored 'critical' word with no numeric value
+ * (direction unknown — the only safe advice is to retest).
  */
-const DOSAGE_RATES: Record<ValidChemical, Record<string, { amount: string; unit: string }>> = {
-  ph: {
-    low: { amount: '1.5', unit: 'lbs sodium carbonate' },
-    high: { amount: '1', unit: 'quart muriatic acid' },
-    critical_low: { amount: '2', unit: 'lbs sodium carbonate' },
-    critical_high: { amount: '1.5', unit: 'quarts muriatic acid' },
-  },
-  chlorine: {
-    low: { amount: '1', unit: 'lb calcium hypochlorite' },
-    critical: { amount: '2', unit: 'lbs calcium hypochlorite (shock)' },
-  },
-  alkalinity: {
-    low: { amount: '1.5', unit: 'lbs sodium bicarbonate' },
-    high: { amount: '1', unit: 'quart muriatic acid' },
-    critical_low: { amount: '2.5', unit: 'lbs sodium bicarbonate' },
-  },
-  stabilizer: {
-    low: { amount: '1', unit: 'lb cyanuric acid' },
-    high: { amount: 'partial drain', unit: '(reduce by 25%)' },
-  },
-};
-/**
- * Recommended actions for each chemical and reading combination
- * SECURITY: Only accessed via validated chemical names
- */
-const CHEMICAL_ACTIONS: Record<ValidChemical, Record<ChemicalReading, {
+export type ActionableReading = DirectionalReading | 'critical_unknown';
+
+type ActionInfo = {
   action: string;
   reason: string;
   category: RecommendationCategory;
   preventsFuture: boolean;
   equipmentCheck: string | null;
-}>> = {
+};
+
+/**
+ * Recommended actions for each chemical and direction-aware reading.
+ * SECURITY: Only accessed via validated chemical names
+ *
+ * SAFETY: every action must move the reading TOWARD the ideal band.
+ * recommendationEngine.test.ts property-tests this.
+ */
+const CHEMICAL_ACTIONS: Record<ValidChemical, Record<ActionableReading, ActionInfo>> = {
   ph: {
     good: {
       action: 'Continue monitoring pH levels',
@@ -89,25 +82,39 @@ const CHEMICAL_ACTIONS: Record<ValidChemical, Record<ChemicalReading, {
       equipmentCheck: null,
     },
     low: {
-      action: 'Add pH increaser (sodium carbonate)',
+      action: 'Raise pH with pH increaser (sodium carbonate / soda ash)',
       reason: 'Low pH causes corrosion and eye irritation',
       category: 'thisVisit',
       preventsFuture: false,
       equipmentCheck: null,
     },
     high: {
-      action: 'Add pH decreaser (muriatic acid)',
+      action: 'Lower pH with muriatic acid',
       reason: 'High pH reduces chlorine effectiveness and causes scaling',
       category: 'thisVisit',
       preventsFuture: false,
       equipmentCheck: null,
     },
-    critical: {
-      action: 'Immediate pH correction required',
-      reason: 'Critical pH levels pose safety and equipment risks',
+    critical_low: {
+      action: 'Raise pH now with sodium carbonate (soda ash); check alkalinity first',
+      reason: 'Very low pH is corrosive to equipment and surfaces and irritates swimmers',
       category: 'immediate',
       preventsFuture: false,
-      equipmentCheck: 'Check acid/base feeder calibration',
+      equipmentCheck: 'Check acid feeder / CO2 system for overfeed',
+    },
+    critical_high: {
+      action: 'Lower pH now with muriatic acid (in stages)',
+      reason: 'Very high pH makes chlorine largely ineffective and causes scaling',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: 'Check acid feeder calibration and salt cell (SWG pools drive pH up)',
+    },
+    critical_unknown: {
+      action: 'Retest pH and record the numeric value before adjusting',
+      reason: 'pH was logged as critical without a value, so it is unknown whether it must be raised or lowered',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: null,
     },
   },
   chlorine: {
@@ -126,18 +133,32 @@ const CHEMICAL_ACTIONS: Record<ValidChemical, Record<ChemicalReading, {
       equipmentCheck: 'Check chlorinator output',
     },
     high: {
-      action: 'Allow chlorine to dissipate naturally',
+      action: 'Do not add chlorine — let it dissipate naturally',
       reason: 'High chlorine can cause skin and eye irritation',
       category: 'nextVisit',
       preventsFuture: false,
-      equipmentCheck: 'Verify chlorinator settings',
+      equipmentCheck: 'Verify chlorinator / salt-cell output settings',
     },
-    critical: {
-      action: 'Shock treatment required immediately',
-      reason: 'Critical chlorine levels indicate sanitation failure',
+    critical_low: {
+      action: 'Add chlorine immediately — pool is effectively unsanitized',
+      reason: 'Free chlorine near zero allows bacteria and algae growth; not safe for swimming',
       category: 'immediate',
       preventsFuture: false,
       equipmentCheck: 'Inspect salt cell or chlorinator for malfunction',
+    },
+    critical_high: {
+      action: 'Stop all chlorine additions; no swimming until free chlorine is 10 ppm or below',
+      reason: 'Free chlorine above 10 ppm is unsafe for swimmers',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: 'Turn down or off the chlorinator / salt cell and check for overfeed',
+    },
+    critical_unknown: {
+      action: 'Retest free chlorine and record the numeric value before adding anything',
+      reason: 'Chlorine was logged as critical without a value — it may be near zero or dangerously high',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: null,
     },
   },
   alkalinity: {
@@ -156,18 +177,32 @@ const CHEMICAL_ACTIONS: Record<ValidChemical, Record<ChemicalReading, {
       equipmentCheck: null,
     },
     high: {
-      action: 'Lower alkalinity with muriatic acid',
-      reason: 'High alkalinity makes pH difficult to adjust',
+      action: 'Lower alkalinity with muriatic acid and aeration',
+      reason: 'High alkalinity makes pH drift up and difficult to adjust',
       category: 'thisVisit',
       preventsFuture: false,
       equipmentCheck: null,
     },
-    critical: {
-      action: 'Comprehensive alkalinity correction needed',
-      reason: 'Critical alkalinity severely impacts water balance',
+    critical_low: {
+      action: 'Raise alkalinity now with sodium bicarbonate',
+      reason: 'Very low alkalinity lets pH crash, corroding equipment and surfaces',
       category: 'immediate',
       preventsFuture: false,
       equipmentCheck: 'Test source water alkalinity',
+    },
+    critical_high: {
+      action: 'Lower alkalinity with muriatic acid over several visits, aerating between additions',
+      reason: 'Very high alkalinity drives pH up and promotes scaling',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: 'Test source water alkalinity',
+    },
+    critical_unknown: {
+      action: 'Retest total alkalinity and record the numeric value before adjusting',
+      reason: 'Alkalinity was logged as critical without a value, so the correction direction is unknown',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: null,
     },
   },
   stabilizer: {
@@ -192,12 +227,26 @@ const CHEMICAL_ACTIONS: Record<ValidChemical, Record<ChemicalReading, {
       preventsFuture: false,
       equipmentCheck: 'Review chlorine product type (stabilized vs unstabilized)',
     },
-    critical: {
-      action: 'Significant water replacement required',
-      reason: 'Critical stabilizer levels severely impair sanitation',
+    critical_low: {
+      action: 'Add cyanuric acid (stabilizer)',
+      reason: 'Without stabilizer, sunlight destroys most chlorine within hours',
       category: 'immediate',
       preventsFuture: false,
-      equipmentCheck: 'Evaluate chlorine source and usage patterns',
+      equipmentCheck: null,
+    },
+    critical_high: {
+      action: 'Significant partial drain and refill required to reduce stabilizer',
+      reason: 'Very high stabilizer severely impairs sanitation',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: 'Switch to unstabilized chlorine (liquid or cal-hypo); stop trichlor tabs',
+    },
+    critical_unknown: {
+      action: 'Retest stabilizer (CYA) and record the numeric value before adjusting',
+      reason: 'Stabilizer was logged as critical without a value, so the correction direction is unknown',
+      category: 'immediate',
+      preventsFuture: false,
+      equipmentCheck: null,
     },
   },
 };
@@ -210,17 +259,60 @@ function generateRecommendationId(chemical: string, category: string, index: num
   return generateSecureId('rec', chemical, category, index);
 }
 
+const DIRECTIONAL_READINGS: ReadonlySet<string> = new Set([
+  'critical_low', 'low', 'good', 'high', 'critical_high',
+]);
+
 /**
- * Calculates dosage based on pool gallons
+ * Resolves a stored status word and optional numeric value into a
+ * direction-aware reading. A measured value always wins over the status
+ * word. Returns null when the chemical was not tested.
+ */
+export function resolveDirectionalReading(
+  chemical: string,
+  reading: ChemicalReading | DirectionalReading | null | undefined,
+  value?: number | string | null,
+  poolType?: string | null
+): ActionableReading | null {
+  if (isChemicalKey(chemical)) {
+    const measured = classifyReading(chemical, value, { poolType });
+    if (measured) return measured;
+  }
+  if (typeof reading !== 'string') return null;
+  if (reading === 'critical') return 'critical_unknown';
+  if (DIRECTIONAL_READINGS.has(reading)) return reading as DirectionalReading;
+  return null;
+}
+
+export interface DosageOptions {
+  /** Measured value of this chemical. */
+  value?: number | null;
+  /** Measured TA (used for pH dosing). */
+  alkalinity?: number | null;
+  /** Measured CYA (used for the chlorine target). */
+  stabilizer?: number | null;
+  poolType?: string | null;
+}
+
+/**
+ * Calculates a dose proportional to the deviation from target.
  * SECURITY: Validates chemical name and pool gallons before processing
+ *
+ * Returns null for good readings, unknown pool size, or a bare 'critical'
+ * with no numeric value (direction unknown — never guess which way to dose).
  */
 export function calculateDosage(
   chemical: string,
-  reading: ChemicalReading,
-  poolGallons: number | null
+  reading: ChemicalReading | DirectionalReading,
+  poolGallons: number | null,
+  options: DosageOptions = {}
 ): string | null {
+  // SECURITY: Validate chemical name to prevent prototype pollution
+  if (!isValidChemical(chemical)) {
+    return null;
+  }
   // SECURITY: Validate reading is a known value
-  if (!isValidReading(reading) || reading === 'good') {
+  if (!isValidReading(reading) && !DIRECTIONAL_READINGS.has(reading)) {
     return null;
   }
 
@@ -230,40 +322,21 @@ export function calculateDosage(
     return null;
   }
 
-  // SECURITY: Validate chemical name to prevent prototype pollution
-  if (!isValidChemical(chemical)) {
+  const resolved = resolveDirectionalReading(chemical, reading, options.value, options.poolType);
+  if (!resolved || resolved === 'good' || resolved === 'critical_unknown') {
     return null;
   }
 
-  const chemicalDosages = DOSAGE_RATES[chemical];
-  if (!chemicalDosages) {
-    return null;
-  }
-
-  let dosageKey = reading as string;
-  if (reading === 'critical') {
-    const criticalLowKey = 'critical_low';
-    const criticalHighKey = 'critical_high';
-    if (chemicalDosages[criticalLowKey]) {
-      dosageKey = criticalLowKey;
-    } else if (chemicalDosages[criticalHighKey]) {
-      dosageKey = criticalHighKey;
-    }
-  }
-
-  const dosage = chemicalDosages[dosageKey] || chemicalDosages[reading];
-  if (!dosage) {
-    return null;
-  }
-
-  const scaleFactor = validatedGallons / 10000;
-  const scaledAmount = parseFloat(dosage.amount) * scaleFactor;
-
-  if (dosage.amount === 'partial drain') {
-    return `Partial drain and refill ${dosage.unit}`;
-  }
-
-  return `${scaledAmount.toFixed(1)} ${dosage.unit} for ${validatedGallons} gallons`;
+  const plan = planDose({
+    chemical,
+    status: resolved,
+    gallons: validatedGallons,
+    value: options.value,
+    alkalinity: options.alkalinity,
+    stabilizer: options.stabilizer,
+    poolType: options.poolType,
+  });
+  return plan ? plan.text : null;
 }
 
 /**
@@ -271,11 +344,14 @@ export function calculateDosage(
  * SECURITY: Validates inputs before processing
  */
 export function getPriorityForReading(
-  reading: ChemicalReading,
+  reading: ChemicalReading | ActionableReading,
   category: RecommendationCategory
 ): number {
-  const severityPriority: Record<ChemicalReading, number> = {
+  const severityPriority: Record<ChemicalReading | ActionableReading, number> = {
     critical: PRIORITY_LEVELS.critical,
+    critical_low: PRIORITY_LEVELS.critical,
+    critical_high: PRIORITY_LEVELS.critical,
+    critical_unknown: PRIORITY_LEVELS.critical,
     low: PRIORITY_LEVELS.medium,
     high: PRIORITY_LEVELS.medium,
     good: PRIORITY_LEVELS.preventive,
@@ -288,24 +364,35 @@ export function getPriorityForReading(
     longTerm: 3,
   };
 
-  return severityPriority[reading] + categoryModifier[category];
+  return (severityPriority[reading] ?? PRIORITY_LEVELS.medium) + categoryModifier[category];
+}
+
+type ChemicalKeyName = 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer';
+
+const VALUE_FIELDS: Record<ChemicalKeyName, 'ph_value' | 'chlorine_value' | 'alkalinity_value' | 'stabilizer_value'> = {
+  ph: 'ph_value',
+  chlorine: 'chlorine_value',
+  alkalinity: 'alkalinity_value',
+  stabilizer: 'stabilizer_value',
+};
+
+function numericField(log: ServiceLog | undefined, chemical: ChemicalKeyName): number | null {
+  if (!log) return null;
+  const raw = log[VALUE_FIELDS[chemical]];
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
 }
 
 /**
- * Gets the most recent reading for a chemical from service logs
+ * Gets the most recent log (the one whose readings describe the pool now).
  */
-function getMostRecentReading(
-  logs: ServiceLog[],
-  chemical: 'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'
-): ChemicalReading {
+function getMostRecentLog(logs: ServiceLog[]): ServiceLog | undefined {
   if (logs.length === 0) {
-    return 'good';
+    return undefined;
   }
   const sortedLogs = [...logs].sort(
     (a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime()
   );
-
-  return sortedLogs[0][chemical] || 'good';
+  return sortedLogs[0];
 }
 
 /**
@@ -316,13 +403,14 @@ interface RecommendationWithCategory extends Recommendation {
 }
 
 /**
- * Creates a recommendation from chemical reading
+ * Creates a recommendation from a direction-aware chemical reading
  */
 function createChemicalRecommendation(
   chemical: ValidChemical,
-  reading: ChemicalReading,
+  reading: ActionableReading,
   poolGallons: number | null,
-  index: number
+  index: number,
+  dosageOptions: DosageOptions = {}
 ): RecommendationWithCategory | null {
   const chemicalActions = CHEMICAL_ACTIONS[chemical];
   if (!chemicalActions) {
@@ -336,7 +424,9 @@ function createChemicalRecommendation(
 
   const category = actionInfo.category;
   const priority = getPriorityForReading(reading, category);
-  const dosage = calculateDosage(chemical, reading, poolGallons);
+  const dosage = reading === 'critical_unknown'
+    ? null
+    : calculateDosage(chemical, reading, poolGallons, dosageOptions);
 
   return {
     id: generateRecommendationId(chemical, category, index),
@@ -346,7 +436,7 @@ function createChemicalRecommendation(
     chemical,
     dosage,
     equipmentCheck: actionInfo.equipmentCheck,
-    addressesIssue: `${chemical} ${reading}`,
+    addressesIssue: `${chemical} ${reading.replace('_', ' ')}`,
     preventsFuture: actionInfo.preventsFuture,
     intendedCategory: category,
   };
@@ -483,6 +573,8 @@ function categorizeRecommendations(
 export interface RecommendationEngineInput {
   serviceLogs: ServiceLog[];
   poolGallons: number | null;
+  /** Customer pool type (e.g. 'Salt') — selects SWG-appropriate CYA targets. */
+  poolType?: string | null;
   healthScore?: PoolHealthScore;
   rootCauseAnalysis?: RootCauseAnalysis | null;
   predictiveInsights?: PredictiveInsights | null;
@@ -503,6 +595,7 @@ export function generateRecommendations(
   const {
     serviceLogs,
     poolGallons,
+    poolType = null,
     rootCauseAnalysis = null,
     predictiveInsights = null,
   } = input;
@@ -511,17 +604,26 @@ export function generateRecommendations(
   const addressedIssues = new Set<string>();
   let index = 0;
 
-  const sortedLogs = [...serviceLogs].sort(
-    (a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime()
-  );
+  const latestLog = getMostRecentLog(serviceLogs);
 
-  const chemicals: Array<'ph' | 'chlorine' | 'alkalinity' | 'stabilizer'> = [
-    'ph', 'chlorine', 'alkalinity', 'stabilizer'
-  ];
+  const chemicals: ChemicalKeyName[] = ['ph', 'chlorine', 'alkalinity', 'stabilizer'];
 
   for (const chemical of chemicals) {
-    const reading = getMostRecentReading(sortedLogs, chemical);
-    const rec = createChemicalRecommendation(chemical, reading, poolGallons, index++);
+    if (!latestLog) break;
+    const value = numericField(latestLog, chemical);
+    // Untested chemicals (no status, no value) get no recommendation —
+    // never assume 'good' and never guess.
+    const reading = resolveDirectionalReading(chemical, latestLog[chemical], value, poolType);
+    if (!reading) {
+      index++;
+      continue;
+    }
+    const rec = createChemicalRecommendation(chemical, reading, poolGallons, index++, {
+      value,
+      alkalinity: numericField(latestLog, 'alkalinity'),
+      stabilizer: numericField(latestLog, 'stabilizer'),
+      poolType,
+    });
     
     if (rec) {
       recommendations.push(rec);
