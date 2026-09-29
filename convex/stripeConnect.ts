@@ -640,9 +640,14 @@ export const handleStripeConnectWebhook = httpAction(async (ctx, request) => {
 
   try {
     if (eventId) {
-      const existing = await ctx.runQuery(internal.stripeEvents.getByEventId, { event_id: eventId });
-      if (existing?.status === "processed") return jsonResponse({ received: true, duplicate: true });
-      await ctx.runMutation(internal.stripeEvents.recordProcessing, { event_id: eventId, event_type: eventType });
+      const { decision } = await ctx.runMutation(internal.stripeEvents.claimEvent, {
+        event_id: eventId,
+        event_type: eventType,
+      });
+      if (decision === "duplicate") return jsonResponse({ received: true, duplicate: true });
+      if (decision === "in_progress") {
+        return new Response("Event is already being processed", { status: 409 });
+      }
     }
 
     const plan = planConnectWebhookEvent(event);

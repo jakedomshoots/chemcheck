@@ -16,6 +16,7 @@ import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
 import { enforceRateLimit } from "./rateLimit";
+import { canAccessCustomer, isActiveMembership } from "./access";
 
 export const REPORT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -34,13 +35,7 @@ export function normalizeEmailForComparison(email: unknown): string {
  * A team member only counts once their membership is active. Newer rows may
  * carry a `status` ('pending' | 'active'); legacy rows only have `is_active`.
  */
-export function isActiveTeamMember(member: any): boolean {
-  return Boolean(
-    member &&
-      member.is_active === true &&
-      (member.status === undefined || member.status === "active")
-  );
-}
+export const isActiveTeamMember = isActiveMembership;
 
 /**
  * Resolve the business that owns a customer: prefer the customer's
@@ -66,41 +61,8 @@ export async function resolveCustomerBusiness(ctx: any, customer: any): Promise<
     .first();
 }
 
-/**
- * Customer access rule shared by report and communication endpoints: the
- * creator, the owner of the customer's business, or an active team member of
- * that business may act on the customer.
- * Uses ctx.db, so only call it from queries/mutations.
- */
-export async function canAccessCustomer(
-  ctx: any,
-  customer: any,
-  email: string | undefined | null
-): Promise<boolean> {
-  const normalizedEmail = normalizeEmailForComparison(email);
-  if (!customer || !normalizedEmail) return false;
-
-  if (normalizeEmailForComparison(customer.created_by) === normalizedEmail) {
-    return true;
-  }
-
-  const business = await resolveCustomerBusiness(ctx, customer);
-  if (!business) return false;
-
-  if (normalizeEmailForComparison(business.owner_email) === normalizedEmail) {
-    return true;
-  }
-
-  const members = await ctx.db
-    .query("team_members")
-    .withIndex("by_business", (q: any) => q.eq("business_id", business._id))
-    .collect();
-
-  return members.some(
-    (member: any) =>
-      normalizeEmailForComparison(member.user_email) === normalizedEmail && isActiveTeamMember(member)
-  );
-}
+// Customer access rule shared with every other customer-scoped endpoint.
+export { canAccessCustomer };
 
 /**
  * Helper: Verify the caller may access the customer behind a service log.

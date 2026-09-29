@@ -1,17 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
-
-export const getByEventId = internalQuery({
-  args: {
-    event_id: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("stripeWebhookEvents")
-      .withIndex("by_event_id", (q) => q.eq("event_id", args.event_id))
-      .first();
-  },
-});
+import { internalMutation } from "./_generated/server";
 
 /** How long a "processing" claim blocks concurrent deliveries of the same event. */
 export const PROCESSING_LEASE_MS = 5 * 60 * 1000;
@@ -70,45 +58,6 @@ export const claimEvent = internalMutation({
       updated_at: now,
     });
     return { decision };
-  },
-});
-
-/**
- * @deprecated Not atomic with the duplicate check; use claimEvent. Kept so
- * other webhook handlers keep compiling until they migrate.
- */
-export const recordProcessing = internalMutation({
-  args: {
-    event_id: v.string(),
-    event_type: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("stripeWebhookEvents")
-      .withIndex("by_event_id", (q) => q.eq("event_id", args.event_id))
-      .first();
-
-    const now = Date.now();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        event_type: args.event_type,
-        status: "processing",
-        attempts: (existing.attempts || 0) + 1,
-        updated_at: now,
-      });
-      return existing._id;
-    }
-
-    return await ctx.db.insert("stripeWebhookEvents", {
-      event_id: args.event_id,
-      event_type: args.event_type,
-      status: "processing",
-      attempts: 1,
-      last_error: undefined,
-      processed_at: undefined,
-      created_at: now,
-      updated_at: now,
-    });
   },
 });
 
