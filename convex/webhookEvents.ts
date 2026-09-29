@@ -1,6 +1,12 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 
+/**
+ * Idempotency ledger for payment-provider webhooks (Square). Each delivery is
+ * claimed atomically before processing so retries and concurrent deliveries of
+ * the same event are applied at most once.
+ */
+
 /** How long a "processing" claim blocks concurrent deliveries of the same event. */
 export const PROCESSING_LEASE_MS = 5 * 60 * 1000;
 
@@ -24,13 +30,14 @@ export function decideEventClaim(
  */
 export const claimEvent = internalMutation({
   args: {
+    provider: v.string(),
     event_id: v.string(),
     event_type: v.string(),
   },
   handler: async (ctx, args): Promise<{ decision: ClaimDecision }> => {
     const existing = await ctx.db
-      .query("stripeWebhookEvents")
-      .withIndex("by_event_id", (q) => q.eq("event_id", args.event_id))
+      .query("paymentWebhookEvents")
+      .withIndex("by_provider_and_event_id", (q) => q.eq("provider", args.provider).eq("event_id", args.event_id))
       .first();
 
     const now = Date.now();
@@ -47,7 +54,8 @@ export const claimEvent = internalMutation({
       return { decision };
     }
 
-    await ctx.db.insert("stripeWebhookEvents", {
+    await ctx.db.insert("paymentWebhookEvents", {
+      provider: args.provider,
       event_id: args.event_id,
       event_type: args.event_type,
       status: "processing",
@@ -63,12 +71,13 @@ export const claimEvent = internalMutation({
 
 export const recordProcessed = internalMutation({
   args: {
+    provider: v.string(),
     event_id: v.string(),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
-      .query("stripeWebhookEvents")
-      .withIndex("by_event_id", (q) => q.eq("event_id", args.event_id))
+      .query("paymentWebhookEvents")
+      .withIndex("by_provider_and_event_id", (q) => q.eq("provider", args.provider).eq("event_id", args.event_id))
       .first();
     if (!existing) return null;
 
@@ -85,13 +94,14 @@ export const recordProcessed = internalMutation({
 
 export const recordFailed = internalMutation({
   args: {
+    provider: v.string(),
     event_id: v.string(),
     error: v.string(),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
-      .query("stripeWebhookEvents")
-      .withIndex("by_event_id", (q) => q.eq("event_id", args.event_id))
+      .query("paymentWebhookEvents")
+      .withIndex("by_provider_and_event_id", (q) => q.eq("provider", args.provider).eq("event_id", args.event_id))
       .first();
     if (!existing) return null;
 

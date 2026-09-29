@@ -1,14 +1,26 @@
 import { v } from "convex/values";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { fetchProvider, requireStripeConfig } from "./providerConfig";
-import { resolveBusinessForUser } from "./access";
+import { requireSquarePlatformConfig } from "./providerConfig";
+import { getAccessContext, normalizeEmail, resolveBusinessForUser } from "./access";
+import { enforceRateLimit } from "./rateLimit";
 import { getCustomerUsage, limitsForSubscription } from "./planLimits";
-import { shouldApplyEvent } from "./stripeSubscriptionState";
+import { buildPaymentLinkBody, parsePaymentLinkResponse, squareRequest } from "./squareApi";
+import {
+  decideSubscriptionTarget,
+  isEntitledStatus,
+  planPriceCents,
+  shouldApplyEvent,
+  subscriptionFieldsFromSquare,
+  variationIdFor,
+  wouldResurrect,
+} from "./squareSubscriptionState";
 
-const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const DEFAULT_BATCH_SIZE = 100;
 const MAX_BATCH_SIZE = 500;
+const CHECKOUT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const MANAGER_ROLES = new Set(["owner", "admin"]);
 
 const subscriptionPlans = v.union(
   v.literal("starter"),
@@ -26,39 +38,18 @@ const subscriptionStatuses = v.union(
   v.literal("unpaid")
 );
 
+const PLAN_NAMES = { starter: "Starter", professional: "Professional", business: "Business" } as const;
+
 function appUrl(path: string): string {
   const baseUrl = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
   if (!baseUrl) throw new Error("Billing is not configured. Set APP_URL in Convex environment variables.");
   return `${baseUrl}${path}`;
 }
 
-function subscriptionPriceId(planId: "starter" | "professional" | "business", interval: "month" | "year"): string {
-  const names = {
-    starter: { month: "STRIPE_STARTER_MONTHLY_PRICE_ID", year: "STRIPE_STARTER_YEARLY_PRICE_ID" },
-    professional: { month: "STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID", year: "STRIPE_PROFESSIONAL_YEARLY_PRICE_ID" },
-    business: { month: "STRIPE_BUSINESS_MONTHLY_PRICE_ID", year: "STRIPE_BUSINESS_YEARLY_PRICE_ID" },
-  } as const;
-  const priceId = (process.env[names[planId][interval]] || "").trim();
-  if (!priceId.startsWith("price_")) {
-    throw new Error(`Stripe price is not configured for ${planId}/${interval}.`);
-  }
-  return priceId;
-}
-
-async function stripeRequest(path: string, secretKey: string, form?: URLSearchParams): Promise<any> {
-  const response = await fetchProvider(`${STRIPE_API_BASE}${path}`, {
-    method: form ? "POST" : "GET",
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-      ...(form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
-    },
-    body: form?.toString(),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(typeof data?.error?.message === "string" ? data.error.message : `Stripe request failed (${response.status}).`);
-  }
-  return data;
+function requireVariationId(planId: "starter" | "professional" | "business", interval: "month" | "year"): string {
+  const variationId = variationIdFor(planId, interval, process.env as Record<string, string | undefined>);
+  if (!variationId) throw new Error(`Square subscription plan is not configured for ${planId}/${interval}.`);
+  return variationId;
 }
 
 async function currentBusiness(ctx: any, email: string) {
@@ -95,80 +86,96 @@ export const getByBusiness = internalQuery({
     .first(),
 });
 
-export const upsert = internalMutation({
+const squareFieldsValidator = {
+  square_subscription_id: v.string(),
+  square_customer_id: v.optional(v.string()),
+  square_plan_variation_id: v.optional(v.string()),
+  square_status: v.string(),
+  // Omitted when the variation is not a configured plan; the stored plan is then kept.
+  plan_id: v.optional(v.string()),
+  status: subscriptionStatuses,
+  current_period_start: v.optional(v.number()),
+  current_period_end: v.optional(v.number()),
+  cancel_at_period_end: v.boolean(),
+};
+
+/**
+ * Apply a Square subscription snapshot. Out-of-order events (older than the
+ * last applied one) are ignored, CANCELED/DEACTIVATED subscriptions are never
+ * resurrected, and a business keeps one subscription row.
+ */
+export const upsertFromSquare = internalMutation({
   args: {
+    ...squareFieldsValidator,
+    // Resolved by the webhook from the stored checkout; required for new rows.
     business_id: v.optional(v.id("businesses")),
-    user_email: v.string(),
-    stripe_customer_id: v.string(),
-    stripe_subscription_id: v.string(),
-    // Omitted when the plan cannot be resolved; the stored plan is then kept.
-    plan_id: v.optional(v.string()),
-    status: subscriptionStatuses,
-    // Omitted when Stripe did not send them; stored values are then kept.
-    current_period_start: v.optional(v.number()),
-    current_period_end: v.optional(v.number()),
-    cancel_at_period_end: v.boolean(),
-    trial_end: v.optional(v.number()),
-    // Stripe event.created in ms; older events than the last applied one are ignored.
+    // Square event created_at in ms.
     event_created: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ applied: boolean; reason?: string; id?: Id<"subscriptions"> }> => {
+    const now = Date.now();
+    const { business_id, event_created, ...fields } = args;
     const existing = await ctx.db
       .query("subscriptions")
-      .withIndex("by_stripe_subscription", (q) => q.eq("stripe_subscription_id", args.stripe_subscription_id))
+      .withIndex("by_square_subscription", (q) => q.eq("square_subscription_id", args.square_subscription_id))
       .first();
-    const now = Date.now();
+
     if (existing) {
-      if (!shouldApplyEvent(existing.last_event_created, args.event_created)) {
-        return { id: existing._id, applied: false };
+      if (!shouldApplyEvent(existing.last_event_created, event_created)) {
+        return { applied: false, reason: "stale_event", id: existing._id };
+      }
+      if (wouldResurrect(existing.square_status, fields.square_status)) {
+        return { applied: false, reason: "terminal", id: existing._id };
       }
       await ctx.db.patch(existing._id, {
-        business_id: args.business_id ?? existing.business_id,
-        user_email: args.user_email || existing.user_email,
-        stripe_customer_id: args.stripe_customer_id,
-        status: args.status,
-        plan_id: args.plan_id ?? existing.plan_id,
-        current_period_start: args.current_period_start ?? existing.current_period_start,
-        current_period_end: args.current_period_end ?? existing.current_period_end,
-        cancel_at_period_end: args.cancel_at_period_end,
-        trial_end: args.trial_end,
-        last_event_created: args.event_created ?? existing.last_event_created,
+        ...fields,
+        plan_id: fields.plan_id ?? existing.plan_id,
+        current_period_start: fields.current_period_start ?? existing.current_period_start,
+        current_period_end: fields.current_period_end ?? existing.current_period_end,
+        last_event_created: event_created ?? existing.last_event_created,
         updated_at: now,
       });
-      return { id: existing._id, applied: true };
+      return { applied: true, id: existing._id };
     }
-    const id = await ctx.db.insert("subscriptions", {
-      business_id: args.business_id,
-      user_email: args.user_email,
-      stripe_customer_id: args.stripe_customer_id,
-      stripe_subscription_id: args.stripe_subscription_id,
-      plan_id: args.plan_id ?? "starter",
-      status: args.status,
-      current_period_start: args.current_period_start ?? now,
-      current_period_end: args.current_period_end ?? now,
-      cancel_at_period_end: args.cancel_at_period_end,
-      trial_end: args.trial_end,
-      last_event_created: args.event_created,
-      created_at: now,
+
+    if (!business_id) return { applied: false, reason: "unlinked" };
+    const business = await ctx.db.get(business_id);
+    if (!business) return { applied: false, reason: "unknown_business" };
+
+    const current = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_business", (q) => q.eq("business_id", business_id))
+      .first();
+    const target = decideSubscriptionTarget(current, { status: fields.status, event_created });
+    if (target === "skip") return { applied: false, reason: "superseded" };
+
+    const row = {
+      ...fields,
+      provider: "square",
+      business_id,
+      user_email: business.owner_email,
+      plan_id: fields.plan_id ?? "starter",
+      current_period_start: fields.current_period_start ?? now,
+      current_period_end: fields.current_period_end ?? now,
+      trial_end: undefined,
+      last_event_created: event_created,
       updated_at: now,
-    });
-    return { id, applied: true };
+    };
+    if (target === "replace" && current) {
+      // Legacy stripe_* ids are left in place as history.
+      await ctx.db.patch(current._id, row);
+      return { applied: true, id: current._id };
+    }
+    const id = await ctx.db.insert("subscriptions", { ...row, created_at: now });
+    return { applied: true, id };
   },
 });
 
-export const getByStripeSubscription = internalQuery({
-  args: { stripe_subscription_id: v.string() },
+export const getBySquareSubscription = internalQuery({
+  args: { square_subscription_id: v.string() },
   handler: async (ctx, args) => await ctx.db
     .query("subscriptions")
-    .withIndex("by_stripe_subscription", (q) => q.eq("stripe_subscription_id", args.stripe_subscription_id))
-    .first(),
-});
-
-export const getByStripeCustomer = internalQuery({
-  args: { stripe_customer_id: v.string() },
-  handler: async (ctx, args) => await ctx.db
-    .query("subscriptions")
-    .withIndex("by_stripe_customer", (q) => q.eq("stripe_customer_id", args.stripe_customer_id))
+    .withIndex("by_square_subscription", (q) => q.eq("square_subscription_id", args.square_subscription_id))
     .first(),
 });
 
@@ -190,6 +197,155 @@ export const updateStatus = internalMutation({
       updated_at: Date.now(),
     });
     return { applied: true };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Checkout <-> business linking
+// ---------------------------------------------------------------------------
+
+export const recordCheckout = internalMutation({
+  args: {
+    business_id: v.id("businesses"),
+    user_email: v.string(),
+    buyer_email: v.string(),
+    plan_id: v.string(),
+    interval: v.string(),
+    plan_variation_id: v.string(),
+    payment_link_id: v.string(),
+    order_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("squareSubscriptionCheckouts")
+      .withIndex("by_order_id", (q) => q.eq("order_id", args.order_id))
+      .first();
+    const now = Date.now();
+    if (existing) {
+      // Same idempotent link: only refresh the expiry, never re-point it.
+      if (String(existing.business_id) === String(args.business_id)) {
+        await ctx.db.patch(existing._id, { expires_at: now + CHECKOUT_TTL_MS, updated_at: now });
+      }
+      return existing._id;
+    }
+    return await ctx.db.insert("squareSubscriptionCheckouts", {
+      ...args,
+      buyer_email: normalizeEmail(args.buyer_email),
+      status: "pending",
+      created_at: now,
+      updated_at: now,
+      expires_at: now + CHECKOUT_TTL_MS,
+    });
+  },
+});
+
+/** Platform payment for a subscription checkout: remember the Square customer who paid. */
+export const attachCheckoutCustomer = internalMutation({
+  args: { order_id: v.string(), customer_id: v.string() },
+  handler: async (ctx, args) => {
+    const checkout = await ctx.db
+      .query("squareSubscriptionCheckouts")
+      .withIndex("by_order_id", (q) => q.eq("order_id", args.order_id))
+      .first();
+    if (!checkout) return false;
+    if (checkout.status === "pending") {
+      await ctx.db.patch(checkout._id, { square_customer_id: args.customer_id, status: "paid", updated_at: Date.now() });
+    }
+    return true;
+  },
+});
+
+/**
+ * Business for a new Square subscription. Prefers the checkout the owner
+ * started (matched by the paying Square customer, then by the buyer email),
+ * then falls back to the business owned by the customer's email.
+ */
+export const findBusinessForSquareCustomer = internalQuery({
+  args: {
+    customer_id: v.optional(v.string()),
+    email: v.optional(v.string()),
+    plan_variation_id: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ business_id: Id<"businesses">; checkout_id?: Id<"squareSubscriptionCheckouts"> } | null> => {
+    const now = Date.now();
+    if (args.customer_id) {
+      const byCustomer = await ctx.db
+        .query("squareSubscriptionCheckouts")
+        .withIndex("by_square_customer", (q) => q.eq("square_customer_id", args.customer_id))
+        .order("desc")
+        .take(10);
+      const match = byCustomer.find((row) => !args.plan_variation_id || row.plan_variation_id === args.plan_variation_id)
+        ?? byCustomer[0];
+      if (match) return { business_id: match.business_id, checkout_id: match._id };
+    }
+    const email = normalizeEmail(args.email);
+    if (!email) return null;
+    const byEmail = await ctx.db
+      .query("squareSubscriptionCheckouts")
+      .withIndex("by_buyer_email", (q) => q.eq("buyer_email", email))
+      .order("desc")
+      .take(10);
+    const pending = byEmail.find((row) => row.status !== "linked" && row.expires_at > now
+      && (!args.plan_variation_id || row.plan_variation_id === args.plan_variation_id));
+    if (pending) return { business_id: pending.business_id, checkout_id: pending._id };
+    const owned = await ctx.db
+      .query("businesses")
+      .withIndex("by_owner_email", (q) => q.eq("owner_email", email))
+      .first();
+    return owned ? { business_id: owned._id } : null;
+  },
+});
+
+export const markCheckoutLinked = internalMutation({
+  args: { checkout_id: v.id("squareSubscriptionCheckouts"), square_subscription_id: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.checkout_id, {
+      status: "linked",
+      linked_subscription_id: args.square_subscription_id,
+      updated_at: Date.now(),
+    });
+  },
+});
+
+/**
+ * Manual grandfathering (e.g. an existing Stripe subscriber the owner moved by
+ * hand). Run from the Convex dashboard / CLI only:
+ *   npx convex run subscriptions:adminSetPlan '{"business_id":"...","plan_id":"professional","status":"active","current_period_end":1767225600000}'
+ */
+export const adminSetPlan = internalMutation({
+  args: {
+    business_id: v.id("businesses"),
+    plan_id: subscriptionPlans,
+    status: subscriptionStatuses,
+    current_period_end: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const business = await ctx.db.get(args.business_id);
+    if (!business) throw new Error("Business not found");
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_business", (q) => q.eq("business_id", args.business_id))
+      .first();
+    const fields = {
+      provider: existing?.provider === "square" ? "square" : "manual",
+      plan_id: args.plan_id,
+      status: args.status,
+      current_period_end: args.current_period_end ?? existing?.current_period_end ?? now,
+      cancel_at_period_end: false,
+      updated_at: now,
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, fields);
+      return existing._id;
+    }
+    return await ctx.db.insert("subscriptions", {
+      ...fields,
+      business_id: args.business_id,
+      user_email: business.owner_email,
+      current_period_start: now,
+      created_at: now,
+    });
   },
 });
 
@@ -239,57 +395,142 @@ export const backfillBusinessId = mutation({
   },
 });
 
-export const createCheckoutSession = action({
-  args: { plan_id: subscriptionPlans, interval: subscriptionIntervals },
+/** Owner/admin billing context for the caller's business. */
+export const getBillingContext = internalQuery({
+  args: { user_email: v.string() },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity?.email) throw new Error("Not authenticated");
-    const business = await ownedBusiness(ctx, identity.email);
-    if (!business) throw new Error("Only the business owner can manage subscriptions.");
-    const { secretKey } = requireStripeConfig();
-    const existingSubscription: any = await ctx.runQuery(internal.subscriptions.getByBusiness, { business_id: business._id });
-    const form = new URLSearchParams({
-      mode: "subscription",
-      "line_items[0][price]": subscriptionPriceId(args.plan_id, args.interval),
-      "line_items[0][quantity]": "1",
-      success_url: appUrl("/pricing?checkout=success&session_id={CHECKOUT_SESSION_ID}"),
-      cancel_url: appUrl("/pricing?checkout=cancelled"),
-      client_reference_id: String(business._id),
-      "metadata[business_id]": String(business._id),
-      "metadata[user_email]": identity.email,
-      "metadata[plan_id]": args.plan_id,
-      "subscription_data[metadata][business_id]": String(business._id),
-      "subscription_data[metadata][user_email]": identity.email,
-      "subscription_data[metadata][plan_id]": args.plan_id,
-      "subscription_data[trial_period_days]": "14",
-    });
-    if (existingSubscription?.stripe_customer_id) {
-      form.set("customer", existingSubscription.stripe_customer_id);
-    } else {
-      form.set("customer_email", business.email || identity.email);
+    const access = await getAccessContext(ctx, args.user_email);
+    if (!access.business) throw new Error("No business found for this account.");
+    if (!access.role || !MANAGER_ROLES.has(access.role)) {
+      throw new Error("Only business owners and admins can manage subscriptions.");
     }
-    const session = await stripeRequest("/checkout/sessions", secretKey, form);
-    if (typeof session?.url !== "string") throw new Error("Stripe Checkout did not return a URL.");
-    return { url: session.url };
+    const subscription = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_business", (q) => q.eq("business_id", access.business._id))
+      .first();
+    return {
+      business_id: access.business._id as Id<"businesses">,
+      business_name: access.business.name as string,
+      owner_email: access.business.owner_email as string,
+      subscription: subscription
+        ? {
+          provider: subscription.provider,
+          status: subscription.status,
+          square_subscription_id: subscription.square_subscription_id,
+        }
+        : null,
+    };
   },
 });
 
-export const createPortalSession = action({
-  args: {},
-  handler: async (ctx) => {
+export const consumeBillingRateLimit = internalMutation({
+  args: { user_email: v.string() },
+  handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, args.user_email, "billing.manage");
+  },
+});
+
+type BillingContext = {
+  business_id: Id<"businesses">;
+  business_name: string;
+  owner_email: string;
+  subscription: { provider?: string; status: string; square_subscription_id?: string } | null;
+};
+
+function activeSquareSubscriptionId(context: BillingContext): string | null {
+  const sub = context.subscription;
+  if (!sub || sub.provider !== "square" || !sub.square_subscription_id) return null;
+  return isEntitledStatus(sub.status) ? sub.square_subscription_id : null;
+}
+
+/** Square-hosted subscription checkout on the platform account. Returns the payment link URL. */
+export const createCheckoutSession = action({
+  args: { plan_id: subscriptionPlans, interval: subscriptionIntervals },
+  handler: async (ctx, args): Promise<{ url: string }> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) throw new Error("Not authenticated");
-    const business = await ownedBusiness(ctx, identity.email);
-    if (!business) throw new Error("Only the business owner can manage subscriptions.");
-    const subscription: any = await ctx.runQuery(internal.subscriptions.getByBusiness, { business_id: business._id });
-    if (!subscription?.stripe_customer_id) throw new Error("No Stripe billing customer exists for this business.");
-    const { secretKey } = requireStripeConfig();
-    const session = await stripeRequest("/billing_portal/sessions", secretKey, new URLSearchParams({
-      customer: subscription.stripe_customer_id,
-      return_url: appUrl("/pricing"),
-    }));
-    if (typeof session?.url !== "string") throw new Error("Stripe billing portal did not return a URL.");
-    return { url: session.url };
+    await ctx.runMutation(internal.subscriptions.consumeBillingRateLimit, { user_email: identity.email });
+    const context: BillingContext = await ctx.runQuery(internal.subscriptions.getBillingContext, { user_email: identity.email });
+    if (activeSquareSubscriptionId(context)) {
+      throw new Error("This business already has an active subscription. Use Change plan on the billing page.");
+    }
+    const { accessToken, locationId } = requireSquarePlatformConfig();
+    const variationId = requireVariationId(args.plan_id, args.interval);
+    const buyerEmail = context.owner_email || identity.email;
+    const hourBucket = Math.floor(Date.now() / (60 * 60 * 1000));
+    const data = await squareRequest("/v2/online-checkout/payment-links", {
+      method: "POST",
+      token: accessToken,
+      body: buildPaymentLinkBody({
+        // Collapses double-clicks/retries within the hour into one link.
+        idempotencyKey: `sub:${String(context.business_id)}:${variationId}:${hourBucket}`,
+        name: `ChemCheck ${PLAN_NAMES[args.plan_id]} (${args.interval === "year" ? "annual" : "monthly"})`,
+        amountCents: planPriceCents(args.plan_id, args.interval),
+        locationId,
+        redirectUrl: appUrl("/pricing?checkout=success"),
+        subscriptionPlanVariationId: variationId,
+        buyerEmail,
+        paymentNote: `chemcheck:subscription:${String(context.business_id)}`,
+      }),
+    });
+    const link = parsePaymentLinkResponse(data);
+    await ctx.runMutation(internal.subscriptions.recordCheckout, {
+      business_id: context.business_id,
+      user_email: identity.email,
+      buyer_email: buyerEmail,
+      plan_id: args.plan_id,
+      interval: args.interval,
+      plan_variation_id: variationId,
+      payment_link_id: link.id,
+      order_id: link.order_id,
+    });
+    return { url: link.url };
+  },
+});
+
+/** Cancel the Square subscription at the end of the paid period. */
+export const cancelSubscription = action({
+  args: {},
+  handler: async (ctx): Promise<{ canceled: boolean }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+    await ctx.runMutation(internal.subscriptions.consumeBillingRateLimit, { user_email: identity.email });
+    const context: BillingContext = await ctx.runQuery(internal.subscriptions.getBillingContext, { user_email: identity.email });
+    const subscriptionId = activeSquareSubscriptionId(context);
+    if (!subscriptionId) throw new Error("No active Square subscription to cancel.");
+    const { accessToken } = requireSquarePlatformConfig();
+    const data = await squareRequest(`/v2/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, {
+      method: "POST",
+      token: accessToken,
+      body: {},
+    });
+    if (data?.subscription) {
+      await ctx.runMutation(internal.subscriptions.upsertFromSquare, {
+        ...subscriptionFieldsFromSquare(data.subscription, process.env as Record<string, string | undefined>),
+      });
+    }
+    return { canceled: true };
+  },
+});
+
+/** Switch plan/interval. Square applies the new plan variation from the next billing period. */
+export const changePlan = action({
+  args: { plan_id: subscriptionPlans, interval: subscriptionIntervals },
+  handler: async (ctx, args): Promise<{ scheduled: boolean }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+    await ctx.runMutation(internal.subscriptions.consumeBillingRateLimit, { user_email: identity.email });
+    const context: BillingContext = await ctx.runQuery(internal.subscriptions.getBillingContext, { user_email: identity.email });
+    const subscriptionId = activeSquareSubscriptionId(context);
+    if (!subscriptionId) throw new Error("No active Square subscription to change. Choose a plan to subscribe.");
+    const { accessToken } = requireSquarePlatformConfig();
+    await squareRequest(`/v2/subscriptions/${encodeURIComponent(subscriptionId)}/swap-plan`, {
+      method: "POST",
+      token: accessToken,
+      body: { new_plan_variation_id: requireVariationId(args.plan_id, args.interval) },
+    });
+    // The plan is updated from the subscription.updated webhook (never from client input).
+    return { scheduled: true };
   },
 });
 

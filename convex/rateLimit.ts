@@ -36,6 +36,9 @@ const DEFAULT_RATE_LIMITS: Record<string, { maxRequests: number; windowMs: numbe
   'saltCellLog.delete': { maxRequests: 50, windowMs: 60000 }, // 50 per minute
   'communication.sms': { maxRequests: 20, windowMs: 60000 },  // 20 per minute
   'report.send': { maxRequests: 30, windowMs: 60000 },        // 30 per minute
+  'payment.link': { maxRequests: 30, windowMs: 60000 },       // 30 per minute (Square payment links / status checks)
+  'square.connect': { maxRequests: 10, windowMs: 60000 },     // 10 per minute (seller OAuth connect/disconnect)
+  'billing.manage': { maxRequests: 10, windowMs: 60000 },     // 10 per minute (subscription checkout/cancel/plan change)
 
   // Queries (reads) - more lenient
   'query.list': { maxRequests: 200, windowMs: 60000 },        // 200 per minute

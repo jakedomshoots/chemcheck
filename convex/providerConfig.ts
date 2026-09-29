@@ -14,7 +14,7 @@ import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
 import { getAccessContext } from "./access";
 
-export type ProviderName = "stripe" | "mailersend" | "twilio";
+export type ProviderName = "square" | "mailersend" | "twilio";
 
 type ProviderState = {
   configured: boolean;
@@ -54,24 +54,75 @@ function validHttpUrl(value: string): boolean {
   }
 }
 
-function stripeState(): ProviderState {
-  const key = env("STRIPE_SECRET_KEY");
-  const webhookSecret = env("STRIPE_WEBHOOK_SECRET");
-  const appUrl = env("APP_URL");
-  const missing: string[] = [];
+/** Pinned Square API version sent on every request (Square-Version header). */
+export const SQUARE_API_VERSION = "2025-10-16";
 
-  if (!key) missing.push("STRIPE_SECRET_KEY");
-  else if (!/^sk_(live|test)_[A-Za-z0-9]+$/.test(key)) missing.push("STRIPE_SECRET_KEY (invalid format)");
-  else if (key.startsWith("sk_test_") && env("CONVEX_DEPLOYMENT_ENV") === "production" && env("STRIPE_ALLOW_TEST_MODE") !== "true") {
-    missing.push("STRIPE_SECRET_KEY (test key disabled in production)");
+export type SquareEnvironment = "production" | "sandbox";
+
+/** SQUARE_ENVIRONMENT: "production" or "sandbox" (default). */
+export function squareEnvironment(): SquareEnvironment {
+  return env("SQUARE_ENVIRONMENT").toLowerCase() === "production" ? "production" : "sandbox";
+}
+
+export function squareBaseUrl(environment: SquareEnvironment = squareEnvironment()): string {
+  return environment === "production" ? "https://connect.squareup.com" : "https://connect.squareupsandbox.com";
+}
+
+/** Env var names of the Square subscription plan VARIATION ids, per plan and interval. */
+export const SQUARE_PLAN_VARIATION_ENV_VARS = {
+  starter: { month: "SQUARE_PLAN_VARIATION_STARTER_MONTHLY", year: "SQUARE_PLAN_VARIATION_STARTER_ANNUAL" },
+  professional: { month: "SQUARE_PLAN_VARIATION_PROFESSIONAL_MONTHLY", year: "SQUARE_PLAN_VARIATION_PROFESSIONAL_ANNUAL" },
+  business: { month: "SQUARE_PLAN_VARIATION_BUSINESS_MONTHLY", year: "SQUARE_PLAN_VARIATION_BUSINESS_ANNUAL" },
+} as const;
+
+const SQUARE_REQUIRED_ENV = [
+  "SQUARE_APPLICATION_ID",
+  "SQUARE_APPLICATION_SECRET",
+  "SQUARE_ACCESS_TOKEN",
+  "SQUARE_LOCATION_ID",
+  "SQUARE_WEBHOOK_SIGNATURE_KEY",
+  "SQUARE_WEBHOOK_URL",
+  "SQUARE_PLATFORM_MERCHANT_ID",
+  "SQUARE_TOKEN_ENCRYPTION_KEY",
+] as const;
+
+function sandboxBlockedInProduction(): boolean {
+  return squareEnvironment() === "sandbox"
+    && env("CONVEX_DEPLOYMENT_ENV") === "production"
+    && env("SQUARE_ALLOW_SANDBOX") !== "true";
+}
+
+function validEncryptionKey(value: string): boolean {
+  try {
+    return atob(value).length === 32;
+  } catch {
+    return false;
   }
-  if (!webhookSecret) missing.push("STRIPE_WEBHOOK_SECRET");
-  else if (!/^whsec_[A-Za-z0-9]+$/.test(webhookSecret)) missing.push("STRIPE_WEBHOOK_SECRET (invalid format)");
+}
+
+function squareState(): ProviderState {
+  const missing: string[] = [];
+  for (const name of SQUARE_REQUIRED_ENV) {
+    if (!env(name)) missing.push(name);
+  }
+  const webhookUrl = env("SQUARE_WEBHOOK_URL");
+  if (webhookUrl && !validHttpUrl(webhookUrl)) missing.push("SQUARE_WEBHOOK_URL (must be https)");
+  const encryptionKey = env("SQUARE_TOKEN_ENCRYPTION_KEY");
+  if (encryptionKey && !validEncryptionKey(encryptionKey)) {
+    missing.push("SQUARE_TOKEN_ENCRYPTION_KEY (must be 32 random bytes, base64)");
+  }
+  for (const intervals of Object.values(SQUARE_PLAN_VARIATION_ENV_VARS)) {
+    for (const name of Object.values(intervals)) {
+      if (!env(name)) missing.push(name);
+    }
+  }
+  const appUrl = env("APP_URL");
   if (!appUrl) missing.push("APP_URL");
   else if (!validHttpUrl(appUrl)) missing.push("APP_URL (must be https)");
+  if (sandboxBlockedInProduction()) missing.push("SQUARE_ENVIRONMENT (sandbox disabled in production)");
 
-  const mode = key.startsWith("sk_live_") ? "live" : key.startsWith("sk_test_") ? "test" : "unknown";
-  const configured = Boolean(key);
+  const mode = squareEnvironment() === "production" ? "live" : "test";
+  const configured = Boolean(env("SQUARE_APPLICATION_ID") || env("SQUARE_ACCESS_TOKEN"));
   const ready = missing.length === 0;
   return {
     configured,
@@ -79,10 +130,10 @@ function stripeState(): ProviderState {
     mode,
     missing,
     message: ready
-      ? `Stripe ${mode} mode is ready`
+      ? `Square ${mode === "live" ? "production" : "sandbox"} is ready`
       : configured
-        ? "Stripe is partially configured"
-        : "Stripe is not configured",
+        ? "Square is partially configured"
+        : "Square is not configured",
   };
 }
 
@@ -140,25 +191,38 @@ function twilioState(): ProviderState {
 
 export function getProviderConfigStatus() {
   return {
-    stripe: stripeState(),
+    square: squareState(),
     mailersend: mailersendState(),
     twilio: twilioState(),
     checked_at: Date.now(),
   };
 }
 
-export function requireStripeConfig(): { secretKey: string; webhookSecret?: string } {
-  const key = env("STRIPE_SECRET_KEY");
-  if (!/^sk_(live|test)_[A-Za-z0-9]+$/.test(key)) {
-    throw new Error("Stripe is not configured. Set a valid STRIPE_SECRET_KEY in Convex environment variables.");
+/** Platform (ChemCheck owner) Square account used for subscription billing. */
+export function requireSquarePlatformConfig(): { accessToken: string; locationId: string; merchantId: string } {
+  const accessToken = env("SQUARE_ACCESS_TOKEN");
+  const locationId = env("SQUARE_LOCATION_ID");
+  const merchantId = env("SQUARE_PLATFORM_MERCHANT_ID");
+  if (!accessToken || !locationId || !merchantId) {
+    throw new Error("Square billing is not configured. Set SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID and SQUARE_PLATFORM_MERCHANT_ID in Convex environment variables.");
   }
-  if (key.startsWith("sk_test_") && env("CONVEX_DEPLOYMENT_ENV") === "production" && env("STRIPE_ALLOW_TEST_MODE") !== "true") {
-    throw new Error("Test Stripe keys are disabled in the production deployment.");
+  if (sandboxBlockedInProduction()) {
+    throw new Error("Square sandbox is disabled in the production deployment.");
   }
-  return {
-    secretKey: key,
-    webhookSecret: env("STRIPE_WEBHOOK_SECRET") || undefined,
-  };
+  return { accessToken, locationId, merchantId };
+}
+
+/** Square application credentials used for seller OAuth. */
+export function requireSquareOAuthConfig(): { applicationId: string; applicationSecret: string; redirectUrl?: string } {
+  const applicationId = env("SQUARE_APPLICATION_ID");
+  const applicationSecret = env("SQUARE_APPLICATION_SECRET");
+  if (!applicationId || !applicationSecret) {
+    throw new Error("Square is not configured. Set SQUARE_APPLICATION_ID and SQUARE_APPLICATION_SECRET in Convex environment variables.");
+  }
+  if (sandboxBlockedInProduction()) {
+    throw new Error("Square sandbox is disabled in the production deployment.");
+  }
+  return { applicationId, applicationSecret, redirectUrl: env("SQUARE_OAUTH_REDIRECT_URL") || undefined };
 }
 
 export function requireMailersendConfig(): { apiKey: string; fromEmail: string } {
@@ -191,13 +255,22 @@ export function requireTwilioConfig(): { accountSid: string; authToken: string; 
 }
 
 async function providerRequest(provider: ProviderName): Promise<{ ok: boolean; message: string }> {
-  if (provider === "stripe") {
-    const { secretKey } = requireStripeConfig();
-    const response = await fetchProvider("https://api.stripe.com/v1/account", {
-      headers: { Authorization: `Bearer ${secretKey}` },
+  if (provider === "square") {
+    const { accessToken, locationId } = requireSquarePlatformConfig();
+    const response = await fetchProvider(`${squareBaseUrl()}/v2/locations`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Square-Version": SQUARE_API_VERSION,
+        "Content-Type": "application/json",
+      },
     });
-    if (!response.ok) return { ok: false, message: `Stripe rejected the credentials (${response.status})` };
-    return { ok: true, message: "Stripe credentials are valid" };
+    if (!response.ok) return { ok: false, message: `Square rejected the platform access token (${response.status})` };
+    const data: any = await response.json().catch(() => null);
+    const locations: any[] = Array.isArray(data?.locations) ? data.locations : [];
+    if (!locations.some((location) => location?.id === locationId)) {
+      return { ok: false, message: "SQUARE_LOCATION_ID is not a location of the platform Square account" };
+    }
+    return { ok: true, message: "Square credentials are valid" };
   }
 
   if (provider === "mailersend") {
@@ -236,7 +309,7 @@ export const canManageProviders = internalQuery({
 });
 
 export const test = action({
-  args: { provider: v.union(v.literal("stripe"), v.literal("mailersend"), v.literal("twilio")) },
+  args: { provider: v.union(v.literal("square"), v.literal("mailersend"), v.literal("twilio")) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");

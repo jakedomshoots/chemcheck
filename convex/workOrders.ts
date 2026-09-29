@@ -361,8 +361,6 @@ export const complete = mutation({
         sent_at: undefined,
         paid_at: initialStatus === "paid" ? now : undefined,
         payment_url: undefined,
-        stripe_checkout_session_id: undefined,
-        stripe_payment_intent_id: undefined,
         notes,
         created_at: now,
         updated_at: now,

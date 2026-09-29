@@ -1,7 +1,7 @@
 import { isActiveMembership, isPendingMembership, normalizeEmail, resolveBusinessForUser } from "./access";
 
 /**
- * Server-side plan limits. Mirrors SUBSCRIPTION_PLANS in src/lib/stripe.ts and
+ * Server-side plan limits. Mirrors SUBSCRIPTION_PLANS in src/lib/billingPlans.ts and
  * FREE_TIER_LIMITS in src/hooks/useSubscription.ts. -1 means unlimited.
  */
 export type PlanLimits = { users: number; customers: number };
@@ -15,7 +15,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
 /** Applies when there is no subscription or it no longer grants a paid plan. */
 export const FREE_TIER_LIMITS: PlanLimits = { users: 1, customers: 10 };
 
-/** Statuses that keep the paid plan's limits (trial via Stripe, and dunning grace). */
+/** Statuses that keep the paid plan's limits (trial or pending start, and dunning grace). */
 const ENTITLED_STATUSES = new Set(["active", "trialing", "past_due"]);
 
 export function limitsForSubscription(subscription: { plan_id?: string; status?: string } | null | undefined): PlanLimits {

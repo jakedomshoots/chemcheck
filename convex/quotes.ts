@@ -5,7 +5,7 @@ import { normalizeTaxRate } from "./tax";
 import { enforceRateLimit } from "./rateLimit";
 import { CUSTOMER_WRITE_ROLES, assertCustomerAccess, getAccessContext, normalizeEmail } from "./access";
 import { computeTotals, normalizeLineItems, roundCurrency } from "./lineItems";
-import { checkoutPaymentMismatch } from "./stripeSubscriptionState";
+import { providerSettlementMismatch } from "./paymentMatching";
 
 /** Roles allowed to create and manage quotes (billing documents). */
 const QUOTE_WRITE_ROLES = CUSTOMER_WRITE_ROLES;
@@ -27,7 +27,8 @@ async function assertQuoteAccess(ctx: any, quote: any, userEmail: string, write 
 
 const VALID_STATUSES = ["draft", "sent", "approved", "declined", "converted"] as const;
 const VALID_DEPOSIT_STATUSES = ["not_required", "pending", "paid"] as const;
-const VALID_DEPOSIT_SOURCES = ["manual", "stripe"] as const;
+// "stripe" is legacy (pre-Square); clients may only set "manual".
+const VALID_DEPOSIT_SOURCES = ["manual"] as const;
 
 function validateStatus(status: string): void {
   if (!VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
@@ -210,7 +211,6 @@ export const create = mutation({
       deposit_required: depositRequired,
       deposit_status: depositRequired && depositRequired > 0 ? "pending" : "not_required",
       deposit_payment_url: undefined,
-      deposit_checkout_session_id: undefined,
       deposit_paid_at: undefined,
       deposit_paid_source: undefined,
       valid_until: args.valid_until,
@@ -366,7 +366,10 @@ export const storeDepositCheckoutLink = internalMutation({
     id: v.id("quotes"),
     user_email: v.string(),
     payment_url: v.string(),
-    stripe_checkout_session_id: v.optional(v.string()),
+    square_payment_link_id: v.string(),
+    square_order_id: v.string(),
+    square_merchant_id: v.string(),
+    square_amount_cents: v.number(),
     channel_override: v.optional(v.string()),
     recipient_override: v.optional(v.string()),
   },
@@ -385,7 +388,10 @@ export const storeDepositCheckoutLink = internalMutation({
       status: quote.status === "draft" ? "sent" : quote.status,
       deposit_status: quote.deposit_required && quote.deposit_required > 0 ? "pending" : quote.deposit_status,
       deposit_payment_url: args.payment_url,
-      deposit_checkout_session_id: args.stripe_checkout_session_id ?? quote.deposit_checkout_session_id,
+      deposit_square_payment_link_id: args.square_payment_link_id,
+      deposit_square_order_id: args.square_order_id,
+      deposit_square_merchant_id: args.square_merchant_id,
+      deposit_square_amount_cents: args.square_amount_cents,
       updated_at: now,
     });
 
@@ -420,67 +426,50 @@ export const storeDepositCheckoutLink = internalMutation({
     return {
       success: true,
       payment_url: args.payment_url,
-      stripe_checkout_session_id: args.stripe_checkout_session_id,
+      square_payment_link_id: args.square_payment_link_id,
       communication_id: communicationId,
     };
   },
 });
 
-export const markDepositPaidFromStripe = internalMutation({
-  args: {
-    quote_id: v.id("quotes"),
-    stripe_checkout_session_id: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const quote = await ctx.db.get(args.quote_id);
-    if (!quote) throw new Error("Quote not found");
-
-    const now = Date.now();
-    await ctx.db.patch(args.quote_id, {
-      status: quote.status,
-      deposit_status: "paid",
-      deposit_paid_at: quote.deposit_paid_at ?? now,
-      deposit_paid_source: "stripe",
-      deposit_checkout_session_id: args.stripe_checkout_session_id ?? quote.deposit_checkout_session_id,
-      updated_at: now,
-    });
-
-    return args.quote_id;
-  },
-});
-
 /**
- * Webhook path for a paid platform deposit Checkout Session. Records the
- * deposit only when the quote exists and the session paid exactly the
- * deposit in USD; returns the reason otherwise.
+ * Records a quote deposit from a verified provider (Square) payment, found by
+ * the order id of the deposit payment link. Applied only when the payment is
+ * COMPLETED, was taken on the merchant the link was created on (the business's
+ * own connected Square account) and paid exactly the deposit in USD.
  */
-export const markDepositPaidFromStripeCheckout = internalMutation({
+export const markDepositPaidFromProvider = internalMutation({
   args: {
-    quote_id: v.string(),
-    amount_total: v.optional(v.number()),
+    order_id: v.string(),
+    merchant_id: v.string(),
+    payment_id: v.optional(v.string()),
+    status: v.optional(v.string()),
+    amount_cents: v.optional(v.number()),
     currency: v.optional(v.string()),
-    stripe_checkout_session_id: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const quoteId = ctx.db.normalizeId("quotes", args.quote_id);
-    const quote = quoteId ? await ctx.db.get(quoteId) : null;
-    if (!quoteId || !quote) return { applied: false, reason: "not_found" };
-    if (quote.deposit_status === "paid") return { applied: false, reason: "already_paid" };
+  handler: async (ctx, args): Promise<{ matched: boolean; applied: boolean; reason: string | null; quote_id?: string }> => {
+    const quote = await ctx.db
+      .query("quotes")
+      .withIndex("by_deposit_square_order", (q) => q.eq("deposit_square_order_id", args.order_id))
+      .first();
+    if (!quote) return { matched: false, applied: false, reason: "not_found" };
+    const quoteId = String(quote._id);
+    if (quote.deposit_status === "paid") return { matched: true, applied: false, reason: "already_paid", quote_id: quoteId };
 
-    const mismatch = checkoutPaymentMismatch(quote.deposit_required ?? 0, {
-      amount_total: args.amount_total,
-      currency: args.currency,
-    });
-    if (mismatch) return { applied: false, reason: mismatch };
+    const mismatch = providerSettlementMismatch(
+      { merchantId: quote.deposit_square_merchant_id, amount: quote.deposit_required ?? 0 },
+      { merchant_id: args.merchant_id, status: args.status, amount_cents: args.amount_cents, currency: args.currency },
+    );
+    if (mismatch) return { matched: true, applied: false, reason: mismatch, quote_id: quoteId };
 
     const now = Date.now();
-    await ctx.db.patch(quoteId, {
+    await ctx.db.patch(quote._id, {
       deposit_status: "paid",
       deposit_paid_at: quote.deposit_paid_at ?? now,
-      deposit_paid_source: "stripe",
-      deposit_checkout_session_id: args.stripe_checkout_session_id ?? quote.deposit_checkout_session_id,
+      deposit_paid_source: "square",
+      deposit_square_payment_id: args.payment_id ?? quote.deposit_square_payment_id,
       updated_at: now,
     });
-    return { applied: true, reason: null };
+    return { matched: true, applied: true, reason: null, quote_id: quoteId };
   },
 });

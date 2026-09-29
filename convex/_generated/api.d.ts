@@ -31,14 +31,14 @@ import type * as serviceLogs from "../serviceLogs.js";
 import type * as servicePhotos from "../servicePhotos.js";
 import type * as serviceReports from "../serviceReports.js";
 import type * as skippedStops from "../skippedStops.js";
-import type * as stripeConnect from "../stripeConnect.js";
-import type * as stripeEvents from "../stripeEvents.js";
-import type * as stripeWebhook from "../stripeWebhook.js";
+import type * as squareConnect from "../squareConnect.js";
+import type * as squareWebhook from "../squareWebhook.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as sync from "../sync.js";
 import type * as tax from "../tax.js";
 import type * as teamMembers from "../teamMembers.js";
 import type * as validation from "../validation.js";
+import type * as webhookEvents from "../webhookEvents.js";
 import type * as workOrders from "../workOrders.js";
 
 import type {
@@ -71,14 +71,14 @@ declare const fullApi: ApiFromModules<{
   servicePhotos: typeof servicePhotos;
   serviceReports: typeof serviceReports;
   skippedStops: typeof skippedStops;
-  stripeConnect: typeof stripeConnect;
-  stripeEvents: typeof stripeEvents;
-  stripeWebhook: typeof stripeWebhook;
+  squareConnect: typeof squareConnect;
+  squareWebhook: typeof squareWebhook;
   subscriptions: typeof subscriptions;
   sync: typeof sync;
   tax: typeof tax;
   teamMembers: typeof teamMembers;
   validation: typeof validation;
+  webhookEvents: typeof webhookEvents;
   workOrders: typeof workOrders;
 }>;
 

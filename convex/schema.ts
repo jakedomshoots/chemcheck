@@ -175,23 +175,89 @@ export default defineSchema({
     // Optional while legacy user-scoped subscriptions are backfilled.
     business_id: v.optional(v.id("businesses")),
     user_email: v.string(),
-    stripe_customer_id: v.string(),
-    stripe_subscription_id: v.string(),
+    // Billing provider that owns this subscription ("square"); absent on legacy Stripe rows.
+    provider: v.optional(v.string()),
+    // legacy, pre-Square: Stripe ids on subscriptions created before the Square migration.
+    stripe_customer_id: v.optional(v.string()),
+    stripe_subscription_id: v.optional(v.string()),
+    // Square subscription (platform merchant). Written only by the Square webhook.
+    square_subscription_id: v.optional(v.string()),
+    square_customer_id: v.optional(v.string()),
+    square_plan_variation_id: v.optional(v.string()),
+    square_status: v.optional(v.string()), // raw Square status: ACTIVE, PENDING, PAUSED, CANCELED, DEACTIVATED
     plan_id: v.string(), // starter, professional, business
     status: v.string(), // active, canceled, trialing, past_due, etc.
     current_period_start: v.number(),
     current_period_end: v.number(),
     cancel_at_period_end: v.boolean(),
     trial_end: v.optional(v.number()),
-    // Stripe `event.created` (ms) of the last applied webhook; older events are ignored.
+    // Provider event creation time (ms) of the last applied webhook; older events are ignored.
     last_event_created: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
   })
     .index("by_business", ["business_id"])
     .index("by_user_email", ["user_email"])
+    // legacy, pre-Square
     .index("by_stripe_subscription", ["stripe_subscription_id"])
-    .index("by_stripe_customer", ["stripe_customer_id"]),
+    .index("by_stripe_customer", ["stripe_customer_id"])
+    .index("by_square_subscription", ["square_subscription_id"])
+    .index("by_square_customer", ["square_customer_id"]),
+
+  // Square subscription checkouts started by a business owner. Links the Square
+  // subscription (created by Square after payment) back to the business.
+  squareSubscriptionCheckouts: defineTable({
+    business_id: v.id("businesses"),
+    user_email: v.string(),
+    buyer_email: v.string(),
+    plan_id: v.string(),
+    interval: v.string(), // month, year
+    plan_variation_id: v.string(),
+    payment_link_id: v.optional(v.string()),
+    order_id: v.optional(v.string()),
+    square_customer_id: v.optional(v.string()),
+    status: v.string(), // pending, paid, linked
+    linked_subscription_id: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+    expires_at: v.number(),
+  })
+    .index("by_business", ["business_id"])
+    .index("by_order_id", ["order_id"])
+    .index("by_square_customer", ["square_customer_id"])
+    .index("by_buyer_email", ["buyer_email"]),
+
+  // Square OAuth connections of pool companies (sellers). SECRET: holds
+  // encrypted OAuth tokens. Only internal functions may read this table;
+  // no public query returns its documents.
+  squareSellerAccounts: defineTable({
+    business_id: v.id("businesses"),
+    merchant_id: v.string(),
+    access_token_enc: v.string(),
+    refresh_token_enc: v.string(),
+    expires_at: v.number(), // access token expiry (ms)
+    location_id: v.optional(v.string()),
+    location_name: v.optional(v.string()),
+    scopes: v.optional(v.string()),
+    connected_by: v.string(),
+    last_refresh_error: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_business", ["business_id"])
+    .index("by_merchant", ["merchant_id"])
+    .index("by_expires_at", ["expires_at"]),
+
+  // Single-use OAuth `state` values for the Square connect flow.
+  squareOAuthStates: defineTable({
+    state: v.string(),
+    business_id: v.id("businesses"),
+    user_email: v.string(),
+    expires_at: v.number(),
+    created_at: v.number(),
+  })
+    .index("by_state", ["state"])
+    .index("by_expires_at", ["expires_at"]),
 
   // Service photos for proof-of-service documentation
   servicePhotos: defineTable({
@@ -247,8 +313,8 @@ export default defineSchema({
         }))),
       })),
     }),
-    // Stripe Connect (Express) account that receives this business's customer
-    // payments. Written only by server code (convex/stripeConnect.ts).
+    // legacy, pre-Square: Stripe Connect fields. Square seller connections live
+    // in the internal-only squareSellerAccounts table.
     stripe_account_id: v.optional(v.string()),
     stripe_charges_enabled: v.optional(v.boolean()),
     stripe_payouts_enabled: v.optional(v.boolean()),
@@ -405,6 +471,15 @@ export default defineSchema({
     sent_at: v.optional(v.number()),
     paid_at: v.optional(v.number()),
     payment_url: v.optional(v.string()),
+    // Payment provider of the current payment link ("square").
+    payment_provider: v.optional(v.string()),
+    // Square payment link created on the business's own connected merchant.
+    square_payment_link_id: v.optional(v.string()),
+    square_order_id: v.optional(v.string()),
+    square_merchant_id: v.optional(v.string()),
+    square_amount_cents: v.optional(v.number()),
+    square_payment_id: v.optional(v.string()),
+    // legacy, pre-Square
     stripe_checkout_session_id: v.optional(v.string()),
     stripe_payment_intent_id: v.optional(v.string()),
     notes: v.optional(v.string()),
@@ -416,7 +491,8 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_work_order", ["work_order_id"])
     .index("by_source_quote", ["source_quote_id"])
-    .index("by_stripe_checkout_session", ["stripe_checkout_session_id"])
+    .index("by_stripe_checkout_session", ["stripe_checkout_session_id"]) // legacy, pre-Square
+    .index("by_square_order", ["square_order_id"])
     .index("by_created_by_and_status", ["created_by", "status", "created_at"])
     .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"]),
 
@@ -439,9 +515,14 @@ export default defineSchema({
     deposit_required: v.optional(v.number()),
     deposit_status: v.optional(v.string()), // not_required, pending, paid
     deposit_payment_url: v.optional(v.string()),
-    deposit_checkout_session_id: v.optional(v.string()),
+    deposit_checkout_session_id: v.optional(v.string()), // legacy, pre-Square (Stripe session id)
+    deposit_square_payment_link_id: v.optional(v.string()),
+    deposit_square_order_id: v.optional(v.string()),
+    deposit_square_merchant_id: v.optional(v.string()),
+    deposit_square_amount_cents: v.optional(v.number()),
+    deposit_square_payment_id: v.optional(v.string()),
     deposit_paid_at: v.optional(v.number()),
-    deposit_paid_source: v.optional(v.string()), // manual, stripe
+    deposit_paid_source: v.optional(v.string()), // manual, square (legacy: stripe)
     valid_until: v.optional(v.string()), // YYYY-MM-DD
     converted_work_order_id: v.optional(v.id("workOrders")),
     created_at: v.number(),
@@ -454,7 +535,8 @@ export default defineSchema({
     .index("by_customer", ["customer_id"])
     .index("by_status", ["status"])
     .index("by_converted_work_order", ["converted_work_order_id"])
-    .index("by_deposit_checkout_session", ["deposit_checkout_session_id"]),
+    .index("by_deposit_checkout_session", ["deposit_checkout_session_id"]) // legacy, pre-Square
+    .index("by_deposit_square_order", ["deposit_square_order_id"]),
 
   // Month 1 roadmap: service-text infrastructure and communication events
   communications: defineTable({
@@ -489,7 +571,22 @@ export default defineSchema({
     .index("by_created_by_and_status", ["created_by", "status", "created_at"])
     .index("by_created_by_and_customer", ["created_by", "customer_id", "created_at"]),
 
-  // Stripe webhook idempotency and delivery diagnostics
+  // Payment-provider webhook idempotency and delivery diagnostics (Square).
+  paymentWebhookEvents: defineTable({
+    provider: v.string(), // square
+    event_id: v.string(),
+    event_type: v.string(),
+    status: v.string(), // processing, processed, failed
+    attempts: v.number(),
+    last_error: v.optional(v.string()),
+    processed_at: v.optional(v.number()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_provider_and_event_id", ["provider", "event_id"])
+    .index("by_status", ["status"]),
+
+  // legacy, pre-Square: Stripe webhook idempotency rows (kept for existing data).
   stripeWebhookEvents: defineTable({
     event_id: v.string(),
     event_type: v.string(),

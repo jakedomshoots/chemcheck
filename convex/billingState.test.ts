@@ -6,18 +6,20 @@ import {
   validatePaymentUrl,
 } from "./invoices";
 import { computeTotals, normalizeLineItems } from "./lineItems";
+import { paymentAmountMismatch, providerSettlementMismatch } from "./paymentMatching";
 import {
-  checkoutPaymentMismatch,
-  invoiceSubscriptionId,
-  planIdFromPriceId,
-  resolvePeriod,
-  resolvePlanId,
+  decideSubscriptionTarget,
+  eventCreatedMs,
+  mapSquareStatus,
+  planIdFromVariationId,
+  planPriceCents,
   shouldApplyEvent,
   statusAfterPaymentFailed,
   statusAfterPaymentSucceeded,
-  subscriptionUpsertFields,
-} from "./stripeSubscriptionState";
-import { decideEventClaim, PROCESSING_LEASE_MS } from "./stripeEvents";
+  subscriptionFieldsFromSquare,
+  wouldResurrect,
+} from "./squareSubscriptionState";
+import { decideEventClaim, PROCESSING_LEASE_MS } from "./webhookEvents";
 import { computeBackoffMultiplier, getRateLimit } from "./rateLimit";
 
 describe("invoice state machine", () => {
@@ -37,11 +39,15 @@ describe("invoice state machine", () => {
     expect(initialInvoiceStatus(10, 50)).toBe("draft");
   });
 
-  it("accepts only https Stripe payment links", () => {
-    expect(validatePaymentUrl("https://checkout.stripe.com/c/pay/cs_test_1")).toContain("checkout.stripe.com");
+  it("accepts only https Square payment links", () => {
+    expect(validatePaymentUrl("https://square.link/u/AbCd1234")).toContain("square.link");
+    expect(validatePaymentUrl("https://sandbox.square.link/u/AbCd1234")).toContain("sandbox.square.link");
+    expect(validatePaymentUrl("https://checkout.square.site/merchant/M1/checkout/X")).toContain("square.site");
     expect(() => validatePaymentUrl("https://evil.example/pay")).toThrow();
-    expect(() => validatePaymentUrl("http://checkout.stripe.com/x")).toThrow();
-    expect(() => validatePaymentUrl("https://stripe.com.evil.example/x")).toThrow();
+    expect(() => validatePaymentUrl("http://square.link/u/x")).toThrow();
+    expect(() => validatePaymentUrl("https://square.link.evil.example/x")).toThrow();
+    expect(() => validatePaymentUrl("https://checkout.stripe.com/c/pay/cs_test_1")).toThrow();
+    expect(() => validatePaymentUrl("https://user:pw@square.link/u/x")).toThrow();
     expect(() => validatePaymentUrl("javascript:alert(1)")).toThrow();
   });
 });
@@ -70,47 +76,94 @@ describe("line item validation", () => {
   });
 });
 
-describe("stripe subscription webhook state", () => {
+describe("square subscription webhook state", () => {
   const env = {
-    STRIPE_STARTER_MONTHLY_PRICE_ID: "price_starter_m",
-    STRIPE_PROFESSIONAL_YEARLY_PRICE_ID: "price_pro_y",
-    STRIPE_BUSINESS_MONTHLY_PRICE_ID: "price_biz_m",
+    SQUARE_PLAN_VARIATION_STARTER_MONTHLY: "VAR_STARTER_M",
+    SQUARE_PLAN_VARIATION_PROFESSIONAL_ANNUAL: "VAR_PRO_Y",
+    SQUARE_PLAN_VARIATION_BUSINESS_MONTHLY: "VAR_BIZ_M",
   };
 
-  it("maps plan from the subscription price, falling back to metadata", () => {
-    expect(planIdFromPriceId("price_pro_y", env)).toBe("professional");
-    expect(planIdFromPriceId("price_unknown", env)).toBeUndefined();
-    // Billing-portal upgrade: metadata still says starter but the price is business.
-    expect(
-      resolvePlanId({ metadata: { plan_id: "starter" }, items: { data: [{ price: { id: "price_biz_m" } }] } }, env)
-    ).toBe("business");
-    expect(resolvePlanId({ metadata: { plan_id: "professional" }, items: { data: [] } }, env)).toBe("professional");
-    expect(resolvePlanId({ metadata: { plan_id: "bogus" } }, env)).toBeUndefined();
+  it("derives the plan only from env-configured plan variation ids", () => {
+    expect(planIdFromVariationId("VAR_PRO_Y", env)).toBe("professional");
+    expect(planIdFromVariationId("VAR_BIZ_M", env)).toBe("business");
+    expect(planIdFromVariationId("VAR_UNKNOWN", env)).toBeUndefined();
+    expect(planIdFromVariationId(undefined, env)).toBeUndefined();
+    // An unset env var never matches an empty variation id.
+    expect(planIdFromVariationId("", {})).toBeUndefined();
   });
 
-  it("reads billing periods from items on newer API versions", () => {
-    expect(resolvePeriod({ current_period_start: 10, current_period_end: 20 })).toEqual({ start: 10000, end: 20000 });
-    expect(
-      resolvePeriod({ items: { data: [{ current_period_start: 30, current_period_end: 40 }] } })
-    ).toEqual({ start: 30000, end: 40000 });
-    expect(resolvePeriod({})).toEqual({ start: undefined, end: undefined });
+  it("prices plans with the 20% annual discount", () => {
+    expect(planPriceCents("starter", "month")).toBe(2900);
+    expect(planPriceCents("professional", "month")).toBe(7900);
+    expect(planPriceCents("business", "month")).toBe(14900);
+    expect(planPriceCents("starter", "year")).toBe(27800);
+    expect(planPriceCents("professional", "year")).toBe(75800);
+    expect(planPriceCents("business", "year")).toBe(143000);
   });
 
-  it("finds the subscription id on legacy and new invoice shapes", () => {
-    expect(invoiceSubscriptionId({ subscription: "sub_1" })).toBe("sub_1");
-    expect(invoiceSubscriptionId({ subscription: { id: "sub_2" } })).toBe("sub_2");
-    expect(invoiceSubscriptionId({ parent: { subscription_details: { subscription: "sub_3" } } })).toBe("sub_3");
-    expect(invoiceSubscriptionId({})).toBeUndefined();
+  it("maps Square statuses onto the entitlement statuses planLimits expects", () => {
+    expect(mapSquareStatus("ACTIVE")).toBe("active");
+    expect(mapSquareStatus("PENDING")).toBe("trialing");
+    expect(mapSquareStatus("PAUSED")).toBe("canceled");
+    expect(mapSquareStatus("CANCELED")).toBe("canceled");
+    expect(mapSquareStatus("DEACTIVATED")).toBe("canceled");
+    expect(mapSquareStatus("WEIRD")).toBeUndefined();
+  });
+
+  it("builds upsert fields from a Square subscription without trusting metadata", () => {
+    const fields = subscriptionFieldsFromSquare(
+      {
+        id: "sub_1",
+        customer_id: "cust_1",
+        plan_variation_id: "VAR_UNKNOWN",
+        status: "ACTIVE",
+        start_date: "2026-01-01",
+        charged_through_date: "2026-02-01",
+        metadata: { plan_id: "business" },
+      },
+      env
+    );
+    expect(fields).toMatchObject({
+      square_subscription_id: "sub_1",
+      square_customer_id: "cust_1",
+      square_status: "ACTIVE",
+      status: "active",
+      plan_id: undefined,
+      current_period_start: Date.parse("2026-01-01T00:00:00Z"),
+      current_period_end: Date.parse("2026-02-01T00:00:00Z"),
+      cancel_at_period_end: false,
+    });
+    expect(() => subscriptionFieldsFromSquare({ id: "sub", status: "weird" }, env)).toThrow();
+    expect(() => subscriptionFieldsFromSquare({ status: "ACTIVE" }, env)).toThrow();
+  });
+
+  it("marks an ACTIVE subscription with a canceled_date as canceling at period end", () => {
+    const fields = subscriptionFieldsFromSquare(
+      { id: "sub_1", status: "ACTIVE", plan_variation_id: "VAR_STARTER_M", canceled_date: "2026-03-01" },
+      env
+    );
+    expect(fields.plan_id).toBe("starter");
+    expect(fields.cancel_at_period_end).toBe(true);
+    expect(fields.current_period_end).toBe(Date.parse("2026-03-01T00:00:00Z"));
   });
 
   it("ignores events older than the last applied one", () => {
+    expect(eventCreatedMs({ created_at: "2026-01-01T00:00:00Z" })).toBe(Date.parse("2026-01-01T00:00:00Z"));
+    expect(eventCreatedMs({})).toBeUndefined();
     expect(shouldApplyEvent(undefined, 1000)).toBe(true);
     expect(shouldApplyEvent(2000, 1000)).toBe(false);
     expect(shouldApplyEvent(2000, 2000)).toBe(true);
     expect(shouldApplyEvent(2000, 3000)).toBe(true);
   });
 
-  it("never resurrects canceled subscriptions on payment events", () => {
+  it("never resurrects canceled subscriptions", () => {
+    expect(wouldResurrect("CANCELED", "ACTIVE")).toBe(true);
+    expect(wouldResurrect("DEACTIVATED", "PENDING")).toBe(true);
+    expect(wouldResurrect("CANCELED", "CANCELED")).toBe(false);
+    // Paused subscriptions may legitimately resume.
+    expect(wouldResurrect("PAUSED", "ACTIVE")).toBe(false);
+    expect(wouldResurrect(undefined, "ACTIVE")).toBe(false);
+
     expect(statusAfterPaymentSucceeded("canceled")).toBeNull();
     expect(statusAfterPaymentSucceeded("incomplete_expired")).toBeNull();
     expect(statusAfterPaymentSucceeded("trialing")).toBeNull();
@@ -119,42 +172,42 @@ describe("stripe subscription webhook state", () => {
     expect(statusAfterPaymentFailed("active")).toBe("past_due");
   });
 
-  it("builds upsert fields without defaulting unknown plans to starter", () => {
-    const fields = subscriptionUpsertFields(
-      {
-        id: "sub_1",
-        customer: "cus_1",
-        status: "active",
-        cancel_at_period_end: false,
-        metadata: { business_id: "b1", user_email: "o@x.test" },
-        items: { data: [{ price: { id: "price_unknown" }, current_period_start: 1, current_period_end: 2 }] },
-      },
-      env
-    );
-    expect(fields).toMatchObject({
-      stripe_subscription_id: "sub_1",
-      stripe_customer_id: "cus_1",
-      status: "active",
-      plan_id: undefined,
-      current_period_start: 1000,
-      current_period_end: 2000,
-    });
-    expect(() => subscriptionUpsertFields({ id: "sub", status: "weird" }, env)).toThrow();
+  it("keeps one row per business and never lets a late event for an old subscription win", () => {
+    expect(decideSubscriptionTarget(null, { status: "active" })).toBe("insert");
+    // Legacy Stripe row (any status) is taken over by an entitled Square subscription.
+    expect(decideSubscriptionTarget({ status: "active" }, { status: "active", event_created: 5 })).toBe("replace");
+    expect(decideSubscriptionTarget({ status: "active" }, { status: "canceled" })).toBe("skip");
+    expect(decideSubscriptionTarget({ status: "canceled" }, { status: "canceled" })).toBe("replace");
+    const current = { provider: "square", square_subscription_id: "sub_new", status: "active", last_event_created: 2000 };
+    expect(decideSubscriptionTarget(current, { status: "active", event_created: 1000 })).toBe("skip");
+    expect(decideSubscriptionTarget(current, { status: "canceled", event_created: 3000 })).toBe("skip");
+    expect(decideSubscriptionTarget(current, { status: "active", event_created: 3000 })).toBe("replace");
   });
 });
 
-describe("stripe checkout payment verification", () => {
-  it("requires the exact USD amount due", () => {
-    expect(checkoutPaymentMismatch(125.5, { amount_total: 12550, currency: "usd" })).toBeNull();
-    expect(checkoutPaymentMismatch(125.5, { amount_total: 12550, currency: "USD" })).toBeNull();
-    expect(checkoutPaymentMismatch(125.5, { amount_total: 100, currency: "usd" })).toBe("amount_mismatch");
-    expect(checkoutPaymentMismatch(125.5, { amount_total: 12550, currency: "eur" })).toBe("currency_mismatch");
-    expect(checkoutPaymentMismatch(125.5, { currency: "usd" })).toBe("amount_missing");
-    expect(checkoutPaymentMismatch(0, { amount_total: 0, currency: "usd" })).toBe("no_amount_due");
+describe("provider payment verification", () => {
+  it("requires the exact USD amount due in cents", () => {
+    expect(paymentAmountMismatch(125.5, { amount_cents: 12550, currency: "USD" })).toBeNull();
+    expect(paymentAmountMismatch(125.5, { amount_cents: 12550, currency: "usd" })).toBeNull();
+    expect(paymentAmountMismatch(125.5, { amount_cents: 100, currency: "USD" })).toBe("amount_mismatch");
+    expect(paymentAmountMismatch(125.5, { amount_cents: 12551, currency: "USD" })).toBe("amount_mismatch");
+    expect(paymentAmountMismatch(125.5, { amount_cents: 12550, currency: "CAD" })).toBe("currency_mismatch");
+    expect(paymentAmountMismatch(125.5, { currency: "USD" })).toBe("amount_missing");
+    expect(paymentAmountMismatch(0, { amount_cents: 0, currency: "USD" })).toBe("no_amount_due");
+  });
+
+  it("settles only COMPLETED payments on the record's own merchant", () => {
+    const expected = { merchantId: "MERCHANT_A", amount: 50 };
+    const good = { merchant_id: "MERCHANT_A", status: "COMPLETED", amount_cents: 5000, currency: "USD" };
+    expect(providerSettlementMismatch(expected, good)).toBeNull();
+    expect(providerSettlementMismatch(expected, { ...good, status: "APPROVED" })).toBe("not_completed");
+    expect(providerSettlementMismatch(expected, { ...good, merchant_id: "MERCHANT_B" })).toBe("merchant_mismatch");
+    expect(providerSettlementMismatch({ amount: 50 }, good)).toBe("merchant_mismatch");
+    expect(providerSettlementMismatch(expected, { ...good, amount_cents: 4999 })).toBe("amount_mismatch");
   });
 });
 
-describe("stripe event claim", () => {
+describe("webhook event claim", () => {
   it("claims new/failed/stale events and rejects duplicates and in-flight ones", () => {
     const now = 1_000_000;
     expect(decideEventClaim(null, now)).toBe("claim");

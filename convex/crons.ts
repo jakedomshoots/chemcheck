@@ -26,4 +26,13 @@ crons.daily(
   {}
 );
 
+// Refresh connected sellers' Square OAuth tokens that expire within 7 days
+// (Square access tokens last ~30 days) and drop expired OAuth states.
+crons.daily(
+  "refresh-square-seller-tokens",
+  { hourUTC: 4, minuteUTC: 40 },
+  internal.squareConnect.refreshExpiringTokens,
+  {}
+);
+
 export default crons;

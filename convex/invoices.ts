@@ -12,7 +12,8 @@ import {
   normalizeEmail,
 } from "./access";
 import { computeTotals, normalizeLineItems } from "./lineItems";
-import { checkoutPaymentMismatch } from "./stripeSubscriptionState";
+import { providerSettlementMismatch } from "./paymentMatching";
+import { isSquareHostedUrl } from "./squareApi";
 
 const VALID_STATUSES = ["draft", "sent", "paid", "cancelled"] as const;
 /** Roles allowed to create, send and settle invoices. */
@@ -20,7 +21,7 @@ const BILLING_WRITE_ROLES = CUSTOMER_WRITE_ROLES;
 
 /**
  * Allowed manual status transitions. "paid" is only reachable through
- * markPaid / Stripe, and paid/cancelled invoices are terminal.
+ * markPaid / a verified Square payment, and paid/cancelled invoices are terminal.
  */
 const INVOICE_TRANSITIONS: Record<string, readonly string[]> = {
   draft: ["draft", "sent", "cancelled"],
@@ -39,9 +40,7 @@ export function assertInvoiceTransition(from: string, to: string): void {
   }
 }
 
-const ALLOWED_PAYMENT_HOST_SUFFIX = ".stripe.com";
-
-/** Only https Stripe-hosted payment pages may be stored as an invoice payment link. */
+/** Only https Square-hosted payment pages may be stored as an invoice payment link. */
 export function validatePaymentUrl(url: string): string {
   let parsed: URL;
   try {
@@ -49,12 +48,11 @@ export function validatePaymentUrl(url: string): string {
   } catch {
     throw new Error("Invalid payment URL");
   }
-  const host = parsed.hostname.toLowerCase();
-  if (parsed.protocol !== "https:" || !(host === "stripe.com" || host.endsWith(ALLOWED_PAYMENT_HOST_SUFFIX))) {
-    throw new Error("Payment URL must be an https Stripe payment link");
-  }
   if (parsed.username || parsed.password) {
     throw new Error("Invalid payment URL");
+  }
+  if (!isSquareHostedUrl(parsed.toString())) {
+    throw new Error("Payment URL must be an https Square payment link");
   }
   return parsed.toString();
 }
@@ -86,8 +84,15 @@ const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_BACKFILL_BATCH_SIZE = 100;
 const MAX_BACKFILL_BATCH_SIZE = 500;
 
-export function canManuallyMarkInvoicePaid(invoice: { stripe_checkout_session_id?: string }): boolean {
-  return !invoice.stripe_checkout_session_id;
+/**
+ * Invoices with a provider payment link are settled only by the verified
+ * provider payment (webhook or status sync), never manually.
+ */
+export function canManuallyMarkInvoicePaid(invoice: {
+  square_payment_link_id?: string;
+  stripe_checkout_session_id?: string; // legacy, pre-Square
+}): boolean {
+  return !invoice.square_payment_link_id && !invoice.stripe_checkout_session_id;
 }
 
 function validateStatus(status: string): void {
@@ -417,8 +422,6 @@ export const createDraft = mutation({
       sent_at: undefined,
       paid_at: initialStatus === "paid" ? now : undefined,
       payment_url: undefined,
-      stripe_checkout_session_id: undefined,
-      stripe_payment_intent_id: undefined,
       notes: resolvedNotes,
       created_at: now,
       updated_at: now,
@@ -651,8 +654,6 @@ export const batchCreateFromCompletedWorkOrders = mutation({
           sent_at: undefined,
           paid_at: initialStatus === "paid" ? now : undefined,
           payment_url: undefined,
-          stripe_checkout_session_id: undefined,
-          stripe_payment_intent_id: undefined,
           notes,
           created_at: now,
           updated_at: now,
@@ -699,7 +700,7 @@ export const updateStatus = mutation({
     await assertInvoiceAccess(ctx, invoice, identity.email!, true);
     assertInvoiceTransition(invoice.status, args.status);
 
-    // Clients may only attach Stripe-hosted payment links; server flows set
+    // Clients may only attach Square-hosted payment links; server flows set
     // payment URLs through sendInvoice / finalizeSend.
     const paymentUrl = args.payment_url !== undefined ? validatePaymentUrl(args.payment_url) : invoice.payment_url;
 
@@ -792,7 +793,10 @@ export const finalizeSend = internalMutation({
     id: v.id("invoices"),
     user_email: v.string(),
     payment_url: v.string(),
-    stripe_checkout_session_id: v.optional(v.string()),
+    square_payment_link_id: v.optional(v.string()),
+    square_order_id: v.optional(v.string()),
+    square_merchant_id: v.optional(v.string()),
+    square_amount_cents: v.optional(v.number()),
     channel_override: v.optional(v.string()),
     recipient_override: v.optional(v.string()),
   },
@@ -815,7 +819,15 @@ export const finalizeSend = internalMutation({
       status: "sent",
       sent_at: now,
       payment_url: args.payment_url,
-      stripe_checkout_session_id: args.stripe_checkout_session_id ?? invoice.stripe_checkout_session_id,
+      ...(args.square_payment_link_id
+        ? {
+          payment_provider: "square",
+          square_payment_link_id: args.square_payment_link_id,
+          square_order_id: args.square_order_id,
+          square_merchant_id: args.square_merchant_id,
+          square_amount_cents: args.square_amount_cents,
+        }
+        : {}),
       updated_at: now,
     });
 
@@ -850,7 +862,7 @@ export const finalizeSend = internalMutation({
     return {
       success: true,
       payment_url: args.payment_url,
-      stripe_checkout_session_id: args.stripe_checkout_session_id,
+      square_payment_link_id: args.square_payment_link_id,
       communication_id: communicationId,
     };
   },
@@ -871,7 +883,7 @@ export const markPaid = mutation({
       throw new Error(`Invoice cannot be marked paid from "${invoice.status}"`);
     }
     if (!canManuallyMarkInvoicePaid(invoice)) {
-      throw new Error("This invoice is linked to Stripe. It will be marked paid automatically after Stripe confirms payment.");
+      throw new Error("This invoice has a card payment link. It will be marked paid automatically after Square confirms payment.");
     }
 
     const now = Date.now();
@@ -885,63 +897,61 @@ export const markPaid = mutation({
   },
 });
 
-export const markPaidFromStripe = internalMutation({
-  args: {
-    invoice_id: v.id("invoices"),
-    stripe_checkout_session_id: v.optional(v.string()),
-    stripe_payment_intent_id: v.optional(v.string()),
-  },
+/** Settles an invoice with nothing left to charge (total covered by a paid deposit). */
+export const markPaidZeroTotal = internalMutation({
+  args: { invoice_id: v.id("invoices") },
   handler: async (ctx, args) => {
     const invoice = await ctx.db.get(args.invoice_id);
     if (!invoice) throw new Error("Invoice not found");
-
+    if (invoice.total > 0) throw new Error("Invoice still has an amount due");
+    if (invoice.status === "cancelled" || invoice.status === "paid") return args.invoice_id;
     const now = Date.now();
-    await ctx.db.patch(args.invoice_id, {
-      status: "paid",
-      paid_at: invoice.paid_at ?? now,
-      stripe_checkout_session_id: args.stripe_checkout_session_id ?? invoice.stripe_checkout_session_id,
-      stripe_payment_intent_id: args.stripe_payment_intent_id ?? invoice.stripe_payment_intent_id,
-      updated_at: now,
-    });
-
+    await ctx.db.patch(args.invoice_id, { status: "paid", paid_at: invoice.paid_at ?? now, updated_at: now });
     return args.invoice_id;
   },
 });
 
 /**
- * Webhook path for a paid platform Checkout Session. Settles the invoice only
- * when it exists and the session paid exactly the amount due in USD; returns
- * the reason otherwise so the webhook can acknowledge without retry loops.
+ * Settles an invoice from a verified provider (Square) payment. The invoice is
+ * found by the order id of the payment link we created; it is marked paid only
+ * when the payment is COMPLETED, was taken on the merchant the link was created
+ * on (the business's own connected Square account) and paid exactly the amount
+ * due in USD. Returns the reason otherwise so callers can acknowledge without
+ * retry loops.
  */
-export const markPaidFromStripeCheckout = internalMutation({
+export const markPaidFromProvider = internalMutation({
   args: {
-    invoice_id: v.string(),
-    amount_total: v.optional(v.number()),
+    order_id: v.string(),
+    merchant_id: v.string(),
+    payment_id: v.optional(v.string()),
+    status: v.optional(v.string()),
+    amount_cents: v.optional(v.number()),
     currency: v.optional(v.string()),
-    stripe_checkout_session_id: v.optional(v.string()),
-    stripe_payment_intent_id: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const invoiceId = ctx.db.normalizeId("invoices", args.invoice_id);
-    const invoice = invoiceId ? await ctx.db.get(invoiceId) : null;
-    if (!invoiceId || !invoice) return { applied: false, reason: "not_found" };
-    if (invoice.status === "paid") return { applied: false, reason: "already_paid" };
+  handler: async (ctx, args): Promise<{ matched: boolean; applied: boolean; reason: string | null; invoice_id?: string }> => {
+    const invoice = await ctx.db
+      .query("invoices")
+      .withIndex("by_square_order", (q) => q.eq("square_order_id", args.order_id))
+      .first();
+    if (!invoice) return { matched: false, applied: false, reason: "not_found" };
+    const invoiceId = String(invoice._id);
+    if (invoice.status === "paid") return { matched: true, applied: false, reason: "already_paid", invoice_id: invoiceId };
+    if (invoice.status === "cancelled") return { matched: true, applied: false, reason: "invoice_cancelled", invoice_id: invoiceId };
 
-    const mismatch = checkoutPaymentMismatch(invoice.total, {
-      amount_total: args.amount_total,
-      currency: args.currency,
-    });
-    if (mismatch) return { applied: false, reason: mismatch };
+    const mismatch = providerSettlementMismatch(
+      { merchantId: invoice.square_merchant_id, amount: invoice.total },
+      { merchant_id: args.merchant_id, status: args.status, amount_cents: args.amount_cents, currency: args.currency },
+    );
+    if (mismatch) return { matched: true, applied: false, reason: mismatch, invoice_id: invoiceId };
 
     const now = Date.now();
-    await ctx.db.patch(invoiceId, {
+    await ctx.db.patch(invoice._id, {
       status: "paid",
       paid_at: invoice.paid_at ?? now,
-      stripe_checkout_session_id: args.stripe_checkout_session_id ?? invoice.stripe_checkout_session_id,
-      stripe_payment_intent_id: args.stripe_payment_intent_id ?? invoice.stripe_payment_intent_id,
+      square_payment_id: args.payment_id ?? invoice.square_payment_id,
       updated_at: now,
     });
-    return { applied: true, reason: null };
+    return { matched: true, applied: true, reason: null, invoice_id: invoiceId };
   },
 });
 
