@@ -1,15 +1,24 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+// @ts-expect-error jest-axe ships no type declarations and @types/jest-axe is not installed.
 import { axe, toHaveNoViolations } from 'jest-axe';
 import { MemoryRouter } from 'react-router-dom';
-import { getReadinessReport } from '@/lib/readiness';
+import { getReadinessReport, type ReadinessReport } from '@/lib/readiness';
 import { getServiceWorkerState } from '@/lib/serviceWorker';
+// @ts-expect-error HealthPage is an untyped .jsx module.
 import HealthPage from '@/pages/HealthPage';
+// @ts-expect-error ReadyPage is an untyped .jsx module.
 import { ReadyPage } from '@/pages/ReadyPage';
+
+declare module 'vitest' {
+  interface Assertion<T> {
+    toHaveNoViolations(): T;
+  }
+}
 
 expect.extend(toHaveNoViolations);
 
-const healthyReadinessReport = {
+const healthyReadinessReport: ReadinessReport = {
   status: 'ok' as const,
   appVersion: '1.0.0-test',
   dataVersion: 3,

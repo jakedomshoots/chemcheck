@@ -86,7 +86,7 @@ All runtime feature policy is defined in `src/lib/platformPolicy.ts`:
 - `VITE_DISABLE_SERVICE_WORKER` (hard off)
 - `VITE_ENABLE_SERVICE_WORKER_DEV` (explicit dev enable)
 - `VITE_DISABLE_AUTH_BYPASS` (hard bypass off switch)
-- `VITE_ENABLE_LOCALHOST_AUTH_BYPASS` (default true, env opt-in semantics)
+- `VITE_ENABLE_LOCALHOST_AUTH_BYPASS` (default false; explicit opt-in, refused in production builds)
 - `VITE_IOS_SIM_AUTH_BYPASS` (explicit iOS simulator bypass)
 - `VITE_APP_VERSION` (snapshot for backup compatibility warnings)
 

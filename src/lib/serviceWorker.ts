@@ -28,6 +28,13 @@ export interface UpdateInstalledEvent {
 
 export type ServiceWorkerEvent = UpdateAvailableEvent | UpdateInstalledEvent;
 
+/** Background Sync is not in lib.dom; Chromium exposes it on the registration. */
+interface SyncManagerLike {
+  register(tag: string): Promise<void>;
+}
+
+type RegistrationWithSync = ServiceWorkerRegistration & { sync?: SyncManagerLike };
+
 class ServiceWorkerManager {
   private registration: ServiceWorkerRegistration | null = null;
   private listeners: ((event: ServiceWorkerEvent) => void)[] = [];
@@ -177,7 +184,7 @@ class ServiceWorkerManager {
 
     let activeRegistration = this.registration;
     if (!activeRegistration) {
-      activeRegistration = await navigator.serviceWorker.getRegistration(SW_SCOPE);
+      activeRegistration = (await navigator.serviceWorker.getRegistration(SW_SCOPE)) ?? null;
       this.registration = activeRegistration;
     }
 
@@ -338,8 +345,9 @@ class ServiceWorkerManager {
     this.onlineListener = () => {
       monitoring.recordMetric('network_online', performance.now());
 
-      if (this.registration && 'sync' in window.ServiceWorkerRegistration.prototype) {
-        this.registration.sync.register('backup-sync').catch(error => {
+      const registration = this.registration as RegistrationWithSync | null;
+      if (registration && 'sync' in window.ServiceWorkerRegistration.prototype && registration.sync) {
+        registration.sync.register('backup-sync').catch((error: unknown) => {
           console.error('[SW] Background sync registration failed:', error);
         });
       }

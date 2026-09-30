@@ -14,7 +14,7 @@
 ### **Monitoring & Alerting**
 - [x] **Application performance monitoring** - Set up Sentry or similar ✅ *Sentry configured with performance monitoring*
 - [x] **Error tracking** - Configure error reporting ✅ *Sentry error tracking with user context*
-- [x] **Uptime monitoring** - Set up monitoring service ✅ *Health endpoint created, monitoring guide documented*
+- [ ] **Uptime monitoring** - Point external monitors at the Convex `health.check` action (`npx convex run health:check` or the deployment's HTTP endpoint), not at `/health.json`. `public/health.json` is a static build marker (`{"status":"static"}` plus the stamped app version/build id) and cannot report live status.
 - [x] **Set up staging environment** - Pre-production testing environment ✅ *Staging setup guide created*
 
 ---
@@ -23,9 +23,9 @@
 *Improve reliability and coverage*
 
 ### **Testing Improvements**
-- [x] **Increase test coverage** - Unit tests added ✅ *81 tests passing, core functionality covered*
+- [x] **Increase test coverage** - Unit tests added ✅ *`npm test` runs the full Vitest suite in CI; core functionality covered*
 - [x] **Visual regression testing** - Automated UI testing (use Percy or Chromatic) ✅ *Storybook + Chromatic config added, guide created*
-- [x] **Security testing (OWASP)** - Automated security scans ✅ *ESLint security plugin configured, npm audit clean*
+- [x] **Security testing (OWASP)** - Automated security scans ✅ *ESLint security plugin configured.* ⚠️ *`npm audit` drifts: on 2026-09-30 it reported 8 vulnerabilities (4 high, 4 moderate, all transitive: xmldom, brace-expansion, browserslist, js-yaml, @vitest/mocker, baseline-browser-mapping, @humanfs/node) before `npm audit fix` and 0 after. The bundled npm 10.9 crashed on `npm audit fix` ("Cannot read properties of null (reading 'edgesOut')"); use `npx npm@latest audit fix`. Re-run `npm audit` before every release; never use `--force` without reviewing the semver-major bumps it proposes.*
 - [x] **Load testing scenarios** - Performance under load ✅ *Load testing guide with k6/Artillery scripts created*
 - [x] **Cross-browser compatibility testing** - Manual testing ✅ *Browser testing guide with checklist created*
 - [x] **Mobile device testing** - Real device testing ✅ *Mobile testing guide with device matrix created*

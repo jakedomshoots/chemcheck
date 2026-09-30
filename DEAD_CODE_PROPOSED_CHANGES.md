@@ -50,8 +50,8 @@ After manual review:
 | `postcss` | Used by `postcss.config.js`. Depcheck flagged it incorrectly because config parsing is imperfect here. |
 | `autoprefixer` | Used by `postcss.config.js`. Same depcheck false positive as above. |
 | `@capacitor/cli` | Not imported by source code, but `scripts/ios-sim-run.sh` runs `npx cap sync ios`. Keep unless iOS packaging is being retired. |
-| `@capacitor/ios` | Same as above: platform package for Capacitor iOS workflow, even though no `ios/` directory exists in this checkout. |
-| `@clerk/clerk-js` | `patch_clerk.js` targets `node_modules/@clerk/clerk-js/dist/clerk.mjs`, and `npm run patch-clerk` exists. Remove only if that patch workflow is deleted. |
+| `@capacitor/ios` | Same as above: platform package for the committed Capacitor iOS project under `ios/App` (`npm run ios:sync`, `npm run ios:archive`). |
+| `patch_clerk.js` / `npm run patch-clerk` | `@clerk/clerk-js` is **not** a declared dependency (only `@clerk/clerk-react` is) and is not installed, so the patch script targets a path that does not exist. Treat the script and the `patch-clerk` npm script as removal candidates rather than a reason to keep a package. |
 
 ## High-Confidence File Removal Candidates
 
@@ -217,9 +217,9 @@ These had no source references in Knip/depcheck scans, and no obvious tooling ro
 | Package | Why it needs confirmation |
 | --- | --- |
 | `@stripe/react-stripe-js` | No source imports, but Vite manual chunk includes it. Backend/frontend still use `@stripe/stripe-js`. Remove only if no React Stripe Elements UI is planned. |
-| `@clerk/clerk-js` | Direct source does not import it, but `patch_clerk.js` references its installed path. |
+| `patch_clerk.js` | `@clerk/clerk-js` is not in `package.json` and is not installed; the script references a non-existent path and can be deleted together with the `patch-clerk` npm script. |
 | `@capacitor/cli` | Needed by `scripts/ios-sim-run.sh` even though not imported by source. |
-| `@capacitor/ios` | Needed by Capacitor iOS workflow even though this checkout has no `ios/` directory. |
+| `@capacitor/ios` | Needed by the committed Capacitor iOS project under `ios/App`. |
 
 ## Vite Config Cleanup Tied To Dependency Cleanup
 

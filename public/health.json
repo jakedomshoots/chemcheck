@@ -1,9 +1,6 @@
 {
-  "status": "healthy",
-  "timestamp": "2024-12-13T20:30:00Z",
-  "version": "1.0.0",
-  "services": {
-    "frontend": "operational",
-    "convex": "operational"
-  }
+  "status": "static",
+  "note": "use /api or Convex health action for live status",
+  "version": "__CHEMCHECK_APP_VERSION__",
+  "buildId": "__CHEMCHECK_BUILD_ID__"
 }

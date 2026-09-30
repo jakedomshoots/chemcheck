@@ -19,79 +19,220 @@ const STATIC_FILES = [
   // Note: Vite builds will have hashed filenames, so we'll cache them dynamically
 ];
 
-// Files that should always be fetched from network when available
-const NETWORK_FIRST = [
+// Same-origin paths that should always be fetched from network when available
+const NETWORK_FIRST_PATH_PREFIXES = [
   '/api/',
   '/convex/',
 ];
 
-// Files that can be served from cache first
-const CACHE_FIRST = [
+// Same-origin paths / extensions that can be served from cache first.
+// Matched against url.pathname only, never the full URL string.
+const CACHE_FIRST_PATH_PREFIXES = [
   '/assets/',
   '/static/',
+];
+const CACHE_FIRST_EXTENSIONS = [
   '.css',
   '.js',
+  '.mjs',
   '.png',
   '.jpg',
   '.jpeg',
+  '.webp',
   '.svg',
+  '.ico',
   '.woff',
-  '.woff2'
+  '.woff2',
 ];
 
-// ============================================
-// Service Worker Installation
-// ============================================
+// The only cross-origin hosts the worker may cache. Everything else (Clerk,
+// Convex, Stripe, Sentry, analytics, storage URLs) always goes straight to the
+// network so a shared device never serves another user's session or photos.
+const ALLOWED_CROSS_ORIGIN_HOSTS = {
+  // Font CSS can vary by user agent; revalidate it in the background.
+  'fonts.googleapis.com': 'stale-while-revalidate',
+  // Font binaries are content-addressed and immutable.
+  'fonts.gstatic.com': 'cache-first',
+};
 
-self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker...');
-  
-  event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('[SW] Caching static files');
-        return cache.addAll(STATIC_FILES);
-      })
-      .then(() => {
-        console.log('[SW] Static files cached successfully');
-        return self.skipWaiting(); // Activate immediately
-      })
-      .catch((error) => {
-        console.error('[SW] Failed to cache static files:', error);
-      })
-  );
-});
+// Hosts that must never be cached, even if they were same-origin aliases.
+const NEVER_CACHE_HOST_FRAGMENTS = ['clerk', 'convex'];
+
+// Eviction policy for the runtime (stale-while-revalidate) and dynamic
+// (network-first) caches. The static cache holds only the app shell and hashed
+// build assets, which are invalidated by BUILD_ID instead.
+const MAX_CACHE_ENTRIES = 100;
+const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const CACHED_AT_HEADER = 'x-chemcheck-cached-at';
 
 // ============================================
-// Service Worker Activation
+// Request Classification (pure helpers)
 // ============================================
 
-self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating service worker...');
-  
-  event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            const isCurrentCache = [STATIC_CACHE, DYNAMIC_CACHE, CACHE_NAME].includes(cacheName);
-            // Only remove stale ChemCheck caches; leave unrelated origins/tools alone.
-            if (cacheName.startsWith(`${CACHE_PREFIX}-`) && !isCurrentCache) {
-              console.log('[SW] Deleting old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      })
-      .then(() => {
-        console.log('[SW] Service worker activated');
-        return self.clients.claim(); // Take control immediately
-      })
-      .catch((error) => {
-        console.error('[SW] Activation failed:', error);
-      })
-  );
-});
+function hasPathPrefix(pathname, prefixes) {
+  return prefixes.some((prefix) => pathname.startsWith(prefix));
+}
+
+function hasCacheFirstExtension(pathname) {
+  const lower = pathname.toLowerCase();
+  return CACHE_FIRST_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
+function isNeverCacheHost(hostname) {
+  const lower = String(hostname || '').toLowerCase();
+  return NEVER_CACHE_HOST_FRAGMENTS.some((fragment) => lower.includes(fragment));
+}
+
+function hasAuthorizationHeader(request) {
+  try {
+    return !!(request.headers && request.headers.has('authorization'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Decide how the worker should treat a request.
+ * Returns one of:
+ *   'bypass'                 - do not call respondWith; let the browser fetch it
+ *   'navigation'             - same-origin SPA navigation (network-first shell)
+ *   'network-first'          - same-origin API-style paths
+ *   'cache-first'            - hashed build assets / immutable font binaries
+ *   'stale-while-revalidate' - everything else that is safe to cache
+ */
+function classifyRequest(request, selfOrigin) {
+  if (!request || request.method !== 'GET') {
+    return 'bypass';
+  }
+
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return 'bypass';
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return 'bypass';
+  }
+
+  if (isNeverCacheHost(url.hostname)) {
+    return 'bypass';
+  }
+
+  const isSameOrigin = url.origin === selfOrigin;
+
+  if (!isSameOrigin) {
+    const allowedStrategy = ALLOWED_CROSS_ORIGIN_HOSTS[url.hostname];
+    if (!allowedStrategy) {
+      return 'bypass';
+    }
+    if (request.credentials === 'include' || hasAuthorizationHeader(request)) {
+      return 'bypass';
+    }
+    if (request.mode === 'navigate') {
+      return 'bypass';
+    }
+    return allowedStrategy;
+  }
+
+  if (hasAuthorizationHeader(request)) {
+    // Authenticated same-origin responses are user-specific; never cache them.
+    return 'bypass';
+  }
+
+  if (request.mode === 'navigate') {
+    return 'navigation';
+  }
+
+  if (hasPathPrefix(url.pathname, NETWORK_FIRST_PATH_PREFIXES)) {
+    return 'network-first';
+  }
+
+  if (hasPathPrefix(url.pathname, CACHE_FIRST_PATH_PREFIXES) || hasCacheFirstExtension(url.pathname)) {
+    return 'cache-first';
+  }
+
+  return 'stale-while-revalidate';
+}
+
+// ============================================
+// Cache Bookkeeping (timestamps + eviction)
+// ============================================
+
+function stampResponse(response, now = Date.now()) {
+  const headers = new Headers(response.headers);
+  headers.set(CACHED_AT_HEADER, String(now));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function getCachedAt(response) {
+  if (!response || !response.headers) return null;
+  const stamped = Number(response.headers.get(CACHED_AT_HEADER));
+  if (Number.isFinite(stamped) && stamped > 0) return stamped;
+  const dateHeader = response.headers.get('date');
+  if (dateHeader) {
+    const parsed = Date.parse(dateHeader);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function isExpired(response, now = Date.now(), maxAgeMs = MAX_CACHE_AGE_MS) {
+  const cachedAt = getCachedAt(response);
+  if (cachedAt === null) return false;
+  return now - cachedAt > maxAgeMs;
+}
+
+/**
+ * Drop expired entries, then the oldest entries beyond maxEntries.
+ * Cache.keys() preserves insertion order, so the front of the list is oldest.
+ */
+async function trimCache(cache, { maxEntries = MAX_CACHE_ENTRIES, maxAgeMs = MAX_CACHE_AGE_MS, now = Date.now() } = {}) {
+  const requests = await cache.keys();
+  const survivors = [];
+
+  for (const request of requests) {
+    const response = await cache.match(request);
+    if (!response || isExpired(response, now, maxAgeMs)) {
+      await cache.delete(request);
+    } else {
+      survivors.push(request);
+    }
+  }
+
+  const overflow = survivors.length - maxEntries;
+  for (let index = 0; index < overflow; index += 1) {
+    await cache.delete(survivors[index]);
+  }
+
+  return Math.max(survivors.length, 0) - Math.max(overflow, 0);
+}
+
+/**
+ * Put a timestamped copy into a bounded cache and trim it afterwards.
+ */
+async function putWithEviction(cache, request, response, options) {
+  await cache.put(request, stampResponse(response));
+  await trimCache(cache, options);
+}
+
+/**
+ * Read from a bounded cache, treating expired entries as misses.
+ */
+async function matchFresh(cache, request) {
+  const cached = await cache.match(request);
+  if (!cached) return undefined;
+  if (isExpired(cached)) {
+    await cache.delete(request);
+    return undefined;
+  }
+  return cached;
+}
 
 // ============================================
 // Fetch Event Handling
@@ -99,27 +240,25 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-  
-  // Skip non-GET requests
-  if (request.method !== 'GET') {
-    return;
-  }
-  
-  // Skip chrome-extension and other non-http requests
-  if (!url.protocol.startsWith('http')) {
-    return;
-  }
-  
-  // Handle different types of requests
-  if (request.mode === 'navigate') {
-    event.respondWith(networkFirstNavigation(request));
-  } else if (isNetworkFirst(request.url)) {
-    event.respondWith(networkFirst(request));
-  } else if (isCacheFirst(request.url)) {
-    event.respondWith(cacheFirst(request));
-  } else {
-    event.respondWith(staleWhileRevalidate(request));
+  const strategy = classifyRequest(request, self.location.origin);
+
+  switch (strategy) {
+    case 'navigation':
+      event.respondWith(networkFirstNavigation(request));
+      break;
+    case 'network-first':
+      event.respondWith(networkFirst(request));
+      break;
+    case 'cache-first':
+      event.respondWith(cacheFirst(request));
+      break;
+    case 'stale-while-revalidate':
+      event.respondWith(staleWhileRevalidate(request));
+      break;
+    default:
+      // 'bypass': cross-origin, authenticated, non-GET, or non-http requests
+      // are left to the browser and never enter a ChemCheck cache.
+      break;
   }
 });
 
@@ -136,16 +275,17 @@ async function networkFirst(request) {
     const networkResponse = await fetch(request);
     
     if (networkResponse.ok) {
-      // Cache successful responses
+      // Cache successful responses in the bounded dynamic cache
       const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, networkResponse.clone());
+      await putWithEviction(cache, request, networkResponse.clone());
     }
     
     return networkResponse;
   } catch (error) {
     console.log('[SW] Network failed, trying cache:', request.url);
     
-    const cachedResponse = await caches.match(request);
+    const cache = await caches.open(DYNAMIC_CACHE);
+    const cachedResponse = await matchFresh(cache, request);
     if (cachedResponse) {
       return cachedResponse;
     }
@@ -186,10 +326,13 @@ async function networkFirstNavigation(request) {
 
 /**
  * Cache First - Try cache, fallback to network
- * Good for: Static assets, images, fonts
+ * Good for: Hashed build assets (static cache, invalidated by BUILD_ID) and
+ * allow-listed immutable cross-origin font binaries (bounded runtime cache).
  */
 async function cacheFirst(request) {
-  const cachedResponse = await caches.match(request);
+  const isSameOrigin = new URL(request.url).origin === self.location.origin;
+  const cache = await caches.open(isSameOrigin ? STATIC_CACHE : CACHE_NAME);
+  const cachedResponse = isSameOrigin ? await cache.match(request) : await matchFresh(cache, request);
   
   if (cachedResponse) {
     return cachedResponse;
@@ -199,8 +342,11 @@ async function cacheFirst(request) {
     const networkResponse = await fetch(request);
     
     if (networkResponse.ok) {
-      const cache = await caches.open(STATIC_CACHE);
-      cache.put(request, networkResponse.clone());
+      if (isSameOrigin) {
+        await cache.put(request, networkResponse.clone());
+      } else {
+        await putWithEviction(cache, request, networkResponse.clone());
+      }
     }
     
     return networkResponse;
@@ -216,13 +362,13 @@ async function cacheFirst(request) {
  */
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE_NAME);
-  const cachedResponse = await cache.match(request);
+  const cachedResponse = await matchFresh(cache, request);
   
   // Fetch from network in background
   const networkResponsePromise = fetch(request)
-    .then((networkResponse) => {
+    .then(async (networkResponse) => {
       if (networkResponse.ok) {
-        cache.put(request, networkResponse.clone());
+        await putWithEviction(cache, request, networkResponse.clone());
       }
       return networkResponse;
     })
@@ -250,14 +396,6 @@ async function staleWhileRevalidate(request) {
 // ============================================
 // Helper Functions
 // ============================================
-
-function isNetworkFirst(url) {
-  return NETWORK_FIRST.some(pattern => url.includes(pattern));
-}
-
-function isCacheFirst(url) {
-  return CACHE_FIRST.some(pattern => url.includes(pattern));
-}
 
 function createOfflineResponse() {
   return new Response(`
@@ -469,5 +607,21 @@ self.addEventListener('message', (event) => {
     });
   }
 });
+
+// Exposed for unit tests (src/lib/pwaReleaseContract.test.ts). Not used by the app.
+self.__chemcheckSw = {
+  classifyRequest,
+  isNeverCacheHost,
+  hasCacheFirstExtension,
+  stampResponse,
+  isExpired,
+  trimCache,
+  putWithEviction,
+  matchFresh,
+  CACHED_AT_HEADER,
+  MAX_CACHE_ENTRIES,
+  MAX_CACHE_AGE_MS,
+  cacheNames: { STATIC_CACHE, DYNAMIC_CACHE, CACHE_NAME },
+};
 
 console.log('[SW] Service worker script loaded');

@@ -7,6 +7,7 @@ import {
   todayServiceDay,
   getIndexedDbCustomerCount,
   getIndexedDbCustomerCountByName,
+  skipLocallyOrFailInCi,
 } from './helpers';
 
 test.describe('Account Deletion', () => {
@@ -16,8 +17,7 @@ test.describe('Account Deletion', () => {
 
   test('deletes account, redirects to login, and clears local data', async ({ page }) => {
     if ((await isOnLoginRoute(page)) && !(await isOnAppShell(page))) {
-      test.skip(true, 'Auth bypass / demo login is not configured');
-      return;
+      skipLocallyOrFailInCi('Auth bypass / demo login is not configured');
     }
 
     const runId = Date.now();

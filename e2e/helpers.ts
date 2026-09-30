@@ -1,4 +1,23 @@
-import { Page, expect } from '@playwright/test';
+import { Page, expect, test } from '@playwright/test';
+
+/**
+ * Authenticated specs need the dev-server auth bypass. Locally that is an
+ * optional setup, so the spec skips with a clear message. Under CI the bypass
+ * is required (the workflow sets VITE_ENABLE_LOCALHOST_AUTH_BYPASS=true), so a
+ * missing bypass is a broken pipeline and the spec fails instead of skipping.
+ */
+export function skipLocallyOrFailInCi(reason: string): never {
+  const isCi = !!process.env.CI && process.env.CI !== 'false' && process.env.CI !== '0';
+  if (isCi) {
+    throw new Error(
+      `${reason}. CI=${process.env.CI} so this spec must not be skipped: ` +
+        'enable the auth bypass for the E2E dev server (VITE_ENABLE_LOCALHOST_AUTH_BYPASS=true) or fix the login flow.',
+    );
+  }
+  test.skip(true, `${reason} (skipped locally; this would fail under CI)`);
+  // test.skip throws; this keeps the return type honest for callers.
+  throw new Error(reason);
+}
 
 export async function waitForAuthShellToSettle(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded');

@@ -5,11 +5,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/assets/:path*",
-      "destination": "/assets/:path*"
-    },
-    {
-      "source": "/((?!api|_next|static|public|favicon.ico|assets|.*\\..*).*)",
+      "source": "/((?!api/|assets/|sw\\.js$|build\\.json$|health\\.json$|manifest\\.json$|.*\\.(?:js|mjs|css|json|map|png|jpg|jpeg|gif|webp|avif|svg|ico|txt|html|xml|woff|woff2|ttf|otf|webmanifest)$).*)",
       "destination": "/index.html"
     }
   ],
@@ -26,12 +22,20 @@
           "value": "DENY"
         },
         {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        },
-        {
           "key": "Referrer-Policy",
           "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self), geolocation=(self), microphone=(), payment=()"
+        },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; manifest-src 'self'; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' https://clerk.chemcheck.xyz https://*.clerk.accounts.dev https://js.stripe.com https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.convex.cloud https://*.convex.site https://clerk.chemcheck.xyz https://*.clerk.accounts.dev https://www.google-analytics.com; media-src 'self' data: blob: https://*.convex.cloud https://*.convex.site; connect-src 'self' https://clerk.chemcheck.xyz https://*.clerk.accounts.dev https://*.convex.cloud https://*.convex.site wss://*.convex.cloud wss://*.convex.site https://js.stripe.com https://*.sentry.io https://www.googletagmanager.com https://www.google-analytics.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' https://clerk.chemcheck.xyz https://*.clerk.accounts.dev https://js.stripe.com"
         }
       ]
     },
@@ -50,6 +54,15 @@
     },
     {
       "source": "/build.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/health.json",
       "headers": [
         {
           "key": "Cache-Control",

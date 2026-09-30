@@ -59,7 +59,7 @@ describe('Customer Validation', () => {
   });
 
   it('should reject missing required fields', () => {
-    const invalidCustomer = { ...validCustomer };
+    const invalidCustomer: Partial<typeof validCustomer> = { ...validCustomer };
     delete invalidCustomer.full_name;
     
     const result = validateCustomer(invalidCustomer);
@@ -352,7 +352,7 @@ describe('Chemical Usage Validation', () => {
   });
 
   it('should reject missing required fields', () => {
-    const invalidUsage = { ...validChemicalUsage };
+    const invalidUsage: Partial<typeof validChemicalUsage> = { ...validChemicalUsage };
     delete invalidUsage.chemical_type;
     
     const result = validateChemicalUsage(invalidUsage);

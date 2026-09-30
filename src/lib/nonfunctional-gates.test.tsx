@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import type { ReactNode } from 'react';
+// @ts-expect-error testUtils is an untyped .jsx module.
 import { performanceTest } from '@/test/testUtils';
+// @ts-expect-error ProtectedAppRoutes is an untyped .jsx module.
 import ProtectedAppRoutes from '@/pages/ProtectedAppRoutes';
 import { getReadinessReport } from './readiness';
 import { migrationManager } from '@/lib/migrations';
@@ -13,7 +16,7 @@ vi.mock('@/lib/chunkErrorRecovery', () => ({
 }));
 
 vi.mock('@/pages/Layout.jsx', () => ({
-  default: ({ children, currentPageName }) => (
+  default: ({ children, currentPageName }: { children?: ReactNode; currentPageName?: string }) => (
     <div>
       <div data-testid="layout-page">{currentPageName}</div>
       {children}
