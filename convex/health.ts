@@ -1,8 +1,24 @@
+/// <reference types="node" />
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action, internalQuery } from "./_generated/server";
 
 const serviceStatusValidator = v.union(v.literal("ok"), v.literal("error"));
+const storageStatusValidator = v.union(v.literal("ok"), v.literal("error"), v.literal("skipped"));
+
+/** Shared bucket for the unauthenticated health probe (10/min). */
+const HEALTH_RATE_LIMIT_KEY = "health:public";
+
+/**
+ * Minting a storage upload URL is only allowed when the deployment has a
+ * HEALTH_PROBE_TOKEN configured and the caller presents it. Without a token the
+ * probe still verifies the database, but reports storage as "skipped".
+ */
+export function shouldProbeStorage(probeToken: string | undefined, configuredToken: string | undefined): boolean {
+  const configured = (configuredToken || "").trim();
+  const presented = (probeToken || "").trim();
+  return configured.length > 0 && presented.length > 0 && presented === configured;
+}
 const backlogValidator = v.object({
   expiredReports: v.number(),
   oldAccessLogs: v.number(),
@@ -24,7 +40,7 @@ type HealthCheckResult = {
   services: {
     database: "ok" | "error";
     auth: "ok" | "error";
-    storage: "ok" | "error";
+    storage: "ok" | "error" | "skipped";
   };
   backlog?: Backlog;
   error?: string;
@@ -73,7 +89,9 @@ export const inspectDatabase = internalQuery({
 // Implemented as an action so it can verify storage accessibility by generating
 // a temporary upload URL without actually writing user data.
 export const check = action({
-  args: {},
+  args: {
+    probe_token: v.optional(v.string()),
+  },
   returns: v.object({
     status: v.union(v.literal("healthy"), v.literal("unhealthy")),
     timestamp: v.number(),
@@ -81,17 +99,29 @@ export const check = action({
     services: v.object({
       database: serviceStatusValidator,
       auth: serviceStatusValidator,
-      storage: serviceStatusValidator,
+      storage: storageStatusValidator,
     }),
     backlog: v.optional(backlogValidator),
     error: v.optional(v.string()),
   }),
-  handler: async (ctx): Promise<HealthCheckResult> => {
+  handler: async (ctx, args): Promise<HealthCheckResult> => {
     const now = Date.now();
+
+    // SECURITY: this action is public; bound it with a shared 10/min bucket.
+    const rateLimit: { allowed: boolean; retryAfter?: number; resetIn: number } = await ctx.runMutation(
+      internal.rateLimit.checkAndConsumeRateLimit,
+      { userId: HEALTH_RATE_LIMIT_KEY, action: "health" }
+    );
+    if (!rateLimit.allowed) {
+      throw new Error(
+        `Health check rate limit exceeded. Please wait ${rateLimit.retryAfter ?? rateLimit.resetIn} seconds before trying again.`
+      );
+    }
+
     const services: HealthCheckResult["services"] = {
       database: "ok",
       auth: "ok",
-      storage: "ok",
+      storage: "skipped",
     };
 
     let backlog: Backlog | undefined;
@@ -105,14 +135,18 @@ export const check = action({
       databaseError = error instanceof Error ? error.message : "Unknown error";
     }
 
-    // Verify storage subsystem is reachable by generating an upload URL.
-    try {
-      await ctx.storage.generateUploadUrl();
-    } catch {
-      services.storage = "error";
+    // Verify storage subsystem is reachable by generating an upload URL, but
+    // only for callers presenting the configured HEALTH_PROBE_TOKEN.
+    if (shouldProbeStorage(args.probe_token, process.env.HEALTH_PROBE_TOKEN)) {
+      try {
+        await ctx.storage.generateUploadUrl();
+        services.storage = "ok";
+      } catch {
+        services.storage = "error";
+      }
     }
 
-    const healthy = services.database === "ok" && services.storage === "ok";
+    const healthy = services.database === "ok" && services.storage !== "error";
 
     return {
       status: healthy ? "healthy" : "unhealthy",

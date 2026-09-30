@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { validateEmail, validatePhone } from "./validation";
 import { normalizeTaxRate } from "./tax";
+import { assertWriteAllowed, canAccessCustomerRecord } from "./entitlements";
+import { assertRecipientMatchesCustomer } from "./communications";
 
 const VALID_STATUSES = ["draft", "sent", "approved", "declined", "converted"] as const;
 const VALID_DEPOSIT_STATUSES = ["not_required", "pending", "paid"] as const;
@@ -42,12 +44,16 @@ function resolveCommunicationDestination(
     if (override.channel === "sms") {
       const recipient = validatePhone(override.recipient);
       if (!recipient) throw new Error("Alternate phone number is invalid.");
+      // SECURITY: only the customer's stored phone may receive messages.
+      assertRecipientMatchesCustomer("sms", recipient, customer);
       return { recipient, channel: "sms" };
     }
 
     if (override.channel === "email") {
       const recipient = validateEmail(override.recipient);
       if (!recipient) throw new Error("Alternate email is invalid.");
+      // SECURITY: only the customer's stored email may receive messages.
+      assertRecipientMatchesCustomer("email", recipient, customer);
       return { recipient, channel: "email" };
     }
 
@@ -155,12 +161,13 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity?.email) throw new Error("Not authenticated");
 
     const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email))) {
       throw new Error("Customer not found or access denied");
     }
+    await assertWriteAllowed(ctx, identity.email);
 
     const subtotal = Number(args.line_items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
     const taxRate = normalizeTaxRate(args.tax_rate);

@@ -1,29 +1,16 @@
 import { query, mutation } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { resolveBusinessForEmail } from "./entitlements";
 
 // Resolve the caller's business the same way businesses.getCurrent does:
-// team membership first, then ownership.
-async function resolveBusiness(ctx: any) {
+// ownership FIRST, then active (accepted) team membership.
+async function resolveBusiness(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity?.email) return null;
 
-  const teamMember = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", identity.email))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-
-  if (teamMember) {
-    const business = await ctx.db.get(teamMember.business_id);
-    if (business) return { business, email: identity.email as string };
-  }
-
-  const ownedBusiness = await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", identity.email))
-    .first();
-
-  return ownedBusiness ? { business: ownedBusiness, email: identity.email as string } : null;
+  const business = await resolveBusinessForEmail(ctx, identity.email);
+  return business ? { business, email: identity.email as string } : null;
 }
 
 export const listForWeek = query({

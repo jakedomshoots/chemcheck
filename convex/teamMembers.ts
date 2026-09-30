@@ -1,21 +1,9 @@
 import { query } from "./_generated/server";
+import { resolveBusinessForEmail } from "./entitlements";
 
+// Ownership first, then active (accepted) team membership.
 async function resolveBusinessContext(ctx: any, userEmail: string) {
-    const teamMember = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .first();
-
-    if (teamMember) {
-        const teamBusiness = await ctx.db.get(teamMember.business_id);
-        if (teamBusiness) return teamBusiness;
-    }
-
-    return await ctx.db
-        .query("businesses")
-        .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-        .first();
+    return await resolveBusinessForEmail(ctx, userEmail);
 }
 
 // Count active team members for the current user's business.

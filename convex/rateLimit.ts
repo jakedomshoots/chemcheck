@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { v } from "convex/values";
 import { query, internalMutation } from "./_generated/server";
 import { Id, Doc } from "./_generated/dataModel";
@@ -25,6 +26,14 @@ const DEFAULT_RATE_LIMITS: Record<string, { maxRequests: number; windowMs: numbe
   // Queries (reads) - more lenient
   'query.list': { maxRequests: 200, windowMs: 60000 },        // 200 per minute
   'query.get': { maxRequests: 500, windowMs: 60000 },         // 500 per minute
+
+  // Outbound SMS/email (per user). Both buckets are consumed together.
+  'communications': { maxRequests: 30, windowMs: 3600000 },        // 30 per hour
+  'communications.daily': { maxRequests: 200, windowMs: 86400000 }, // 200 per day
+
+  // Public/unauthenticated endpoints
+  'health': { maxRequests: 10, windowMs: 60000 },             // 10 per minute (shared bucket)
+  'report.access': { maxRequests: 60, windowMs: 3600000 },    // 60 per hour per report token
 
   // Default fallback
   'default': { maxRequests: 100, windowMs: 60000 }            // 100 per minute
@@ -352,7 +361,7 @@ export const cleanupExpiredRateLimits = internalMutation({
     while (true) {
       const expiredLimits = await ctx.db
         .query("rateLimits")
-        .filter((q) => q.lt(q.field("reset_time"), now - 86400000))
+        .withIndex("by_reset_time", (q) => q.lt("reset_time", now - 86400000))
         .take(BATCH_SIZE);
 
       if (expiredLimits.length === 0) break;
@@ -367,7 +376,7 @@ export const cleanupExpiredRateLimits = internalMutation({
     while (true) {
       const expiredViolations = await ctx.db
         .query("rateLimitViolations")
-        .filter((q) => q.lt(q.field("expires_at"), now))
+        .withIndex("by_expires_at", (q) => q.lt("expires_at", now))
         .take(BATCH_SIZE);
 
       if (expiredViolations.length === 0) break;
@@ -447,6 +456,27 @@ export async function enforceRateLimit(
 ): Promise<void> {
   await enforceRateLimitInMutation(ctx, userId, action, clientIp);
 }
+
+/**
+ * Outbound communication quota: hourly burst limit plus a daily cap, both
+ * keyed by the sending user. Throws when either bucket is exhausted.
+ */
+export async function enforceCommunicationRateLimit(ctx: any, userId: string): Promise<void> {
+  await enforceRateLimitInMutation(ctx, userId, 'communications');
+  await enforceRateLimitInMutation(ctx, userId, 'communications.daily');
+}
+
+/**
+ * Internal mutation so actions (which have no ctx.db) can consume the
+ * communication quota before sending SMS/email.
+ */
+export const consumeCommunicationQuota = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args): Promise<{ allowed: true }> => {
+    await enforceCommunicationRateLimit(ctx, args.userId);
+    return { allowed: true };
+  },
+});
 
 // Export rate limit configuration for external use
 export const RATE_LIMIT_CONFIG = RATE_LIMITS;

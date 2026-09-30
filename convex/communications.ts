@@ -3,8 +3,93 @@ import { action, internalMutation, internalQuery, mutation, query } from "./_gen
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
+import { enforceCommunicationRateLimit } from "./rateLimit";
+import { canAccessCustomerRecord, resolveBusinessForEmail } from "./entitlements";
 
 const VALID_STATUSES = ["queued", "sent", "delivered", "failed"] as const;
+
+/** Hard cap on outbound message bodies (SMS segments / email body). */
+export const MAX_MESSAGE_LENGTH = 1000;
+
+/**
+ * Escape HTML special characters before interpolating user-controlled text
+ * into an email body. Mirrors serviceReports.escapeHtml.
+ */
+export function escapeHtml(text: string | null | undefined): string {
+  if (text === null || text === undefined) return "";
+  const value = typeof text === "string" ? text : String(text);
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+    "`": "&#x60;",
+    "/": "&#x2F;",
+  };
+  return value.replace(/[&<>"'`\/]/g, (char) => map[char]);
+}
+
+function normalizePhoneForCompare(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  const digits = String(value).replace(/[^\d]/g, "");
+  if (!digits) return undefined;
+  // Treat a leading US country code as equivalent to the bare 10-digit number.
+  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+}
+
+function normalizeEmailForCompare(value: string | undefined | null): string | undefined {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized || undefined;
+}
+
+/**
+ * SECURITY: outbound messages may only go to the contact details stored on
+ * the customer record. Returns true when `recipient` equals the customer's
+ * stored phone (sms) or email (email) after normalization.
+ */
+export function recipientMatchesCustomer(
+  channel: string,
+  recipient: string | undefined | null,
+  customer: { phone?: string | null; email?: string | null } | null | undefined
+): boolean {
+  if (!customer || !recipient) return false;
+  if (channel === "sms") {
+    const stored = normalizePhoneForCompare(customer.phone);
+    const wanted = normalizePhoneForCompare(recipient);
+    return Boolean(stored && wanted && stored === wanted);
+  }
+  if (channel === "email") {
+    const stored = normalizeEmailForCompare(customer.email);
+    const wanted = normalizeEmailForCompare(recipient);
+    return Boolean(stored && wanted && stored === wanted);
+  }
+  return false;
+}
+
+export function assertRecipientMatchesCustomer(
+  channel: string,
+  recipient: string | undefined | null,
+  customer: { phone?: string | null; email?: string | null } | null | undefined
+): void {
+  if (!recipientMatchesCustomer(channel, recipient, customer)) {
+    throw new Error(
+      channel === "sms"
+        ? "Recipient must match the phone number stored on the customer record. Update the customer's phone first."
+        : "Recipient must match the email address stored on the customer record. Update the customer's email first."
+    );
+  }
+}
+
+/** Enforce the message length cap and return the trimmed message. */
+export function enforceMessageLength(message: string): string {
+  const trimmed = String(message ?? "").trim();
+  if (!trimmed) throw new Error("Message cannot be empty");
+  if (trimmed.length > MAX_MESSAGE_LENGTH) {
+    throw new Error(`Message is too long (max ${MAX_MESSAGE_LENGTH} characters)`);
+  }
+  return trimmed;
+}
 
 type DeliveryResult = {
   success: boolean;
@@ -103,10 +188,11 @@ async function sendEmailViaMailersend(args: {
     const { apiKey, fromEmail } = requireMailersendConfig();
 
     const textBody = args.message;
+    // SECURITY: subject and message are user-controlled; escape before HTML interpolation.
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #0f172a;">
-        <h2 style="margin: 0 0 12px 0;">${args.subject}</h2>
-        <p style="margin: 0; white-space: pre-line;">${args.message}</p>
+        <h2 style="margin: 0 0 12px 0;">${escapeHtml(args.subject)}</h2>
+        <p style="margin: 0; white-space: pre-line;">${escapeHtml(args.message)}</p>
       </div>
     `;
 
@@ -242,13 +328,13 @@ export const list = query({
       query = ctx.db
         .query("communications")
         .withIndex("by_created_by_and_customer", (q) =>
-          q.eq("created_by", email).eq("customer_id", args.customer_id)
+          q.eq("created_by", email).eq("customer_id", args.customer_id!)
         );
     } else if (args.status) {
       query = ctx.db
         .query("communications")
         .withIndex("by_created_by_and_status", (q) =>
-          q.eq("created_by", email).eq("status", args.status)
+          q.eq("created_by", email).eq("status", args.status!)
         );
     } else {
       query = ctx.db
@@ -286,23 +372,30 @@ export const queueServiceText = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity?.email) throw new Error("Not authenticated");
 
     const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email))) {
       throw new Error("Customer not found or access denied");
     }
+
+    // SECURITY: quota + recipient lock + message cap.
+    await enforceCommunicationRateLimit(ctx, identity.email);
+    assertRecipientMatchesCustomer("sms", args.recipient, customer);
+    const message = enforceMessageLength(args.message);
+    const recipient = validatePhone(args.recipient);
+    if (!recipient) throw new Error("SMS recipient is invalid.");
 
     const now = Date.now();
     return await ctx.db.insert("communications", {
       type: "service_text",
       channel: "sms",
-      recipient: args.recipient,
+      recipient,
       customer_id: args.customer_id,
       work_order_id: args.work_order_id,
       template_key: args.template_key,
       status: "queued",
-      message: args.message,
+      message,
       scheduled_for: args.scheduled_for ?? now,
       sent_at: undefined,
       delivered_at: undefined,
@@ -397,6 +490,29 @@ export const requeueFailed = mutation({
   },
 });
 
+/**
+ * Delivery-time recipient verification. A queued row is deliverable only when
+ * it references a customer the sender can access and its recipient equals
+ * that customer's stored phone/email.
+ */
+async function verifyQueuedRecipient(
+  ctx: any,
+  item: { customer_id?: any; channel: string; recipient: string },
+  userEmail: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!item.customer_id) {
+    return { ok: false, error: "Communication has no customer; refusing to deliver to an unverified recipient." };
+  }
+  const customer = await ctx.db.get(item.customer_id);
+  if (!customer || !(await canAccessCustomerRecord(ctx, customer, userEmail))) {
+    return { ok: false, error: "Customer not found or access denied" };
+  }
+  if (!recipientMatchesCustomer(item.channel, item.recipient, customer)) {
+    return { ok: false, error: "Recipient does not match the customer's stored contact details." };
+  }
+  return { ok: true };
+}
+
 export const getForDelivery = internalQuery({
   args: {
     id: v.id("communications"),
@@ -408,10 +524,14 @@ export const getForDelivery = internalQuery({
       throw new Error("Communication record not found or access denied");
     }
 
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
-      .first();
+    // SECURITY: the stored recipient must still match the customer's contact
+    // details; otherwise refuse to deliver.
+    const recipientCheck = await verifyQueuedRecipient(ctx, item, args.user_email);
+    if (!recipientCheck.ok) {
+      throw new Error(recipientCheck.error);
+    }
+
+    const business = await resolveBusinessForEmail(ctx, args.user_email);
 
     return {
       item,
@@ -439,19 +559,23 @@ export const listQueuedForDelivery = internalQuery({
       .order("asc")
       .take(limit * 4);
 
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.user_email))
-      .first();
+    const business = await resolveBusinessForEmail(ctx, args.user_email);
 
-    return queued
+    const due = queued
       .filter((item) => !item.scheduled_for || item.scheduled_for <= now)
       .sort((a, b) => a.created_at - b.created_at)
-      .slice(0, limit)
-      .map((item) => ({
+      .slice(0, limit);
+
+    const results: Array<{ item: typeof due[number]; business_name: string; recipient_error?: string }> = [];
+    for (const item of due) {
+      const check = await verifyQueuedRecipient(ctx, item, args.user_email);
+      results.push({
         item,
         business_name: business?.name || "ChemCheck",
-      }));
+        recipient_error: check.ok ? undefined : check.error,
+      });
+    }
+    return results;
   },
 });
 
@@ -497,11 +621,11 @@ export const deliver = action({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity?.email) throw new Error("Not authenticated");
 
     const payload: any = await ctx.runQuery(internal.communications.getForDelivery, {
       id: args.id,
-      user_email: identity.email!,
+      user_email: identity.email,
     });
 
     const item = payload.item;
@@ -515,11 +639,14 @@ export const deliver = action({
       };
     }
 
+    // SECURITY: consume the outbound quota before contacting a provider.
+    await ctx.runMutation(internal.rateLimit.consumeCommunicationQuota, { userId: identity.email });
+
     const result = await deliverCommunication(item, businessName);
 
     await ctx.runMutation(internal.communications.recordDeliveryAttempt, {
       id: item._id,
-      user_email: identity.email!,
+      user_email: identity.email,
       status: result.status,
       error: result.success ? undefined : result.error,
       provider: result.provider,
@@ -542,10 +669,10 @@ export const deliverQueued = action({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity?.email) throw new Error("Not authenticated");
 
     const queued: any[] = await ctx.runQuery(internal.communications.listQueuedForDelivery, {
-      user_email: identity.email!,
+      user_email: identity.email,
       limit: args.limit,
       now: Date.now(),
     });
@@ -555,11 +682,30 @@ export const deliverQueued = action({
 
     for (const entry of queued) {
       const item = entry.item;
-      const result = await deliverCommunication(item, entry.business_name);
+
+      let result: DeliveryResult;
+      if (entry.recipient_error) {
+        // Recipient no longer matches the customer record: never send.
+        result = { success: false, status: "failed", error: entry.recipient_error };
+      } else {
+        // SECURITY: one quota unit per outbound message; stop the batch when exhausted.
+        try {
+          await ctx.runMutation(internal.rateLimit.consumeCommunicationQuota, { userId: identity.email });
+        } catch (error: any) {
+          return {
+            success: false,
+            processed: sent + failed,
+            sent,
+            failed,
+            error: error?.message || "Rate limit exceeded",
+          };
+        }
+        result = await deliverCommunication(item, entry.business_name);
+      }
 
       await ctx.runMutation(internal.communications.recordDeliveryAttempt, {
         id: item._id,
-        user_email: identity.email!,
+        user_email: identity.email,
         status: result.status,
         error: result.success ? undefined : result.error,
         provider: result.provider,

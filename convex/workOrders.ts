@@ -1,27 +1,15 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { normalizeTaxRate } from "./tax";
+import { assertWriteAllowed, canAccessCustomerRecord, normalizeEmail, resolveBusinessForEmail } from "./entitlements";
 
 const VALID_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
 const WORK_ORDER_WRITE_ROLES = new Set(["owner", "admin", "technician"]);
 
+// Ownership FIRST, then active (accepted) team membership.
 async function resolveBusinessContext(ctx: any, userEmail: string) {
-  const teamMember = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-
-  if (teamMember) {
-    const teamBusiness = await ctx.db.get(teamMember.business_id);
-    if (teamBusiness) return teamBusiness;
-  }
-
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-    .first();
+  return await resolveBusinessForEmail(ctx, userEmail);
 }
 
 async function getActiveBusinessMemberEmails(
@@ -88,8 +76,9 @@ function clampWorkOrderPageSize(numItems: number | undefined): number {
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
   if (!customer) return false;
   if (customer.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(customer.created_by);
+  // Same-business access: business_id match, or created by the owner / an
+  // active member of the caller's business.
+  return await canAccessCustomerRecord(ctx, customer, userEmail);
 }
 
 async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): Promise<boolean> {
@@ -100,8 +89,8 @@ async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): 
 }
 
 async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {
-  const normalizedUserEmail = String(userEmail || "").trim().toLowerCase();
-  const ownerEmail = String(business?.owner_email || "").trim().toLowerCase();
+  const normalizedUserEmail = normalizeEmail(userEmail);
+  const ownerEmail = normalizeEmail(business?.owner_email);
   if (ownerEmail && normalizedUserEmail === ownerEmail) {
     return "owner";
   }
@@ -180,10 +169,10 @@ export const list = query({
     let workOrders = pageResult.page;
 
     if (args.status) {
-      workOrders = workOrders.filter((item) => item.status === args.status);
+      workOrders = workOrders.filter((item: any) => item.status === args.status);
     }
 
-    workOrders.sort((a, b) => {
+    workOrders.sort((a: any, b: any) => {
       const aDate = normalizeWorkOrderDate((a as { scheduled_date?: unknown }).scheduled_date);
       const bDate = normalizeWorkOrderDate((b as { scheduled_date?: unknown }).scheduled_date);
       const dateDiff = aDate.localeCompare(bDate);
@@ -239,6 +228,7 @@ export const create = mutation({
       throw new Error("Customer not found or access denied");
     }
     await assertBusinessRole(ctx, identity.email!, WORK_ORDER_WRITE_ROLES);
+    await assertWriteAllowed(ctx, identity.email!);
 
     validatePriority(args.priority);
 
