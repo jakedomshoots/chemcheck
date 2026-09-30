@@ -64,9 +64,14 @@ async function getTotalPhotoSizeBytesInternal(): Promise<number> {
 }
 
 async function enforceStorageLimitsInternal(): Promise<void> {
-  // Retention cleanup first
+  // Retention cleanup first. Only photos that already reached the server may
+  // be expired; pending/failed photos are the only copy and must survive.
   const cutoff = Date.now() - MAX_PHOTO_AGE_MS;
-  await db.photos.where('createdAt').below(cutoff).delete();
+  await db.photos
+    .where('createdAt')
+    .below(cutoff)
+    .and((photo) => photo.syncStatus === 'synced')
+    .delete();
 
   let totalSize = await getTotalPhotoSizeBytesInternal();
   if (totalSize <= MAX_TOTAL_STORAGE_BYTES) return;
@@ -357,6 +362,17 @@ export async function updateSyncStatus(
 export async function getPendingPhotos(): Promise<OfflinePhotoRecord[]> {
   return withErrorHandling('get pending photos', async () => {
     return db.photos.where('syncStatus').equals('pending').toArray();
+  });
+}
+
+/**
+ * Get all photos whose last sync attempt failed
+ * @returns Array of photos with 'failed' sync status
+ * @throws PhotoStorageError if the operation fails
+ */
+export async function getFailedPhotos(): Promise<OfflinePhotoRecord[]> {
+  return withErrorHandling('get failed photos', async () => {
+    return db.photos.where('syncStatus').equals('failed').toArray();
   });
 }
 

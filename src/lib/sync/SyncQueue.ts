@@ -14,11 +14,23 @@ export interface SyncQueueItem {
   priority: number; // Lower number = higher priority
   /** Unique identity for this exact queued revision of the record. */
   revision: string;
+  /**
+   * 'pending' items are eligible for sync. 'dead' items exhausted their retry
+   * budget and are kept only for diagnostics/UI until the record is edited
+   * again (which replaces them) or the queue is cleared.
+   */
+  status?: 'pending' | 'dead';
+  deadAt?: number;
 }
 
 const STORAGE_KEY = 'chemcheck_sync_queue';
 const MAX_RETRIES = 3;
-const MAX_QUEUE_SIZE = 500; // Prevent unbounded growth
+/**
+ * Soft capacity. Unsynced create/update/delete work is never dropped to stay
+ * under it; only dead-letter items are evicted and otherwise the cap is
+ * exceeded with a warning.
+ */
+const MAX_QUEUE_SIZE = 500;
 const QUEUE_WARNING_THRESHOLD = Math.floor(MAX_QUEUE_SIZE * 0.8);
 const BATCH_SIZE = 20; // Process this many items per sync cycle
 const PERSIST_ERROR_THROTTLE_MS = 15_000;
@@ -26,6 +38,7 @@ const PERSIST_ERROR_THROTTLE_MS = 15_000;
 export class SyncQueue {
   private queue: SyncQueueItem[] = [];
   private highWatermarkWarned = false;
+  private capacityWarned = false;
   private lastPersistErrorAt = 0;
   private isPersisting = false;
   private revisionSequence = 0;
@@ -52,9 +65,21 @@ export class SyncQueue {
       revision: this.createRevision(),
     });
 
-    const nextQueue = [...this.queue];
+    let nextQueue = [...this.queue];
+
+    if (queueItem.operation === 'delete') {
+      // A delete supersedes any earlier create/update for the same row: the
+      // row is gone locally, so pushing its old payload would be wrong. The
+      // delete itself is kept (it acks immediately when there is no convex_id).
+      nextQueue = nextQueue.filter(
+        entry => !(entry.table === queueItem.table && entry.localId === queueItem.localId && entry.operation !== 'delete')
+      );
+    }
+
+    // Dexie reuses ++id keys after a delete, so a later create/update for the
+    // same table+localId must not collide with (or replace) a pending delete.
     const existingIndex = nextQueue.findIndex(
-      entry => entry.table === queueItem.table && entry.localId === queueItem.localId
+      entry => this.dedupeKey(entry) === this.dedupeKey(queueItem)
     );
 
     if (existingIndex >= 0) {
@@ -64,16 +89,7 @@ export class SyncQueue {
     }
 
     this.queue = this.sanitizeQueue(nextQueue);
-
-    // Enforce queue size limit - remove lowest priority items if exceeded
-    if (this.queue.length > MAX_QUEUE_SIZE) {
-      const overflow = this.queue.length - MAX_QUEUE_SIZE;
-      this.queue.splice(-overflow, overflow);
-      console.warn(
-        `Sync queue overflow: removed ${overflow} low-priority items to maintain limit of ${MAX_QUEUE_SIZE}`
-      );
-    }
-
+    this.enforceCapacity();
     this.updateHighWatermarkState();
     this.persistQueueState('enqueue');
 
@@ -84,33 +100,66 @@ export class SyncQueue {
    * Get next item to sync (without removing from queue)
    */
   peekNext(): SyncQueueItem | null {
-    if (this.queue.length === 0) {
-      return null;
-    }
-    return this.queue[0];
+    const pending = this.queue.find(item => !this.isDead(item));
+    return pending || null;
   }
 
   /**
-   * Get all pending items
+   * Get all pending (non dead-lettered) items
    */
   getPending(): SyncQueueItem[] {
-    return [...this.queue];
+    return this.queue.filter(item => !this.isDead(item));
   }
 
   /**
-   * Get pending count
+   * Get pending count (excludes dead-letter items)
    */
   getPendingCount(): number {
-    return this.queue.length;
+    return this.getPending().length;
   }
 
-  getCapacityStatus(): { current: number; max: number; warningThreshold: number; usagePercent: number } {
-    const current = this.queue.length;
+  /**
+   * Items that exhausted their retry budget. They are kept for diagnostics
+   * and UI, but are never retried automatically.
+   */
+  getDeadLetterItems(): SyncQueueItem[] {
+    return this.queue.filter(item => this.isDead(item));
+  }
+
+  getDeadLetterCount(): number {
+    return this.getDeadLetterItems().length;
+  }
+
+  /**
+   * Move a dead-letter item back to the retryable pool (e.g. from a UI action).
+   */
+  requeueDeadLetter(table: SyncQueueItem['table'], localId: number): boolean {
+    let changed = false;
+    for (const item of this.queue) {
+      if (item.table === table && item.localId === localId && this.isDead(item)) {
+        item.status = 'pending';
+        item.deadAt = undefined;
+        item.retryCount = 0;
+        item.lastAttempt = undefined;
+        item.error = undefined;
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.queue = this.sanitizeQueue(this.queue);
+      this.persistQueueState('requeueDeadLetter');
+    }
+    return changed;
+  }
+
+  getCapacityStatus(): { current: number; max: number; warningThreshold: number; usagePercent: number; dead: number } {
+    const current = this.getPendingCount();
     return {
       current,
       max: MAX_QUEUE_SIZE,
       warningThreshold: QUEUE_WARNING_THRESHOLD,
       usagePercent: Math.round((current / MAX_QUEUE_SIZE) * 100),
+      dead: this.getDeadLetterCount(),
     };
   }
 
@@ -121,6 +170,7 @@ export class SyncQueue {
     const now = Date.now();
 
     const retryable = this.queue.filter((item) => {
+      if (this.isDead(item)) return false; // Dead-lettered: never auto-retried
       if (item.retryCount === 0) return true; // Never attempted
       if (!item.lastAttempt) return true; // No last attempt recorded
 
@@ -203,9 +253,11 @@ export class SyncQueue {
     queuedItem.error = error;
 
     if (queuedItem.retryCount >= MAX_RETRIES) {
-      // Remove from queue after max retries
-      this.queue.splice(itemIndex, 1);
-      console.log(`Removed ${item.table}[${item.localId}] from queue after ${MAX_RETRIES} failed attempts`);
+      // Dead-letter after max retries: keep it in storage for diagnostics but
+      // stop retrying so one bad record cannot wedge the whole queue.
+      queuedItem.status = 'dead';
+      queuedItem.deadAt = queuedItem.lastAttempt;
+      console.warn(`Dead-lettered ${item.table}[${item.localId}] after ${MAX_RETRIES} failed attempts: ${error}`);
     }
     else {
       // Keep in queue for retry with exponential backoff
@@ -221,23 +273,26 @@ export class SyncQueue {
    * Clear all items from queue
    */
   clear(): boolean {
-    if (this.queue.length === 0) {
-      this.highWatermarkWarned = false;
-      return false;
-    }
-
+    const hadItems = this.queue.length > 0;
     this.queue = [];
     this.highWatermarkWarned = false;
+    this.capacityWarned = false;
+    // Always clear persisted state so a stale queue from a previous account
+    // cannot be reloaded on the next launch.
     this.persistQueueState('clear');
-    console.log('Sync queue cleared');
-    return true;
+    if (hadItems) console.log('Sync queue cleared');
+    return hadItems;
   }
 
   /**
-   * Find existing item in queue by table and localId
+   * Find existing item in queue by table and localId. Write (create/update)
+   * items are preferred over a pending delete for the same key; pass
+   * `operation` to look for a specific kind.
    */
-  findItem(table: SyncQueueItem['table'], localId: number): SyncQueueItem | undefined {
-    return this.queue.find(item => item.table === table && item.localId === localId);
+  findItem(table: SyncQueueItem['table'], localId: number, operation?: SyncQueueItem['operation']): SyncQueueItem | undefined {
+    const matches = this.queue.filter(item => item.table === table && item.localId === localId);
+    if (operation) return matches.find(item => item.operation === operation);
+    return matches.find(item => item.operation !== 'delete') || matches[0];
   }
 
   /** True only while this exact queued revision is still the current one. */
@@ -278,6 +333,49 @@ export class SyncQueue {
 
     return (tablePriority[table as keyof typeof tablePriority] || 3) * 10 +
       (operationPriority[operation as keyof typeof operationPriority] || 3);
+  }
+
+  private isDead(item: SyncQueueItem): boolean {
+    return item.status === 'dead';
+  }
+
+  private dedupeKey(item: SyncQueueItem): string {
+    return `${item.table}:${item.localId}:${item.operation === 'delete' ? 'delete' : 'write'}`;
+  }
+
+  /**
+   * Soft cap enforcement: evict dead-letter items first (oldest first); never
+   * drop unsynced work. If still over the cap, warn and carry on.
+   */
+  private enforceCapacity(): void {
+    if (this.queue.length <= MAX_QUEUE_SIZE) {
+      this.capacityWarned = false;
+      return;
+    }
+
+    const dead = this.queue
+      .filter(item => this.isDead(item))
+      .sort((a, b) => (a.deadAt || 0) - (b.deadAt || 0));
+    let evicted = 0;
+    for (const item of dead) {
+      if (this.queue.length <= MAX_QUEUE_SIZE) break;
+      const index = this.queue.indexOf(item);
+      if (index >= 0) {
+        this.queue.splice(index, 1);
+        evicted += 1;
+      }
+    }
+    if (evicted > 0) {
+      console.warn(`Sync queue overflow: evicted ${evicted} dead-letter items to stay near the limit of ${MAX_QUEUE_SIZE}`);
+    }
+
+    if (this.queue.length > MAX_QUEUE_SIZE && !this.capacityWarned) {
+      this.capacityWarned = true;
+      console.warn(
+        `Sync queue holds ${this.queue.length} unsynced items, above the soft limit of ${MAX_QUEUE_SIZE}. ` +
+        'No pending work was dropped; the queue will drain once sync succeeds.'
+      );
+    }
   }
 
   private createRevision(): string {
@@ -337,7 +435,7 @@ export class SyncQueue {
     const seen = new Set<string>();
 
     for (const item of valid) {
-      const key = `${item.table}:${item.localId}`;
+      const key = this.dedupeKey(item);
       if (seen.has(key)) {
         continue;
       }
@@ -356,11 +454,10 @@ export class SyncQueue {
       console.warn(`Sync queue stored with duplicate/invalid records. Loaded ${sorted.length}/${valid.length} unique items.`);
     }
 
-    if (sorted.length > MAX_QUEUE_SIZE) {
-      sorted.splice(MAX_QUEUE_SIZE);
-      if (log) {
-        console.warn(`Sync queue contains more than ${MAX_QUEUE_SIZE} items. Truncated oldest entries.`);
-      }
+    if (sorted.length > MAX_QUEUE_SIZE && log && !this.capacityWarned) {
+      // Never truncate: every entry here is unsynced local work (or a
+      // dead-letter kept for diagnostics, evicted separately by enforceCapacity).
+      console.warn(`Sync queue contains ${sorted.length} items, above the soft limit of ${MAX_QUEUE_SIZE}. Nothing was dropped.`);
     }
 
     return sorted;
@@ -376,14 +473,17 @@ export class SyncQueue {
       revision: typeof item.revision === 'string' && item.revision
         ? item.revision
         : this.createRevision(),
+      status: item.status === 'dead' ? 'dead' : 'pending',
+      deadAt: item.status === 'dead' && Number.isFinite(item.deadAt) ? item.deadAt : undefined,
     };
   }
 
   private updateHighWatermarkState(): void {
-    if (this.queue.length >= QUEUE_WARNING_THRESHOLD) {
+    const pendingCount = this.getPendingCount();
+    if (pendingCount >= QUEUE_WARNING_THRESHOLD) {
       if (!this.highWatermarkWarned) {
         console.warn(
-          `Sync queue is ${this.queue.length}/${MAX_QUEUE_SIZE} (${Math.round((this.queue.length / MAX_QUEUE_SIZE) * 100)}%).`
+          `Sync queue is ${pendingCount}/${MAX_QUEUE_SIZE} (${Math.round((pendingCount / MAX_QUEUE_SIZE) * 100)}%).`
         );
         this.highWatermarkWarned = true;
       }

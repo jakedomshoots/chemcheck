@@ -1,7 +1,9 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { assertWriteAllowed } from "./entitlements";
 import { validateCustomerCreate, validateCustomerUpdate } from "./validation";
+import { NOT_DELETED_FILTER, softDeleteCustomerCascade } from "./sync";
 
 const CUSTOMER_WRITE_ROLES = new Set(["owner", "admin"]);
 const DEFAULT_LIST_LIMIT = 100;
@@ -10,22 +12,41 @@ function normalizeEmail(email: any): string {
     return String(email || "").trim().toLowerCase();
 }
 
-async function resolveBusinessContext(ctx: any, userEmail: string) {
-    const teamMember = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) => q.eq(q.field("is_active"), true))
-        .first();
+function emailCandidates(userEmail: string): string[] {
+    const raw = String(userEmail || "");
+    const normalized = normalizeEmail(raw);
+    if (!normalized) return [];
+    return raw === normalized ? [raw] : [raw, normalized];
+}
 
-    if (teamMember) {
-        const teamBusiness = await ctx.db.get(teamMember.business_id);
-        if (teamBusiness) return teamBusiness;
+// Ownership wins over membership; only active memberships count. Legacy rows
+// whose email differs by case/whitespace are retried through the same indexes
+// with the normalized email rather than scanned.
+async function resolveBusinessContext(ctx: any, userEmail: string) {
+    const candidates = emailCandidates(userEmail);
+
+    for (const email of candidates) {
+        const ownedBusiness = await ctx.db
+            .query("businesses")
+            .withIndex("by_owner_email", (q: any) => q.eq("owner_email", email))
+            .first();
+        if (ownedBusiness) return ownedBusiness;
     }
 
-    return await ctx.db
-        .query("businesses")
-        .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-        .first();
+    for (const email of candidates) {
+        const members = await ctx.db
+            .query("team_members")
+            .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
+            .filter((q: any) => q.eq(q.field("is_active"), true))
+            .collect();
+        for (const member of members) {
+            if (member.is_active !== true) continue;
+            const teamBusiness = await ctx.db.get(member.business_id);
+            if (teamBusiness) return teamBusiness;
+        }
+    }
+
+    return null;
 }
 
 async function getActiveBusinessMemberEmails(
@@ -39,11 +60,11 @@ async function getActiveBusinessMemberEmails(
         .filter((q: any) => q.eq(q.field("is_active"), true))
         .collect();
 
-    const emails = new Set<string>([ownerEmail]);
+    const emails = new Set<string>([normalizeEmail(ownerEmail)]);
     for (const member of members) {
-        if (member.user_email) {
-            emails.add(member.user_email);
-        }
+        if (member.is_active !== true) continue;
+        const email = normalizeEmail(member.user_email);
+        if (email) emails.add(email);
     }
     return emails;
 }
@@ -61,12 +82,14 @@ async function getAccessibleCustomersQuery(ctx: any, userEmail: string) {
     if (business) {
         return ctx.db
             .query("customers")
-            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)));
+            .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+            .filter(NOT_DELETED_FILTER);
     }
 
     return ctx.db
         .query("customers")
-        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail));
+        .withIndex("by_created_by", (q: any) => q.eq("created_by", userEmail))
+        .filter(NOT_DELETED_FILTER);
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
@@ -89,18 +112,21 @@ async function getBusinessRole(ctx: any, business: any, userEmail: string): Prom
         return "owner";
     }
 
-    const member = await ctx.db
-        .query("team_members")
-        .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-        .filter((q: any) =>
-            q.and(
-                q.eq(q.field("business_id"), business._id),
-                q.eq(q.field("is_active"), true)
+    for (const email of emailCandidates(userEmail)) {
+        const member = await ctx.db
+            .query("team_members")
+            .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
+            .filter((q: any) =>
+                q.and(
+                    q.eq(q.field("business_id"), business._id),
+                    q.eq(q.field("is_active"), true)
+                )
             )
-        )
-        .first();
+            .first();
+        if (member && member.is_active === true) return member.role || null;
+    }
 
-    return member?.role || null;
+    return null;
 }
 
 async function assertBusinessRole(ctx: any, userEmail: string, allowedRoles: Set<string>): Promise<void> {
@@ -128,11 +154,13 @@ export const count = query({
             customers = await ctx.db
                 .query("customers")
                 .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .filter(NOT_DELETED_FILTER)
                 .take(COUNT_CAP + 1);
         } else {
             customers = await ctx.db
                 .query("customers")
                 .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+                .filter(NOT_DELETED_FILTER)
                 .take(COUNT_CAP + 1);
         }
 
@@ -171,11 +199,13 @@ export const listPaginated = query({
             result = await ctx.db
                 .query("customers")
                 .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .filter(NOT_DELETED_FILTER)
                 .paginate({ cursor: args.cursor ?? null, numItems: limit });
         } else {
             result = await ctx.db
                 .query("customers")
                 .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+                .filter(NOT_DELETED_FILTER)
                 .paginate({ cursor: args.cursor ?? null, numItems: limit });
         }
 
@@ -209,12 +239,14 @@ export const filter = query({
                     .withIndex("by_business_and_day", (q: any) =>
                         q.eq("business_id", String(business._id)).eq("service_day", args.service_day)
                     )
+                    .filter(NOT_DELETED_FILTER)
                     .collect();
             }
 
             return await ctx.db
                 .query("customers")
                 .withIndex("by_business", (q: any) => q.eq("business_id", String(business._id)))
+                .filter(NOT_DELETED_FILTER)
                 .collect();
         }
 
@@ -224,12 +256,14 @@ export const filter = query({
                 .withIndex("by_created_by_and_service_day" as any, (q: any) =>
                     q.eq("created_by", identity.email!).eq("service_day", args.service_day)
                 )
+                .filter(NOT_DELETED_FILTER)
                 .collect();
         }
 
         return await ctx.db
             .query("customers")
             .withIndex("by_created_by", (q: any) => q.eq("created_by", identity.email!))
+            .filter(NOT_DELETED_FILTER)
             .collect();
     },
 });
@@ -242,7 +276,7 @@ export const get = query({
         if (!identity) throw new Error("Not authenticated");
 
         const customer = await ctx.db.get(args.id);
-        if (!customer) throw new Error("Customer not found");
+        if (!customer || customer.deleted_at !== undefined) throw new Error("Customer not found");
 
         if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
@@ -269,6 +303,9 @@ export const create = mutation({
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) throw new Error("Not authenticated");
+
+        // Subscription gate: terminal billing states cannot add customers.
+        await assertWriteAllowed(ctx, identity.email!);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
         await enforceRateLimit(ctx, identity.email!, 'customer.create');
@@ -300,6 +337,7 @@ export const create = mutation({
             surface_type: validatedData.surface_type,
             sort_order: 0,
             active: true,
+            created_by: createdBy,
             created_at: now,
             updated_at: now,
         });
@@ -344,6 +382,7 @@ export const update = mutation({
         if (!(await canAccessCustomer(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
+        if (customer.deleted_at !== undefined) throw new Error("Customer has been deleted");
         await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
 
         const { id, report_settings, ...otherArgs } = args;
@@ -395,7 +434,9 @@ export const update = mutation({
     },
 });
 
-// Delete a customer (with ownership verification)
+// Delete a customer (with ownership verification). Soft-deletes the customer
+// and cascades to its child rows so offline devices receive tombstones on
+// their next pull instead of resurrecting the records.
 export const remove = mutation({
     args: { id: v.id("customers") },
     handler: async (ctx, args) => {
@@ -413,6 +454,6 @@ export const remove = mutation({
         }
         await assertBusinessRole(ctx, identity.email!, CUSTOMER_WRITE_ROLES);
 
-        await ctx.db.delete(args.id);
+        await softDeleteCustomerCascade(ctx, args.id, Date.now());
     },
 });

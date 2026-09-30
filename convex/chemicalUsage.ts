@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { NOT_DELETED_FILTER } from "./sync";
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
@@ -29,6 +30,7 @@ export const list = query({
             .withIndex("by_created_by_and_created_date", (q) =>
                 q.eq("created_by", identity.email!)
             )
+            .filter(NOT_DELETED_FILTER)
             .order(sortOrder);
 
         return await usageQuery.paginate({
@@ -65,7 +67,8 @@ export const filter = query({
 
         let usageQuery = ctx.db
             .query("chemicalUsage")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!));
+            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+            .filter(NOT_DELETED_FILTER);
 
         if (args.customer_id) {
             usageQuery = usageQuery.filter((q) => q.eq(q.field("customer_id"), args.customer_id!));
@@ -107,6 +110,7 @@ export const getByCustomer = query({
         return await ctx.db
             .query("chemicalUsage")
             .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id))
+            .filter(NOT_DELETED_FILTER)
             .order("desc")
             .paginate({
                 cursor: args.cursor || null,
@@ -174,7 +178,7 @@ export const update = mutation({
 
         // Verify record belongs to user's customer (tenant isolation)
         const record = await ctx.db.get(args.id);
-        if (!record) throw new Error("Chemical usage record not found");
+        if (!record || record.deleted_at !== undefined) throw new Error("Chemical usage record not found");
 
         const customer = await ctx.db.get(record.customer_id);
         if (!customer || customer.created_by !== identity.email) {
@@ -212,6 +216,8 @@ export const remove = mutation({
             throw new Error("Access denied");
         }
 
-        await ctx.db.delete(args.id);
+        // Tombstone instead of hard delete so offline devices drop the row on pull.
+        const now = Date.now();
+        await ctx.db.patch(args.id, { deleted_at: now, updated_at: now });
     },
 });

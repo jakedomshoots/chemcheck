@@ -41,7 +41,11 @@ class MigrationManager {
       description: 'Add createdAt and updatedAt timestamps to all records',
       up: async () => {
         const now = new Date().toISOString();
-        
+
+        // createdAt/updatedAt are not sync fields, so the Dexie 'updating'
+        // hook would mark every touched row pending and enqueue a push for
+        // each. This is a local-only backfill: suppress the hooks.
+        await db.withoutSyncHooks(async () => {
         const customers = await db.customers.toArray();
         for (const customer of customers) {
           if (!customer.createdAt) {
@@ -81,6 +85,7 @@ class MigrationManager {
             });
           }
         }
+        });
 
         console.log('Added timestamps to existing records');
       }

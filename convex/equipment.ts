@@ -1,25 +1,56 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
+function normalizeEmail(email: any): string {
+  return String(email || "").trim().toLowerCase();
+}
+
+function emailCandidates(email: string): string[] {
+  const raw = String(email || "");
+  const normalized = normalizeEmail(raw);
+  if (!normalized) return [];
+  return raw === normalized ? [raw] : [raw, normalized];
+}
+
+// Ownership first, then active team membership; every lookup is indexed.
 async function resolveBusiness(ctx: any, email: string) {
-  const member = await ctx.db.query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
-    .filter((q: any) => q.eq(q.field("is_active"), true)).first();
-  if (member) return await ctx.db.get(member.business_id);
-  return await ctx.db.query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", email)).first();
+  const candidates = emailCandidates(email);
+  for (const candidate of candidates) {
+    const owned = await ctx.db.query("businesses")
+      .withIndex("by_owner_email", (q: any) => q.eq("owner_email", candidate))
+      .first();
+    if (owned) return owned;
+  }
+  for (const candidate of candidates) {
+    const members = await ctx.db.query("team_members")
+      .withIndex("by_user_email", (q: any) => q.eq("user_email", candidate))
+      .filter((q: any) => q.eq(q.field("is_active"), true))
+      .collect();
+    for (const member of members) {
+      if (member.is_active !== true) continue;
+      const business = await ctx.db.get(member.business_id);
+      if (business) return business;
+    }
+  }
+  return null;
+}
+
+function ownsCustomer(customer: any, business: any, email: string): boolean {
+  if (!customer || customer.deleted_at !== undefined) return false;
+  if (business) {
+    return String(customer.business_id || "") === String(business._id)
+      || normalizeEmail(customer.created_by) === normalizeEmail(business.owner_email);
+  }
+  return normalizeEmail(customer.created_by) === normalizeEmail(email);
 }
 
 async function getOwnedPool(ctx: any, poolId: any, email: string) {
   const pool = await ctx.db.get(poolId);
-  if (!pool) throw new Error("Pool not found");
+  if (!pool || pool.deleted_at !== undefined) throw new Error("Pool not found");
   const customer = await ctx.db.get(pool.customer_id);
   if (!customer) throw new Error("Customer not found");
   const business = await resolveBusiness(ctx, email);
-  const owns = business
-    ? String(customer.business_id || "") === String(business._id) || String(customer.created_by || "").toLowerCase() === String(business.owner_email || "").toLowerCase()
-    : String(customer.created_by || "").toLowerCase() === String(email).toLowerCase();
-  if (!owns) throw new Error("Access denied");
+  if (!ownsCustomer(customer, business, email)) throw new Error("Access denied");
   return { pool, customer };
 }
 
@@ -30,7 +61,9 @@ export const listByPool = query({
     if (!identity?.email) throw new Error("Not authenticated");
     await getOwnedPool(ctx, args.pool_id, identity.email);
     const equipment = await ctx.db.query("equipment")
-      .withIndex("by_pool", (q: any) => q.eq("pool_id", args.pool_id)).collect();
+      .withIndex("by_pool", (q: any) => q.eq("pool_id", args.pool_id))
+      .filter((q: any) => q.eq(q.field("deleted_at"), undefined))
+      .collect();
     return args.status ? equipment.filter((item: any) => item.status === args.status) : equipment;
   },
 });
@@ -43,12 +76,11 @@ export const listByCustomer = query({
     const business = await resolveBusiness(ctx, identity.email);
     const customer = await ctx.db.get(args.customer_id);
     if (!customer) throw new Error("Customer not found");
-    const owns = business
-      ? String(customer.business_id || "") === String(business._id) || String(customer.created_by || "").toLowerCase() === String(business.owner_email || "").toLowerCase()
-      : String(customer.created_by || "").toLowerCase() === String(identity.email).toLowerCase();
-    if (!owns) throw new Error("Access denied");
+    if (!ownsCustomer(customer, business, identity.email)) throw new Error("Access denied");
     return await ctx.db.query("equipment")
-      .withIndex("by_customer", (q: any) => q.eq("customer_id", args.customer_id)).collect();
+      .withIndex("by_customer", (q: any) => q.eq("customer_id", args.customer_id))
+      .filter((q: any) => q.eq(q.field("deleted_at"), undefined))
+      .collect();
   },
 });
 
@@ -80,6 +112,7 @@ export const create = mutation({
       status: args.status || "active",
       customer_id: customer._id,
       business_id: business ? String(business._id) : customer.business_id,
+      created_by: customer.created_by || identity.email,
       created_at: now,
       updated_at: now,
     });
@@ -104,7 +137,7 @@ export const update = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) throw new Error("Not authenticated");
     const equipment = await ctx.db.get(args.id);
-    if (!equipment) throw new Error("Equipment not found");
+    if (!equipment || equipment.deleted_at !== undefined) throw new Error("Equipment not found");
     await getOwnedPool(ctx, equipment.pool_id, identity.email);
     const { id, ...updates } = args;
     if (updates.name !== undefined && !updates.name.trim()) throw new Error("Equipment name is required");

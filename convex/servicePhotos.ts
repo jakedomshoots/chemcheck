@@ -3,13 +3,18 @@ import { query, mutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { enforceRateLimit } from "./rateLimit";
 
+// The Convex runtime exposes process.env without Node typings in this tsconfig.
+const env: Record<string, string | undefined> = (globalThis as any).process?.env ?? {};
 const runtimeEnv =
-  process.env.CONVEX_DEPLOYMENT_ENV ||
-  process.env.VERCEL_ENV ||
-  process.env.NODE_ENV;
+  env.CONVEX_DEPLOYMENT_ENV ||
+  env.VERCEL_ENV ||
+  env.NODE_ENV;
+// Unauthenticated uploads are only ever allowed when the deployment is
+// explicitly marked as development AND the flag is set. An unset environment
+// (runtimeEnv undefined) is treated as production.
 const allowUnauthenticatedPhotoUpload =
-  process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true" &&
-  runtimeEnv !== "production";
+  env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true" &&
+  runtimeEnv === "development";
 
 /**
  * Service Photos mutations and queries for Proof of Service feature
@@ -24,7 +29,7 @@ async function verifyServiceLogOwnership(
   userEmail: string
 ): Promise<{ serviceLog: any; customer: any }> {
   const serviceLog = await ctx.db.get(serviceLogId);
-  if (!serviceLog) {
+  if (!serviceLog || serviceLog.deleted_at !== undefined) {
     throw new Error("Service log not found");
   }
 
@@ -43,12 +48,12 @@ async function verifyServiceLogCustomerLink(
   customerId: Id<"customers">
 ): Promise<{ serviceLog: any; customer: any }> {
   const serviceLog = await ctx.db.get(serviceLogId);
-  if (!serviceLog) {
+  if (!serviceLog || serviceLog.deleted_at !== undefined) {
     throw new Error("Service log not found");
   }
 
   const customer = await ctx.db.get(customerId);
-  if (!customer) {
+  if (!customer || customer.deleted_at !== undefined) {
     throw new Error("Customer not found");
   }
 
@@ -66,7 +71,7 @@ async function verifyCustomerOwnership(
   userEmail: string
 ): Promise<any> {
   const customer = await ctx.db.get(customerId);
-  if (!customer || customer.created_by !== userEmail) {
+  if (!customer || customer.deleted_at !== undefined || customer.created_by !== userEmail) {
     throw new Error("Customer not found or access denied");
   }
   return customer;

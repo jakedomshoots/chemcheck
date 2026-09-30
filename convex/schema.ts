@@ -18,6 +18,7 @@ export default defineSchema({
     business_id: v.optional(v.string()), // For multi-tenant support
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
+    deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
     // Report customization settings
     report_settings: v.optional(v.object({
       show_chemical_readings: v.boolean(), // Show pH, Chlorine, etc.
@@ -48,8 +49,10 @@ export default defineSchema({
     sort_order: v.optional(v.number()),
     notes: v.optional(v.string()),
     active: v.boolean(),
+    created_by: v.optional(v.string()), // User email for tenant isolation
     created_at: v.number(),
     updated_at: v.number(),
+    deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
   })
     .index("by_customer", ["customer_id"])
     .index("by_business", ["business_id"])
@@ -72,8 +75,10 @@ export default defineSchema({
     last_service_date: v.optional(v.string()),
     next_service_due: v.optional(v.string()),
     notes: v.optional(v.string()),
+    created_by: v.optional(v.string()), // User email for tenant isolation
     created_at: v.number(),
     updated_at: v.number(),
+    deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
   })
     .index("by_pool", ["pool_id"])
     .index("by_customer", ["customer_id"])
@@ -115,6 +120,7 @@ export default defineSchema({
     tds_source: v.optional(v.union(v.literal("measured"), v.literal("assumed"))),
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
+    deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
     // Proof-of-service time tracking fields
     start_time: v.optional(v.string()), // ISO 8601 UTC
     end_time: v.optional(v.string()), // ISO 8601 UTC
@@ -140,6 +146,7 @@ export default defineSchema({
     created_date: v.optional(v.string()),
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
+    deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
   })
     .index("by_customer", ["customer_id"])
     .index("by_created_date", ["created_date"])
@@ -157,6 +164,7 @@ export default defineSchema({
     created_date: v.optional(v.string()),
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
+    deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
     created_by: v.optional(v.string()), // User email for tenant isolation (optional for migration)
   })
     .index("by_customer", ["customer_id"])
@@ -278,10 +286,13 @@ export default defineSchema({
     condition: v.string(), // good, moderate, heavy - scale buildup condition
     notes: v.optional(v.string()),
     next_cleaning_due: v.optional(v.string()), // YYYY-MM-DD format
+    created_by: v.optional(v.string()), // User email for tenant isolation
     created_at: v.optional(v.number()),
     updated_at: v.optional(v.number()),
+    deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
   })
     .index("by_customer", ["customer_id"])
+    .index("by_created_by", ["created_by"])
     .index("by_cleaning_date", ["cleaning_date"]),
 
   // Client mutation receipts used by offline sync.  Keeping receipts in a

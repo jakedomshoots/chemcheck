@@ -84,7 +84,7 @@ export class ConflictResolver {
       // This is critical to prevent sync loops - the local timestamp must be >= remote
       // so the next sync attempt won't detect another conflict
       resolved = {
-        ...remote,
+        ...this.normalizeRemoteForLocal(local, remote),
         // Preserve local-only fields that aren't part of SyncableRecord
         ...((local as any).id ? { id: (local as any).id } : {}),
         sync_status: 'synced' as const, // Mark as synced since we're accepting remote
@@ -100,6 +100,41 @@ export class ConflictResolver {
       hadConflict: true,
       backupCreated,
     };
+  }
+
+  /**
+   * A conflict's remote_data is the raw Convex document. Writing it verbatim
+   * into Dexie would replace numeric local foreign keys (customer_id/pool_id)
+   * with Convex id strings and add server-only fields (_id, business_id).
+   * Strip those and keep local keys, remembering the Convex ids alongside.
+   * (SyncService additionally maps Convex ids to local ids via Dexie lookups.)
+   */
+  private normalizeRemoteForLocal(local: SyncableRecord, remote: SyncableRecord): SyncableRecord {
+    const normalized: any = { ...remote };
+    const localAny = local as any;
+
+    if (typeof normalized._id === 'string' && !normalized.convex_id) {
+      normalized.convex_id = normalized._id;
+    }
+    delete normalized._id;
+    delete normalized._creationTime;
+    delete normalized.business_id;
+    delete normalized.deleted_at;
+    delete normalized.local_id;
+
+    for (const key of ['customer_id', 'pool_id'] as const) {
+      if (typeof normalized[key] === 'string') {
+        normalized[`convex_${key}`] = normalized[key];
+        if (typeof localAny[key] === 'number') {
+          normalized[key] = localAny[key];
+        } else {
+          delete normalized[key];
+        }
+      }
+    }
+
+    if (!normalized.convex_id && localAny.convex_id) normalized.convex_id = localAny.convex_id;
+    return normalized as SyncableRecord;
   }
 
   /**
