@@ -35,4 +35,13 @@ crons.daily(
   {}
 );
 
+// Work tickets: bill due recurring billing schedules (weekly on Mondays,
+// monthly on the 1st, 06:00 business time; failures retry every hour).
+crons.hourly(
+  "run-billing-schedules",
+  { minuteUTC: 7 },
+  internal.billingSchedules.runDueSchedules,
+  {}
+);
+
 export default crons;

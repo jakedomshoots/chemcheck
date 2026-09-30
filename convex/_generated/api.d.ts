@@ -10,7 +10,9 @@
 
 import type * as account from "../account.js";
 import type * as backfillCustomerBusinessId from "../backfillCustomerBusinessId.js";
+import type * as billingSchedules from "../billingSchedules.js";
 import type * as businesses from "../businesses.js";
+import type * as chemicalPrices from "../chemicalPrices.js";
 import type * as chemicalUsage from "../chemicalUsage.js";
 import type * as communications from "../communications.js";
 import type * as crons from "../crons.js";
@@ -37,6 +39,7 @@ import type * as subscriptions from "../subscriptions.js";
 import type * as sync from "../sync.js";
 import type * as tax from "../tax.js";
 import type * as teamMembers from "../teamMembers.js";
+import type * as tickets from "../tickets.js";
 import type * as validation from "../validation.js";
 import type * as webhookEvents from "../webhookEvents.js";
 import type * as workOrders from "../workOrders.js";
@@ -50,7 +53,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   account: typeof account;
   backfillCustomerBusinessId: typeof backfillCustomerBusinessId;
+  billingSchedules: typeof billingSchedules;
   businesses: typeof businesses;
+  chemicalPrices: typeof chemicalPrices;
   chemicalUsage: typeof chemicalUsage;
   communications: typeof communications;
   crons: typeof crons;
@@ -77,6 +82,7 @@ declare const fullApi: ApiFromModules<{
   sync: typeof sync;
   tax: typeof tax;
   teamMembers: typeof teamMembers;
+  tickets: typeof tickets;
   validation: typeof validation;
   webhookEvents: typeof webhookEvents;
   workOrders: typeof workOrders;
