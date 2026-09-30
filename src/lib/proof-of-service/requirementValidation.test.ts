@@ -403,8 +403,6 @@ describe('Requirement Enforcement', () => {
             const data: ServiceCompletionData = {
               beforePhotoCount: 0,
               afterPhotoCount: 0,
-              hasStartTime: false,
-              hasEndTime: false,
             };
             
             const result = validateServiceCompletion(settings, data);

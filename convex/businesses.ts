@@ -481,6 +481,13 @@ export const removeTeamMember = mutation({
       throw new Error("Cannot remove the business owner");
     }
 
+    // A never-accepted invite is withdrawn outright so it stops showing as
+    // pending for the invitee; an active member is deactivated.
+    if (!member.is_active && member.joined_at === undefined) {
+      await ctx.db.delete(args.memberId);
+      return;
+    }
+
     await ctx.db.patch(args.memberId, { is_active: false });
   },
 });

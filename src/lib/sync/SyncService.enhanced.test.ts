@@ -125,7 +125,7 @@ describe('SyncService conflict and telemetry hardening', () => {
 
     const queueSyncSpy = vi.spyOn(syncService as any, 'syncQueueItem').mockResolvedValue(true);
 
-    syncService.initialize(mockConvexClient);
+    syncService.initialize(mockConvexClient as any);
     const result = await syncService.syncNow();
 
     expect(result.success).toBe(true);
@@ -211,7 +211,7 @@ describe('SyncService conflict and telemetry hardening', () => {
       sync_status: 'synced',
     } as any);
 
-    syncService.initialize(mockConvexClient);
+    syncService.initialize(mockConvexClient as any);
     const result = await syncService.syncRecord('serviceLogs', 44);
 
     expect(result.success).toBe(true);
@@ -265,7 +265,7 @@ describe('SyncService conflict and telemetry hardening', () => {
     vi.mocked(db.customers.get).mockResolvedValue(conflictRecord as any);
     vi.mocked(db.customers.update).mockResolvedValue(1);
 
-    syncService.initialize(mockConvexClient);
+    syncService.initialize(mockConvexClient as any);
 
     const resolver = (syncService as any).conflictResolver;
     resolver.getConflictInfo = vi.fn(() => ({

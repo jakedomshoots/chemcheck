@@ -349,7 +349,7 @@ class RemoteProvider implements RouteProvider {
     const latitude = Number(first?.lat ?? first?.latitude ?? coordinates[1] ?? mapboxCenter[1]);
     const longitude = Number(first?.lon ?? first?.lng ?? first?.longitude ?? coordinates[0] ?? mapboxCenter[0]);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error('Geocoder response did not include coordinates');
-    return { latitude, longitude, address, source: 'remote', provider: this.name, precision: String(first?.type || first?.place_type?.[0] || 'address') };
+    return { latitude, longitude, address, source: 'remote', provider: this.name, precision: String(first?.type || (first?.place_type as unknown[] | undefined)?.[0] || 'address') };
   }
 }
 
@@ -377,8 +377,8 @@ class CachedResilientProvider implements RouteProvider {
       if (!this.remote.estimateTravelMatrix) throw new Error('Provider does not support matrix routing');
       return await this.remote.estimateTravelMatrix(locations, signal);
     } catch {
-      if (this.fallback.estimateTravelMatrix) return this.fallback.estimateTravelMatrix(locations, signal);
-      return Promise.all(locations.map((from) => Promise.all(locations.map((to) => this.fallback.estimateTravel(from, to, signal)))));
+      if (this.fallback.estimateTravelMatrix) return this.fallback.estimateTravelMatrix(locations);
+      return Promise.all(locations.map((from) => Promise.all(locations.map((to) => this.fallback.estimateTravel(from, to)))));
     }
   }
 }

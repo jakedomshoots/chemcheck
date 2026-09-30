@@ -370,7 +370,7 @@ describe('SyncService', () => {
               vi.mocked(db.customers.update).mockResolvedValue(1);
               
               // Initialize and attempt sync
-              testSyncService.initialize(testConvexClient);
+              testSyncService.initialize(testConvexClient as any);
               
               // Start sync and advance timers to simulate retry delays
               const syncPromise = testSyncService.syncRecord('customers', customerData.id);
