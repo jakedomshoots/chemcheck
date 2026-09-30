@@ -85,6 +85,7 @@ import {
 } from '@/lib/proof-of-service';
 import { BottomNavigationSettings } from '@/components/settings/BottomNavigationSettings';
 import { SquareConnectCard } from '@/components/billing/SquareConnectCard';
+import { ChemicalPricesSection } from '@/components/settings/ChemicalPricesSection';
 
 function AppearanceSection() {
   const [theme, setThemeState] = useState(() => getTheme());
@@ -969,29 +970,6 @@ export default function Settings() {
                   </div>
 
                   <div>
-                    <Label htmlFor="pref-workorders-section" className="block text-sm font-medium text-ink-secondary mb-2">
-                      Default Work Orders Section
-                    </Label>
-                    <Select
-                      value={businessSettings.defaultWorkordersSection}
-                      onValueChange={(nextValue) => {
-                        setBusinessSettings((prev) => ({ ...prev, defaultWorkordersSection: nextValue }));
-                        setPreferences((prev) => ({ ...prev, default_workorders_section: nextValue }));
-                      }}
-                    >
-                      <SelectTrigger id="pref-workorders-section" aria-label="Default Work Orders Section" className="rounded-lg">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="dispatch">Dispatch</SelectItem>
-                        <SelectItem value="quotes">Quotes</SelectItem>
-                        <SelectItem value="invoices">Invoices</SelectItem>
-                        <SelectItem value="comms">Communications</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
                     <Label htmlFor="pref-home-action" className="block text-sm font-medium text-ink-secondary mb-2">
                       Home Primary Action
                     </Label>
@@ -1320,6 +1298,8 @@ export default function Settings() {
                 </div>
 
                 <SquareConnectCard />
+
+                <ChemicalPricesSection chemicalTypes={convexBusiness?.settings?.chemical_types} />
 
                 {!providerStatus ? (
                   <div className="rounded-lg border border-line p-4 text-sm text-ink-secondary">Loading provider status...</div>
