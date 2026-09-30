@@ -35,7 +35,7 @@ vi.mock('@/pages/Notes', () => ({ default: () => <div>Notes Page</div> }));
 vi.mock('@/pages/History', () => ({ default: () => <div>History Page</div> }));
 vi.mock('@/pages/Settings', () => ({ default: () => <div>Settings Page</div> }));
 vi.mock('@/pages/PoolSchool', () => ({ default: () => <div>Pool School Page</div> }));
-vi.mock('@/pages/WorkOrders', () => ({ default: () => <div>Work Orders Page</div> }));
+vi.mock('@/pages/Work', () => ({ default: () => <div>Work Page</div> }));
 vi.mock('@/components/billing/BillingDashboard', () => ({
   BillingDashboard: () => <div>Billing Dashboard Page</div>,
 }));
@@ -46,10 +46,6 @@ vi.mock('@/pages/NotFoundPage', () => ({
 vi.mock('@/pages/AccessDeniedPage', () => ({
   default: () => <div>Access Denied Page</div>,
   AccessDeniedPage: () => <div>Access Denied Page</div>,
-}));
-
-vi.mock('@/lib/workOrdersNavigation', () => ({
-  getDefaultWorkOrdersSectionFromStorage: vi.fn(() => 'upcoming'),
 }));
 
 vi.mock('@/components/auth/ClerkAuthProvider', () => ({
