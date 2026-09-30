@@ -11,6 +11,10 @@ import { migrationManager } from '@/lib/migrations';
 import { getServiceWorkerState } from '@/lib/serviceWorker';
 import { monitoring } from '@/lib/monitoring';
 
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({ subscription: null, isLoading: false, isLocked: false, isActive: true }),
+}));
+
 vi.mock('@/lib/chunkErrorRecovery', () => ({
   importWithRetry: vi.fn(loader => loader()),
 }));

@@ -6,6 +6,7 @@ import { importWithRetry } from '@/lib/chunkErrorRecovery';
 import { getDefaultWorkOrdersSectionFromStorage } from '@/lib/workOrdersNavigation';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
 import { useSyncInitialization } from '@/hooks/useSyncInitialization';
+import { useSubscription } from '@/hooks/useSubscription';
 import { APP_ROUTES, ROUTE_ALIAS_REDIRECTS, SYSTEM_ROUTES, getCanonicalPageName } from '@/lib/routeConfig';
 
 const Home = lazy(() => importWithRetry(() => import('./Home'), 'Home'));
@@ -78,6 +79,53 @@ const ROUTES = [
 
 const DYNAMIC_WORKORDERS_ROUTE = `${APP_ROUTES.WorkOrders}/:section`;
 
+/**
+ * Pages that stay reachable while a subscription is locked so the user can
+ * fix billing, get help, or sign out.
+ */
+export const SUBSCRIPTION_EXEMPT_ROUTES = [
+  APP_ROUTES.Settings,
+  APP_ROUTES.Billing,
+  APP_ROUTES.Support,
+  SYSTEM_ROUTES.AccessDenied,
+  SYSTEM_ROUTES.NotFound,
+];
+
+export const SUBSCRIPTION_LOCKED_MESSAGE =
+  'Your subscription is no longer active. Choose a plan to keep using ChemCheck.';
+
+function normalizePath(pathname = '/') {
+  const trimmed = pathname.replace(/\/+$/, '').toLowerCase();
+  return trimmed.length === 0 ? '/' : trimmed;
+}
+
+export function isSubscriptionExemptPath(pathname) {
+  const normalized = normalizePath(pathname);
+  return SUBSCRIPTION_EXEMPT_ROUTES.some((route) => {
+    const exempt = normalizePath(route);
+    return normalized === exempt || normalized.startsWith(`${exempt}/`);
+  });
+}
+
+function SubscriptionGate({ children }) {
+  const location = useLocation();
+  const { isLoading, isLocked } = useSubscription();
+
+  // Never gate while the subscription query is still loading, and never gate
+  // the pages that let the user resolve the problem.
+  if (isLoading || !isLocked || isSubscriptionExemptPath(location.pathname)) {
+    return children;
+  }
+
+  return (
+    <Navigate
+      to={`${APP_ROUTES.Billing}?reason=subscription_inactive`}
+      replace
+      state={{ subscriptionMessage: SUBSCRIPTION_LOCKED_MESSAGE, from: location.pathname }}
+    />
+  );
+}
+
 function getCurrentPage(url) {
   const canonicalPage = getCanonicalPageName(url);
   if (canonicalPage === 'WorkOrders') {
@@ -100,6 +148,7 @@ export default function ProtectedAppRoutes() {
   return (
     <Layout currentPageName={currentPage}>
       <Suspense fallback={<PageLoader />}>
+      <SubscriptionGate>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path={APP_ROUTES.Home} element={<Home />} />
@@ -116,6 +165,7 @@ export default function ProtectedAppRoutes() {
         <Route path={SYSTEM_ROUTES.NotFound} element={<NotFoundPage />} />
         <Route path="*" element={<Navigate to={SYSTEM_ROUTES.NotFound} replace />} />
       </Routes>
+      </SubscriptionGate>
     </Suspense>
     </Layout>
   );

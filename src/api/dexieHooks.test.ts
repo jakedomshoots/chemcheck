@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   queryServiceLogsByCustomerDateRange,
   filterCustomersForLocalAccount,
+  filterRecordsForLocalAccount,
   useCustomerCreate,
   useCurrentUser,
 } from './dexieHooks';
@@ -41,7 +42,7 @@ vi.mock('@/lib/validation', () => ({
 }));
 
 vi.mock('@/lib/monitoring', () => ({
-  measureDatabaseOperation: (name, fn) => fn(),
+  measureDatabaseOperation: (_name: string, fn: () => unknown) => fn(),
   reportError: vi.fn(),
 }));
 
@@ -204,6 +205,29 @@ describe('customer account visibility', () => {
       'Synced Customer',
       'Legacy Customer',
     ]);
+  });
+});
+
+describe('child record account visibility', () => {
+  it('only exposes service logs, usage and notes that belong to the account\'s customers', () => {
+    const owned = new Set([1, 2]);
+    const logs = [
+      { id: 10, customer_id: 1 },
+      { id: 11, customer_id: 3 },
+      { id: 12, customer_id: 2 },
+    ];
+    expect(filterRecordsForLocalAccount(logs, owned).map((log) => log.id)).toEqual([10, 12]);
+  });
+
+  it('hides customer-less records unless explicitly allowed (general notes)', () => {
+    const owned = new Set([1]);
+    const notes = [
+      { id: 1, customer_id: 1 },
+      { id: 2 },
+      { id: 3, customer_id: 9 },
+    ];
+    expect(filterRecordsForLocalAccount(notes, owned).map((note) => note.id)).toEqual([1]);
+    expect(filterRecordsForLocalAccount(notes, owned, { allowUnassigned: true }).map((note) => note.id)).toEqual([1, 2]);
   });
 });
 

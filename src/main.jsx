@@ -26,7 +26,20 @@ initializeCacheLifecycle();
 applyTheme();
 watchSystemTheme();
 
+function hasAnalyticsOptOutOrDnt() {
+    try {
+        if (localStorage.getItem('analytics_opt_out') === 'true') return true;
+    } catch {
+        // Storage unavailable; fall through to the DNT check.
+    }
+    const signal = navigator.doNotTrack ?? window.doNotTrack ?? navigator.msDoNotTrack;
+    return signal === '1' || signal === 'yes';
+}
+
 function scheduleAnalyticsInitialization() {
+    // Respect the user's choice before the analytics module is even fetched.
+    if (hasAnalyticsOptOutOrDnt()) return;
+
     const initialize = async () => {
         try {
             const { initAnalytics } = await import('@/lib/analytics');

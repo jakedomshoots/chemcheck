@@ -70,7 +70,17 @@ export default defineConfig({
     })
   ].filter(Boolean),
   server: {
-    allowedHosts: true,
+    // Only serve the dev server to local hosts unless VITE_DEV_ALLOWED_HOSTS
+    // lists extra ones (comma-separated, e.g. a LAN hostname for phone testing).
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '.local',
+      ...(process.env.VITE_DEV_ALLOWED_HOSTS || '')
+        .split(',')
+        .map((host) => host.trim())
+        .filter(Boolean),
+    ],
     hmr: isPlaywrightE2E ? false : undefined,
     watch: {
       ignored: ['**/playwright-report/**', '**/test-results/**'],

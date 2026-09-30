@@ -298,6 +298,12 @@ export interface CategorizedRecommendations {
   thisVisit: Recommendation[];
   nextVisit: Recommendation[];
   longTerm: Recommendation[];
+  /**
+   * Handling notes that apply to the whole set (never mix chemicals, acid
+   * last, wait between products). Always present; empty only when no
+   * chemical additions are recommended.
+   */
+  safetyNotes?: string[];
 }
 export interface ChemicalTrend {
   chemical: string;

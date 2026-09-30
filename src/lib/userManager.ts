@@ -1,4 +1,5 @@
 import { monitoring } from './monitoring';
+import { LAST_SIGNED_IN_USER_KEY, recordSignedInUser } from './sessionIdentity';
 
 export interface User {
   id: string;
@@ -138,10 +139,14 @@ class UserManager {
 
     keysToRemove.forEach(key => localStorage.removeItem(key));
 
-    // Also clear any rate limit keys
-    const allKeys = Object.keys(localStorage);
+    // Also clear any rate limit keys. The last-signed-in marker is deliberately
+    // kept so a later login by a different account is detected as an account
+    // change even though the current-user marker is gone.
+    const allKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+      .filter((key): key is string => key !== null);
     allKeys.forEach(key => {
-      if (key.startsWith('rateLimit_') || key.startsWith('chemcheck_')) {
+      if (key === LAST_SIGNED_IN_USER_KEY) return;
+      if (key.startsWith('rateLimit_') || key.startsWith('chemcheck_') || key.startsWith('chemcheck.')) {
         localStorage.removeItem(key);
       }
     });
@@ -328,6 +333,7 @@ class UserManager {
   private setCurrentUser(user: User): void {
     this.currentUser = user;
     localStorage.setItem('chemcheck_current_user', JSON.stringify(user));
+    recordSignedInUser(user.email);
 
     const businesses = this.getStoredBusinesses();
     const business = businesses.find(b => b.id === user.businessId);

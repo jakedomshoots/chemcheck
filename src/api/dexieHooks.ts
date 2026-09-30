@@ -229,6 +229,34 @@ async function getCustomersForLocalAccount(ownerEmail: string): Promise<Customer
     return filterCustomersForLocalAccount(customers, ownerEmail);
 }
 
+/**
+ * Ids of the customers visible to the current account. Child records
+ * (service logs, chemical usage, notes) carry no owner of their own, so they
+ * are scoped through their parent customer exactly like useCustomers.
+ */
+async function getOwnedCustomerIds(ownerEmail: string): Promise<Set<number>> {
+    const customers = await getCustomersForLocalAccount(ownerEmail);
+    return new Set(customers.map((customer) => customer.id).filter((id): id is number => typeof id === 'number'));
+}
+
+async function isCustomerOwnedByAccount(customerId: number, ownerEmail: string): Promise<boolean> {
+    const customer = await db.customers.get(customerId);
+    return !!customer && isCustomerInLocalAccount(customer, ownerEmail);
+}
+
+export function filterRecordsForLocalAccount<T extends { customer_id?: number }>(
+    records: T[],
+    ownedCustomerIds: Set<number>,
+    options: { allowUnassigned?: boolean } = {}
+): T[] {
+    return records.filter((record) => {
+        if (record.customer_id === undefined || record.customer_id === null) {
+            return options.allowUnassigned === true;
+        }
+        return ownedCustomerIds.has(record.customer_id);
+    });
+}
+
 export function useCustomers() {
     const user = useCurrentUser();
     const data = useLiveQuery(
@@ -409,43 +437,53 @@ export function useCustomerDelete() {
 }
 
 export function useServiceLogs(order = '-service_date', limit?: number) {
+    const user = useCurrentUser();
     const data = useLiveQuery(
         async () => {
             let collection = db.serviceLogs.orderBy('service_date');
             if (order === '-service_date') {
                 collection = collection.reverse();
             }
-            return limit ? collection.limit(limit).toArray() : collection.toArray();
+            const ownedCustomerIds = await getOwnedCustomerIds(user.email);
+            const logs = filterRecordsForLocalAccount(await collection.toArray(), ownedCustomerIds);
+            return limit ? logs.slice(0, limit) : logs;
         },
-        [order, limit],
+        [order, limit, user.email],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useServiceLogsFilter(filters?: { customer_id?: number; service_date?: string }) {
+    const user = useCurrentUser();
     const data = useLiveQuery(
         async () => {
             if (filters?.customer_id) {
+                if (!(await isCustomerOwnedByAccount(filters.customer_id, user.email))) return [];
                 return db.serviceLogs.where('customer_id').equals(filters.customer_id).toArray();
             }
+            const ownedCustomerIds = await getOwnedCustomerIds(user.email);
             if (filters?.service_date) {
-                return db.serviceLogs.where('service_date').equals(filters.service_date).toArray();
+                const logs = await db.serviceLogs.where('service_date').equals(filters.service_date).toArray();
+                return filterRecordsForLocalAccount(logs, ownedCustomerIds);
             }
-            return db.serviceLogs.toArray();
+            return filterRecordsForLocalAccount(await db.serviceLogs.toArray(), ownedCustomerIds);
         },
-        [filters?.customer_id, filters?.service_date],
+        [filters?.customer_id, filters?.service_date, user.email],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useServiceLogsByCustomer(customerId: number | undefined) {
+    const user = useCurrentUser();
     const data = useLiveQuery(
-        () => customerId
-            ? db.serviceLogs.where('customer_id').equals(customerId).reverse().toArray()
-            : [],
-        [customerId],
+        async () => {
+            if (!customerId) return [];
+            if (!(await isCustomerOwnedByAccount(customerId, user.email))) return [];
+            return db.serviceLogs.where('customer_id').equals(customerId).reverse().toArray();
+        },
+        [customerId, user.email],
         []
     );
 
@@ -543,29 +581,34 @@ export function useServiceLogDelete() {
 }
 
 export function useChemicalUsage(order = '-created_date', limit = 100) {
+    const user = useCurrentUser();
     const data = useLiveQuery(
         async () => {
             let collection = db.chemicalUsage.orderBy('created_date');
             if (order === '-created_date') {
                 collection = collection.reverse();
             }
-            return collection.limit(limit).toArray();
+            const ownedCustomerIds = await getOwnedCustomerIds(user.email);
+            return filterRecordsForLocalAccount(await collection.toArray(), ownedCustomerIds).slice(0, limit);
         },
-        [order, limit],
+        [order, limit, user.email],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useChemicalUsageFilter(filters?: { customer_id?: number }) {
+    const user = useCurrentUser();
     const data = useLiveQuery(
         async () => {
             if (filters?.customer_id) {
+                if (!(await isCustomerOwnedByAccount(filters.customer_id, user.email))) return [];
                 return db.chemicalUsage.where('customer_id').equals(filters.customer_id).toArray();
             }
-            return db.chemicalUsage.toArray();
+            const ownedCustomerIds = await getOwnedCustomerIds(user.email);
+            return filterRecordsForLocalAccount(await db.chemicalUsage.toArray(), ownedCustomerIds);
         },
-        [filters?.customer_id],
+        [filters?.customer_id, user.email],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
@@ -624,31 +667,38 @@ export function useChemicalUsageDelete() {
 }
 
 export function useNotes(order = '-created_date') {
+    const user = useCurrentUser();
     const data = useLiveQuery(
         async () => {
             let collection = db.notes.orderBy('created_date');
             if (order === '-created_date') {
                 collection = collection.reverse();
             }
-            return collection.toArray();
+            const ownedCustomerIds = await getOwnedCustomerIds(user.email);
+            // General notes carry no customer and therefore no owner; they stay visible.
+            return filterRecordsForLocalAccount(await collection.toArray(), ownedCustomerIds, { allowUnassigned: true });
         },
-        [order],
+        [order, user.email],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);
 }
 
 export function useNotesFilter(filters?: { customer_id?: number; completed?: boolean; category?: string }) {
+    const user = useCurrentUser();
     const data = useLiveQuery(
         async () => {
             let notes: Note[] = [];
 
             if (filters?.customer_id !== undefined) {
+                if (!(await isCustomerOwnedByAccount(filters.customer_id, user.email))) return [];
                 notes = await db.notes.where('customer_id').equals(filters.customer_id).toArray();
-            } else if (filters?.completed !== undefined) {
-                notes = (await db.notes.toArray()).filter(n => n.completed === filters.completed);
             } else {
-                notes = await db.notes.toArray();
+                const ownedCustomerIds = await getOwnedCustomerIds(user.email);
+                notes = filterRecordsForLocalAccount(await db.notes.toArray(), ownedCustomerIds, { allowUnassigned: true });
+                if (filters?.completed !== undefined) {
+                    notes = notes.filter(n => n.completed === filters.completed);
+                }
             }
 
             if (filters?.category) {
@@ -656,7 +706,7 @@ export function useNotesFilter(filters?: { customer_id?: number; completed?: boo
             }
             return notes;
         },
-        [filters?.customer_id, filters?.completed, filters?.category],
+        [filters?.customer_id, filters?.completed, filters?.category, user.email],
         []
     );
     return useMemo(() => addIdAliasToArray(data), [data]);

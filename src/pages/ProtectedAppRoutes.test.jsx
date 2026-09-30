@@ -55,9 +55,63 @@ vi.mock('@/hooks/useSyncInitialization', () => ({
   useSyncInitialization: vi.fn(),
 }));
 
+const subscriptionState = { isLoading: false, isLocked: false };
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({ ...subscriptionState }),
+}));
+
 describe('ProtectedAppRoutes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    subscriptionState.isLoading = false;
+    subscriptionState.isLocked = false;
+  });
+
+  describe('subscription gate', () => {
+    it('redirects feature routes to billing when the subscription is locked', async () => {
+      subscriptionState.isLocked = true;
+      render(
+        <MemoryRouter initialEntries={['/Clients']}>
+          <ProtectedAppRoutes />
+        </MemoryRouter>
+      );
+
+      expect(await screen.findByText('Billing Dashboard Page')).toBeInTheDocument();
+      expect(screen.queryByText('Clients Page')).not.toBeInTheDocument();
+    });
+
+    it('keeps settings, billing and support reachable while locked', async () => {
+      subscriptionState.isLocked = true;
+      render(
+        <MemoryRouter initialEntries={['/Settings']}>
+          <ProtectedAppRoutes />
+        </MemoryRouter>
+      );
+
+      expect(await screen.findByText('Settings Page')).toBeInTheDocument();
+    });
+
+    it('does not gate while the subscription query is still loading', async () => {
+      subscriptionState.isLoading = true;
+      subscriptionState.isLocked = true;
+      render(
+        <MemoryRouter initialEntries={['/Clients']}>
+          <ProtectedAppRoutes />
+        </MemoryRouter>
+      );
+
+      expect(await screen.findByText('Clients Page')).toBeInTheDocument();
+    });
+
+    it('allows feature routes when no subscription row locks the account', async () => {
+      render(
+        <MemoryRouter initialEntries={['/Clients']}>
+          <ProtectedAppRoutes />
+        </MemoryRouter>
+      );
+
+      expect(await screen.findByText('Clients Page')).toBeInTheDocument();
+    });
   });
 
   it('renders access denied route directly through route mapping', async () => {

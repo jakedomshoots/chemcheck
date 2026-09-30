@@ -8,6 +8,7 @@ import {
   Clock,
   ExternalLink,
   Loader2,
+  HelpCircle,
   TrendingUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -57,13 +58,31 @@ export function BillingDashboard() {
     incomplete: { icon: AlertTriangle, color: 'text-critical', bg: 'bg-[var(--status-critical-soft)]', label: 'Incomplete' },
     incomplete_expired: { icon: AlertTriangle, color: 'text-critical', bg: 'bg-[var(--status-critical-soft)]', label: 'Expired' },
     canceled: { icon: AlertTriangle, color: 'text-critical', bg: 'bg-[var(--status-critical-soft)]', label: 'Canceled' },
+    unknown: { icon: HelpCircle, color: 'text-watch', bg: 'bg-[var(--status-watch-soft)]', label: 'Unknown status' },
   };
 
-  const status = statusConfig[subscription?.status] || statusConfig.active;
+  // Never dress an unrecognised status up as "Active".
+  const status = statusConfig[subscription?.status] || statusConfig.unknown;
   const StatusIcon = status.icon;
+  const lockedReason = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('reason');
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <div className="space-y-6">
+      {lockedReason === 'subscription_inactive' && (
+        <div
+          role="alert"
+          className="rounded-xl border border-[var(--status-critical-line)] bg-[var(--status-critical-soft)] p-4 text-sm font-medium text-critical"
+        >
+          Your subscription is no longer active. Choose a plan below to keep using ChemCheck. Settings, billing, and
+          support remain available.
+        </div>
+      )}
       {/* Current Plan Card */}
       <div className="rounded-sheet border border-line bg-surface-1 p-5 shadow-card sm:p-6">
         <div className="mb-6 flex items-start justify-between gap-4">
@@ -146,6 +165,14 @@ export function BillingDashboard() {
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />
               </a>
             </div>
+          </div>
+        ) : subscription ? (
+          <div className="rounded-xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] p-4 text-sm font-medium text-watch">
+            <p className="font-semibold">Unrecognized plan</p>
+            <p className="mt-1">
+              Your subscription reports plan "{subscription.rawPlanId || 'unknown'}", which this version of the app
+              does not recognize. Update the app or contact support before changing your plan.
+            </p>
           </div>
         ) : (
           <div className="py-8 text-center">

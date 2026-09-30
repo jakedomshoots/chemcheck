@@ -271,7 +271,7 @@ describe('Email Backward Compatibility', () => {
   });
 
   describe('Business Name and Branding Compatibility', () => {
-    it('should use provided business name or default to Dominick Pool Solutions', () => {
+    it('should use provided business name or the neutral default', () => {
       // Test with existing business name
       const emailContent1 = generateSimpleEmailContent({
         customerName: 'Test Customer',
@@ -290,8 +290,8 @@ describe('Email Backward Compatibility', () => {
         poolStatus: 'good',
       });
 
-      expect(emailContent2.htmlBody).toContain('Dominick Pool Solutions');
-      expect(emailContent2.textBody).toContain('Dominick Pool Solutions');
+      expect(emailContent2.htmlBody).toContain('Your pool service provider');
+      expect(emailContent2.textBody).toContain('Your pool service provider');
     });
 
     it('should always include the ChemCheck footer regardless of business name', () => {
@@ -302,7 +302,7 @@ describe('Email Backward Compatibility', () => {
         businessName: 'Any Pool Company',
       });
 
-      const expectedFooter = 'This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions';
+      const expectedFooter = 'This email is powered by ChemCheck Pool Software';
       expect(emailContent.htmlBody).toContain(expectedFooter);
       expect(emailContent.textBody).toContain(expectedFooter);
     });
