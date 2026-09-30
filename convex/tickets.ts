@@ -380,6 +380,21 @@ export const get = query({
   },
 });
 
+/** Resolve an old invoice URL to the migrated ticket in the caller's business. */
+export const findMigratedInvoice = query({
+  args: { invoice_id: v.string() },
+  returns: v.union(v.id("tickets"), v.null()),
+  handler: async (ctx, args): Promise<Id<"tickets"> | null> => {
+    const access = await optionalBusinessAccess(ctx);
+    if (!access || !args.invoice_id.trim()) return null;
+    const ticket = await ctx.db
+      .query("tickets")
+      .withIndex("by_legacy_source", (q) => q.eq("legacy_source", `invoice:${args.invoice_id}`))
+      .first();
+    return ticket && String(ticket.business_id) === String(access.businessId) ? ticket._id : null;
+  },
+});
+
 export const summary = query({
   args: {},
   handler: async (ctx) => {

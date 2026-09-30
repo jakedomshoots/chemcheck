@@ -13,6 +13,7 @@ import {
   pressKey,
   readableError,
   roundCents,
+  shortDate,
   sumItems,
 } from "./workFormat";
 import { useFocusOnMount, useWorkOffline, useWorkRunner } from "./workHooks";
@@ -233,9 +234,9 @@ export default function NewTicket({ onClose, onDone }) {
         title: "Recurring billing on",
         amountText: `${money(rate)}${suffix}`,
         detail:
-          `First invoice ${draft.repeat === "weekly" ? "Monday" : "on the 1st"}. ChemCheck creates it in your Square account` +
+          `First invoice ${shortDate(res.value.next_run_at)}. ChemCheck creates it in your Square account` +
           (draft.autopay && cardLabel ? ` and charges ${cardLabel}.` : ` and Square sends it to ${name}.`),
-        scheduleId: res.value,
+        scheduleId: res.value.id,
       });
       return;
     }

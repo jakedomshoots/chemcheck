@@ -26,9 +26,9 @@ import {
   invoiceEventFacts,
 } from "./ticketLogic";
 import { buildExternalPaymentBody, buildInvoiceBody, squarePhone } from "./squareInvoices";
-import { applyInvoiceEvent, buildQuoteMessage, legacyInvoiceToTicket, legacyQuoteToTicket, migrateLegacy } from "./tickets";
-import { normalizeScheduleBilling, prepareRun, scheduleRunOutcome, MAX_RUN_ATTEMPTS } from "./billingSchedules";
-import { normalizeChemicalPrices } from "./chemicalPrices";
+import { applyInvoiceEvent, buildQuoteMessage, findMigratedInvoice, legacyInvoiceToTicket, legacyQuoteToTicket, migrateLegacy } from "./tickets";
+import { create as createBillingSchedule, normalizeScheduleBilling, prepareRun, scheduleRunOutcome, MAX_RUN_ATTEMPTS } from "./billingSchedules";
+import { canManage as canManageChemicalPrices, normalizeChemicalPrices } from "./chemicalPrices";
 import { connectionNeedsReconnect } from "./squareConnect";
 import { planSquareWebhookEvent } from "./squareWebhook";
 import { SELLER_OAUTH_SCOPES } from "./squareApi";
@@ -154,6 +154,92 @@ const settings = {
   require_photos: false,
   require_signatures: false,
 };
+
+describe("work ticket access queries", () => {
+  const business = {
+    _id: "businesses:1",
+    name: "Acme Pools",
+    owner_email: "owner@acme.co",
+    settings,
+    timezone: TZ,
+    created_at: 0,
+    updated_at: 0,
+  };
+  const auth = (email: string) => ({ getUserIdentity: async () => ({ email }) });
+
+  it("only exposes chemical price management to owners and admins", async () => {
+    const db = createFakeDb({
+      businesses: [business],
+      team_members: [{
+        _id: "team_members:1",
+        business_id: "businesses:1",
+        user_email: "tech@acme.co",
+        name: "Tech",
+        role: "technician",
+        is_active: true,
+        status: "active",
+        invited_at: 0,
+      }],
+    });
+
+    expect(await call(canManageChemicalPrices, { db, auth: auth("owner@acme.co") } as any)).toBe(true);
+    expect(await call(canManageChemicalPrices, { db, auth: auth("tech@acme.co") } as any)).toBe(false);
+  });
+
+  it("resolves a migrated invoice only inside the signed-in business", async () => {
+    const db = createFakeDb({
+      businesses: [
+        business,
+        { ...business, _id: "businesses:2", owner_email: "other@acme.co" },
+      ],
+      tickets: [{
+        _id: "tickets:1",
+        business_id: "businesses:1",
+        legacy_source: "invoice:invoices:1",
+      }],
+    });
+
+    expect(await call(findMigratedInvoice, { db, auth: auth("owner@acme.co") } as any, { invoice_id: "invoices:1" })).toBe("tickets:1");
+    expect(await call(findMigratedInvoice, { db, auth: auth("other@acme.co") } as any, { invoice_id: "invoices:1" })).toBeNull();
+  });
+
+  it("returns the saved first-run date when creating a billing schedule", async () => {
+    const db = createFakeDb({
+      businesses: [business],
+      customers: [{
+        _id: "customers:1",
+        full_name: "Jane Doe",
+        business_id: "businesses:1",
+        created_by: "owner@acme.co",
+      }],
+      billingSchedules: [],
+    });
+
+    const result = await call(
+      createBillingSchedule,
+      { db, auth: auth("owner@acme.co") } as any,
+      {
+        customer_id: "customers:1",
+        cadence: "monthly",
+        bill_mode: "fixed",
+        rate: 125,
+        items: [{ label: "Monthly pool service", amount: 125 }],
+        note: "Monthly pool service",
+        autopay: true,
+      }
+    );
+
+    expect(result).toEqual({
+      id: expect.stringMatching(/^billingSchedules:/),
+      next_run_at: expect.any(Number),
+    });
+    expect(db.tables.billingSchedules[0]).toMatchObject({
+      _id: result.id,
+      next_run_at: result.next_run_at,
+      business_id: "businesses:1",
+    });
+  });
+});
 
 // ---------------------------------------------------------------------------
 

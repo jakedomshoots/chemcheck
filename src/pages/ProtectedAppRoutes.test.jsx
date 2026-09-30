@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import ProtectedAppRoutes from './ProtectedAppRoutes';
+import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import ProtectedAppRoutes, { LegacyInvoicePayRedirect } from './ProtectedAppRoutes';
+
+const routeMocks = vi.hoisted(() => ({ migratedTicketId: null }));
+
+vi.mock('convex/react', () => ({
+  useQuery: () => routeMocks.migratedTicketId,
+}));
 
 vi.mock('@/lib/chunkErrorRecovery', () => ({
   importWithRetry: vi.fn(loader => loader()),
@@ -54,6 +60,31 @@ vi.mock('@/hooks/useSyncInitialization', () => ({
 describe('ProtectedAppRoutes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    routeMocks.migratedTicketId = null;
+  });
+
+  it('opens a legacy invoice link on its migrated ticket and preserves Square return details', async () => {
+    routeMocks.migratedTicketId = 'ticket123';
+
+    function LocationProbe() {
+      const location = useLocation();
+      return <div data-testid="redirect-location">{`${location.pathname}${location.search}`}</div>;
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/invoice-pay/inv1?square_payment=invoice_success']}>
+        <Routes>
+          <Route path="/invoice-pay/:invoiceId" element={<LegacyInvoicePayRedirect />} />
+          <Route path="*" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('redirect-location')).toHaveTextContent(
+        '/workorders/t/ticket123?square_payment=invoice_success&invoice_id=inv1'
+      )
+    );
   });
 
   it('renders access denied route directly through route mapping', async () => {

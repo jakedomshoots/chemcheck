@@ -3,15 +3,23 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ChemicalPricesSection } from "./ChemicalPricesSection";
 
 const mocks = vi.hoisted(() => ({
+  canManage: true,
   prices: undefined,
   set: vi.fn(async () => null),
 }));
 
-vi.mock("convex/react", () => ({
-  useQuery: () => mocks.prices,
-  useMutation: () => mocks.set,
-  useConvexConnectionState: () => ({ isWebSocketConnected: true, hasEverConnected: true }),
-}));
+vi.mock("convex/react", async () => {
+  const { getFunctionName } = await import("convex/server");
+  return {
+    useQuery: (ref, args) => {
+      const name = getFunctionName(ref);
+      if (name === "chemicalPrices:canManage") return mocks.canManage;
+      return args === "skip" ? undefined : mocks.prices;
+    },
+    useMutation: () => mocks.set,
+    useConvexConnectionState: () => ({ isWebSocketConnected: true, hasEverConnected: true }),
+  };
+});
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -20,7 +28,14 @@ vi.mock("sonner", () => ({
 describe("ChemicalPricesSection", () => {
   beforeEach(() => {
     mocks.set.mockClear();
+    mocks.canManage = true;
     mocks.prices = [{ chemical_type: "Liquid Chlorine", unit: "gal", price: 6.5 }];
+  });
+
+  it("is hidden from team members who cannot manage billing settings", () => {
+    mocks.canManage = false;
+    render(<ChemicalPricesSection />);
+    expect(screen.queryByRole("heading", { name: "Chemical prices" })).not.toBeInTheDocument();
   });
 
   it("prefills known chemical types and saved prices, then saves priced rows in dollars", async () => {

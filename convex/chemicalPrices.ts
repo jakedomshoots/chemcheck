@@ -15,6 +15,18 @@ export const MAX_CHEMICAL_PRICES = 100;
 
 export type ChemicalPriceInput = { chemical_type: string; unit: string; price: number };
 
+/** Whether the current user may manage billing-related chemical prices. */
+export const canManage = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx): Promise<boolean> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) return false;
+    const access = await getAccessContext(ctx, identity.email);
+    return Boolean(access.business && access.role && CUSTOMER_WRITE_ROLES.includes(access.role));
+  },
+});
+
 /** Validate a full price list; later duplicates (case-insensitive type) replace earlier ones. */
 export function normalizeChemicalPrices(prices: ChemicalPriceInput[]): { chemical_type: string; unit: string; price_cents: number }[] {
   if (!Array.isArray(prices)) throw new Error("Prices are missing.");

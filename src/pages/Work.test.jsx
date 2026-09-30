@@ -138,6 +138,7 @@ describe("Work page", () => {
       "tickets:list": TICKETS,
       "billingSchedules:list": [SCHEDULE],
       "billingSchedules:get": SCHEDULE,
+      "tickets:findMigratedInvoice": "t1",
       "tickets:get": null,
     };
   });
@@ -218,7 +219,6 @@ describe("Work page", () => {
   });
 
   it.each([
-    ["/workorders/invoices?invoice_id=inv1", "/workorders?filter=open"],
     ["/workorders/quotes", "/workorders?filter=quote"],
     ["/workorders/dispatch", "/workorders"],
     ["/workorders/comms", "/workorders"],
@@ -226,6 +226,31 @@ describe("Work page", () => {
     renderWork(from);
     await waitFor(() => expect(location()).toBe(to));
     expect(screen.getByRole("heading", { name: "Work" })).toBeInTheDocument();
+  });
+
+  it("opens the old invoices section link on its migrated ticket", async () => {
+    renderWork("/workorders/invoices?invoice_id=inv1");
+    await waitFor(() => expect(location()).toBe("/workorders/t/t1"));
+    expect(mocks.queryArgs["tickets:findMigratedInvoice"]).toEqual({ invoice_id: "inv1" });
+  });
+
+  it("keeps a mixed-case legacy invoice URL intact while its migrated ticket is loading", async () => {
+    mocks.queries["tickets:findMigratedInvoice"] = undefined;
+    renderWork("/WorkOrders/Invoices?invoice_id=inv1");
+    expect(await screen.findByRole("status")).toHaveTextContent("Opening invoice…");
+    expect(location()).toBe("/WorkOrders/Invoices?invoice_id=inv1");
+  });
+
+  it("syncs a Square return after resolving the old invoices link", async () => {
+    renderWork("/workorders/invoices?square_payment=invoice_success&invoice_id=inv1");
+    await waitFor(() => expect(location()).toBe("/workorders/t/t1"));
+    expect(mocks.fns["payments:syncPaymentStatus"]).toHaveBeenCalledWith({ invoice_id: "inv1" });
+  });
+
+  it("falls back to the open feed when an old invoice has not been migrated", async () => {
+    mocks.queries["tickets:findMigratedInvoice"] = null;
+    renderWork("/workorders/invoices?invoice_id=missing");
+    await waitFor(() => expect(location()).toBe("/workorders?filter=open"));
   });
 
   it("confirms legacy Square checkout returns and cleans the URL", async () => {

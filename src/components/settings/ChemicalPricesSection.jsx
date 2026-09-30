@@ -30,7 +30,8 @@ function defaultUnit(type) {
  * recurring billing. Owners and admins can edit; the server enforces it.
  */
 export function ChemicalPricesSection({ chemicalTypes }) {
-  const prices = useQuery(api.chemicalPrices.list);
+  const canManage = useQuery(api.chemicalPrices.canManage, {});
+  const prices = useQuery(api.chemicalPrices.list, canManage ? {} : "skip");
   const savePrices = useMutation(api.chemicalPrices.set);
   const offline = useWorkOffline();
   const [rows, setRows] = useState(null);
@@ -79,6 +80,8 @@ export function ChemicalPricesSection({ chemicalTypes }) {
       setSaving(false);
     }
   };
+
+  if (canManage !== true) return null;
 
   return (
     <section aria-labelledby="chemical-prices-heading" className="space-y-3 rounded-lg border border-line p-4">

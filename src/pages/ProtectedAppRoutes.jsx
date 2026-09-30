@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 import Layout from './Layout.jsx';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
@@ -44,10 +46,21 @@ function PageLoader() {
   );
 }
 
-function LegacyInvoicePayRedirect() {
+export function LegacyInvoicePayRedirect() {
   const { invoiceId } = useParams();
+  const location = useLocation();
+  const migratedTicketId = useQuery(api.tickets.findMigratedInvoice, invoiceId ? { invoice_id: invoiceId } : 'skip');
+  if (migratedTicketId === undefined) return <PageLoader />;
+
   const encodedId = invoiceId ? encodeURIComponent(invoiceId) : "";
-  return <Navigate to={`${APP_ROUTES.WorkOrders}${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
+  const params = new URLSearchParams(location.search);
+  if (params.has('square_payment') && invoiceId && !params.has('invoice_id')) params.set('invoice_id', invoiceId);
+  if (!migratedTicketId && encodedId && !params.has('invoice_id')) params.set('invoice_id', invoiceId);
+  const query = params.toString();
+  const destination = migratedTicketId
+    ? `${APP_ROUTES.WorkOrders}/t/${encodeURIComponent(migratedTicketId)}`
+    : APP_ROUTES.WorkOrders;
+  return <Navigate to={`${destination}${query ? `?${query}` : ''}`} replace />;
 }
 
 const ROUTES = [

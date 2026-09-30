@@ -200,7 +200,8 @@ export const create = mutation({
     note: v.string(),
     autopay: v.boolean(),
   },
-  handler: async (ctx, args): Promise<Id<"billingSchedules">> => {
+  returns: v.object({ id: v.id("billingSchedules"), next_run_at: v.number() }),
+  handler: async (ctx, args): Promise<{ id: Id<"billingSchedules">; next_run_at: number }> => {
     const email = await identityEmail(ctx);
     await enforceRateLimit(ctx, email, "schedule.write");
     const access = await requireBusinessRole(ctx, email, CUSTOMER_WRITE_ROLES);
@@ -213,7 +214,8 @@ export const create = mutation({
     const billing = normalizeScheduleBilling(args);
     const now = Date.now();
     const tz = safeTimeZone(access.business.timezone);
-    return await ctx.db.insert("billingSchedules", {
+    const nextRun = nextRunAt(args.cadence, now, tz);
+    const id = await ctx.db.insert("billingSchedules", {
       business_id: access.businessId,
       customer_id: args.customer_id,
       created_by: access.tenantEmail,
@@ -224,10 +226,11 @@ export const create = mutation({
       note: normalizeNote(args.note),
       autopay: args.autopay,
       paused: false,
-      next_run_at: nextRunAt(args.cadence, now, tz),
+      next_run_at: nextRun,
       created_at: now,
       updated_at: now,
     });
+    return { id, next_run_at: nextRun };
   },
 });
 

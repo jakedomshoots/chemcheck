@@ -225,7 +225,10 @@ describe("NewTicket", () => {
     await waitFor(() => expect(mocks.fns["billingSchedules:customerCard"]).toHaveBeenCalledWith({ customer_id: "cust_patel" }));
     typeAmount("55");
     setFor("Weekly service");
-    mocks.fns["billingSchedules:create"].mockResolvedValue("sched1");
+    mocks.fns["billingSchedules:create"].mockResolvedValue({
+      id: "sched1",
+      next_run_at: Date.UTC(2026, 9, 1, 12),
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Start monthly billing" }));
 
@@ -239,7 +242,12 @@ describe("NewTicket", () => {
       note: "Weekly service",
       autopay: true,
     });
-    expect(onDone.mock.calls[0][0]).toMatchObject({ title: "Recurring billing on", amountText: "$55.00/visit" });
+    expect(onDone.mock.calls[0][0]).toMatchObject({
+      title: "Recurring billing on",
+      amountText: "$55.00/visit",
+      detail: expect.stringContaining("First invoice Thu, Oct 1."),
+      scheduleId: "sched1",
+    });
   });
 
   it("sends fixed recurring billing with its line items and autopay choice", async () => {
@@ -252,7 +260,10 @@ describe("NewTicket", () => {
     expect(autopay).toHaveAttribute("aria-pressed", "false");
     typeAmount("150");
     setFor("Weekly pool service");
-    mocks.fns["billingSchedules:create"].mockResolvedValue("sched2");
+    mocks.fns["billingSchedules:create"].mockResolvedValue({
+      id: "sched2",
+      next_run_at: Date.UTC(2026, 9, 5, 12),
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Start weekly billing" }));
 

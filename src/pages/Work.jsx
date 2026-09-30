@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
 import WorkFeed from "@/components/work/WorkFeed";
@@ -27,6 +27,7 @@ const SQUARE_RETURN_PARAMS = ["square_payment", "invoice_id", "quote_id", "trans
  */
 function useLegacyPaymentReturn() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const syncPaymentStatus = useAction(api.payments.syncPaymentStatus);
   const paymentStatus = searchParams.get("square_payment");
   const invoiceId = searchParams.get("invoice_id");
@@ -41,6 +42,9 @@ function useLegacyPaymentReturn() {
   }, []);
 
   useEffect(() => {
+    const resolvingLegacyInvoice =
+      location.pathname.toLowerCase().startsWith(`${workPaths.feed()}/invoices`) && Boolean(invoiceId);
+    if (resolvingLegacyInvoice) return;
     if (!paymentStatus && !invoiceId && !quoteId) return;
 
     if (paymentStatus === "invoice_success" || paymentStatus === "deposit_success") {
@@ -70,7 +74,7 @@ function useLegacyPaymentReturn() {
       },
       { replace: true }
     );
-  }, [paymentStatus, invoiceId, quoteId]);
+  }, [paymentStatus, invoiceId, quoteId, location.pathname]);
 }
 
 /** Back that stays inside the app: pops history when we pushed it, otherwise goes to the feed. */
@@ -87,7 +91,6 @@ function useWorkBack() {
 }
 
 function FeedRoute() {
-  useLegacyPaymentReturn();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = normalizeFilter(searchParams.get("filter"));
@@ -154,6 +157,30 @@ function ScheduleRoute() {
   );
 }
 
+/** Old invoice-list links open the exact migrated ticket when one exists. */
+function LegacyInvoicesRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const invoiceId = params.get("invoice_id");
+  const migratedTicketId = useQuery(api.tickets.findMigratedInvoice, invoiceId ? { invoice_id: invoiceId } : "skip");
+
+  if (invoiceId && migratedTicketId === undefined) {
+    return <div role="status" className="p-5 text-sm text-ink-secondary">Opening invoice…</div>;
+  }
+
+  const isPaymentReturn = params.has("square_payment");
+  if (migratedTicketId) {
+    if (!isPaymentReturn) params.delete("invoice_id");
+    const query = params.toString();
+    return <Navigate to={`${workPaths.ticket(migratedTicketId)}${query ? `?${query}` : ""}`} replace />;
+  }
+
+  if (!isPaymentReturn) params.delete("invoice_id");
+  if (!params.has("filter")) params.set("filter", "open");
+  const query = params.toString();
+  return <Navigate to={`${workPaths.feed()}${query ? `?${query}` : ""}`} replace />;
+}
+
 /** Old /workorders/<section> deep links (dispatch, quotes, invoices, comms, …) land on the feed. */
 function LegacySectionRedirect() {
   const { section = "" } = useParams();
@@ -166,6 +193,7 @@ function LegacySectionRedirect() {
 }
 
 export default function Work() {
+  useLegacyPaymentReturn();
   return (
     <Routes>
       <Route index element={<FeedRoute />} />
@@ -173,6 +201,7 @@ export default function Work() {
       <Route path="sent" element={<SentRoute />} />
       <Route path="t/:ticketId" element={<TicketRoute />} />
       <Route path="s/:scheduleId" element={<ScheduleRoute />} />
+      <Route path="invoices/*" element={<LegacyInvoicesRedirect />} />
       <Route path=":section/*" element={<LegacySectionRedirect />} />
     </Routes>
   );
