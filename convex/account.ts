@@ -35,6 +35,8 @@ type CustomersCursor = {
     | "invoices"
     | "workOrders"
     | "quotes"
+    | "tickets"
+    | "billingSchedules"
     | "chemicalUsage"
     | "notes"
     | "saltCellLogs"
@@ -269,6 +271,8 @@ function nextCustomerStage(stage: NonNullable<CustomersCursor["stage"]>): NonNul
     "invoices",
     "workOrders",
     "quotes",
+    "tickets",
+    "billingSchedules",
     "chemicalUsage",
     "notes",
     "saltCellLogs",
@@ -351,6 +355,7 @@ async function processCustomerStage(
     invoices: "invoices",
     workOrders: "workOrders",
     quotes: "quotes",
+    billingSchedules: "billingSchedules",
   };
   if (customerTableStages[stage]) {
     const numItems = Math.min(DEPENDENT_PAGE_SIZE, writesLeft);
@@ -361,6 +366,33 @@ async function processCustomerStage(
       .paginate({ cursor: state.tableCursor ?? null, numItems });
     for (const record of page.page) {
       await ctx.db.delete(record._id);
+      deleted += 1;
+    }
+    if (!page.isDone) {
+      state.tableCursor = page.continueCursor;
+      return { deleted, finished: false, state };
+    }
+    return { deleted, finished: true, state };
+  }
+
+  if (stage === "tickets") {
+    // Work tickets: delete photo files (and their claims) before the ticket.
+    const numItems = Math.min(DEPENDENT_PAGE_SIZE, writesLeft);
+    if (numItems === 0) return { deleted, finished: false, state };
+    const page = await ctx.db
+      .query("tickets")
+      .withIndex("by_customer", (q: any) => q.eq("customer_id", customerId))
+      .paginate({ cursor: state.tableCursor ?? null, numItems });
+    for (const ticket of page.page) {
+      for (const storageId of ticket.photo_storage_ids ?? []) {
+        const claims = await ctx.db
+          .query("ticketPhotoClaims")
+          .withIndex("by_storage_id", (q: any) => q.eq("storage_id", storageId))
+          .take(5);
+        for (const claim of claims) await ctx.db.delete(claim._id);
+        await ctx.storage.delete(storageId);
+      }
+      await ctx.db.delete(ticket._id);
       deleted += 1;
     }
     if (!page.isDone) {
@@ -620,11 +652,12 @@ async function deleteGeneralBatch(
 
       for (const business of page.page) {
         // Square seller tokens and pending subscription checkouts (a handful of rows per business).
-        for (const table of ["squareSellerAccounts", "squareSubscriptionCheckouts"] as const) {
+        // Also work-ticket chemical prices and leftover photo claims.
+        for (const table of ["squareSellerAccounts", "squareSubscriptionCheckouts", "chemicalPrices", "ticketPhotoClaims"] as const) {
           const rows = await ctx.db
             .query(table)
             .withIndex("by_business", (q: any) => q.eq("business_id", business._id))
-            .take(50);
+            .take(200);
           for (const row of rows) {
             await ctx.db.delete(row._id);
             deletedCount += 1;
