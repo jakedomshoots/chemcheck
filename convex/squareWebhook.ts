@@ -4,6 +4,11 @@
  *    payment.updated) settle invoices and quote deposits.
  *  - Platform subscription events (subscription.*, invoice.*) on the ChemCheck
  *    owner's merchant keep the `subscriptions` table in sync.
+ *  - Work-ticket invoices on connected sellers' accounts (invoice.payment_made,
+ *    invoice.updated, invoice.canceled, invoice.refunded,
+ *    invoice.scheduled_charge_failed) update the matching ticket, only when
+ *    the event's merchant is the ticket business's connected merchant.
+ *    invoice.* events from the PLATFORM merchant stay subscription events.
  *  - oauth.authorization.revoked forgets a seller's tokens.
  *
  * Security:
@@ -36,6 +41,7 @@ export type SquareWebhookPlan =
   | { kind: "subscription"; subscription: Record<string, any> }
   | { kind: "subscription_invoice"; outcome: "paid" | "failed"; subscription_id: string; invoice: Record<string, any> }
   | { kind: "seller_revoked"; merchant_id: string }
+  | { kind: "seller_invoice"; merchant_id: string; invoice_id: string }
   | { kind: "ignore"; reason: string };
 
 /** Decide what to do with a verified, parsed Square event. Pure. */
@@ -62,8 +68,22 @@ export function planSquareWebhookEvent(event: any, platformMerchantId: string | 
       return { kind: "subscription", subscription };
     }
     case "invoice.payment_made":
-    case "invoice.scheduled_charge_failed": {
-      if (!isPlatform) return { kind: "ignore", reason: "not_platform_merchant" };
+    case "invoice.scheduled_charge_failed":
+    case "invoice.updated":
+    case "invoice.canceled":
+    case "invoice.refunded": {
+      if (!isPlatform) {
+        // A connected seller's invoice (work tickets). The ticket's business
+        // must have this merchant connected (checked in tickets.applyInvoiceEvent).
+        const invoiceId = typeof object?.invoice?.id === "string" ? object.invoice.id : "";
+        if (!merchantId) return { kind: "ignore", reason: "missing_merchant" };
+        if (!invoiceId) return { kind: "ignore", reason: "missing_invoice" };
+        return { kind: "seller_invoice", merchant_id: merchantId, invoice_id: invoiceId };
+      }
+      // Platform merchant invoices belong to ChemCheck subscriptions.
+      if (type !== "invoice.payment_made" && type !== "invoice.scheduled_charge_failed") {
+        return { kind: "ignore", reason: "unhandled_platform_invoice_event" };
+      }
       const invoice = object?.invoice;
       const subscriptionId = typeof invoice?.subscription_id === "string" ? invoice.subscription_id : "";
       if (!subscriptionId) return { kind: "ignore", reason: "not_subscription_invoice" };
@@ -304,6 +324,13 @@ export const handleSquareWebhook = httpAction(async (ctx, request) => {
       case "subscription_invoice":
         await applySubscriptionInvoice(ctx, plan, eventCreated);
         break;
+      case "seller_invoice": {
+        const result = await ctx.runMutation(internal.tickets.applyInvoiceEvent, { event });
+        if (result.matched && !result.applied && result.reason === "merchant_mismatch") {
+          console.error("[Square Webhook] Invoice event merchant does not match the ticket's business", { eventId });
+        }
+        break;
+      }
       case "seller_revoked":
         await ctx.runMutation(internal.squareConnect.deleteSellerAccountsByMerchant, { merchant_id: plan.merchant_id });
         break;

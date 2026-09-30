@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { type ActionCtx, action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
@@ -74,6 +75,9 @@ function buildEmailSubject(item: {
   if (key === "invoice_unpaid_reminder") return "Invoice reminder";
   if (key === "quote_deposit_requested") return "Deposit request";
   if (key === "work_order_completed") return "Service completed";
+  if (key === "ticket_quote") return "Your quote is ready";
+  if (key === "ticket_invoice") return "Your invoice is ready";
+  if (key === "ticket_reminder") return "Invoice reminder";
 
   const type = (item.type || "").toLowerCase();
   if (type === "service_text") return "Service update";
@@ -621,6 +625,33 @@ export const recordDeliveryAttempt = internalMutation({
     return args.id;
   },
 });
+
+/**
+ * Deliver one queued communication now on behalf of `userEmail` (the row's
+ * created_by). Used by server-side flows such as work tickets; applies the
+ * same delivery policy and records the attempt.
+ */
+export async function deliverCommunicationNow(
+  ctx: ActionCtx,
+  id: Id<"communications">,
+  userEmail: string,
+): Promise<DeliveryResult> {
+  const payload: any = await ctx.runQuery(internal.communications.getForDelivery, { id, user_email: userEmail });
+  const item = payload.item;
+  if (item.status === "sent" || item.status === "delivered") {
+    return { success: true, status: "sent", provider: item.provider };
+  }
+  const result = await deliverCommunication(item, payload.business_name, payload.customer);
+  await ctx.runMutation(internal.communications.recordDeliveryAttempt, {
+    id: item._id,
+    user_email: userEmail,
+    status: result.status,
+    error: result.success ? undefined : result.error,
+    provider: result.provider,
+    provider_message_id: result.providerMessageId,
+  });
+  return result;
+}
 
 export const deliver = action({
   args: {

@@ -34,6 +34,7 @@ import { requireSquareOAuthConfig } from "./providerConfig";
 import { getAccessContext, resolveBusinessForUser } from "./access";
 import { enforceRateLimit } from "./rateLimit";
 import { appBaseUrl, parsePlatformFeeBps } from "./paymentMatching";
+import { scopesNeedReconnect } from "./ticketLogic";
 import {
   CONNECT_REQUIRED_MESSAGE,
   ON_DEMAND_REFRESH_WINDOW_MS,
@@ -86,6 +87,19 @@ export function deriveSquareConnectState(
   return "connected";
 }
 
+/**
+ * Work tickets need the Customers/Invoices scopes. Connections made before
+ * those scopes were requested must reconnect (a new OAuth grant); everything
+ * else about them keeps working.
+ */
+export function connectionNeedsReconnect(
+  account: { expires_at?: number; location_id?: string; scopes?: string } | null | undefined,
+  now: number,
+): boolean {
+  if (!account) return false;
+  return deriveSquareConnectState(account, now) === "needs_reconnect" || scopesNeedReconnect(account.scopes);
+}
+
 /** Redacted connection status. Never returns tokens. */
 export const getSquareConnectStatus = query({
   args: {},
@@ -98,10 +112,13 @@ export const getSquareConnectStatus = query({
       .query("squareSellerAccounts")
       .withIndex("by_business", (q) => q.eq("business_id", access.business._id))
       .first();
-    const state = deriveSquareConnectState(account, Date.now());
+    const now = Date.now();
+    const state = deriveSquareConnectState(account, now);
     return {
       state,
       connected: Boolean(account),
+      // Additive: true when the stored grant lacks a scope work tickets need.
+      needs_reconnect: connectionNeedsReconnect(account, now),
       merchant_id: maskMerchantId(account?.merchant_id),
       location_name: account?.location_name ?? null,
       updated_at: account?.updated_at ?? null,
@@ -470,6 +487,14 @@ export type SellerCredentials = { merchantId: string; locationId: string; access
 export async function requireSellerCredentials(ctx: ActionCtx, tenantEmail: string): Promise<SellerCredentials> {
   const businessId = await ctx.runQuery(internal.squareConnect.getBusinessIdForTenant, { user_email: tenantEmail });
   if (!businessId) throw new Error(CONNECT_REQUIRED_MESSAGE);
+  return await requireSellerCredentialsForBusiness(ctx, businessId);
+}
+
+/** Same as requireSellerCredentials, for a known business id. */
+export async function requireSellerCredentialsForBusiness(
+  ctx: ActionCtx,
+  businessId: Id<"businesses">,
+): Promise<SellerCredentials> {
   const account = await ctx.runQuery(internal.squareConnect.getSellerAccountByBusiness, { business_id: businessId });
   if (!account || !account.merchant_id || !account.location_id) throw new Error(CONNECT_REQUIRED_MESSAGE);
   let accessToken: string;

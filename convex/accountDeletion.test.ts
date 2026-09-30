@@ -26,7 +26,7 @@ describe("account deletion privacy regressions", () => {
     const tenant = blockBetween(contents, "async function deleteTenantBatch", "async function fetchNextCustomer");
     expect(tenant).toContain('source: "business"');
     const customerStages = blockBetween(contents, "function nextCustomerStage", "async function processCustomerStage");
-    for (const table of ["pools", "equipment", "workOrders", "invoices", "quotes", "communications"]) {
+    for (const table of ["pools", "equipment", "workOrders", "invoices", "quotes", "communications", "tickets", "billingSchedules"]) {
       expect(customerStages).toContain(`"${table}"`);
     }
   });

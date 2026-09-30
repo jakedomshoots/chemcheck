@@ -16,6 +16,10 @@ export default defineSchema({
     sort_order: v.optional(v.number()),
     created_by: v.string(), // User email
     business_id: v.optional(v.string()), // For multi-tenant support
+    // Linked Square Customer on the business's connected seller account
+    // (work tickets). Only reused while square_merchant_id matches the connection.
+    square_customer_id: v.optional(v.string()),
+    square_merchant_id: v.optional(v.string()),
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
     // Report customization settings
@@ -259,6 +263,93 @@ export default defineSchema({
     .index("by_state", ["state"])
     .index("by_expires_at", ["expires_at"]),
 
+  // Work tickets: one charge or quote for a customer, mirrored into the
+  // business's connected Square account as an Order + Invoice. Money in cents.
+  tickets: defineTable({
+    business_id: v.id("businesses"),
+    created_by: v.string(), // tenant email (business owner)
+    created_by_user: v.optional(v.string()), // who created it
+    customer_id: v.id("customers"),
+    kind: v.string(), // charge | quote
+    status: v.string(), // draft | quote | requested | paid | canceled
+    note: v.string(),
+    items: v.array(v.object({ label: v.string(), amount_cents: v.number() })),
+    total_cents: v.number(),
+    photo_storage_ids: v.array(v.id("_storage")),
+    paid_method: v.optional(v.string()), // square | cash | check | other
+    paid_at: v.optional(v.number()),
+    square_customer_id: v.optional(v.string()),
+    square_order_id: v.optional(v.string()),
+    square_invoice_id: v.optional(v.string()),
+    square_invoice_version: v.optional(v.number()),
+    square_invoice_number: v.optional(v.string()),
+    square_invoice_url: v.optional(v.string()),
+    square_due_date: v.optional(v.string()), // YYYY-MM-DD
+    square_attempts: v.optional(v.number()), // send attempts; scopes Square idempotency keys
+    square_lock_until: v.optional(v.number()), // a send to Square is in progress until then
+    square_payment_id: v.optional(v.string()), // external (cash/check/other) payment
+    // Set while markPaid cancels the Square invoice, so the invoice.canceled
+    // webhook does not flip the ticket to canceled.
+    settling_outside_square: v.optional(v.boolean()),
+    schedule_id: v.optional(v.id("billingSchedules")),
+    period_key: v.optional(v.string()),
+    period_label: v.optional(v.string()),
+    legacy_source: v.optional(v.string()), // invoice:<id> | quote:<id>
+    timeline: v.array(v.object({ type: v.string(), text: v.string(), at: v.number() })),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_business_and_updated", ["business_id", "updated_at"])
+    .index("by_square_invoice_id", ["square_invoice_id"])
+    .index("by_schedule_and_period", ["schedule_id", "period_key"])
+    .index("by_customer", ["customer_id"])
+    .index("by_business_and_status", ["business_id", "status"])
+    .index("by_legacy_source", ["legacy_source"]),
+
+  // Storage files uploaded for ticket photos, claimed by one business so a
+  // storage id cannot be attached across tenants.
+  ticketPhotoClaims: defineTable({
+    storage_id: v.id("_storage"),
+    business_id: v.id("businesses"),
+    created_at: v.number(),
+  })
+    .index("by_storage_id", ["storage_id"])
+    .index("by_business", ["business_id"]),
+
+  // Recurring billing: creates a ticket + Square invoice each period.
+  billingSchedules: defineTable({
+    business_id: v.id("businesses"),
+    customer_id: v.id("customers"),
+    created_by: v.string(), // tenant email
+    cadence: v.string(), // weekly | monthly
+    bill_mode: v.string(), // fixed | visits
+    rate_cents: v.number(),
+    items: v.array(v.object({ label: v.string(), amount_cents: v.number() })),
+    note: v.string(),
+    autopay: v.boolean(),
+    card_label: v.optional(v.string()), // cached from Square ("Visa •• 4242")
+    paused: v.boolean(),
+    next_run_at: v.optional(v.number()),
+    last_error: v.optional(v.string()),
+    failed_attempts: v.optional(v.number()),
+    last_period_key: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_business", ["business_id"])
+    .index("by_next_run_at", ["next_run_at"])
+    .index("by_customer", ["customer_id"]),
+
+  // Per-business prices for extra chemicals billed by "visits" schedules.
+  chemicalPrices: defineTable({
+    business_id: v.id("businesses"),
+    chemical_type: v.string(),
+    unit: v.string(),
+    price_cents: v.number(),
+    updated_at: v.optional(v.number()),
+  })
+    .index("by_business", ["business_id"]),
+
   // Service photos for proof-of-service documentation
   servicePhotos: defineTable({
     service_log_id: v.id("serviceLogs"),
@@ -320,6 +411,10 @@ export default defineSchema({
     stripe_payouts_enabled: v.optional(v.boolean()),
     stripe_details_submitted: v.optional(v.boolean()),
     stripe_connect_updated_at: v.optional(v.number()),
+    // Work tickets: IANA time zone for due dates / billing periods (default
+    // America/Chicago) and invoice payment terms in days (default 7).
+    timezone: v.optional(v.string()),
+    invoice_net_days: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
   })
@@ -547,6 +642,7 @@ export default defineSchema({
     work_order_id: v.optional(v.id("workOrders")),
     invoice_id: v.optional(v.id("invoices")),
     quote_id: v.optional(v.id("quotes")),
+    ticket_id: v.optional(v.id("tickets")),
     template_key: v.optional(v.string()),
     status: v.string(), // queued, sent, delivered, failed
     message: v.string(),

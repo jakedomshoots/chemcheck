@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { safeNetDays, safeTimeZone } from "./ticketLogic";
 import { query, mutation, internalQuery } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import {
@@ -198,12 +199,21 @@ export const update = mutation({
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
+    // Work tickets: IANA time zone and invoice payment terms (days).
+    timezone: v.optional(v.string()),
+    invoice_net_days: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
     await enforceRateLimit(ctx, identity.email!, "business.write");
+    if (args.timezone !== undefined && safeTimeZone(args.timezone) !== args.timezone) {
+      throw new Error("Unknown time zone.");
+    }
+    if (args.invoice_net_days !== undefined && safeNetDays(args.invoice_net_days) !== args.invoice_net_days) {
+      throw new Error("Payment terms must be a whole number of days between 0 and 365.");
+    }
 
     const business = await ctx.db
       .query("businesses")
