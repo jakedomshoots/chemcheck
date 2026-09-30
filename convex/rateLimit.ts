@@ -39,6 +39,9 @@ const DEFAULT_RATE_LIMITS: Record<string, { maxRequests: number; windowMs: numbe
   'payment.link': { maxRequests: 30, windowMs: 60000 },       // 30 per minute (Square payment links / status checks)
   'square.connect': { maxRequests: 10, windowMs: 60000 },     // 10 per minute (seller OAuth connect/disconnect)
   'billing.manage': { maxRequests: 10, windowMs: 60000 },     // 10 per minute (subscription checkout/cancel/plan change)
+  'ticket.write': { maxRequests: 60, windowMs: 60000 },       // 60 per minute (ticket drafts, photos, decline, delete)
+  'ticket.send': { maxRequests: 30, windowMs: 60000 },        // 30 per minute (Square invoices, quotes, reminders, paid, cancel)
+  'schedule.write': { maxRequests: 30, windowMs: 60000 },     // 30 per minute (billing schedules, chemical prices)
 
   // Queries (reads) - more lenient
   'query.list': { maxRequests: 200, windowMs: 60000 },        // 200 per minute
