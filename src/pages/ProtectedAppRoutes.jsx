@@ -3,7 +3,6 @@ import Layout from './Layout.jsx';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
-import { getDefaultWorkOrdersSectionFromStorage } from '@/lib/workOrdersNavigation';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
 import { useSyncInitialization } from '@/hooks/useSyncInitialization';
 import { APP_ROUTES, ROUTE_ALIAS_REDIRECTS, SYSTEM_ROUTES, getCanonicalPageName } from '@/lib/routeConfig';
@@ -23,7 +22,7 @@ const Notes = lazy(() => importWithRetry(() => import('./Notes'), 'Notes'));
 const History = lazy(() => importWithRetry(() => import('./History'), 'History'));
 const Settings = lazy(() => importWithRetry(() => import('./Settings'), 'Settings'));
 const PoolSchool = lazy(() => importWithRetry(() => import('./PoolSchool'), 'PoolSchool'));
-const WorkOrders = lazy(() => importWithRetry(() => import('./WorkOrders'), 'WorkOrders'));
+const Work = lazy(() => importWithRetry(() => import('./Work'), 'Work'));
 const BillingDashboard = lazy(() =>
   importWithRetry(
     () => import('@/components/billing/BillingDashboard').then((m) => ({ default: m.BillingDashboard })),
@@ -48,12 +47,7 @@ function PageLoader() {
 function LegacyInvoicePayRedirect() {
   const { invoiceId } = useParams();
   const encodedId = invoiceId ? encodeURIComponent(invoiceId) : "";
-  return <Navigate to={`${APP_ROUTES.WorkOrders}/invoices${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
-}
-
-function WorkOrdersRootRedirect() {
-  const defaultSection = getDefaultWorkOrdersSectionFromStorage();
-  return <Navigate to={`${APP_ROUTES.WorkOrders}/${defaultSection}`} replace />;
+  return <Navigate to={`${APP_ROUTES.WorkOrders}${encodedId ? `?invoice_id=${encodedId}` : ""}`} replace />;
 }
 
 const ROUTES = [
@@ -73,10 +67,9 @@ const ROUTES = [
   { path: APP_ROUTES.Settings, element: <Settings /> },
   { path: APP_ROUTES.PoolSchool, element: <PoolSchool /> },
   { path: APP_ROUTES.Billing, element: <BillingDashboard /> },
-  { path: APP_ROUTES.WorkOrders, element: <WorkOrdersRootRedirect /> },
+  // Work tickets: feed, /new, /sent, /t/:ticketId, /s/:scheduleId and legacy /:section links.
+  { path: `${APP_ROUTES.WorkOrders}/*`, element: <Work /> },
 ];
-
-const DYNAMIC_WORKORDERS_ROUTE = `${APP_ROUTES.WorkOrders}/:section`;
 
 function getCurrentPage(url) {
   const canonicalPage = getCanonicalPageName(url);
@@ -109,7 +102,6 @@ export default function ProtectedAppRoutes() {
         {ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
-        <Route path={DYNAMIC_WORKORDERS_ROUTE} element={<WorkOrders />} />
         <Route path="/invoice-pay/:invoiceId" element={<LegacyInvoicePayRedirect />} />
         <Route path="/Invoice-pay/:invoiceId" element={<LegacyInvoicePayRedirect />} />
         <Route path={SYSTEM_ROUTES.AccessDenied} element={<AccessDeniedPage />} />

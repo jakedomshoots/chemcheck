@@ -35,10 +35,10 @@ describe('Convex load-safety contracts', () => {
     expect(listBlock).toContain('isDone');
   });
 
-  it('uses the paginated customer contract on the Work Orders dashboard', () => {
-    const workOrdersSource = readFileSync(resolve(process.cwd(), 'src/pages/WorkOrders.jsx'), 'utf8');
+  it('picks work-ticket customers from the local store instead of an unbounded cloud list', () => {
+    const pickerSource = readFileSync(resolve(process.cwd(), 'src/components/work/CustomerPicker.jsx'), 'utf8');
 
-    expect(workOrdersSource).toContain('api.customers.listPaginated');
-    expect(workOrdersSource).not.toContain('useQuery(api.customers.list,');
+    expect(pickerSource).toContain('useCustomers');
+    expect(pickerSource).not.toContain('api.customers.list');
   });
 });

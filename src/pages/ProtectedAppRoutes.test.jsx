@@ -30,7 +30,7 @@ vi.mock('./Notes', () => ({ default: () => <div>Notes Page</div> }));
 vi.mock('./History', () => ({ default: () => <div>History Page</div> }));
 vi.mock('./Settings', () => ({ default: () => <div>Settings Page</div> }));
 vi.mock('./PoolSchool', () => ({ default: () => <div>Pool School Page</div> }));
-vi.mock('./WorkOrders', () => ({ default: () => <div>Work Orders Page</div> }));
+vi.mock('./Work', () => ({ default: () => <div>Work Page</div> }));
 vi.mock('@/components/billing/BillingDashboard', () => ({
   BillingDashboard: () => <div>Billing Dashboard Page</div>,
 }));
@@ -41,10 +41,6 @@ vi.mock('./NotFoundPage', () => ({
 vi.mock('./AccessDeniedPage', () => ({
   default: () => <div>Access Denied Page</div>,
   AccessDeniedPage: () => <div>Access Denied Page</div>,
-}));
-
-vi.mock('@/lib/workOrdersNavigation', () => ({
-  getDefaultWorkOrdersSectionFromStorage: vi.fn(() => 'upcoming'),
 }));
 
 vi.mock('@/components/auth/ClerkAuthProvider', () => ({
@@ -89,6 +85,24 @@ describe('ProtectedAppRoutes', () => {
 
     expect(await screen.findByText('History Page')).toBeInTheDocument();
     expect(screen.getByTestId('layout-page').textContent).toBe('History');
+  });
+
+  it.each([
+    '/workorders',
+    '/workorders/new',
+    '/workorders/t/ticket123',
+    '/workorders/s/schedule123',
+    '/workorders/invoices?invoice_id=inv1',
+    '/invoice-pay/inv1',
+  ])('routes %s to the work tickets page', async (path) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <ProtectedAppRoutes />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Work Page')).toBeInTheDocument();
+    expect(screen.getByTestId('layout-page').textContent).toBe('WorkOrders');
   });
 
   it('keeps core route transitions inside an accessibility-friendly performance envelope', async () => {
