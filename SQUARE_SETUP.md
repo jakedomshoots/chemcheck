@@ -39,8 +39,14 @@ In the Developer Console → **Webhooks** → **Subscriptions** → Add subscrip
 - Events:
   - `payment.created`, `payment.updated` (customer payments on connected sellers, and platform checkout payments)
   - `subscription.created`, `subscription.updated`
-  - `invoice.payment_made`, `invoice.scheduled_charge_failed`
+  - `invoice.payment_made`, `invoice.scheduled_charge_failed` (platform subscriptions, and work-ticket invoices on connected sellers)
+  - `invoice.updated`, `invoice.canceled`, `invoice.refunded` (work-ticket invoices on connected sellers)
   - `oauth.authorization.revoked`
+
+`invoice.*` events from the platform merchant (`SQUARE_PLATFORM_MERCHANT_ID`)
+are treated as subscription billing; `invoice.*` events from any other
+merchant update the matching work ticket, and only when that merchant is the
+one the ticket's business has connected.
 
 Copy the subscription's **Signature key** → `SQUARE_WEBHOOK_SIGNATURE_KEY`, and set
 `SQUARE_WEBHOOK_URL` to the **exact** URL above (same scheme, host, path, no
@@ -126,6 +132,43 @@ returns "Connect your Square account in Settings to accept card payments".
 - **Disconnect** revokes ChemCheck's access in Square and deletes the tokens.
   If a seller revokes access from Square, the `oauth.authorization.revoked`
   webhook does the same.
+
+### OAuth scopes and "Reconnect Square"
+
+ChemCheck requests these seller scopes:
+`MERCHANT_PROFILE_READ PAYMENTS_READ PAYMENTS_WRITE ORDERS_READ ORDERS_WRITE
+CUSTOMERS_READ CUSTOMERS_WRITE INVOICES_READ INVOICES_WRITE` (plus
+`PAYMENTS_WRITE_ADDITIONAL_RECIPIENTS` when `PLATFORM_FEE_BPS` > 0).
+Work tickets need the Customers and Invoices scopes. Businesses that connected
+before they were added keep taking card payments, but
+`squareConnect.getSquareConnectStatus` and `tickets.summary` report
+`needs_reconnect: true` and sending a ticket says "Reconnect Square in
+Settings". Reconnecting (Connect Square again) grants the new scopes.
+
+### Work tickets in Square
+
+- Sending a charge (or approving a quote) finds or creates the Square
+  Customer (by email, then phone), creates an Order with the line items and a
+  `BALANCE` invoice due today + the business's payment terms (default 7 days,
+  business time zone, default `America/Chicago`), with
+  `store_payment_method_enabled` so customers can save a card, then publishes it.
+- Delivery: `EMAIL` when the customer has an email. Square's API cannot set
+  `SMS` delivery, so for phone-only customers the invoice is `SHARE_MANUALLY`
+  and ChemCheck texts the Square payment link (Twilio). With neither, the
+  owner shares the link.
+- Autopay for billing schedules uses `CARD_ON_FILE` with the customer's
+  first enabled card, which Square only allows with `EMAIL` delivery;
+  otherwise a normal invoice is sent.
+- Paid in person: a separate Order is paid with `source_id: "CASH"` (cash) or
+  `EXTERNAL` (`CHECK` / `OTHER`) so it shows in Square sales. Square does not
+  allow paying an invoice's order through the API, so "Mark paid" on a sent
+  ticket first cancels the Square invoice, then records the payment.
+- "Remind" re-sends the Square payment link through ChemCheck (text, else
+  email); Square has no on-demand reminder API. Email invoices also get
+  Square's scheduled reminders (due date and 3 days after).
+- Recurring billing runs hourly (`run-billing-schedules` cron) and bills in
+  arrears: weekly on Mondays for the previous Monday-Sunday, monthly on the
+  1st for the previous month, both at 06:00 business time.
 
 ## 6. Sandbox testing
 
