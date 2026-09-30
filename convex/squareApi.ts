@@ -172,6 +172,11 @@ export const SELLER_OAUTH_SCOPES = [
   "PAYMENTS_WRITE",
   "ORDERS_READ",
   "ORDERS_WRITE",
+  // Work tickets: Square Customers, Invoices and cards on file.
+  "CUSTOMERS_READ",
+  "CUSTOMERS_WRITE",
+  "INVOICES_READ",
+  "INVOICES_WRITE",
 ] as const;
 
 /** App fees (`app_fee_money`) need PAYMENTS_WRITE_ADDITIONAL_RECIPIENTS from the seller. */
