@@ -276,7 +276,9 @@ export default function NewTicket({ onClose, onDone }) {
     onDone({
       title: "Marked paid",
       amountText: money(payload.total),
-      detail: `${name} paid in person (${method}). Recorded as paid in your Square account.`,
+      detail: res.value?.warning
+        ? `${name} paid in person (${method}). ${res.value.warning}`
+        : `${name} paid in person (${method}). Recorded as paid in your Square account.`,
       ticketId: res.value?.id,
     });
   };
@@ -313,6 +315,8 @@ export default function NewTicket({ onClose, onDone }) {
         : draft.autopay
           ? "Card saved in Square on the first payment"
           : "Square sends each invoice with a pay link";
+  // Square only supports card-on-file autopay on emailed invoices.
+  const autopayNeedsEmail = Boolean(customerId && draft.autopay && !draft.customer?.email);
 
   const busy = Boolean(pending);
   const sendDisabled = offline || busy;
@@ -426,7 +430,9 @@ export default function NewTicket({ onClose, onDone }) {
             >
               <span className="flex flex-1 flex-col gap-0.5">
                 <span className="text-base font-semibold text-ink">Autopay</span>
-                <span className="text-[13px] text-ink-secondary">{autopayHint}</span>
+                <span className="text-[13px] text-ink-secondary">
+                  {autopayNeedsEmail ? "Autopay needs an email for this customer. Without one, they get a texted pay link." : autopayHint}
+                </span>
               </span>
               <span
                 aria-hidden="true"

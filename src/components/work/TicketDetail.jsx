@@ -93,7 +93,8 @@ export default function TicketDetail({ ticketId, onBack, onDeleted }) {
     const res = await run(`paid:${method}`, () => markPaid({ id, method }));
     if (res.ok) {
       setPaidOpen(false);
-      toast.success("Marked paid");
+      if (res.value?.warning) toast.warning(res.value.warning);
+      else toast.success("Marked paid");
     }
   };
   const doDecline = async () => {
