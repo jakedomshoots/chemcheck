@@ -5,9 +5,15 @@ on:
     branches: [main, master]
   pull_request:
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  build:
+  verify:
+    name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,26 +30,131 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Readiness Gates
-        run: npm run test:gates
+      - name: Typecheck (app)
+        run: npm run typecheck
 
-      - name: Check auth bypass flag
+      - name: Typecheck (Convex functions)
+        run: npm run typecheck:convex
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Check for committed auth-bypass configuration
+        # The bypass must only ever come from a developer's local, untracked
+        # .env file. Fail if any tracked env file turns it on.
         run: |
-          if [ "${VITE_IOS_SIM_AUTH_BYPASS}" = "true" ]; then
-            echo "ERROR: Auth bypass enabled in CI environment"
-            exit 1
+          set -euo pipefail
+          tracked_env_files="$(git ls-files '.env' '.env.*' 'convex/.env' 'convex/.env.*' 'ios/**/.env*' || true)"
+          if [ -n "$tracked_env_files" ]; then
+            echo "Tracked env files: $tracked_env_files"
+            if echo "$tracked_env_files" | xargs grep -HnE '^\s*VITE_IOS_SIM_AUTH_BYPASS\s*=\s*(true|1|yes|on)\s*$'; then
+              echo "ERROR: VITE_IOS_SIM_AUTH_BYPASS is enabled in a tracked env file"
+              exit 1
+            fi
+            if echo "$tracked_env_files" | xargs grep -HnE '^\s*VITE_ENABLE_LOCAL_NETWORK_AUTH_BYPASS\s*=\s*(true|1|yes|on)\s*$'; then
+              echo "ERROR: VITE_ENABLE_LOCAL_NETWORK_AUTH_BYPASS is enabled in a tracked env file"
+              exit 1
+            fi
           fi
+          echo "No auth-bypass flag is enabled in tracked env files"
 
       - name: Build
+        env:
+          # Belt and braces: make the build itself unable to see a bypass flag.
+          VITE_IOS_SIM_AUTH_BYPASS: "false"
+          VITE_ENABLE_LOCAL_NETWORK_AUTH_BYPASS: "false"
+          VITE_DISABLE_AUTH_BYPASS: "true"
         run: npm run build
 
+      - name: Verify built bundle does not enable auth bypass
+        # Vite inlines import.meta.env.VITE_* at build time, so a bypass that is
+        # switched on would appear as a literal `VITE_IOS_SIM_AUTH_BYPASS:"true"`
+        # (or the raw flag value) in dist. Fail if the built assets contain it.
+        run: |
+          set -euo pipefail
+          if grep -rEl 'VITE_IOS_SIM_AUTH_BYPASS["'"'"']?\s*[:=]\s*["'"'"'](true|1|yes|on)["'"'"']' dist/assets; then
+            echo "ERROR: Built bundle has the iOS simulator auth bypass enabled"
+            exit 1
+          fi
+          if grep -rEl 'VITE_ENABLE_LOCAL_NETWORK_AUTH_BYPASS["'"'"']?\s*[:=]\s*["'"'"'](true|1|yes|on)["'"'"']' dist/assets; then
+            echo "ERROR: Built bundle has the local-network auth bypass enabled"
+            exit 1
+          fi
+          echo "Built bundle does not enable an auth bypass"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
+          if-no-files-found: error
+
+  e2e:
+    name: E2E (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: verify
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Chromium E2E
+        env:
+          CI: "true"
+          # Authenticated E2E specs need the localhost auth bypass; without it
+          # they fail under CI (see e2e/*.spec.ts) instead of silently skipping.
+          VITE_ENABLE_LOCALHOST_AUTH_BYPASS: "true"
+        run: npm run test:e2e -- --project=chromium
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  deploy-convex:
+    name: Deploy Convex functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: verify
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Deploy Convex functions
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
         run: |
+          set -euo pipefail
           if [ -z "$CONVEX_DEPLOY_KEY" ]; then
             echo "ERROR: CONVEX_DEPLOY_KEY secret is not configured"
             exit 1
           fi
-          npx convex deploy --yes --typecheck try
+          npx convex deploy --yes --typecheck enable

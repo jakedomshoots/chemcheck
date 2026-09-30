@@ -73,7 +73,7 @@ import { userManager } from '@/lib/userManager';
 import { autoBackup } from '@/lib/backup';
 import { notificationManager } from '@/lib/notifications';
 import { BackupManager } from '@/components/BackupManager';
-import { downloadUserData, deleteAllUserData, getDataRetentionSummary } from '@/lib/gdpr';
+import { downloadUserData, clearLocalDeviceData, deleteAccountAndAllData, getDataRetentionSummary } from '@/lib/gdpr';
 import { optOutAnalytics, optInAnalytics, hasOptedOut } from '@/lib/analytics';
 import { useAuthContext } from '@/components/auth/ClerkAuthProvider';
 import {
@@ -83,6 +83,7 @@ import {
   formatStorageBytes,
 } from '@/lib/proof-of-service';
 import { BottomNavigationSettings } from '@/components/settings/BottomNavigationSettings';
+import { PendingInvites, TeamMembersPanel } from '@/components/settings/TeamSettings';
 
 function AppearanceSection() {
   const [theme, setThemeState] = useState(() => getTheme());
@@ -157,12 +158,19 @@ function AccountSection({ userData, setUserData }) {
     setDeleteProgress('Deleting account data from the server...');
 
     try {
-      if (auth?.isSignedIn && auth?.clerkUser) {
-        await deleteAccountData({});
+      if (!auth?.isSignedIn) {
+        throw new Error('Sign in before deleting your account so the cloud copy can be removed.');
       }
 
-      setDeleteProgress('Cleaning up local data...');
-      await deleteAllUserData();
+      // Cloud deletion first (Convex account.deleteMyAccount); it must succeed
+      // before the local copy on this device is cleared.
+      await deleteAccountAndAllData({
+        deleteCloudAccount: () => {
+          setDeleteProgress('Deleting account data from the server...');
+          return deleteAccountData({});
+        },
+      });
+      setDeleteProgress('Cleaning up local data on this device...');
 
       setDeleteProgress('Removing user account...');
       if (auth?.clerkUser && typeof auth.clerkUser.delete === 'function') {
@@ -392,6 +400,11 @@ export default function Settings() {
   const [providerTestResults, setProviderTestResults] = useState({});
 
   const convexBusiness = useQuery(api.businesses.getCurrent);
+  const auth = useAuthContext();
+  const signedInEmail = (auth?.localUser?.email || auth?.clerkUser?.primaryEmailAddress?.emailAddress || '').trim().toLowerCase();
+  const isBusinessOwner = Boolean(
+    convexBusiness?.owner_email && signedInEmail && convexBusiness.owner_email.trim().toLowerCase() === signedInEmail
+  );
   const providerStatus = useQuery(api.providerConfig.getStatus);
   const testProvider = useAction(api.providerConfig.test);
   const updateBusiness = useMutation(api.businesses.update);
@@ -625,16 +638,16 @@ export default function Settings() {
     setIsDeletingAllData(true);
 
     try {
-      const result = await deleteAllUserData();
+      const result = await clearLocalDeviceData();
       setSaveMessage(
-        `Data deleted: ${result.deleted.customers} customers, ${result.deleted.serviceLogs} service logs, ${result.deleted.chemicalUsage} chemical records, ${result.deleted.notes} notes.`
+        `Local data cleared on this device: ${result.deleted.customers} customers, ${result.deleted.serviceLogs} service logs, ${result.deleted.chemicalUsage} chemical records, ${result.deleted.notes} notes. Your cloud account was not changed.`
       );
       setIsDeleteAllDataDialogOpen(false);
       setDeleteAllDataConfirmText('');
       window.location.reload();
     } catch (error) {
-      console.error('Failed to delete all data:', error);
-      setSaveMessage('Failed to delete all data. Please try again.');
+      console.error('Failed to clear local data:', error);
+      setSaveMessage('Failed to clear local data. Please try again.');
     } finally {
       setIsDeletingAllData(false);
     }
@@ -903,6 +916,9 @@ export default function Settings() {
                     </div>
                   </div>
                 </div>
+
+                <PendingInvites />
+                {isBusinessOwner && <TeamMembersPanel />}
               </div>
             )}
 
@@ -1529,10 +1545,11 @@ export default function Settings() {
                         <Trash2 className="w-5 h-5 text-white" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-critical">Delete All My Data</p>
+                        <p className="font-medium text-critical">Clear local data on this device</p>
                         <p className="text-sm text-critical mb-3">
-                          Permanently delete all your data from ChemCheck. This action cannot be undone.
-                          We recommend exporting your data first.
+                          Removes the offline copy of customers, service logs, chemical usage, and notes from this
+                          device only. Your cloud account is not affected; to permanently delete your account and
+                          all data, use Delete Account in the Account section.
                         </p>
                         <Button
                           onClick={() => setIsDeleteAllDataDialogOpen(true)}
@@ -1540,7 +1557,7 @@ export default function Settings() {
                           className="border-[var(--status-critical-line)] text-critical hover:bg-[var(--status-critical-soft)]"
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
-                          Delete All Data
+                          Clear Local Data
                         </Button>
                       </div>
                     </div>
@@ -1689,9 +1706,10 @@ export default function Settings() {
       <AlertDialog open={isDeleteAllDataDialogOpen} onOpenChange={setIsDeleteAllDataDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete All Data?</AlertDialogTitle>
+            <AlertDialogTitle>Clear local data on this device?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes all customers, service logs, chemical usage records, and notes.
+              This removes the offline copy of customers, service logs, chemical usage records, and notes from
+              this device. Data in your cloud account is kept and will sync back after you sign in again.
               Type <span className="font-semibold">DELETE</span> to confirm.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1716,7 +1734,7 @@ export default function Settings() {
               disabled={deleteAllDataConfirmText.trim() !== 'DELETE' || isDeletingAllData}
               className="bg-destructive hover:bg-destructive text-white disabled:opacity-50"
             >
-              {isDeletingAllData ? 'Deleting...' : 'Delete All Data'}
+              {isDeletingAllData ? 'Clearing...' : 'Clear Local Data'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

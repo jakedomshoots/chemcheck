@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { skipLocallyOrFailInCi } from './helpers';
 
 async function waitForAuthShellToSettle(page) {
   await page.waitForLoadState('domcontentloaded');
@@ -60,7 +61,7 @@ test.describe('Permission denial handling', () => {
     await recoverFromErrorScreen(page);
 
     if (await isOnLoginRoute(page)) {
-      test.skip(true, 'Auth bypass not enabled; skipping permission test');
+      skipLocallyOrFailInCi('Auth bypass not enabled; permission test requires an authenticated shell');
     }
 
     const customerName = await createPermissionTestCustomer(page);
@@ -85,7 +86,7 @@ test.describe('Permission denial handling', () => {
     if (await captureButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       await captureButton.click();
     } else {
-      test.skip(true, 'No camera capture button found in this environment');
+      skipLocallyOrFailInCi('No camera capture button found in this environment');
     }
 
     // Expect either an inline error or a visible permission message

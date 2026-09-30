@@ -82,7 +82,7 @@ export function useSyncState(): UseSyncStateReturn {
 
       refreshPendingCount();
 
-      interval = window.setInterval(() => {
+      interval = setInterval(() => {
         if (!document.hidden) {
           refreshPendingCount();
         }

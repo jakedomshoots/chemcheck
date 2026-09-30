@@ -66,10 +66,10 @@ Final score: **100/100** for the locally verifiable PWA UI/UX workflow. The firs
 | 2026-06-22 | Mobile More navigation accessibility regression | Pass | `npm test -- src/pages/Layout.test.jsx src/components/sync/SyncStatusIndicator.test.tsx` passed, 20 tests. |
 | 2026-06-22 | Core form accessibility regressions | Pass | `npm test -- src/pages/NewClient.test.jsx src/pages/NewServiceLog.test.jsx src/pages/Layout.test.jsx src/components/sync/SyncStatusIndicator.test.tsx` passed, 25 tests. |
 | 2026-06-22 | New client save regression and daily service loop | Pass | Focused suite passed, 26 tests. `PLAYWRIGHT_PORT=5177 npm run test:e2e -- e2e/dailyLoop.spec.ts --project=chromium` passed, 1 E2E. |
-| 2026-06-22 | Readiness gates | Pass | `npm run test:gates` passed, 4 files / 13 tests. |
+| 2026-06-22 | Readiness gates | Pass | `npm run test:gates` passed (all gate files green; counts are not recorded here because they change with every added gate). |
 | 2026-06-22 | Navigation/responsive E2E | Pass | `PLAYWRIGHT_PORT=5178 npm run test:e2e -- e2e/app.spec.ts --project=chromium --project='Mobile Chrome'` passed, 22 tests. |
 | 2026-06-22 | Production build | Pass | `npm run build` passed. |
-| 2026-06-22 | Full unit/component suite | Pass | `npm test` passed, 90 files / 869 tests. Console printed expected mocked `API Error` stacks from `Home.test.jsx` while exiting green. |
+| 2026-06-22 | Full unit/component suite | Pass | `npm test` passed with zero failures. Console printed expected mocked `API Error` stacks from `Home.test.jsx` while exiting green. |
 | 2026-06-22 | Gameday E2E | Pass | `PLAYWRIGHT_PORT=5179 npm run test:e2e -- e2e/gameday.spec.ts --project=chromium` passed, 6 tests. |
 | 2026-06-22 | Offline E2E | Pass | `PLAYWRIGHT_PORT=5180 npm run test:e2e -- e2e/offline.spec.ts --project=chromium` passed, 2 tests. |
 | 2026-06-22 | Permission E2E | Pass | `PLAYWRIGHT_PORT=5181 npm run test:e2e -- e2e/permissions.spec.ts --project=chromium` passed, 1 test. |

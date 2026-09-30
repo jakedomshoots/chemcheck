@@ -45,30 +45,92 @@ const PRIORITY_LEVELS = {
 } as const;
 
 /**
+ * Chemical products the engine can recommend. Each carries the maximum amount
+ * that may be added in a single step (scaled linearly by pool size from
+ * `perGallons`) so a large pool never produces a single unsafe dose.
+ */
+type DosageProduct = 'sodium_carbonate' | 'muriatic_acid' | 'calcium_hypochlorite' | 'sodium_bicarbonate' | 'cyanuric_acid';
+
+interface DosageProductSpec {
+  unit: string;
+  /** Maximum amount for one addition, per `perGallons` gallons of pool water. */
+  maxPerAddition: number;
+  perGallons: number;
+  /** Minutes to circulate before retesting after an addition. */
+  circulateMinutes: number;
+}
+
+const DOSAGE_PRODUCTS: Record<DosageProduct, DosageProductSpec> = {
+  sodium_carbonate: { unit: 'lbs sodium carbonate', maxPerAddition: 1, perGallons: 10000, circulateMinutes: 60 },
+  // 1 gal = 4 quarts; dosages below are expressed in quarts.
+  muriatic_acid: { unit: 'quarts muriatic acid', maxPerAddition: 4, perGallons: 20000, circulateMinutes: 60 },
+  calcium_hypochlorite: { unit: 'lbs calcium hypochlorite', maxPerAddition: 1, perGallons: 10000, circulateMinutes: 60 },
+  sodium_bicarbonate: { unit: 'lbs sodium bicarbonate', maxPerAddition: 2.5, perGallons: 10000, circulateMinutes: 360 },
+  cyanuric_acid: { unit: 'lbs cyanuric acid', maxPerAddition: 2, perGallons: 10000, circulateMinutes: 1440 },
+};
+
+/**
  * Chemical dosage rates per 10,000 gallons
  * SECURITY: Only accessed via validated chemical names
  */
-const DOSAGE_RATES: Record<ValidChemical, Record<string, { amount: string; unit: string }>> = {
+const DOSAGE_RATES: Record<ValidChemical, Record<string, { amount: string; unit: string; product?: DosageProduct }>> = {
   ph: {
-    low: { amount: '1.5', unit: 'lbs sodium carbonate' },
-    high: { amount: '1', unit: 'quart muriatic acid' },
-    critical_low: { amount: '2', unit: 'lbs sodium carbonate' },
-    critical_high: { amount: '1.5', unit: 'quarts muriatic acid' },
+    low: { amount: '1.5', unit: 'lbs sodium carbonate', product: 'sodium_carbonate' },
+    high: { amount: '1', unit: 'quarts muriatic acid', product: 'muriatic_acid' },
+    critical_low: { amount: '2', unit: 'lbs sodium carbonate', product: 'sodium_carbonate' },
+    critical_high: { amount: '1.5', unit: 'quarts muriatic acid', product: 'muriatic_acid' },
   },
   chlorine: {
-    low: { amount: '1', unit: 'lb calcium hypochlorite' },
-    critical: { amount: '2', unit: 'lbs calcium hypochlorite (shock)' },
+    low: { amount: '1', unit: 'lbs calcium hypochlorite', product: 'calcium_hypochlorite' },
+    critical: { amount: '2', unit: 'lbs calcium hypochlorite (shock)', product: 'calcium_hypochlorite' },
   },
   alkalinity: {
-    low: { amount: '1.5', unit: 'lbs sodium bicarbonate' },
-    high: { amount: '1', unit: 'quart muriatic acid' },
-    critical_low: { amount: '2.5', unit: 'lbs sodium bicarbonate' },
+    low: { amount: '1.5', unit: 'lbs sodium bicarbonate', product: 'sodium_bicarbonate' },
+    high: { amount: '1', unit: 'quarts muriatic acid', product: 'muriatic_acid' },
+    critical_low: { amount: '2.5', unit: 'lbs sodium bicarbonate', product: 'sodium_bicarbonate' },
   },
   stabilizer: {
-    low: { amount: '1', unit: 'lb cyanuric acid' },
+    low: { amount: '1', unit: 'lbs cyanuric acid', product: 'cyanuric_acid' },
     high: { amount: 'partial drain', unit: '(reduce by 25%)' },
   },
 };
+
+/** Safety guidance attached to every set that includes a chemical addition. */
+export const GENERAL_CHEMICAL_SAFETY_NOTE =
+  'Never mix chemicals. Add acid and chlorine products at separate times, at least 30 minutes apart, with the pump running.';
+
+export const ACID_LAST_SAFETY_NOTE =
+  'Both a pH-down (acid) product and a chlorine product are recommended for this visit: add the chlorine product first, keep the pump running, wait at least 30 minutes, then add the acid last. Never combine them.';
+
+function formatAmount(amount: number): string {
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(1);
+}
+
+/**
+ * Builds a dosage instruction that never exceeds the product's per-addition
+ * cap. Larger corrections are split into repeated add / circulate / retest
+ * steps instead of one oversized dose.
+ */
+export function buildCappedDosage(
+  totalAmount: number,
+  spec: DosageProductSpec,
+  gallons: number,
+  unitLabel: string = spec.unit
+): string {
+  const cap = spec.maxPerAddition * (gallons / spec.perGallons);
+  if (!(cap > 0) || totalAmount <= cap) {
+    return `${formatAmount(totalAmount)} ${unitLabel} for ${gallons} gallons`;
+  }
+
+  const steps = Math.ceil(totalAmount / cap);
+  const perStep = totalAmount / steps;
+  const wait = spec.circulateMinutes >= 60
+    ? `${Math.round(spec.circulateMinutes / 60)} hour${spec.circulateMinutes >= 120 ? 's' : ''}`
+    : `${spec.circulateMinutes} minutes`;
+  return `${formatAmount(totalAmount)} ${unitLabel} total for ${gallons} gallons. ` +
+    `Do not add all at once: add ${formatAmount(perStep)} ${unitLabel} (max ${formatAmount(cap)} ${unitLabel} per addition), ` +
+    `circulate for ${wait}, retest, and repeat up to ${steps} times until in range.`;
+}
 /**
  * Recommended actions for each chemical and reading combination
  * SECURITY: Only accessed via validated chemical names
@@ -256,14 +318,68 @@ export function calculateDosage(
     return null;
   }
 
-  const scaleFactor = validatedGallons / 10000;
-  const scaledAmount = parseFloat(dosage.amount) * scaleFactor;
-
   if (dosage.amount === 'partial drain') {
     return `Partial drain and refill ${dosage.unit}`;
   }
 
-  return `${scaledAmount.toFixed(1)} ${dosage.unit} for ${validatedGallons} gallons`;
+  const scaleFactor = validatedGallons / 10000;
+  const scaledAmount = parseFloat(dosage.amount) * scaleFactor;
+  if (!Number.isFinite(scaledAmount)) {
+    return null;
+  }
+
+  const spec = dosage.product ? DOSAGE_PRODUCTS[dosage.product] : null;
+  if (!spec) {
+    return `${scaledAmount.toFixed(1)} ${dosage.unit} for ${validatedGallons} gallons`;
+  }
+
+  return buildCappedDosage(scaledAmount, spec, validatedGallons, dosage.unit);
+}
+
+function recommendsAcid(rec: Pick<Recommendation, 'dosage' | 'action'>): boolean {
+  const text = `${rec.dosage || ''} ${rec.action || ''}`.toLowerCase();
+  return text.includes('muriatic acid') || text.includes('ph decreaser');
+}
+
+function recommendsChlorineProduct(rec: Pick<Recommendation, 'dosage' | 'action' | 'chemical'>): boolean {
+  const text = `${rec.dosage || ''} ${rec.action || ''}`.toLowerCase();
+  return rec.chemical === 'chlorine' && (text.includes('hypochlorite') || text.includes('shock') || text.includes('add chlorine'));
+}
+
+/**
+ * Builds the safety notes for a recommendation set and, when both an acid and
+ * a chlorine product are recommended for the same visit, moves the acid after
+ * the chlorine product and annotates it with an explicit wait.
+ */
+export function applyChemicalSafety(categorized: CategorizedRecommendations): CategorizedRecommendations {
+  const visitCategories: Array<'immediate' | 'thisVisit'> = ['immediate', 'thisVisit'];
+  const visitRecs = visitCategories.flatMap((category) => categorized[category]);
+  const hasDosage = [...visitRecs, ...categorized.nextVisit, ...categorized.longTerm].some((rec) => !!rec.dosage);
+  const acidRecs = visitRecs.filter(recommendsAcid);
+  const chlorineRecs = visitRecs.filter(recommendsChlorineProduct);
+
+  const safetyNotes: string[] = [];
+  if (hasDosage) safetyNotes.push(GENERAL_CHEMICAL_SAFETY_NOTE);
+
+  if (acidRecs.length > 0 && chlorineRecs.length > 0) {
+    safetyNotes.push(ACID_LAST_SAFETY_NOTE);
+    const waitNote = ' Add LAST: wait at least 30 minutes after the chlorine product, pump running, before adding acid.';
+    for (const category of visitCategories) {
+      const recs = categorized[category];
+      const acids = recs.filter(recommendsAcid).map((rec) => ({ ...rec, action: `${rec.action}.${waitNote}` }));
+      const others = recs.filter((rec) => !recommendsAcid(rec));
+      categorized[category] = [...others, ...acids];
+    }
+    // Acid recommended in the immediate bucket must still follow chlorine in this visit.
+    if (categorized.immediate.some(recommendsAcid) && categorized.thisVisit.some(recommendsChlorineProduct)) {
+      const acids = categorized.immediate.filter(recommendsAcid);
+      categorized.immediate = categorized.immediate.filter((rec) => !recommendsAcid(rec));
+      categorized.thisVisit = [...categorized.thisVisit, ...acids];
+    }
+  }
+
+  categorized.safetyNotes = safetyNotes;
+  return categorized;
 }
 
 /**
@@ -467,6 +583,7 @@ function categorizeRecommendations(
     thisVisit: [],
     nextVisit: [],
     longTerm: [],
+    safetyNotes: [],
   };
 
   const sorted = [...recommendations].sort((a, b) => a.priority - b.priority);
@@ -535,7 +652,7 @@ export function generateRecommendations(
   const predictiveRecs = createPredictiveRecommendations(predictiveInsights, addressedIssues);
   recommendations.push(...predictiveRecs);
 
-  return categorizeRecommendations(recommendations);
+  return applyChemicalSafety(categorizeRecommendations(recommendations));
 }
 
 /**

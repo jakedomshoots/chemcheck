@@ -8,7 +8,7 @@ import { stampServiceWorker } from './stamp-service-worker.js';
 
 const tempDirectories: string[] = [];
 
-async function makeDistFixture() {
+async function makeDistFixture({ withHealth = true } = {}) {
   const distDir = await mkdtemp(path.join(tmpdir(), 'chemcheck-pwa-'));
   tempDirectories.push(distDir);
   await writeFile(path.join(distDir, 'index.html'), '<main>current ChemCheck build</main>');
@@ -16,7 +16,26 @@ async function makeDistFixture() {
     path.join(distDir, 'sw.js'),
     "const BUILD_ID = '__CHEMCHECK_BUILD_ID__';\nconst CACHE = `chemcheck-${BUILD_ID}`;\n",
   );
+  if (withHealth) {
+    await writeFile(
+      path.join(distDir, 'health.json'),
+      JSON.stringify({
+        status: 'static',
+        note: 'use /api or Convex health action for live status',
+        version: '__CHEMCHECK_APP_VERSION__',
+        buildId: '__CHEMCHECK_BUILD_ID__',
+      }),
+    );
+  }
   return distDir;
+}
+
+async function makePackageJson(version: string) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'chemcheck-pkg-'));
+  tempDirectories.push(dir);
+  const packageJsonPath = path.join(dir, 'package.json');
+  await writeFile(packageJsonPath, JSON.stringify({ name: 'fixture', version }));
+  return packageJsonPath;
 }
 
 afterEach(async () => {
@@ -52,5 +71,41 @@ describe('service worker build stamping', () => {
 
     expect(result.buildId).toBe(commitSha.slice(0, 16));
     expect(result.commitSha).toBe(commitSha);
+  });
+
+  it('stamps the static health marker with the package version and build id', async () => {
+    const distDir = await makeDistFixture();
+    const packageJsonPath = await makePackageJson('9.8.7');
+
+    const result = await stampServiceWorker({ distDir, environment: {}, packageJsonPath });
+    const health = JSON.parse(await readFile(path.join(distDir, 'health.json'), 'utf8'));
+
+    expect(result.appVersion).toBe('9.8.7');
+    expect(health).toEqual({
+      status: 'static',
+      note: 'use /api or Convex health action for live status',
+      version: '9.8.7',
+      buildId: result.buildId,
+    });
+    expect(health.status).not.toBe('healthy');
+  });
+
+  it('reads the real package.json version by default and tolerates a missing health marker', async () => {
+    const distDir = await makeDistFixture({ withHealth: false });
+    const { version } = JSON.parse(await readFile(path.resolve('package.json'), 'utf8'));
+
+    const result = await stampServiceWorker({ distDir, environment: {} });
+    const buildMetadata = JSON.parse(await readFile(path.join(distDir, 'build.json'), 'utf8'));
+
+    expect(result.appVersion).toBe(version);
+    expect(buildMetadata.appVersion).toBe(version);
+    await expect(readFile(path.join(distDir, 'health.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('refuses to ship a health marker that claims live status', async () => {
+    const distDir = await makeDistFixture({ withHealth: false });
+    await writeFile(path.join(distDir, 'health.json'), JSON.stringify({ status: 'healthy', version: '__CHEMCHECK_APP_VERSION__' }));
+
+    await expect(stampServiceWorker({ distDir, environment: {} })).rejects.toThrow(/static marker/);
   });
 });

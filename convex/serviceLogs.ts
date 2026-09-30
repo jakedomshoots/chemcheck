@@ -3,6 +3,7 @@ import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import { validateLsiFields, validateLsiUpdate } from "./validation";
 import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
+import { NOT_DELETED_FILTER } from "./sync";
 
 /**
  * Validates that a string is a valid ISO 8601 date format
@@ -81,6 +82,7 @@ export const list = query({
             .withIndex("by_created_by_and_service_date", (q: any) =>
                 q.eq("created_by", identity.email!)
             )
+            .filter(NOT_DELETED_FILTER)
             .order(descending ? "desc" : "asc")
             .paginate({ cursor: args.cursor ?? null, numItems });
     },
@@ -117,6 +119,7 @@ export const filter = query({
             .withIndex("by_created_by_and_service_date", (q: any) =>
                 q.eq("created_by", identity.email!)
             )
+            .filter(NOT_DELETED_FILTER)
             .order("desc")
             .paginate({ cursor: args.cursor ?? null, numItems });
 
@@ -168,6 +171,7 @@ export const getByCustomer = query({
         const result = await ctx.db
             .query("serviceLogs")
             .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id))
+            .filter(NOT_DELETED_FILTER)
             .order("desc")
             .paginate({ cursor: args.cursor ?? null, numItems });
         return args.pool_id
@@ -193,6 +197,7 @@ export const getByDate = query({
             .withIndex("by_created_by_and_service_date", (q: any) =>
                 q.eq("created_by", identity.email!).eq("service_date", args.service_date)
             )
+            .filter(NOT_DELETED_FILTER)
             .paginate({ cursor: args.cursor ?? null, numItems });
     },
 });
@@ -357,7 +362,7 @@ export const update = mutation({
 
         // Verify log belongs to user's customer (tenant isolation)
         const log = await ctx.db.get(args.id);
-        if (!log) throw new Error("Service log not found");
+        if (!log || log.deleted_at !== undefined) throw new Error("Service log not found");
 
         const customer = await ctx.db.get(log.customer_id);
         if (!customer || customer.created_by !== identity.email) {
@@ -412,6 +417,8 @@ export const remove = mutation({
             throw new Error("Access denied");
         }
 
-        await ctx.db.delete(args.id);
+        // Tombstone instead of hard delete so offline devices drop the row on pull.
+        const now = Date.now();
+        await ctx.db.patch(args.id, { deleted_at: now, updated_at: now });
     },
 });

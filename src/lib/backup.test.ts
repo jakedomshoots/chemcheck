@@ -1,35 +1,40 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock the database - must be before imports that use it
+const mockTable = vi.hoisted(() => () => ({
+  toArray: vi.fn(),
+  add: vi.fn(),
+  clear: vi.fn(),
+  get: vi.fn(),
+  update: vi.fn(),
+  where: vi.fn(),
+}));
+
 vi.mock('@/db/chemcheck-db', () => ({
   db: {
-    customers: {
-      toArray: vi.fn(),
-      add: vi.fn(),
-      clear: vi.fn(),
-      get: vi.fn()
-    },
-    serviceLogs: {
-      toArray: vi.fn(),
-      add: vi.fn(),
-      clear: vi.fn()
-    },
-    chemicalUsage: {
-      toArray: vi.fn(),
-      add: vi.fn(),
-      clear: vi.fn()
-    },
-    notes: {
-      toArray: vi.fn(),
-      add: vi.fn(),
-      clear: vi.fn()
-    },
+    customers: mockTable(),
+    serviceLogs: mockTable(),
+    chemicalUsage: mockTable(),
+    notes: mockTable(),
+    pools: mockTable(),
+    equipment: mockTable(),
+    saltCellLogs: mockTable(),
     transaction: vi.fn((_mode: string, _tables: unknown[], callback: () => void) => callback())
   }
 }));
 
-import { createBackup, restoreFromBackup, AutoBackup } from './backup';
+import {
+  createBackup,
+  restoreFromBackup,
+  AutoBackup,
+  getEmergencyBackupKey,
+  getLastAutoBackupKey,
+  isForeignBackup,
+  stripSensitiveCustomerFields,
+} from './backup';
 import { db } from '../db/chemcheck-db';
+
+const noMatch = () => ({ equals: () => ({ first: async () => undefined }) });
 
 // Mock data
 const mockCustomers = [
@@ -97,6 +102,12 @@ describe('Backup System', () => {
     vi.mocked(db.serviceLogs.toArray).mockResolvedValue(mockServiceLogs);
     vi.mocked(db.chemicalUsage.toArray).mockResolvedValue(mockChemicalUsage);
     vi.mocked(db.notes.toArray).mockResolvedValue(mockNotes);
+    vi.mocked(db.pools.toArray).mockResolvedValue([]);
+    vi.mocked(db.equipment.toArray).mockResolvedValue([]);
+    vi.mocked(db.saltCellLogs.toArray).mockResolvedValue([]);
+    for (const table of [db.customers, db.serviceLogs, db.chemicalUsage, db.notes, db.pools, db.equipment, db.saltCellLogs]) {
+      vi.mocked(table.where).mockImplementation(noMatch as never);
+    }
   });
 
   afterEach(() => {
@@ -190,7 +201,7 @@ describe('Backup System', () => {
     });
 
     it('should restore backup successfully', async () => {
-      const result = await restoreFromBackup(validBackup);
+      const result = await restoreFromBackup(validBackup as never);
       
       expect(result.success).toBe(true);
       expect(result.imported.customers).toBe(1);
@@ -201,7 +212,7 @@ describe('Backup System', () => {
     });
 
     it('should clear existing data when requested', async () => {
-      await restoreFromBackup(validBackup, { clearExisting: true });
+      await restoreFromBackup(validBackup as never, { clearExisting: true });
       
       expect(db.customers.clear).toHaveBeenCalled();
       expect(db.serviceLogs.clear).toHaveBeenCalled();
@@ -221,7 +232,7 @@ describe('Backup System', () => {
     it('should handle missing customer references', async () => {
       vi.mocked(db.customers.get).mockResolvedValue(undefined);
       
-      const result = await restoreFromBackup(validBackup);
+      const result = await restoreFromBackup(validBackup as never);
       
       expect(result.success).toBe(true);
       expect(result.errors.length).toBeGreaterThan(0);
@@ -231,7 +242,7 @@ describe('Backup System', () => {
     it('should handle database errors during restore', async () => {
       vi.mocked(db.customers.add).mockRejectedValue(new Error('Database error'));
       
-      const result = await restoreFromBackup(validBackup);
+      const result = await restoreFromBackup(validBackup as never);
       
       expect(result.success).toBe(true); // Should continue despite errors
       expect(result.errors.length).toBeGreaterThan(0);
@@ -241,7 +252,7 @@ describe('Backup System', () => {
     it('should map customer IDs correctly', async () => {
       vi.mocked(db.customers.add).mockResolvedValue(99); // New ID
       
-      await restoreFromBackup(validBackup);
+      await restoreFromBackup(validBackup as never);
       
       // Service log should be added with new customer ID
       expect(db.serviceLogs.add).toHaveBeenCalledWith(
@@ -282,15 +293,16 @@ describe('Backup System', () => {
       // Fast-forward time by 1 hour + 1 second
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 1000);
       
-      expect(localStorage.getItem('emergencyBackup')).toBeDefined();
-      expect(localStorage.getItem('lastAutoBackup')).toBeDefined();
+      expect(localStorage.getItem(getEmergencyBackupKey())).not.toBeNull();
+      expect(localStorage.getItem(getLastAutoBackupKey())).not.toBeNull();
+      expect(localStorage.getItem('emergencyBackup')).toBeNull();
       
       consoleSpy.mockRestore();
     });
 
     it('should not backup if recent backup exists', () => {
       const now = new Date().toISOString();
-      localStorage.setItem('lastAutoBackup', now);
+      localStorage.setItem(getLastAutoBackupKey(), now);
       
       autoBackup = new AutoBackup(24);
       autoBackup.start();
@@ -311,6 +323,113 @@ describe('Backup System', () => {
       expect(consoleSpy).toHaveBeenCalledWith('Auto-backup failed:', expect.any(Error));
       
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('ownership and privacy', () => {
+    const signIn = (email: string) => {
+      localStorage.setItem('chemcheck_current_user', JSON.stringify({ email, name: 'Tech' }));
+    };
+
+    const backupFrom = (exportedBy: string, customers = mockCustomers) => ({
+      version: '1.0',
+      timestamp: '2024-12-13T10:00:00.000Z',
+      appVersion: '1.0.0',
+      data: { customers, serviceLogs: [], chemicalUsage: [], notes: [] },
+      metadata: { totalRecords: customers.length, exportedBy, deviceInfo: 'test' },
+    });
+
+    beforeEach(() => {
+      vi.mocked(db.customers.add).mockResolvedValue(1);
+      vi.mocked(db.customers.get).mockResolvedValue(mockCustomers[0]);
+    });
+
+    it('records the signed-in user as the backup owner', async () => {
+      signIn('Tech@Example.com');
+      const backup = await createBackup();
+      expect(backup.metadata.exportedBy).toBe('tech@example.com');
+      expect(backup.data.pools).toEqual([]);
+      expect(backup.data.equipment).toEqual([]);
+      expect(backup.data.saltCellLogs).toEqual([]);
+    });
+
+    it('scopes the emergency backup key per account and strips gate codes', async () => {
+      signIn('tech@example.com');
+      vi.mocked(db.customers.toArray).mockResolvedValue([
+        { ...mockCustomers[0], gate_code: '1234', phone: '555-0100' },
+      ] as never);
+      vi.useFakeTimers();
+      const autoBackup = new AutoBackup(1);
+      autoBackup.start();
+      await vi.advanceTimersByTimeAsync(10);
+      autoBackup.stop();
+      vi.useRealTimers();
+
+      const key = getEmergencyBackupKey();
+      expect(key).not.toBe('emergencyBackup');
+      expect(key).not.toContain('tech@example.com');
+      const stored = JSON.parse(localStorage.getItem(key) || '{}');
+      expect(stored.data.customers[0].gate_code).toBeUndefined();
+      expect(stored.data.customers[0].phone).toBe('555-0100');
+      expect(JSON.stringify(stored)).not.toContain('1234');
+      expect(stripSensitiveCustomerFields({ gate_code: 'x', full_name: 'a' })).toEqual({ full_name: 'a' });
+    });
+
+    it('refuses to restore a backup exported by a different account', async () => {
+      signIn('tech@example.com');
+      expect(isForeignBackup(backupFrom('other@example.com') as never)).toBe(true);
+      expect(isForeignBackup(backupFrom('local') as never)).toBe(false);
+      expect(isForeignBackup(backupFrom('TECH@example.com') as never)).toBe(false);
+
+      const result = await restoreFromBackup(backupFrom('other@example.com') as never);
+      expect(result.success).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/not the signed-in account/);
+      expect(db.customers.add).not.toHaveBeenCalled();
+    });
+
+    it('re-owns foreign records and drops cloud ids when allowForeign is set', async () => {
+      signIn('tech@example.com');
+      const customers = [{ ...mockCustomers[0], created_by: 'other@example.com', convex_id: 'cx_1' }];
+      const result = await restoreFromBackup(backupFrom('other@example.com', customers as never) as never, { allowForeign: true });
+      expect(result.success).toBe(true);
+      expect(db.customers.add).toHaveBeenCalledWith(expect.objectContaining({ created_by: 'tech@example.com' }));
+      const added = vi.mocked(db.customers.add).mock.calls[0][0] as unknown as Record<string, unknown>;
+      expect(added.convex_id).toBeUndefined();
+    });
+
+    it('upserts by convex_id on a same-tenant restore instead of duplicating', async () => {
+      signIn('tech@example.com');
+      vi.mocked(db.customers.where).mockImplementation((() => ({
+        equals: () => ({ first: async () => ({ id: 42, convex_id: 'cx_1' }) }),
+      })) as never);
+      const customers = [{ ...mockCustomers[0], created_by: 'tech@example.com', convex_id: 'cx_1' }];
+      const result = await restoreFromBackup(backupFrom('tech@example.com', customers as never) as never);
+      expect(result.success).toBe(true);
+      expect(db.customers.update).toHaveBeenCalledWith(42, expect.objectContaining({ convex_id: 'cx_1' }));
+      expect(db.customers.add).not.toHaveBeenCalled();
+      expect(result.updated).toBe(1);
+    });
+
+    it('restores pools and remaps service log pool ids', async () => {
+      signIn('tech@example.com');
+      vi.mocked(db.customers.add).mockResolvedValue(7);
+      vi.mocked(db.pools.add).mockResolvedValue(70);
+      vi.mocked(db.serviceLogs.add).mockResolvedValue(1);
+      const backup = {
+        ...backupFrom('tech@example.com'),
+        data: {
+          customers: mockCustomers,
+          pools: [{ id: 3, customer_id: 1, name: 'Main', service_day: 'Monday', pool_type: 'Chlorine', surface_type: 'Plaster', active: true }],
+          serviceLogs: [{ ...mockServiceLogs[0], pool_id: 3 }],
+          chemicalUsage: [],
+          notes: [],
+        },
+      };
+      const result = await restoreFromBackup(backup as never);
+      expect(result.success).toBe(true);
+      expect(result.imported.pools).toBe(1);
+      expect(db.pools.add).toHaveBeenCalledWith(expect.objectContaining({ customer_id: 7 }));
+      expect(db.serviceLogs.add).toHaveBeenCalledWith(expect.objectContaining({ customer_id: 7, pool_id: 70 }));
     });
   });
 

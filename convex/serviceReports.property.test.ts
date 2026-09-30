@@ -14,7 +14,8 @@
 
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { 
+import {
+  DEFAULT_BUSINESS_NAME,
   generateSimpleEmailContent, 
   escapeHtml,
   EmailContentParams,
@@ -170,7 +171,7 @@ describe('Simple Email Notifications Property Tests', () => {
      * Property 1: Email Content Generation
      * *For any* valid service data and pool status, the generated email should contain:
      * - The service date
-     * - "Dominick Pool Solutions" as business name
+     * - the neutral default business name (no business name is passed)
      * - Appropriate status messaging
      * - The correct footer text
      * 
@@ -187,9 +188,9 @@ describe('Simple Email Notifications Property Tests', () => {
             expect(result.htmlBody).toContain(escapeHtml(params.serviceDate));
             expect(result.textBody).toContain(params.serviceDate);
             
-            // Requirement 3.6: Email should use "Dominick Pool Solutions" as business name
-            expect(result.htmlBody).toContain('Dominick Pool Solutions');
-            expect(result.textBody).toContain('Dominick Pool Solutions');
+            // Requirement 3.6: Email should fall back to the neutral default business name
+            expect(result.htmlBody).toContain(escapeHtml(DEFAULT_BUSINESS_NAME));
+            expect(result.textBody).toContain(DEFAULT_BUSINESS_NAME);
             
             // Requirement 3.2/3.3: Appropriate status messaging based on pool status
             if (params.poolStatus === 'good') {
@@ -201,7 +202,7 @@ describe('Simple Email Notifications Property Tests', () => {
             }
             
             // Requirement 3.7: Footer text
-            const expectedFooter = 'This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions';
+            const expectedFooter = 'This email is powered by ChemCheck Pool Software';
             expect(result.htmlBody).toContain(expectedFooter);
             expect(result.textBody).toContain(expectedFooter);
             

@@ -1,5 +1,13 @@
 import { v } from "convex/values";
 import { query, mutation, internalQuery } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import {
+  findOwnedBusiness,
+  isPendingInvite,
+  normalizeEmail,
+  resolveBusinessForEmail,
+} from "./entitlements";
 
 // Valid role values for team members
 const VALID_ROLES = ['owner', 'admin', 'technician', 'viewer'] as const;
@@ -11,32 +19,15 @@ function validateRole(role: string): void {
   }
 }
 
-// Get the current user's business
+// Get the current user's business.
+// SECURITY: ownership is resolved FIRST, then active (accepted) team
+// membership, so a membership row can never hijack an owner's tenant.
 export const getCurrent = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-
-    // First check if user is a team member
-    const teamMember = await ctx.db
-      .query("team_members")
-      .withIndex("by_user_email", (q) => q.eq("user_email", identity.email!))
-      .filter((q) => q.eq(q.field("is_active"), true))
-      .first();
-
-    if (teamMember) {
-      const teamBusiness = await ctx.db.get(teamMember.business_id);
-      if (teamBusiness) return teamBusiness;
-    }
-
-    // Check if user owns a business
-    const ownedBusiness = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", identity.email!))
-      .first();
-
-    return ownedBusiness;
+    if (!identity?.email) return null;
+    return await resolveBusinessForEmail(ctx, identity.email);
   },
 });
 
@@ -244,7 +235,187 @@ export const getTeamMembers = query({
   },
 });
 
-// Invite a team member
+// ============================================
+// Team invites
+// ============================================
+//
+// Invites are inserted as PENDING rows (is_active: false, joined_at
+// undefined). They become memberships only when the invited user accepts
+// them while signed in with the invited email address.
+
+type InviteCtx = Pick<MutationCtx, "db">;
+type InviteReadCtx = Pick<QueryCtx, "db">;
+
+export type PendingInviteSummary = {
+  _id: Id<"team_members">;
+  business_id: Id<"businesses">;
+  business_name: string;
+  name: string;
+  role: string;
+  invited_at: number;
+};
+
+/** Find an existing team_members row for this email on this business (raw or normalized email). */
+async function findMemberRowForBusiness(
+  ctx: InviteReadCtx,
+  businessId: Id<"businesses">,
+  email: string
+): Promise<Doc<"team_members"> | null> {
+  const normalized = normalizeEmail(email);
+  const rows = await ctx.db
+    .query("team_members")
+    .withIndex("by_business", (q) => q.eq("business_id", businessId))
+    .collect();
+  return rows.find((row) => normalizeEmail(row.user_email) === normalized) ?? null;
+}
+
+/**
+ * Create a pending invite for `email` on the business owned by `ownerEmail`.
+ * - Only the business owner may invite.
+ * - The owner cannot be invited to their own business.
+ * - A duplicate pending invite returns the existing row id.
+ * - A previously removed member is re-invited (row reset to pending).
+ */
+export async function createPendingInvite(
+  ctx: InviteCtx,
+  ownerEmail: string,
+  args: { email: string; name: string; role: string }
+): Promise<Id<"team_members">> {
+  const business = await findOwnedBusiness(ctx, ownerEmail);
+  if (!business) {
+    throw new Error("Business not found or access denied");
+  }
+
+  const inviteeEmail = normalizeEmail(args.email);
+  if (!inviteeEmail || !inviteeEmail.includes("@")) {
+    throw new Error("A valid email address is required to invite a team member");
+  }
+  if (inviteeEmail === normalizeEmail(business.owner_email)) {
+    throw new Error("The business owner cannot be invited to their own business");
+  }
+
+  // Validate role
+  validateRole(args.role);
+
+  // Cannot assign owner role to team members
+  if (args.role === 'owner') {
+    throw new Error("Cannot assign 'owner' role to team members. Use transfer ownership instead.");
+  }
+
+  const now = Date.now();
+  const existing = await findMemberRowForBusiness(ctx, business._id, inviteeEmail);
+  if (existing) {
+    if (existing.is_active) {
+      throw new Error("User is already a team member");
+    }
+    if (isPendingInvite(existing)) {
+      // Duplicate pending invite: return the existing one.
+      return existing._id;
+    }
+    // Previously removed member: reset the row to a fresh pending invite.
+    await ctx.db.patch(existing._id, {
+      user_email: inviteeEmail,
+      name: args.name,
+      role: args.role,
+      is_active: false,
+      invited_at: now,
+      joined_at: undefined,
+    });
+    return existing._id;
+  }
+
+  return await ctx.db.insert("team_members", {
+    business_id: business._id,
+    user_email: inviteeEmail,
+    name: args.name,
+    role: args.role,
+    is_active: false,
+    invited_at: now,
+    joined_at: undefined,
+  });
+}
+
+/** Load a pending invite and verify it is addressed to the signed-in email. */
+async function loadOwnPendingInvite(
+  ctx: InviteReadCtx,
+  inviteId: Id<"team_members">,
+  identityEmail: string
+): Promise<Doc<"team_members">> {
+  const invite = await ctx.db.get(inviteId);
+  if (!invite || !isPendingInvite(invite)) {
+    throw new Error("Invite not found or no longer pending");
+  }
+  if (normalizeEmail(invite.user_email) !== normalizeEmail(identityEmail)) {
+    throw new Error("This invite was sent to a different email address");
+  }
+  return invite;
+}
+
+/** Accept a pending invite: activates the membership for the signed-in user. */
+export async function acceptPendingInvite(
+  ctx: InviteCtx,
+  identityEmail: string,
+  inviteId: Id<"team_members">
+): Promise<{ member_id: Id<"team_members">; business_id: Id<"businesses">; joined_at: number }> {
+  const invite = await loadOwnPendingInvite(ctx, inviteId, identityEmail);
+  const business = await ctx.db.get(invite.business_id);
+  if (!business) {
+    throw new Error("The business for this invite no longer exists");
+  }
+  const now = Date.now();
+  await ctx.db.patch(invite._id, {
+    user_email: normalizeEmail(invite.user_email),
+    is_active: true,
+    joined_at: now,
+  });
+  return { member_id: invite._id, business_id: invite.business_id, joined_at: now };
+}
+
+/** Decline (delete) a pending invite addressed to the signed-in user. */
+export async function declinePendingInvite(
+  ctx: InviteCtx,
+  identityEmail: string,
+  inviteId: Id<"team_members">
+): Promise<{ declined: true; member_id: Id<"team_members"> }> {
+  const invite = await loadOwnPendingInvite(ctx, inviteId, identityEmail);
+  await ctx.db.delete(invite._id);
+  return { declined: true, member_id: invite._id };
+}
+
+/** All pending invites addressed to the signed-in user (raw or normalized email). */
+export async function listPendingInvitesForEmail(
+  ctx: InviteReadCtx,
+  identityEmail: string
+): Promise<PendingInviteSummary[]> {
+  const normalized = normalizeEmail(identityEmail);
+  const candidates = normalized === identityEmail ? [normalized] : [normalized, identityEmail];
+  const seen = new Set<string>();
+  const invites: PendingInviteSummary[] = [];
+  for (const candidate of candidates) {
+    const rows = await ctx.db
+      .query("team_members")
+      .withIndex("by_user_email", (q) => q.eq("user_email", candidate))
+      .filter((q) => q.eq(q.field("is_active"), false))
+      .take(50);
+    for (const row of rows) {
+      if (!isPendingInvite(row) || seen.has(String(row._id))) continue;
+      seen.add(String(row._id));
+      const business = await ctx.db.get(row.business_id);
+      if (!business) continue;
+      invites.push({
+        _id: row._id,
+        business_id: row.business_id,
+        business_name: business.name,
+        name: row.name,
+        role: row.role,
+        invited_at: row.invited_at,
+      });
+    }
+  }
+  return invites;
+}
+
+// Invite a team member (creates a PENDING invite; see acceptInvite)
 export const inviteTeamMember = mutation({
   args: {
     email: v.string(),
@@ -253,44 +424,38 @@ export const inviteTeamMember = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity?.email) throw new Error("Not authenticated");
+    return await createPendingInvite(ctx, identity.email, args);
+  },
+});
 
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_owner_email", (q) => q.eq("owner_email", identity.email!))
-      .first();
+// Accept a pending invite addressed to the signed-in user's email
+export const acceptInvite = mutation({
+  args: { inviteId: v.id("team_members") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+    return await acceptPendingInvite(ctx, identity.email, args.inviteId);
+  },
+});
 
-    if (!business) {
-      throw new Error("Business not found or access denied");
-    }
+// Decline (delete) a pending invite addressed to the signed-in user's email
+export const declineInvite = mutation({
+  args: { inviteId: v.id("team_members") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) throw new Error("Not authenticated");
+    return await declinePendingInvite(ctx, identity.email, args.inviteId);
+  },
+});
 
-    // Check if already a member
-    const existingMember = await ctx.db
-      .query("team_members")
-      .withIndex("by_business", (q) => q.eq("business_id", business._id))
-      .filter((q) => q.eq(q.field("user_email"), args.email))
-      .first();
-
-    if (existingMember) {
-      throw new Error("User is already a team member");
-    }
-
-    // Validate role
-    validateRole(args.role);
-
-    // Cannot assign owner role to team members
-    if (args.role === 'owner') {
-      throw new Error("Cannot assign 'owner' role to team members. Use transfer ownership instead.");
-    }
-
-    return await ctx.db.insert("team_members", {
-      business_id: business._id,
-      user_email: args.email,
-      name: args.name,
-      role: args.role,
-      is_active: true,
-      invited_at: Date.now(),
-    });
+// Pending invites for the signed-in user
+export const getPendingInvites = query({
+  args: {},
+  handler: async (ctx): Promise<PendingInviteSummary[]> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) return [];
+    return await listPendingInvitesForEmail(ctx, identity.email);
   },
 });
 
@@ -307,13 +472,20 @@ export const removeTeamMember = mutation({
     if (!member) throw new Error("Team member not found");
 
     const business = await ctx.db.get(member.business_id);
-    if (!business || business.owner_email !== identity.email) {
+    if (!business || normalizeEmail(business.owner_email) !== normalizeEmail(identity.email)) {
       throw new Error("Access denied");
     }
 
     // Can't remove the owner
     if (member.role === "owner") {
       throw new Error("Cannot remove the business owner");
+    }
+
+    // A never-accepted invite is withdrawn outright so it stops showing as
+    // pending for the invitee; an active member is deactivated.
+    if (!member.is_active && member.joined_at === undefined) {
+      await ctx.db.delete(args.memberId);
+      return;
     }
 
     await ctx.db.patch(args.memberId, { is_active: false });

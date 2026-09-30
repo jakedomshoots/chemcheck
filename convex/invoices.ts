@@ -1,7 +1,10 @@
+/// <reference types="node" />
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { validateEmail, validatePhone } from "./validation";
 import { normalizeTaxRate } from "./tax";
+import { assertWriteAllowed, canAccessCustomerRecord } from "./entitlements";
+import { assertRecipientMatchesCustomer } from "./communications";
 
 const VALID_STATUSES = ["draft", "sent", "paid", "cancelled"] as const;
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -33,12 +36,16 @@ function resolveCommunicationDestination(
     if (override.channel === "sms") {
       const recipient = validatePhone(override.recipient);
       if (!recipient) throw new Error("Alternate phone number is invalid.");
+      // SECURITY: only the customer's stored phone may receive messages.
+      assertRecipientMatchesCustomer("sms", recipient, customer);
       return { recipient, channel: "sms" };
     }
 
     if (override.channel === "email") {
       const recipient = validateEmail(override.recipient);
       if (!recipient) throw new Error("Alternate email is invalid.");
+      // SECURITY: only the customer's stored email may receive messages.
+      assertRecipientMatchesCustomer("email", recipient, customer);
       return { recipient, channel: "email" };
     }
 
@@ -146,13 +153,13 @@ export const list = query({
       query = ctx.db
         .query("invoices")
         .withIndex("by_created_by_and_customer", (q) =>
-          q.eq("created_by", email).eq("customer_id", args.customer_id)
+          q.eq("created_by", email).eq("customer_id", args.customer_id!)
         );
     } else if (args.status) {
       query = ctx.db
         .query("invoices")
         .withIndex("by_created_by_and_status", (q) =>
-          q.eq("created_by", email).eq("status", args.status)
+          q.eq("created_by", email).eq("status", args.status!)
         );
     } else {
       query = ctx.db
@@ -234,12 +241,13 @@ export const createDraft = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity?.email) throw new Error("Not authenticated");
 
     const customer = await ctx.db.get(args.customer_id);
-    if (!customer || customer.created_by !== identity.email) {
+    if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email))) {
       throw new Error("Customer not found or access denied");
     }
+    await assertWriteAllowed(ctx, identity.email);
 
     let resolvedWorkOrderId = args.work_order_id;
     let resolvedSourceQuoteId = args.source_quote_id;

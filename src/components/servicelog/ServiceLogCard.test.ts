@@ -12,6 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
+// @ts-expect-error ServiceLogCard is an untyped .jsx module; helpers are exercised as `any`.
 import { calculatePhotoCounts, formatReportSentDate } from './ServiceLogCard';
 
 // ============================================================================
@@ -167,9 +168,9 @@ describe('ServiceLogCard Utilities', () => {
     });
 
     it('calculatePhotoCounts handles null/undefined gracefully', () => {
-      // @ts-expect-error - Testing invalid input
+      // Testing invalid input
       expect(calculatePhotoCounts(null)).toEqual({ before: 0, after: 0, total: 0 });
-      // @ts-expect-error - Testing invalid input
+      // Testing invalid input
       expect(calculatePhotoCounts(undefined)).toEqual({ before: 0, after: 0, total: 0 });
     });
 
@@ -302,15 +303,15 @@ describe('ServiceLogCard Utilities', () => {
 
     it('formatReportSentDate returns empty string for invalid inputs', () => {
       // Null
-      // @ts-expect-error - Testing invalid input
+      // Testing invalid input
       expect(formatReportSentDate(null)).toBe('');
       
       // Undefined
-      // @ts-expect-error - Testing invalid input
+      // Testing invalid input
       expect(formatReportSentDate(undefined)).toBe('');
       
       // Non-number
-      // @ts-expect-error - Testing invalid input
+      // Testing invalid input
       expect(formatReportSentDate('not a number')).toBe('');
       
       // NaN

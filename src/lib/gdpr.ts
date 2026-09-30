@@ -92,13 +92,7 @@ export async function downloadUserData(): Promise<void> {
   }
 }
 
-/**
- * Delete all user data
- * Satisfies: Right to Erasure (Article 17)
- * 
- * @returns Summary of deleted records
- */
-export async function deleteAllUserData(): Promise<{
+export interface LocalDataDeletionSummary {
   deleted: {
     customers: number;
     serviceLogs: number;
@@ -106,7 +100,39 @@ export async function deleteAllUserData(): Promise<{
     notes: number;
   };
   success: boolean;
-}> {
+}
+
+function clearAppOwnedLocalStorage(): void {
+  try {
+    const allKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+      .filter((key): key is string => key !== null);
+    const keysToRemove = allKeys.filter(key =>
+      key !== 'analytics_opt_out' &&
+      key !== 'chemcheck-theme' &&
+      (
+        key.startsWith('chemcheck_') ||
+        key.startsWith('chemcheck.') ||
+        key.startsWith('business_') ||
+        key.startsWith('user_') ||
+        key.startsWith('emergencyBackup') ||
+        key.startsWith('lastAutoBackup') ||
+        key === 'migration_state'
+      )
+    );
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+  } catch {
+    // Storage unavailable; the IndexedDB wipe above is what matters.
+  }
+}
+
+/**
+ * Clear local data on THIS DEVICE only.
+ *
+ * This removes the offline copy (IndexedDB tables and app-owned browser
+ * storage). It does NOT delete anything from the cloud account; use
+ * `deleteAccountAndAllData` for the GDPR right-to-erasure flow.
+ */
+export async function clearLocalDeviceData(): Promise<LocalDataDeletionSummary> {
   // Get counts before deletion
   const [customerCount, serviceLogCount, chemicalUsageCount, noteCount] = await Promise.all([
     db.customers.count(),
@@ -115,21 +141,22 @@ export async function deleteAllUserData(): Promise<{
     db.notes.count(),
   ]);
 
+  const optionalTables = [db.pools, db.equipment, db.saltCellLogs].filter(
+    (table) => !!table && typeof table.clear === 'function'
+  );
+
   // Delete all data in a transaction
-  await db.transaction('rw', [db.customers, db.serviceLogs, db.chemicalUsage, db.notes], async () => {
+  await db.transaction('rw', [db.customers, db.serviceLogs, db.chemicalUsage, db.notes, ...optionalTables], async () => {
     await db.serviceLogs.clear();
     await db.chemicalUsage.clear();
     await db.notes.clear();
+    for (const table of optionalTables) {
+      await table.clear();
+    }
     await db.customers.clear();
   });
 
-  // Clear localStorage data
-  const keysToRemove = Object.keys(localStorage).filter(key => 
-    key.startsWith('chemcheck_') || 
-    key.startsWith('business_') ||
-    key.startsWith('user_')
-  );
-  keysToRemove.forEach(key => localStorage.removeItem(key));
+  clearAppOwnedLocalStorage();
 
   return {
     deleted: {
@@ -140,6 +167,38 @@ export async function deleteAllUserData(): Promise<{
     },
     success: true,
   };
+}
+
+/**
+ * @deprecated Local-only wipe kept for backward compatibility. Prefer
+ * `clearLocalDeviceData` (device) or `deleteAccountAndAllData` (cloud + device).
+ */
+export const deleteAllUserData = clearLocalDeviceData;
+
+export interface AccountDeletionSummary {
+  cloud: unknown;
+  local: LocalDataDeletionSummary;
+}
+
+/**
+ * Delete the user's account data everywhere.
+ * Satisfies: Right to Erasure (Article 17)
+ *
+ * Calls the server-side `account.deleteMyAccount` action first (which
+ * requires an authenticated identity and removes the tenant's cloud data),
+ * then clears the local copy on this device. A cloud failure aborts before
+ * anything local is touched so the user is never left with a wiped device
+ * and an intact cloud account.
+ */
+export async function deleteAccountAndAllData(options: {
+  deleteCloudAccount?: () => Promise<unknown>;
+} = {}): Promise<AccountDeletionSummary> {
+  const deleteCloudAccount = options.deleteCloudAccount
+    ?? (() => getSharedConvexClient().action(api.account.deleteMyAccount, {}));
+
+  const cloud = await deleteCloudAccount();
+  const local = await clearLocalDeviceData();
+  return { cloud, local };
 }
 
 /**
@@ -194,9 +253,11 @@ export async function getDataRetentionSummary(): Promise<{
   const chemicalUsage = await db.chemicalUsage.toArray();
   const notes = await db.notes.toArray();
 
-  const getDateRange = (records: Array<{ createdAt?: number }>) => {
+  const getDateRange = (records: ReadonlyArray<object>) => {
     if (records.length === 0) return { oldest: null, newest: null };
-    const dates = records.map(r => r.createdAt).filter(Boolean) as number[];
+    const dates = records
+      .map((r) => (r as { createdAt?: unknown }).createdAt)
+      .filter((value): value is number => typeof value === 'number');
     if (dates.length === 0) return { oldest: null, newest: null };
     return {
       oldest: new Date(Math.min(...dates)).toISOString(),

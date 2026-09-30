@@ -144,12 +144,12 @@ describe('Property-Based Tests: Email Backward Compatibility', () => {
           // since it doesn't use complex report features that settings control
 
           // Business name handling should be consistent
-          const expectedBusinessName = businessName || 'Dominick Pool Solutions';
+          const expectedBusinessName = businessName || 'Your pool service provider';
           expect(emailContent.htmlBody).toContain(escapeHtml(expectedBusinessName));
           expect(emailContent.textBody).toContain(expectedBusinessName);
 
           // Footer should always be present for branding consistency
-          const expectedFooter = 'This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions';
+          const expectedFooter = 'This email is powered by ChemCheck Pool Software';
           expect(emailContent.htmlBody).toContain(expectedFooter);
           expect(emailContent.textBody).toContain(expectedFooter);
 
@@ -339,7 +339,7 @@ describe('Property-Based Tests: Email Backward Compatibility', () => {
           expect(emailContent.textBody).toContain(expectedStatus);
 
           // Should contain footer
-          const footer = 'This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions';
+          const footer = 'This email is powered by ChemCheck Pool Software';
           expect(emailContent.htmlBody).toContain(footer);
           expect(emailContent.textBody).toContain(footer);
         }

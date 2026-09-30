@@ -52,6 +52,50 @@ describe('ConflictResolver', () => {
   });
 
   describe('resolve', () => {
+    it('does not write raw Convex document fields into the resolved local record', () => {
+      const local = {
+        id: 5,
+        customer_id: 3,
+        pool_id: 11,
+        convex_id: 'log-1',
+        notes: 'local',
+        sync_status: 'pending' as const,
+        local_updated_at: 100,
+        remote_updated_at: 50,
+      };
+      const remote = {
+        _id: 'log-1',
+        _creationTime: 1,
+        business_id: 'biz-1',
+        customer_id: 'cust-1',
+        pool_id: 'pool-1',
+        notes: 'remote',
+        sync_status: 'synced' as const,
+        local_updated_at: 200,
+        remote_updated_at: 200,
+      };
+
+      const result = resolver.resolve(local, remote as any);
+      const resolved = result.resolved as any;
+
+      expect(result.hadConflict).toBe(true);
+      expect(resolved).toMatchObject({
+        id: 5,
+        customer_id: 3,
+        pool_id: 11,
+        convex_customer_id: 'cust-1',
+        convex_pool_id: 'pool-1',
+        convex_id: 'log-1',
+        notes: 'remote',
+        sync_status: 'synced',
+        local_updated_at: 200,
+        remote_updated_at: 200,
+      });
+      expect(resolved).not.toHaveProperty('_id');
+      expect(resolved).not.toHaveProperty('_creationTime');
+      expect(resolved).not.toHaveProperty('business_id');
+    });
+
     it('should return local record when no conflict exists', () => {
       const local: SyncableRecord = {
         sync_status: 'pending',

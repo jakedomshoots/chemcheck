@@ -1,7 +1,6 @@
 declare global {
   interface ImportMetaEnv {
     readonly VITE_GA_MEASUREMENT_ID?: string;
-    readonly DEV?: boolean;
   }
 
   interface ImportMeta {
@@ -15,10 +14,48 @@ declare global {
 }
 
 const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
+export const ANALYTICS_OPT_OUT_KEY = 'analytics_opt_out';
+
+function setGaDisableFlag(disabled: boolean): void {
+  if (!GA_MEASUREMENT_ID || typeof window === 'undefined') return;
+  const flags = window as unknown as Record<string, unknown>;
+  if (disabled) {
+    flags[`ga-disable-${GA_MEASUREMENT_ID}`] = true;
+  } else {
+    delete flags[`ga-disable-${GA_MEASUREMENT_ID}`];
+  }
+}
+
+export function isDoNotTrackEnabled(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const nav = navigator as Navigator & { msDoNotTrack?: string };
+  const win = (typeof window !== 'undefined' ? window : {}) as Window & { doNotTrack?: string };
+  const signal = nav.doNotTrack ?? win.doNotTrack ?? nav.msDoNotTrack;
+  return signal === '1' || signal === 'yes';
+}
+
+/** True when GA must not be loaded: user opt-out, Do Not Track, or no id. */
+export function isAnalyticsBlocked(): boolean {
+  return !GA_MEASUREMENT_ID || hasOptedOut() || isDoNotTrackEnabled();
+}
 
 export function initAnalytics(): void {
   if (!GA_MEASUREMENT_ID) {
     console.log('[Analytics] No measurement ID configured, skipping initialization');
+    return;
+  }
+
+  // Honor the opt-out before anything else so the disable flag is in place
+  // even if a stray gtag script is ever loaded.
+  if (hasOptedOut()) {
+    setGaDisableFlag(true);
+    console.log('[Analytics] User opted out, skipping initialization');
+    return;
+  }
+
+  if (isDoNotTrackEnabled()) {
+    setGaDisableFlag(true);
+    console.log('[Analytics] Do Not Track enabled, skipping initialization');
     return;
   }
 
@@ -27,10 +64,7 @@ export function initAnalytics(): void {
     return;
   }
 
-  if (navigator.doNotTrack === '1') {
-    console.log('[Analytics] Do Not Track enabled, skipping initialization');
-    return;
-  }
+  setGaDisableFlag(false);
 
   const script = document.createElement('script');
   script.async = true;
@@ -53,7 +87,7 @@ export function initAnalytics(): void {
 }
 
 export function trackPageView(pagePath: string, pageTitle?: string): void {
-  if (!GA_MEASUREMENT_ID || !window.gtag) return;
+  if (isAnalyticsBlocked() || !window.gtag) return;
 
   window.gtag('event', 'page_view', {
     page_path: pagePath,
@@ -65,7 +99,7 @@ export function trackEvent(
   eventName: string,
   params?: Record<string, string | number | boolean>
 ): void {
-  if (!GA_MEASUREMENT_ID || !window.gtag) return;
+  if (isAnalyticsBlocked() || !window.gtag) return;
 
   window.gtag('event', eventName, params);
 }
@@ -97,28 +131,37 @@ export function setUserProperties(properties: {
   customer_count_range?: string;
   has_team?: boolean;
 }): void {
-  if (!GA_MEASUREMENT_ID || !window.gtag) return;
+  if (isAnalyticsBlocked() || !window.gtag) return;
 
   window.gtag('set', 'user_properties', properties);
 }
 
 export function optOutAnalytics(): void {
-  localStorage.setItem('analytics_opt_out', 'true');
-
-  if (GA_MEASUREMENT_ID) {
-    (window as unknown as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`] = true;
+  try {
+    localStorage.setItem(ANALYTICS_OPT_OUT_KEY, 'true');
+  } catch {
+    // Storage unavailable; the window flag below still blocks GA for this page.
   }
+  setGaDisableFlag(true);
 }
 
 export function hasOptedOut(): boolean {
-  return localStorage.getItem('analytics_opt_out') === 'true';
+  try {
+    return localStorage.getItem(ANALYTICS_OPT_OUT_KEY) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 export function optInAnalytics(): void {
-  localStorage.removeItem('analytics_opt_out');
+  try {
+    localStorage.removeItem(ANALYTICS_OPT_OUT_KEY);
+  } catch {
+    // ignore
+  }
 
   if (GA_MEASUREMENT_ID) {
-    delete (window as unknown as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`];
+    setGaDisableFlag(false);
     initAnalytics();
   }
 }

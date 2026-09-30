@@ -1,4 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import 'fake-indexeddb/auto';
+import Dexie from 'dexie';
 import { ChemCheckDB } from './chemcheck-db';
 import type { Customer, ServiceLog, ChemicalUsage, Note, SyncableRecord } from './chemcheck-db';
 
@@ -142,5 +144,52 @@ describe('ChemCheckDB Schema and Sync Fields', () => {
     
     // Schema includes v4 normalized pools/equipment tables.
     expect(db.verno).toBe(4);
+  });
+
+  it('registers blocked/versionchange handlers and reports open failures instead of hanging', async () => {
+    const db = new ChemCheckDB();
+    const on: any = db.on as any;
+    expect(on.blocked.subscribers.length).toBeGreaterThanOrEqual(1);
+    expect(on.versionchange.subscribers.length).toBeGreaterThanOrEqual(1);
+
+    const openSpy = vi.spyOn(db, 'open').mockRejectedValueOnce(Object.assign(new Error('nope'), { name: 'VersionError' }));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(db.ensureOpen()).resolves.toBe(false);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('VersionError'), expect.any(Error));
+    openSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+});
+
+describe('ChemCheckDB v4 upgrade', () => {
+  it('backfills one primary pool per legacy customer in a single bulk write', async () => {
+    await Dexie.delete('chemcheck');
+    const legacy = new Dexie('chemcheck');
+    legacy.version(3).stores({
+      customers: '++id, created_by, service_day, sort_order, sync_status, convex_id, [created_by+service_day]',
+      serviceLogs: '++id, customer_id, service_date, [customer_id+service_date], sync_status, convex_id, convex_customer_id',
+      chemicalUsage: '++id, customer_id, created_date, sync_status, convex_id, convex_customer_id',
+      notes: '++id, customer_id, completed, created_date, category, sync_status, convex_id, convex_customer_id',
+      saltCellLogs: '++id, customer_id, cleaning_date, sync_status, convex_id, convex_customer_id',
+    });
+    await legacy.open();
+    await legacy.table('customers').bulkAdd([
+      { full_name: 'A', address: '1 Main', service_day: 'Monday', pool_type: 'Chlorine', surface_type: 'Plaster', created_by: 'me', sync_status: 'synced', local_updated_at: 1 },
+      { full_name: 'B', address: '2 Main', service_day: 'Tuesday', pool_type: 'Salt', surface_type: 'Pebble', created_by: 'me', sync_status: 'synced', local_updated_at: 1 },
+    ]);
+    legacy.close();
+
+    const db = new ChemCheckDB();
+    try {
+      await expect(db.ensureOpen()).resolves.toBe(true);
+      expect(db.verno).toBe(4);
+      const pools = await db.pools.toArray();
+      expect(pools).toHaveLength(2);
+      expect(pools.map((pool) => pool.customer_id).sort()).toEqual([1, 2]);
+      expect(pools[0]).toMatchObject({ name: 'Primary Pool', active: true, sync_status: 'pending' });
+    } finally {
+      db.close();
+      await Dexie.delete('chemcheck');
+    }
   });
 });

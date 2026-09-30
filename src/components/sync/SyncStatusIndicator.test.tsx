@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import * as fc from 'fast-check';
+// @ts-expect-error SyncStatusIndicator is an untyped .jsx module; components render as `any`.
 import { SyncStatusIndicator, SyncStatusBadge } from './SyncStatusIndicator';
 import { useSyncState } from '@/hooks/useSyncState';
 
@@ -445,7 +446,7 @@ describe('SyncStatusBadge', () => {
     });
 
     it('unknown status defaults to Unknown text', () => {
-      // @ts-expect-error - Testing invalid status
+      // Testing invalid status
       renderWithCleanup(<SyncStatusBadge status="invalid-status" />);
 
       expect(screen.getByText('Unknown')).toBeInTheDocument();

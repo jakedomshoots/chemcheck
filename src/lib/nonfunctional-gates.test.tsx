@@ -1,19 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import type { ReactNode } from 'react';
+// @ts-expect-error testUtils is an untyped .jsx module.
 import { performanceTest } from '@/test/testUtils';
+// @ts-expect-error ProtectedAppRoutes is an untyped .jsx module.
 import ProtectedAppRoutes from '@/pages/ProtectedAppRoutes';
 import { getReadinessReport } from './readiness';
 import { migrationManager } from '@/lib/migrations';
 import { getServiceWorkerState } from '@/lib/serviceWorker';
 import { monitoring } from '@/lib/monitoring';
 
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({ subscription: null, isLoading: false, isLocked: false, isActive: true }),
+}));
+
 vi.mock('@/lib/chunkErrorRecovery', () => ({
   importWithRetry: vi.fn(loader => loader()),
 }));
 
 vi.mock('@/pages/Layout.jsx', () => ({
-  default: ({ children, currentPageName }) => (
+  default: ({ children, currentPageName }: { children?: ReactNode; currentPageName?: string }) => (
     <div>
       <div data-testid="layout-page">{currentPageName}</div>
       {children}

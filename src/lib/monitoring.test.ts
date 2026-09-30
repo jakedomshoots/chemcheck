@@ -17,10 +17,10 @@ Object.defineProperty(global, 'performance', {
 });
 
 // Mock PerformanceObserver
-global.PerformanceObserver = vi.fn().mockImplementation((callback) => ({
+global.PerformanceObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   disconnect: vi.fn()
-}));
+})) as unknown as typeof PerformanceObserver;
 
 describe('Monitoring System', () => {
   beforeEach(() => {

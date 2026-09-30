@@ -1,7 +1,13 @@
 import { v } from "convex/values";
-import { action, internalMutation } from "./_generated/server";
+import { action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { fetchProvider, requireStripeConfig } from "./providerConfig";
+
+const STRIPE_API_BASE = "https://api.stripe.com/v1";
+
+/** GDPR export files are unauthenticated storage URLs; remove them after 24h. */
+export const EXPORT_FILE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Soft ceiling on document writes in a single mutation. Keeping this well below
@@ -711,6 +717,145 @@ async function deleteRateLimitsBatch(
   return { deletedCount, isDone, nextCursor: state };
 }
 
+// ============================================
+// Stripe billing teardown (runs before local deletion)
+// ============================================
+
+type BillingRow = {
+  stripe_subscription_id: string;
+  stripe_customer_id: string;
+};
+
+export type StripeTeardownResult = {
+  attempted: boolean;
+  canceledSubscriptions: string[];
+  deletedCustomers: string[];
+  failures: string[];
+};
+
+/**
+ * Every subscription row tied to the account: legacy rows keyed by the user's
+ * email plus rows keyed by any business the user owns. Read-only.
+ */
+export const listBillingForDeletion = internalQuery({
+  args: { userEmail: v.string() },
+  handler: async (ctx, args): Promise<BillingRow[]> => {
+    const rows = new Map<string, BillingRow>();
+
+    const byUser = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_user_email", (q) => q.eq("user_email", args.userEmail))
+      .take(EXPORT_BATCH_SIZE);
+    for (const row of byUser) {
+      rows.set(String(row._id), {
+        stripe_subscription_id: row.stripe_subscription_id,
+        stripe_customer_id: row.stripe_customer_id,
+      });
+    }
+
+    const owned = await ctx.db
+      .query("businesses")
+      .withIndex("by_owner_email", (q) => q.eq("owner_email", args.userEmail))
+      .collect();
+    for (const business of owned) {
+      const byBusiness = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_business", (q) => q.eq("business_id", business._id))
+        .take(EXPORT_BATCH_SIZE);
+      for (const row of byBusiness) {
+        rows.set(String(row._id), {
+          stripe_subscription_id: row.stripe_subscription_id,
+          stripe_customer_id: row.stripe_customer_id,
+        });
+      }
+    }
+
+    return Array.from(rows.values());
+  },
+});
+
+async function stripeDelete(path: string, secretKey: string): Promise<void> {
+  const response = await fetchProvider(`${STRIPE_API_BASE}${path}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${secretKey}` },
+  });
+  if (response.ok) return;
+  const data: any = await response.json().catch(() => ({}));
+  const code = data?.error?.code;
+  // Already gone on Stripe's side counts as success for teardown purposes.
+  if (response.status === 404 || code === "resource_missing") return;
+  throw new Error(
+    typeof data?.error?.message === "string" ? data.error.message : `Stripe request failed (${response.status}).`
+  );
+}
+
+/**
+ * Cancel every Stripe subscription and delete every Stripe customer that
+ * belongs to the account. Failures are logged and reported, never thrown, so
+ * local deletion always proceeds.
+ */
+export async function cancelStripeBilling(
+  runQuery: (rows: { userEmail: string }) => Promise<BillingRow[]>,
+  userEmail: string,
+  deleteFn: (path: string, secretKey: string) => Promise<void> = stripeDelete,
+  resolveSecretKey: () => string = () => requireStripeConfig().secretKey
+): Promise<StripeTeardownResult> {
+  const result: StripeTeardownResult = {
+    attempted: false,
+    canceledSubscriptions: [],
+    deletedCustomers: [],
+    failures: [],
+  };
+
+  let rows: BillingRow[];
+  try {
+    rows = await runQuery({ userEmail });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[account.delete] Failed to load billing rows", { userEmail, message });
+    result.failures.push(`Could not load billing records: ${message}`);
+    return result;
+  }
+  if (rows.length === 0) return result;
+
+  let secretKey: string;
+  try {
+    secretKey = resolveSecretKey();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[account.delete] Stripe not configured; skipping billing teardown", { userEmail, message });
+    result.failures.push(`Stripe teardown skipped: ${message}`);
+    return result;
+  }
+  result.attempted = true;
+
+  const subscriptionIds = new Set(rows.map((row) => row.stripe_subscription_id).filter(Boolean));
+  for (const subscriptionId of subscriptionIds) {
+    try {
+      await deleteFn(`/subscriptions/${encodeURIComponent(subscriptionId)}`, secretKey);
+      result.canceledSubscriptions.push(subscriptionId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[account.delete] Failed to cancel Stripe subscription", { userEmail, subscriptionId, message });
+      result.failures.push(`Subscription ${subscriptionId}: ${message}`);
+    }
+  }
+
+  const customerIds = new Set(rows.map((row) => row.stripe_customer_id).filter(Boolean));
+  for (const customerId of customerIds) {
+    try {
+      await deleteFn(`/customers/${encodeURIComponent(customerId)}`, secretKey);
+      result.deletedCustomers.push(customerId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[account.delete] Failed to delete Stripe customer", { userEmail, customerId, message });
+      result.failures.push(`Customer ${customerId}: ${message}`);
+    }
+  }
+
+  return result;
+}
+
 /**
  * Public action that orchestrates batched deletion of all user-owned data.
  * This is safe for large accounts because the actual deletes happen inside
@@ -732,6 +877,16 @@ export const deleteMyAccount = action({
       rateLimits: 0,
     };
     const warnings: string[] = [];
+
+    // Cancel Stripe billing BEFORE the local subscription rows are deleted.
+    // Failures are recorded but never abort local deletion.
+    const stripe = await cancelStripeBilling(
+      (queryArgs) => ctx.runQuery(internal.account.listBillingForDeletion, queryArgs),
+      userEmail
+    );
+    for (const failure of stripe.failures) {
+      warnings.push(`Stripe: ${failure}`);
+    }
 
     const phases = ["customers", "tenant", "general", "rateLimits"] as const;
 
@@ -755,6 +910,7 @@ export const deleteMyAccount = action({
       userEmail,
       deletedAt: Date.now(),
       deleted: summary,
+      stripe,
       warnings,
     };
   },
@@ -763,6 +919,22 @@ export const deleteMyAccount = action({
 // ============================================
 // GDPR Data Export
 // ============================================
+
+/** Scheduled 24h after an export upload so the public storage URL stops working. */
+export const deleteExportFile = internalMutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    try {
+      await ctx.storage.delete(args.storageId);
+    } catch (error) {
+      // Already deleted (e.g. account deletion ran first) is fine.
+      console.warn("[account.export] Export file cleanup skipped", {
+        storageId: args.storageId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+});
 
 const EXPORT_BATCH_SIZE = 1000;
 const EXPORT_INLINE_RECORD_LIMIT = 5000;
@@ -925,6 +1097,13 @@ async function collectUserExportData(
   return { data, truncated, totalRecords };
 }
 
+/** Actions have no ctx.db: the export data is collected inside this internal query. */
+export const collectExportDataInternal = internalQuery({
+  args: { userEmail: v.string() },
+  handler: async (ctx, args): Promise<{ data: Record<string, unknown>; truncated: boolean; totalRecords: number }> =>
+    await collectUserExportData(ctx, args.userEmail),
+});
+
 function stripInternalFields(record: any): Record<string, unknown> {
   if (!record || typeof record !== "object") return record;
   const { _id, _creationTime, ...rest } = record;
@@ -936,7 +1115,7 @@ function stripInternalFields(record: any): Record<string, unknown> {
 async function uploadExportToStorage(
   ctx: any,
   payload: Record<string, unknown>
-): Promise<{ url: string; filename: string }> {
+): Promise<{ url: string; filename: string; storageId: Id<"_storage">; expiresAt: number }> {
   const uploadUrl = await ctx.storage.generateUploadUrl();
   const json = JSON.stringify(payload, null, 2);
 
@@ -956,8 +1135,12 @@ async function uploadExportToStorage(
     throw new Error("Failed to generate export download URL");
   }
 
+  // The storage URL is unauthenticated: schedule its removal.
+  const expiresAt = Date.now() + EXPORT_FILE_TTL_MS;
+  await ctx.scheduler.runAfter(EXPORT_FILE_TTL_MS, internal.account.deleteExportFile, { storageId });
+
   const date = new Date().toISOString().split("T")[0];
-  return { url, filename: `chemcheck-gdpr-export-${date}.json` };
+  return { url, filename: `chemcheck-gdpr-export-${date}.json`, storageId, expiresAt };
 }
 
 /**
@@ -972,21 +1155,25 @@ export const exportUserData = action({
   args: {},
   handler: async (ctx): Promise<
     | { type: "inline"; data: Record<string, unknown>; totalRecords: number; truncated: boolean }
-    | { type: "url"; url: string; filename: string; totalRecords: number; truncated: boolean }
+    | { type: "url"; url: string; filename: string; expiresAt: number; totalRecords: number; truncated: boolean }
   > => {
+    // SECURITY: the export (and any download URL) is only ever returned to the
+    // authenticated owner of the data; the URL itself expires after 24 hours.
     const identity = await ctx.auth.getUserIdentity();
     if (!identity || !identity.email) {
       throw new Error("Not authenticated");
     }
 
     const userEmail = identity.email;
-    const { data, truncated, totalRecords } = await collectUserExportData(ctx, userEmail);
+    const { data, truncated, totalRecords } = await ctx.runQuery(internal.account.collectExportDataInternal, {
+      userEmail,
+    });
 
     // If the dataset is large or any table hit the batch cap, stream it through
     // storage so the browser can download it without hitting action size limits.
     if (truncated || totalRecords > EXPORT_INLINE_RECORD_LIMIT) {
-      const { url, filename } = await uploadExportToStorage(ctx, data);
-      return { type: "url", url, filename, totalRecords, truncated };
+      const { url, filename, expiresAt } = await uploadExportToStorage(ctx, data);
+      return { type: "url", url, filename, expiresAt, totalRecords, truncated };
     }
 
     return { type: "inline", data, totalRecords, truncated };

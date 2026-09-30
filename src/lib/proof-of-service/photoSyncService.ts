@@ -6,8 +6,10 @@
  */
 
 import { Id } from '../../../convex/_generated/dataModel';
+import { db as chemcheckDb } from '@/db/chemcheck-db';
 import {
   getPendingPhotos,
+  getFailedPhotos,
   updateSyncStatus,
   getPhotoById,
   getPhotosByServiceLog,
@@ -166,104 +168,100 @@ export function isOnline(): boolean {
   return typeof navigator !== 'undefined' ? navigator.onLine : true;
 }
 
+/**
+ * Photos store the *local* Dexie ids of their customer and service log as
+ * strings. Convex needs the Convex ids, which only exist once those rows have
+ * synced. Returns the Convex ids, or a reason why the photo must wait.
+ */
+export type RemoteRefResolution =
+  | { ok: true; convexCustomerId: string; convexServiceLogId: string }
+  | { ok: false; reason: string };
+
+function isConvexIdLike(value: string): boolean {
+  // Local Dexie ids are integers; anything else is treated as an already
+  // resolved Convex id (e.g. callers that pass server ids directly).
+  return !/^\d+$/.test(value);
+}
+
+async function resolveConvexRef(
+  table: 'customers' | 'serviceLogs',
+  localOrConvexId: string
+): Promise<{ id?: string; reason?: string }> {
+  if (isConvexIdLike(localOrConvexId)) return { id: localOrConvexId };
+
+  const store: any = (chemcheckDb as any)?.[table];
+  if (!store || typeof store.get !== 'function') {
+    return { reason: `Local ${table} table unavailable to resolve id ${localOrConvexId}` };
+  }
+
+  let row: any;
+  try {
+    row = await store.get(Number(localOrConvexId));
+  } catch (error) {
+    return { reason: `Failed to read local ${table} ${localOrConvexId}: ${error instanceof Error ? error.message : 'Unknown error'}` };
+  }
+
+  if (!row) return { reason: `Local ${table} ${localOrConvexId} no longer exists` };
+  if (!row.convex_id) {
+    return { reason: `Local ${table} ${localOrConvexId} has not synced to the server yet` };
+  }
+  return { id: row.convex_id as string };
+}
+
+export async function resolvePhotoRemoteRefs(
+  photo: Pick<OfflinePhotoRecord, 'customerId' | 'serviceLogId'>
+): Promise<RemoteRefResolution> {
+  if (!photo.serviceLogId) {
+    return { ok: false, reason: 'Photo has no associated service log ID' };
+  }
+  const customer = await resolveConvexRef('customers', photo.customerId);
+  if (!customer.id) return { ok: false, reason: customer.reason || 'Customer not synced yet' };
+  const serviceLog = await resolveConvexRef('serviceLogs', photo.serviceLogId);
+  if (!serviceLog.id) return { ok: false, reason: serviceLog.reason || 'Service log not synced yet' };
+  return { ok: true, convexCustomerId: customer.id, convexServiceLogId: serviceLog.id };
+}
+
 // ============================================
 // Single Photo Sync
 // ============================================
 
 /**
- * Upload a single photo to Convex with retry logic
+ * Upload a single photo to Convex with retry logic.
+ *
+ * The photo's customerId/serviceLogId are local Dexie ids; they are resolved
+ * to Convex ids first. If the parent rows have not synced yet the photo is
+ * left 'pending' (not 'failed') with a clear reason so it is retried
+ * automatically once the parents reach the server.
  */
 async function uploadPhotoToConvex(
   photo: OfflinePhotoRecord,
   convexClient: ConvexClient,
   config: SyncServiceConfig
 ): Promise<SyncResult> {
-  // Validate required fields
-  if (!photo.serviceLogId) {
+  const refs = await resolvePhotoRemoteRefs(photo);
+  if (!refs.ok) {
+    if (photo.serviceLogId) {
+      // Keep it pending so the next sync picks it up after the parent syncs.
+      try {
+        await updateSyncStatus(photo.id, 'pending', refs.reason);
+      } catch {
+        // Status is informational; failing to record it must not break sync.
+      }
+    }
     return {
       photoId: photo.id,
       success: false,
-      error: 'Photo has no associated service log ID',
+      error: refs.reason,
     };
   }
 
-  let lastError: string | undefined;
-
-  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
-    try {
-      // Check online status before attempting
-      if (!isOnline()) {
-        return {
-          photoId: photo.id,
-          success: false,
-          error: 'Device is offline',
-        };
-      }
-
-      // Step 1: Generate upload URL
-      const uploadUrl = await convexClient.mutation(
-        'servicePhotos:generateUploadUrl',
-        {}
-      ) as string;
-
-      // Step 2: Upload the photo blob
-      const blob = dataUrlToBlob(photo.dataUrl);
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': blob.type },
-        body: blob,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed with status ${uploadResponse.status}`);
-      }
-
-      const { storageId } = await uploadResponse.json() as { storageId: string };
-
-      // Step 3: Create the photo record in Convex
-      const convexPhotoId = await convexClient.mutation('servicePhotos:uploadPhoto', {
-        service_log_id: photo.serviceLogId as Id<'serviceLogs'>,
-        customer_id: photo.customerId as Id<'customers'>,
-        storage_id: storageId as Id<'_storage'>,
-        category: photo.category,
-        timestamp: photo.timestamp,
-        latitude: photo.latitude ?? undefined,
-        longitude: photo.longitude ?? undefined,
-        accuracy: photo.accuracy ?? undefined,
-      }) as string;
-
-      // Success - update local status
-      await updateSyncStatus(photo.id, 'synced');
-
-      // Optionally delete local copy after successful sync
-      if (config.deleteAfterSync) {
-        await deleteLocalPhoto(photo.id);
-      }
-
-      return {
-        photoId: photo.id,
-        success: true,
-        convexPhotoId,
-      };
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : 'Unknown error';
-      
-      // If we have more retries, wait and try again
-      if (attempt < config.maxRetries) {
-        const delay = calculateRetryDelay(attempt, config);
-        await sleep(delay);
-      }
-    }
-  }
-
-  // All retries exhausted - mark as failed
-  await updateSyncStatus(photo.id, 'failed', lastError);
-
-  return {
-    photoId: photo.id,
-    success: false,
-    error: lastError,
-  };
+  return uploadPhotoToConvexWithIds(
+    photo,
+    refs.convexServiceLogId,
+    refs.convexCustomerId,
+    convexClient,
+    config
+  );
 }
 
 /**
@@ -414,15 +412,11 @@ export async function retrySyncFailedPhotos(
   convexClient: ConvexClient,
   config: Partial<SyncServiceConfig> = {}
 ): Promise<SyncResult[]> {
-  // Get all photos and filter for failed ones
-  const pendingPhotos = await getPendingPhotos();
-  
-  // Reset failed photos to pending status
-  for (const photo of pendingPhotos) {
-    const fullPhoto = await getPhotoById(photo.id);
-    if (fullPhoto?.syncStatus === 'failed') {
-      await updateSyncStatus(photo.id, 'pending');
-    }
+  // Fetch failed photos directly (a 'pending' query can never contain them)
+  // and reset them so the regular pending sync picks them up.
+  const failedPhotos = await getFailedPhotos();
+  for (const photo of failedPhotos) {
+    await updateSyncStatus(photo.id, 'pending');
   }
 
   // Now sync all pending (including the reset failed ones)
@@ -570,21 +564,14 @@ export function isAutoSyncEnabled(): boolean {
 export async function getServiceLogSyncStatus(
   serviceLogId: string
 ): Promise<SyncStatus> {
-  const pendingPhotos = await getPendingPhotos();
-  const serviceLogPhotos = pendingPhotos.filter(
-    (p) => p.serviceLogId === serviceLogId
-  );
-
-  if (serviceLogPhotos.length === 0) {
-    return 'synced';
-  }
-
-  const hasFailedPhotos = serviceLogPhotos.some((p) => p.syncStatus === 'failed');
+  const [pendingPhotos, failedPhotos] = await Promise.all([getPendingPhotos(), getFailedPhotos()]);
+  const hasFailedPhotos = failedPhotos.some((p) => p.serviceLogId === serviceLogId);
   if (hasFailedPhotos) {
     return 'failed';
   }
 
-  return 'pending';
+  const hasPendingPhotos = pendingPhotos.some((p) => p.serviceLogId === serviceLogId);
+  return hasPendingPhotos ? 'pending' : 'synced';
 }
 
 /**

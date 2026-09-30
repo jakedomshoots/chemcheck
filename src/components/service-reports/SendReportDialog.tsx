@@ -325,7 +325,7 @@ export function SendReportDialog({
                     : "Add a personal message for the customer (optional)"
                 }
                 value={customNote}
-                onChange={(e) => handleCustomNoteChange(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleCustomNoteChange(e.target.value)}
                 className={`min-h-[100px] text-sm ${
                   noteValidationError || isOverLimit 
                     ? 'border-[var(--status-critical-line)] focus-visible:ring-red-500' 

@@ -29,8 +29,7 @@
         "noImplicitReturns": false,
         "noFallthroughCasesInSwitch": true,
         "noUncheckedIndexedAccess": false,
-        /* Path Aliases */
-        "baseUrl": ".",
+        /* Path Aliases (resolved relative to this file; baseUrl is removed for TypeScript 6) */
         "paths": {
             "@/*": [
                 "./src/*"
@@ -42,6 +41,12 @@
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,
         "forceConsistentCasingInFileNames": true,
+        /* Ambient type packages. TypeScript 6 no longer auto-includes @types/*, so list them. */
+        "types": [
+            "node",
+            "vitest/globals",
+            "@testing-library/jest-dom/vitest"
+        ],
         /* Skip Type Checking of Declaration Files */
         "skipLibCheck": true
     },

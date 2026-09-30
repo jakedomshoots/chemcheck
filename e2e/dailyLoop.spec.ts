@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { skipLocallyOrFailInCi } from './helpers';
 import { format } from 'date-fns';
 
 async function waitForAuthShellToSettle(page) {
@@ -38,7 +39,7 @@ test.describe('Daily service loop', () => {
     await waitForAuthShellToSettle(page);
     await recoverFromErrorScreen(page);
     if (await isOnLoginRoute(page)) {
-      test.skip(true, 'Auth bypass not enabled; skipping authenticated daily-loop test');
+      skipLocallyOrFailInCi('Auth bypass not enabled; daily-loop test requires an authenticated shell');
     }
     await expect(page.getByRole('heading', { name: /Today's Route/i })).toBeVisible({ timeout: 10000 });
   });

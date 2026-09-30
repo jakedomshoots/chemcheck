@@ -109,7 +109,7 @@ describe('Integration Tests: Data Sync', () => {
       const mockConvexClient = { mutation: vi.fn(), query: vi.fn() };
       
       try {
-        syncService.initialize(mockConvexClient);
+        syncService.initialize(mockConvexClient as any);
         
         // Simulate going offline
         Object.defineProperty(navigator, 'onLine', { value: false, writable: true });
@@ -133,7 +133,7 @@ describe('Integration Tests: Data Sync', () => {
       const mockConvexClient = { mutation: vi.fn(), query: vi.fn() };
       
       try {
-        syncService.initialize(mockConvexClient);
+        syncService.initialize(mockConvexClient as any);
         
         // Attempt sync while offline - should throw error
         await expect(syncService.syncNow()).rejects.toThrow('Cannot sync while offline');
@@ -150,7 +150,7 @@ describe('Integration Tests: Data Sync', () => {
       const mockConvexClient = { mutation: vi.fn(), query: vi.fn() };
       
       try {
-        syncService.initialize(mockConvexClient);
+        syncService.initialize(mockConvexClient as any);
         
         // Simulate going offline then online
         Object.defineProperty(navigator, 'onLine', { value: false, writable: true });
@@ -179,7 +179,7 @@ describe('Integration Tests: Data Sync', () => {
       try {
         // Start offline
         Object.defineProperty(navigator, 'onLine', { value: false, writable: true });
-        syncService.initialize(mockConvexClient);
+        syncService.initialize(mockConvexClient as any);
         
         // Mock database to return pending record
         const { db } = await import('@/db/chemcheck-db');

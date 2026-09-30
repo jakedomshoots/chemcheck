@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
+import { NOT_DELETED_FILTER } from "./sync";
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
@@ -47,6 +48,7 @@ export const list = query({
         const noteQuery = ctx.db
             .query("notes")
             .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+            .filter(NOT_DELETED_FILTER)
             .order(sortOrder);
 
         return await noteQuery.paginate({
@@ -85,7 +87,8 @@ export const filter = query({
 
         let noteQuery = ctx.db
             .query("notes")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!));
+            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+            .filter(NOT_DELETED_FILTER);
 
         if (args.customer_id !== undefined) {
             noteQuery = noteQuery.filter((q) => q.eq(q.field("customer_id"), args.customer_id!));
@@ -124,6 +127,7 @@ export const getByCustomer = query({
         return await ctx.db
             .query("notes")
             .withIndex("by_customer", (q) => q.eq("customer_id", args.customer_id))
+            .filter(NOT_DELETED_FILTER)
             .order("desc")
             .paginate({
                 cursor: args.cursor || null,
@@ -201,7 +205,7 @@ export const update = mutation({
 
         // Verify note access (tenant isolation)
         const note = await ctx.db.get(args.id);
-        if (!note) throw new Error("Note not found");
+        if (!note || note.deleted_at !== undefined) throw new Error("Note not found");
 
         // SECURITY: Verify ownership - check both customer-linked and general notes
         if (note.customer_id) {
@@ -252,6 +256,8 @@ export const remove = mutation({
             }
         }
 
-        await ctx.db.delete(args.id);
+        // Tombstone instead of hard delete so offline devices drop the row on pull.
+        const now = Date.now();
+        await ctx.db.patch(args.id, { deleted_at: now, updated_at: now });
     },
 });

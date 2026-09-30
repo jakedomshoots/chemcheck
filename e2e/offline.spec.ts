@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { skipLocallyOrFailInCi } from './helpers';
 
 async function waitForAuthShellToSettle(page) {
   await page.waitForLoadState('domcontentloaded');
@@ -59,7 +60,7 @@ test.describe('Offline resilience', () => {
     await recoverFromErrorScreen(page);
 
     if (await isOnLoginRoute(page)) {
-      test.skip(true, 'Auth bypass not enabled; skipping offline test');
+      skipLocallyOrFailInCi('Auth bypass not enabled; offline test requires an authenticated shell');
     }
 
     await expect(page.getByRole('heading', { name: /Today's Route/i })).toBeVisible();

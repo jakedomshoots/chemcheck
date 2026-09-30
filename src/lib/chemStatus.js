@@ -12,17 +12,19 @@
 
 export const CHEMICAL_CONFIGS = {
   ph: {
-    min: 6.8,
-    max: 8.2,
+    // Input bounds are wider than the ideal range so an out-of-range reading
+    // can actually be recorded (and flagged) instead of being clamped.
+    min: 6.0,
+    max: 9.0,
     step: 0.1,
     unit: '',
-    hint: 'Ideal range: 6.8-8.2',
+    hint: 'Ideal range: 7.2-7.8',
     ranges: [
-      { status: 'critical', min: -Infinity, max: 6.8 },
-      { status: 'low', min: 6.8, max: 7.2 },
+      { status: 'critical', min: -Infinity, max: 7.0 },
+      { status: 'low', min: 7.0, max: 7.2 },
       { status: 'good', min: 7.2, max: 7.8 },
-      { status: 'high', min: 7.8, max: 8.2 },
-      { status: 'critical', min: 8.2, max: Infinity },
+      { status: 'high', min: 7.8, max: 8.0 },
+      { status: 'critical', min: 8.0, max: Infinity },
     ],
   },
   chlorine: {
@@ -40,17 +42,17 @@ export const CHEMICAL_CONFIGS = {
     ],
   },
   alkalinity: {
-    min: 80,
-    max: 120,
+    min: 0,
+    max: 300,
     step: 1,
     unit: 'ppm',
     hint: 'Ideal range: 80-120 ppm',
     ranges: [
-      { status: 'critical', min: -Infinity, max: 80 },
-      { status: 'low', min: 80, max: 100 },
-      { status: 'good', min: 100, max: 120 },
-      { status: 'high', min: 120, max: 200 },
-      { status: 'critical', min: 200, max: Infinity },
+      { status: 'critical', min: -Infinity, max: 60 },
+      { status: 'low', min: 60, max: 80 },
+      { status: 'good', min: 80, max: 121 },
+      { status: 'high', min: 121, max: 141 },
+      { status: 'critical', min: 141, max: Infinity },
     ],
   },
   stabilizer: {

@@ -1,3 +1,6 @@
+
+/** Mirrors DEFAULT_BUSINESS_NAME in convex/serviceReports.ts; keep in sync. */
+export const DEFAULT_BUSINESS_NAME = 'Your pool service provider';
 /**
  * Email Preview Utility
  * 
@@ -91,7 +94,7 @@ export function createSafeEmailFields(params: {
     customerName: escapeHtml(params.customerName || 'Valued Customer'),
     serviceDate: escapeHtml(params.serviceDate || 'Unknown Date'),
     customNote: escapeHtml(params.customNote || ''),
-    businessName: escapeHtml(params.businessName || 'Dominick Pool Solutions'),
+    businessName: escapeHtml(params.businessName || DEFAULT_BUSINESS_NAME),
     reportLink: escapeUrlForHtml(params.reportLink),
   };
 }
@@ -145,8 +148,8 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const safeReportLink = safeFields.reportLink;
   
   // Use provided business name or default
-  const businessName = inputBusinessName || "Dominick Pool Solutions";
-  const footerText = "This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions";
+  const businessName = inputBusinessName || DEFAULT_BUSINESS_NAME;
+  const footerText = "This email is powered by ChemCheck Pool Software";
   
   // Subject line: sanitize to prevent email header injection, use unescaped values (plain text)
   const sanitizedServiceDate = sanitizeForSubject(serviceDate);

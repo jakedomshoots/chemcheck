@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { exportUserData, deleteAllUserData, getDataRetentionSummary } from './gdpr';
+import { exportUserData, deleteAllUserData, clearLocalDeviceData, deleteAccountAndAllData, getDataRetentionSummary } from './gdpr';
 
 // Mock the database
 vi.mock('@/db/chemcheck-db', () => ({
@@ -26,6 +26,14 @@ vi.mock('@/db/chemcheck-db', () => ({
     },
     transaction: vi.fn((mode, tables, callback) => callback()),
   },
+}));
+
+const convexActionMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/convexClient', () => ({
+  getSharedConvexClient: () => ({ action: convexActionMock }),
+}));
+vi.mock('../../convex/_generated/api', () => ({
+  api: { account: { deleteMyAccount: 'account:deleteMyAccount', exportUserData: 'account:exportUserData' } },
 }));
 
 // Import the mocked db
@@ -93,6 +101,51 @@ describe('GDPR Utilities', () => {
       expect(db.serviceLogs.clear).toHaveBeenCalled();
       expect(db.chemicalUsage.clear).toHaveBeenCalled();
       expect(db.notes.clear).toHaveBeenCalled();
+    });
+  });
+
+  describe('clearLocalDeviceData / deleteAccountAndAllData', () => {
+    beforeEach(() => {
+      localStorage.clear();
+      convexActionMock.mockReset();
+      vi.mocked(db.customers.count).mockResolvedValue(1);
+      vi.mocked(db.serviceLogs.count).mockResolvedValue(1);
+      vi.mocked(db.chemicalUsage.count).mockResolvedValue(1);
+      vi.mocked(db.notes.count).mockResolvedValue(1);
+    });
+
+    it('clears only this device and keeps the analytics opt-out', async () => {
+      localStorage.setItem('chemcheck_current_user', '{}');
+      localStorage.setItem('emergencyBackup.abc', '{}');
+      localStorage.setItem('analytics_opt_out', 'true');
+      const result = await clearLocalDeviceData();
+      expect(result.success).toBe(true);
+      expect(convexActionMock).not.toHaveBeenCalled();
+      expect(localStorage.getItem('chemcheck_current_user')).toBeNull();
+      expect(localStorage.getItem('emergencyBackup.abc')).toBeNull();
+      expect(localStorage.getItem('analytics_opt_out')).toBe('true');
+      expect(deleteAllUserData).toBe(clearLocalDeviceData);
+    });
+
+    it('deletes the cloud account through Convex before clearing local data', async () => {
+      const order: string[] = [];
+      convexActionMock.mockImplementation(async () => { order.push('cloud'); return { customers: 3 }; });
+      vi.mocked(db.customers.clear).mockImplementation((async () => { order.push('local'); }) as never);
+
+      const result = await deleteAccountAndAllData();
+
+      expect(convexActionMock).toHaveBeenCalledWith('account:deleteMyAccount', {});
+      expect(result.cloud).toEqual({ customers: 3 });
+      expect(result.local.success).toBe(true);
+      expect(order).toEqual(['cloud', 'local']);
+    });
+
+    it('does not touch local data when the cloud deletion fails', async () => {
+      vi.mocked(db.customers.clear).mockClear();
+      await expect(deleteAccountAndAllData({
+        deleteCloudAccount: async () => { throw new Error('Not authenticated'); },
+      })).rejects.toThrow('Not authenticated');
+      expect(db.customers.clear).not.toHaveBeenCalled();
     });
   });
 

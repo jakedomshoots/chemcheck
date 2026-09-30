@@ -1,7 +1,9 @@
+/// <reference types="node" />
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { fetchProvider, requireStripeConfig } from "./providerConfig";
+import { findOwnedBusiness, resolveBusinessForEmail } from "./entitlements";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const DEFAULT_BATCH_SIZE = 100;
@@ -58,24 +60,13 @@ async function stripeRequest(path: string, secretKey: string, form?: URLSearchPa
   return data;
 }
 
+// Ownership first, then active (accepted) team membership.
 async function currentBusiness(ctx: any, email: string) {
-  const membership = await ctx.db
-    .query("team_members")
-    .withIndex("by_user_email", (q: any) => q.eq("user_email", email))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .first();
-  if (membership) return await ctx.db.get(membership.business_id);
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", email))
-    .first();
+  return await resolveBusinessForEmail(ctx, email);
 }
 
 async function ownedBusiness(ctx: any, email: string) {
-  return await ctx.db
-    .query("businesses")
-    .withIndex("by_owner_email", (q: any) => q.eq("owner_email", email))
-    .first();
+  return await findOwnedBusiness(ctx, email);
 }
 
 export const get = query({
@@ -164,19 +155,18 @@ export const updateStatus = internalMutation({
   },
 });
 
-/** Staged, resumable migration. Missing businesses are reported, never created. */
-export const backfillBusinessId = mutation({
+/**
+ * Staged, resumable migration. Missing businesses are reported, never created.
+ * SECURITY: internal-only (run from the Convex dashboard); it touches every
+ * tenant's subscription rows.
+ */
+export const backfillBusinessId = internalMutation({
   args: {
     cursor: v.optional(v.string()),
     batch_size: v.optional(v.number()),
     dry_run: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity?.email) throw new Error("Not authenticated");
-    if (!await ownedBusiness(ctx, identity.email)) {
-      throw new Error("Only business owners can run the subscription migration.");
-    }
     const page = await ctx.db.query("subscriptions").paginate({
       cursor: args.cursor ?? null,
       numItems: Math.max(1, Math.min(args.batch_size ?? DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE)),
@@ -309,10 +299,23 @@ export const checkLimit = query({
     const limit = limits[args.limitType];
     let current = 0;
     if (args.limitType === "customers") {
-      current = (await ctx.db
+      // Bounded: we only need to know whether the count reaches the limit,
+      // so read at most limit + 1 rows (capped for unlimited plans).
+      const UNLIMITED_COUNT_CAP = 1000;
+      const cap = limit === -1 ? UNLIMITED_COUNT_CAP : limit + 1;
+      const byBusiness = await ctx.db
         .query("customers")
         .withIndex("by_business", (q) => q.eq("business_id", String(business._id)))
-        .collect()).length;
+        .take(cap);
+      current = byBusiness.length;
+      if (current < cap) {
+        // Legacy customers created before business_id existed.
+        const legacy = await ctx.db
+          .query("customers")
+          .withIndex("by_created_by", (q) => q.eq("created_by", business.owner_email))
+          .take(cap - current);
+        current += legacy.filter((customer) => !customer.business_id).length;
+      }
     }
     return { allowed: limit === -1 || current < limit, current, limit: limit === -1 ? Infinity : limit };
   },

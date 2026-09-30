@@ -20,16 +20,39 @@ const env = {
   iosSimulatorBypassEnabled: toBoolean(import.meta.env.VITE_IOS_SIM_AUTH_BYPASS),
   // Optional hard-disable for any auth bypass in shared environments.
   bypassDisabled: toBoolean(import.meta.env.VITE_DISABLE_AUTH_BYPASS),
-  // Optional explicit opt-in for localhost auth bypass to keep intent clear.
-  localhostBypassEnabled:
-    import.meta.env.VITE_ENABLE_LOCALHOST_AUTH_BYPASS === undefined
-      ? true
-      : toBoolean(import.meta.env.VITE_ENABLE_LOCALHOST_AUTH_BYPASS),
+  // Explicit opt-in for localhost auth bypass (default off).
+  localhostBypassEnabled: toBoolean(import.meta.env.VITE_ENABLE_LOCALHOST_AUTH_BYPASS),
   // Explicit opt-in for testing from a phone on the same private network.
   localNetworkBypassEnabled: toBoolean(import.meta.env.VITE_ENABLE_LOCAL_NETWORK_AUTH_BYPASS),
   enableServiceWorkerInDev: toBoolean(import.meta.env.VITE_ENABLE_SERVICE_WORKER_DEV),
   disableServiceWorker: toBoolean(import.meta.env.VITE_DISABLE_SERVICE_WORKER)
 };
+
+/**
+ * Hard guard: an auth bypass flag must never reach a production build. Failing
+ * at module load is deliberate so a misconfigured deploy cannot boot with
+ * authentication disabled.
+ */
+export function assertNoAuthBypassInProduction(policy: {
+  isProd: boolean;
+  iosSimulatorBypassEnabled: boolean;
+  localhostBypassEnabled: boolean;
+  localNetworkBypassEnabled: boolean;
+}): void {
+  if (!policy.isProd) return;
+  const enabled = [
+    policy.iosSimulatorBypassEnabled && 'VITE_IOS_SIM_AUTH_BYPASS',
+    policy.localhostBypassEnabled && 'VITE_ENABLE_LOCALHOST_AUTH_BYPASS',
+    policy.localNetworkBypassEnabled && 'VITE_ENABLE_LOCAL_NETWORK_AUTH_BYPASS',
+  ].filter((flag): flag is string => typeof flag === 'string');
+  if (enabled.length > 0) {
+    throw new Error(
+      `[AuthPolicy] Auth bypass flags are not allowed in production builds: ${enabled.join(', ')}. Remove them from the production environment.`
+    );
+  }
+}
+
+assertNoAuthBypassInProduction(env);
 
 const isBrowser = () => typeof window !== 'undefined';
 const getHostname = () => (isBrowser() ? window.location.hostname : '');

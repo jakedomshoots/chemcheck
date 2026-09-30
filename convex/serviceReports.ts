@@ -9,14 +9,20 @@
  * Requirements: 2.4, 2.5, 2.6, 2.7, 2.8, 3.1, 5.3
  */
 
+/// <reference types="node" />
 import { v } from "convex/values";
 import { query, mutation, action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isDeliverableEmailForReports } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
+import { canAccessCustomerRecord } from "./entitlements";
+import { recipientMatchesCustomer } from "./communications";
 
 export const REPORT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Neutral fallback when a business has no name on file. */
+export const DEFAULT_BUSINESS_NAME = "Your pool service provider";
 
 export function isReportExpired(expiresAt: number | undefined, now = Date.now()): boolean {
   return expiresAt === undefined || now >= expiresAt;
@@ -36,12 +42,29 @@ async function verifyServiceLogOwnership(
   }
 
   const customer = await ctx.db.get(serviceLog.customer_id);
-  if (!customer || customer.created_by !== userEmail) {
+  // Team collaboration: the caller's own customers, or customers of the
+  // caller's business (same business only).
+  if (!customer || !(await canAccessCustomerRecord(ctx, customer, userEmail))) {
     throw new Error("Access denied");
   }
 
   return { serviceLog, customer };
 }
+
+/**
+ * Actions have no ctx.db, so sendReport authorizes through this internal
+ * query before touching any report data.
+ */
+export const verifyServiceLogOwnershipInternal = internalQuery({
+  args: {
+    service_log_id: v.id("serviceLogs"),
+    user_email: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ ok: true }> => {
+    await verifyServiceLogOwnership(ctx, args.service_log_id, args.user_email);
+    return { ok: true };
+  },
+});
 
 /**
  * Generate a unique report token using crypto.randomUUID
@@ -256,7 +279,7 @@ export const cleanupExpiredReportsAndLogs = internalMutation({
     while (true) {
       const expiredReports = await ctx.db
         .query("serviceReports")
-        .withIndex("by_expires_at", (q) => q.lt(q.field("expires_at"), now))
+        .withIndex("by_expires_at", (q) => q.lt("expires_at", now))
         .take(BATCH_SIZE);
 
       if (expiredReports.length === 0) break;
@@ -272,7 +295,7 @@ export const cleanupExpiredReportsAndLogs = internalMutation({
     while (true) {
       const oldLogs = await ctx.db
         .query("reportAccessLogs")
-        .withIndex("by_accessed_at", (q) => q.lt(q.field("accessed_at"), cutoff))
+        .withIndex("by_accessed_at", (q) => q.lt("accessed_at", cutoff))
         .take(BATCH_SIZE);
 
       if (oldLogs.length === 0) break;
@@ -323,7 +346,11 @@ export const sendReport = action({
     const poolStatusOverride = args.pool_status as "good" | "needs_attention" | undefined;
     const recipientEmailOverride = args.recipient_email?.trim();
 
-    await verifyServiceLogOwnership(ctx, args.service_log_id, identity.email);
+    // SECURITY: authorize before any report lookup/creation (actions have no ctx.db).
+    await ctx.runQuery(internal.serviceReports.verifyServiceLogOwnershipInternal, {
+      service_log_id: args.service_log_id,
+      user_email: identity.email,
+    });
 
     // Get the service log and customer data
     const serviceLog = await ctx.runQuery(internal.serviceReports.getServiceLogWithCustomer, {
@@ -353,8 +380,23 @@ export const sendReport = action({
       };
     }
 
+    // SECURITY: an email override may only equal the customer's stored email.
+    if (
+      deliveryMethod === 'email' &&
+      recipientEmailOverride &&
+      !recipientMatchesCustomer("email", recipientEmailOverride, serviceLog.customer)
+    ) {
+      return {
+        success: false,
+        error: "Recipient email must match the email address stored on the customer record. Update the customer's email first.",
+      };
+    }
+
+    // SECURITY: outbound quota (30/hour, 200/day per user).
+    await ctx.runMutation(internal.rateLimit.consumeCommunicationQuota, { userId: identity.email });
+
     // Get or create the report
-    const report = await ctx.runMutation(internal.serviceReports.getOrCreateReportInternal, {
+    const report: any = await ctx.runMutation(internal.serviceReports.getOrCreateReportInternal, {
       service_log_id: args.service_log_id,
       customer_id: serviceLog.customer._id,
     });
@@ -383,7 +425,7 @@ export const sendReport = action({
 
     // Determine overall pool status - use override if provided, otherwise calculate from readings
     const overallStatus = poolStatusOverride || determinePoolStatus(serviceLog);
-    const businessName = serviceLog.business?.name || "Dominick Pool Solutions";
+    const businessName = serviceLog.business?.name || DEFAULT_BUSINESS_NAME;
     const serviceDate = formatServiceDate(serviceLog.service_date);
 
     if (deliveryMethod === 'sms') {
@@ -498,7 +540,7 @@ export const getOrCreateReportInternal = internalMutation({
         await ctx.db.patch(existingReport._id, { report_token, expires_at });
         return { ...existingReport, report_token, expires_at, rotated: true };
       }
-      return existingReport;
+      return { ...existingReport, rotated: false };
     }
 
     // Generate unique token with collision checking (consistent with generateUniqueToken)
@@ -529,6 +571,7 @@ export const getOrCreateReportInternal = internalMutation({
       sent_at: undefined as number | undefined,
       sent_to_phone: undefined as string | undefined,
       send_count: undefined as number | undefined,
+      rotated: false,
     };
   },
 });
@@ -602,7 +645,7 @@ export function createSafeEmailFields(params: {
     customerName: escapeHtml(params.customerName || 'Valued Customer'),
     serviceDate: escapeHtml(params.serviceDate || 'Unknown Date'),
     customNote: escapeHtml(params.customNote || ''),
-    businessName: escapeHtml(params.businessName || 'Dominick Pool Solutions'),
+    businessName: escapeHtml(params.businessName || DEFAULT_BUSINESS_NAME),
     reportLink: escapeUrlForHtml(params.reportLink),
   };
 }
@@ -696,8 +739,8 @@ export function generateSimpleEmailContent(params: EmailContentParams): Generate
   const safeReportLink = safeFields.reportLink;
 
   // Use provided business name or default (unescaped for text content)
-  const businessName = inputBusinessName || "Dominick Pool Solutions";
-  const footerText = "This email is powered by ChemCheck Pool Software built by Dominick Pool Solutions";
+  const businessName = inputBusinessName || DEFAULT_BUSINESS_NAME;
+  const footerText = "This email is powered by ChemCheck Pool Software";
 
   // Subject line: sanitize to prevent email header injection, use unescaped values (plain text)
   const sanitizedServiceDate = sanitizeForSubject(serviceDate);
@@ -1285,33 +1328,29 @@ export const logReportAccess = internalMutation({
   },
 });
 
-function resolveReportAccessRateLimitKey(
-  ipAddress: string | undefined,
-  reportToken: string
-): string {
-  // Never use a single global key such as the old PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY.
-  // Prefer IP-based limiting, and fall back to a per-token key so a missing IP
-  // cannot exhaust a shared global pool.
-  if (ipAddress && ipAddress.trim().length > 0) {
-    return `report_access:ip:${ipAddress.trim()}`;
-  }
+/** Public report access limiter: per report token only (client cannot influence the key). */
+const REPORT_ACCESS_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REPORT_ACCESS_MAX_REQUESTS = 60;          // 60 per hour per token
+
+function resolveReportAccessRateLimitKey(reportToken: string): string {
+  // Keyed by token only. Client-supplied IP / user agent were removed because
+  // an attacker could rotate them to escape the limiter. Never use a single
+  // global key such as the old PUBLIC_REPORT_ACCESS_RATE_LIMIT_KEY.
   return `report_access:token:${reportToken}`;
 }
 
 /**
  * Internal query to check rate limit for report access
- * Returns whether access should be allowed based on IP-based rate limiting
  */
 export const checkReportAccessRateLimit = internalQuery({
   args: {
-    ip_address: v.optional(v.string()),
     report_token: v.string(),
   },
   handler: async (ctx, args) => {
-    const key = resolveReportAccessRateLimitKey(args.ip_address, args.report_token);
+    const key = resolveReportAccessRateLimitKey(args.report_token);
     const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute window
-    const maxRequests = 30; // 30 requests per minute per IP
+    const windowMs = REPORT_ACCESS_WINDOW_MS;
+    const maxRequests = REPORT_ACCESS_MAX_REQUESTS;
 
     const existing = await ctx.db
       .query("rateLimits")
@@ -1333,7 +1372,7 @@ export const checkReportAccessRateLimit = internalQuery({
         allowed: false,
         remaining: 0,
         reset_time: existing.reset_time,
-        error: "Too many requests. Please try again in a minute."
+        error: "Too many requests. Please try again later."
       };
     }
 
@@ -1346,13 +1385,12 @@ export const checkReportAccessRateLimit = internalQuery({
  */
 export const updateReportAccessRateLimit = internalMutation({
   args: {
-    ip_address: v.optional(v.string()),
     report_token: v.string(),
   },
   handler: async (ctx, args) => {
-    const key = resolveReportAccessRateLimitKey(args.ip_address, args.report_token);
+    const key = resolveReportAccessRateLimitKey(args.report_token);
     const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute window
+    const windowMs = REPORT_ACCESS_WINDOW_MS;
 
     const existing = await ctx.db
       .query("rateLimits")
@@ -1386,6 +1424,80 @@ export const updateReportAccessRateLimit = internalMutation({
   },
 });
 
+// ============================================
+// Public report visibility (report_settings enforced server-side)
+// ============================================
+
+export type ReportSettings = {
+  show_chemical_readings: boolean;
+  show_photos: boolean;
+  show_service_notes: boolean;
+  show_technician_name: boolean;
+  show_service_duration: boolean;
+  show_overall_status: boolean;
+};
+
+export const DEFAULT_REPORT_SETTINGS: ReportSettings = {
+  show_chemical_readings: true,
+  show_photos: true,
+  show_service_notes: true,
+  show_technician_name: true,
+  show_service_duration: true,
+  show_overall_status: true,
+};
+
+export type PublicReportPhoto = { id: string; category: string; timestamp: string; url: string | null };
+
+export type PublicReport = {
+  businessName: string;
+  serviceDate: string;
+  technicianName: string;
+  customerName: string;
+  chemicalReadings: {
+    ph: string | null;
+    chlorine: string | null;
+    alkalinity: string | null;
+    stabilizer: string | null;
+    salt: number | null;
+  } | null;
+  notes: string | null;
+  overallStatus: "good" | "needs_attention" | null;
+  photos: {
+    before: PublicReportPhoto[];
+    after: PublicReportPhoto[];
+  };
+  serviceDuration: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  settings: ReportSettings;
+};
+
+/** Merge stored settings with defaults (missing settings mean "show"). */
+export function resolveReportSettings(settings: Partial<ReportSettings> | null | undefined): ReportSettings {
+  return { ...DEFAULT_REPORT_SETTINGS, ...(settings || {}) };
+}
+
+/**
+ * SECURITY: strip everything the customer's report_settings hide BEFORE the
+ * payload leaves the server. The response shape stays identical: hidden
+ * sections become null / empty so the public page can still render.
+ */
+export function applyReportSettings(report: PublicReport): PublicReport {
+  const settings = resolveReportSettings(report.settings);
+  return {
+    ...report,
+    settings,
+    chemicalReadings: settings.show_chemical_readings ? report.chemicalReadings : null,
+    photos: settings.show_photos ? report.photos : { before: [], after: [] },
+    notes: settings.show_service_notes ? report.notes : null,
+    technicianName: settings.show_technician_name ? report.technicianName : "",
+    serviceDuration: settings.show_service_duration ? report.serviceDuration : null,
+    startTime: settings.show_service_duration ? report.startTime : null,
+    endTime: settings.show_service_duration ? report.endTime : null,
+    overallStatus: settings.show_overall_status ? report.overallStatus : null,
+  };
+}
+
 /**
  * Get a service report by token for the public report page
  * 
@@ -1393,9 +1505,10 @@ export const updateReportAccessRateLimit = internalMutation({
  * to view their service reports via the link sent in SMS.
  * 
  * SECURITY FEATURES:
- * - Rate limiting: 30 requests per minute per IP
+ * - Rate limiting: 60 requests per hour per report token (server-keyed)
  * - Token expiration: Reports expire 30 days after creation
  * - Audit logging: All access attempts are logged
+ * - Visibility: the customer's report_settings are enforced server-side
  * 
  * Returns all data needed for the public report page:
  * - Service date and technician name
@@ -1408,49 +1521,17 @@ export const updateReportAccessRateLimit = internalMutation({
 export const getReportByToken = action({
   args: {
     token: v.string(),
-    ip_address: v.optional(v.string()),
-    user_agent: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{
     found: boolean;
     error?: string;
     rate_limited?: boolean;
     failure_reason?: string;
-    report?: {
-      businessName: string;
-      serviceDate: string;
-      technicianName: string;
-      customerName: string;
-      chemicalReadings: {
-        ph: string | null;
-        chlorine: string | null;
-        alkalinity: string | null;
-        stabilizer: string | null;
-        salt: number | null;
-      };
-      notes: string | null;
-      overallStatus: "good" | "needs_attention";
-      photos: {
-        before: Array<{ id: string; category: string; timestamp: string; url: string | null }>;
-        after: Array<{ id: string; category: string; timestamp: string; url: string | null }>;
-      };
-      serviceDuration: number | null;
-      startTime: string | null;
-      endTime: string | null;
-      settings: {
-        show_chemical_readings: boolean;
-        show_photos: boolean;
-        show_service_notes: boolean;
-        show_technician_name: boolean;
-        show_service_duration: boolean;
-        show_overall_status: boolean;
-      };
-    };
+    report?: PublicReport;
   }> => {
-    // SECURITY: Check rate limit for this IP/token
+    // SECURITY: per-token rate limit (60/hour). No client-supplied IP/UA.
     const rateLimitCheck: { allowed: boolean; remaining: number; reset_time: number; error?: string } =
       await ctx.runQuery(internal.serviceReports.checkReportAccessRateLimit, {
-        ip_address: args.ip_address,
         report_token: args.token,
       });
 
@@ -1458,8 +1539,6 @@ export const getReportByToken = action({
       // Log rate-limited access attempt
       await ctx.runMutation(internal.serviceReports.logReportAccess, {
         report_token: args.token,
-        ip_address: args.ip_address,
-        user_agent: args.user_agent,
         success: false,
         failure_reason: "rate_limited",
       });
@@ -1473,11 +1552,10 @@ export const getReportByToken = action({
 
     // Update rate limit counter
     await ctx.runMutation(internal.serviceReports.updateReportAccessRateLimit, {
-      ip_address: args.ip_address,
       report_token: args.token,
     });
 
-    // Get the report data
+    // Get the report data (already filtered by the customer's report_settings)
     const result: any = await ctx.runQuery(internal.serviceReports.getReportByTokenInternal, {
       token: args.token,
     });
@@ -1485,8 +1563,6 @@ export const getReportByToken = action({
     // Log the access attempt
     await ctx.runMutation(internal.serviceReports.logReportAccess, {
       report_token: args.token,
-      ip_address: args.ip_address,
-      user_agent: args.user_agent,
       success: result.found,
       failure_reason: result.found ? undefined : result.failure_reason,
     });
@@ -1591,39 +1667,35 @@ export const getReportByTokenInternal = internalQuery({
         : customer.created_by
     );
 
+    const fullReport: PublicReport = {
+      businessName: business?.name || DEFAULT_BUSINESS_NAME,
+      serviceDate: serviceLog.service_date,
+      technicianName,
+      customerName: customer.full_name,
+      chemicalReadings: {
+        ph: serviceLog.ph ?? null,
+        chlorine: serviceLog.chlorine ?? null,
+        alkalinity: serviceLog.alkalinity ?? null,
+        stabilizer: serviceLog.stabilizer ?? null,
+        salt: serviceLog.salt ?? null,
+      },
+      notes: serviceLog.notes ?? null,
+      overallStatus,
+      photos: {
+        before: beforePhotos,
+        after: afterPhotos,
+      },
+      serviceDuration: serviceLog.duration_ms ?? null,
+      startTime: serviceLog.start_time ?? null,
+      endTime: serviceLog.end_time ?? null,
+      // Customer's report customization settings (defaults: show everything)
+      settings: resolveReportSettings(customer.report_settings),
+    };
+
+    // SECURITY: enforce report_settings server-side, never trust the client to hide sections.
     return {
       found: true,
-      report: {
-        businessName: business?.name || "Dominick Pool Solutions",
-        serviceDate: serviceLog.service_date,
-        technicianName,
-        customerName: customer.full_name,
-        chemicalReadings: {
-          ph: serviceLog.ph,
-          chlorine: serviceLog.chlorine,
-          alkalinity: serviceLog.alkalinity,
-          stabilizer: serviceLog.stabilizer,
-          salt: serviceLog.salt,
-        },
-        notes: serviceLog.notes,
-        overallStatus,
-        photos: {
-          before: beforePhotos,
-          after: afterPhotos,
-        },
-        serviceDuration: serviceLog.duration_ms,
-        startTime: serviceLog.start_time,
-        endTime: serviceLog.end_time,
-        // Include customer's report customization settings
-        settings: customer.report_settings || {
-          show_chemical_readings: true,
-          show_photos: true,
-          show_service_notes: true,
-          show_technician_name: true,
-          show_service_duration: true,
-          show_overall_status: true,
-        },
-      },
+      report: applyReportSettings(fullReport),
     };
   },
 });

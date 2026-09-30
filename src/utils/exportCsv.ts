@@ -22,11 +22,12 @@ function escapeCsvValue(value: unknown): string {
     return str;
 }
 
-function arrayToCsv<T extends Record<string, unknown>>(data: T[], headers: string[]): string {
+function arrayToCsv<T extends object>(data: T[], headers: string[]): string {
     const headerRow = headers.join(',');
-    const dataRows = data.map(row =>
-        headers.map(header => escapeCsvValue(row[header])).join(',')
-    );
+    const dataRows = data.map(row => {
+        const record = row as Record<string, unknown>;
+        return headers.map(header => escapeCsvValue(record[header])).join(',');
+    });
     return [headerRow, ...dataRows].join('\n');
 }
 

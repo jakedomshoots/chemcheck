@@ -42,9 +42,11 @@ describe("security regression boundaries", () => {
   it("does not fail open unauthenticated photo upload when production env is missing", () => {
     const contents = source("convex/servicePhotos.ts");
 
-    expect(contents).toContain('process.env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true"');
-    expect(contents).not.toMatch(/CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD[\s\S]+?\|\|[\s\S]+?runtimeEnv !== "production"/);
-    expect(contents).toMatch(/CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD[\s\S]+?&&[\s\S]+?runtimeEnv !== "production"/);
+    expect(contents).toContain('env.CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD === "true"');
+    expect(contents).not.toMatch(/CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD[\s\S]+?\|\|[\s\S]+?runtimeEnv/);
+    // An unset NODE_ENV must not enable the bypass: only an explicit development runtime does.
+    expect(contents).not.toMatch(/runtimeEnv !== "production"/);
+    expect(contents).toMatch(/CHEMCHECK_ALLOW_UNAUTH_PHOTO_UPLOAD[\s\S]+?&&[\s\S]+?runtimeEnv === "development"/);
   });
 
   it("always consumes a server-side public report limiter key", () => {

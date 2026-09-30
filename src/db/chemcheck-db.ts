@@ -1,5 +1,27 @@
 import Dexie, { Table } from 'dexie';
 
+/**
+ * Report a database lifecycle problem to monitoring without creating an import
+ * cycle (monitoring is loaded lazily and failures there are swallowed).
+ */
+function reportDbIssue(message: string, cause: unknown, severity: 'low' | 'medium' | 'high' | 'critical'): void {
+    import('@/lib/monitoring')
+        .then(({ monitoring }) => {
+            monitoring.reportError({
+                message,
+                severity,
+                stack: cause instanceof Error ? cause.stack : undefined,
+                metadata: {
+                    source: 'chemcheck-db',
+                    cause: cause instanceof Error ? cause.message : String(cause ?? ''),
+                },
+            });
+        })
+        .catch(() => {
+            // Monitoring is best effort.
+        });
+}
+
 export interface SyncableRecord {
     convex_id?: string;
     sync_status: 'synced' | 'pending' | 'error';
@@ -235,31 +257,95 @@ export class ChemCheckDB extends Dexie {
             notes: '++id, customer_id, pool_id, completed, created_date, category, sync_status, convex_id, convex_customer_id',
             saltCellLogs: '++id, customer_id, pool_id, cleaning_date, sync_status, convex_id, convex_customer_id',
         }).upgrade(async (trans) => {
-            const customers = await trans.table('customers').toArray();
-            const pools = trans.table('pools');
-            const now = Date.now();
-            for (const customer of customers as any[]) {
-                const existing = await pools.where('customer_id').equals(customer.id).first();
-                if (existing) continue;
-                await pools.add({
-                    customer_id: customer.id,
-                    name: 'Primary Pool',
-                    address: customer.address,
-                    service_day: customer.service_day,
-                    pool_gallons: customer.pool_gallons,
-                    pool_type: customer.pool_type,
-                    surface_type: customer.surface_type,
-                    sort_order: customer.sort_order,
-                    active: true,
-                    createdAt: customer.createdAt,
-                    updatedAt: customer.updatedAt,
-                    sync_status: 'pending',
-                    local_updated_at: now,
-                });
+            // Backfill one "Primary Pool" per customer in a single bulk write.
+            // A failure here must not abort the schema upgrade: the app can
+            // create the pool lazily, whereas a failed upgrade leaves the
+            // database stuck on the old version.
+            try {
+                const [customers, existingPools] = await Promise.all([
+                    trans.table('customers').toArray(),
+                    trans.table('pools').toArray(),
+                ]);
+                const customersWithPool = new Set(
+                    (existingPools as any[]).map((pool) => pool.customer_id)
+                );
+                const now = Date.now();
+                const missing = (customers as any[])
+                    .filter((customer) => customer.id !== undefined && !customersWithPool.has(customer.id))
+                    .map((customer) => ({
+                        customer_id: customer.id,
+                        name: 'Primary Pool',
+                        address: customer.address,
+                        service_day: customer.service_day,
+                        pool_gallons: customer.pool_gallons,
+                        pool_type: customer.pool_type,
+                        surface_type: customer.surface_type,
+                        sort_order: customer.sort_order,
+                        active: true,
+                        createdAt: customer.createdAt,
+                        updatedAt: customer.updatedAt,
+                        sync_status: 'pending',
+                        local_updated_at: now,
+                    }));
+                if (missing.length > 0) {
+                    await trans.table('pools').bulkAdd(missing);
+                }
+                console.log(`Database v4 upgrade: backfilled ${missing.length} primary pools`);
+            } catch (error) {
+                console.error('Database v4 pool backfill failed; continuing upgrade (pools are created lazily):', error);
+                reportDbIssue('Dexie v4 pool backfill failed', error, 'medium');
             }
         });
 
+        this.setupLifecycleHandlers();
         this.setupSyncHooks();
+    }
+
+    /**
+     * Open the database explicitly and surface failures instead of letting the
+     * first query hang in a rejected state. Returns true when the database is
+     * usable. Safe to call repeatedly.
+     */
+    async ensureOpen(): Promise<boolean> {
+        if (this.isOpen()) return true;
+        try {
+            await this.open();
+            return true;
+        } catch (error) {
+            const name = (error as any)?.name || 'UnknownError';
+            console.error(`Failed to open ChemCheck database (${name}):`, error);
+            reportDbIssue(`Failed to open local database: ${name}`, error, 'critical');
+            return false;
+        }
+    }
+
+    /**
+     * Dexie fires 'blocked' when this connection's upgrade is blocked by an
+     * older tab, and 'versionchange' when another tab upgrades or deletes the
+     * database. Without handlers the default behaviour leaves the app stuck.
+     */
+    private setupLifecycleHandlers(): void {
+        try {
+            this.on('blocked', (event: any) => {
+                const message = 'ChemCheck database upgrade is blocked by another open tab. Close other tabs to continue.';
+                console.warn(message, event);
+                reportDbIssue(message, event, 'high');
+            });
+
+            this.on('versionchange', (event: any) => {
+                const message = event?.newVersion === null
+                    ? 'ChemCheck database is being deleted by another tab; closing this connection.'
+                    : 'ChemCheck database was upgraded in another tab; closing this connection so it can proceed.';
+                console.warn(message, event);
+                reportDbIssue(message, event, 'medium');
+                // Release our connection so the other tab is not blocked; the
+                // next access re-opens on the new version (or reports an error).
+                this.close();
+                return false;
+            });
+        } catch (error) {
+            console.warn('Could not register database lifecycle handlers:', error);
+        }
     }
 
     setSyncService(syncService: any): void {

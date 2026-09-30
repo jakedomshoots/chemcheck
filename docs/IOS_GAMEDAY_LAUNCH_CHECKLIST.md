@@ -8,12 +8,12 @@ This checklist keeps the PWA as the active shipping product while preserving the
 
 ## Current Verified State
 
-- [x] PWA readiness gates pass: `npm run test:gates` reported 13/13 passing tests.
+- [x] PWA readiness gates pass: `npm run test:gates` exits green (the exact test count changes as gates are added; do not hard-code it here).
 - [x] Lint passes: `npm run lint`.
 - [x] Production build passes on Vite 8.0.16 with the stale Browserslist warning cleared.
 - [x] Security audit is clean at the high threshold: `npm audit --audit-level=high` reported 0 vulnerabilities.
-- [x] Unit/integration suite passes: `npm test -- --reporter=dot` reported 87 files and 860 tests passing.
-- [x] Chromium E2E passes on an isolated ChemCheck server: `PLAYWRIGHT_PORT=5174 npm run test:e2e -- --project=chromium` reported 31/31 passing tests.
+- [x] Unit/integration suite passes: `npm test -- --reporter=dot` exits green with zero failures (counts drift with every change; rely on the exit status, not a number).
+- [x] Chromium E2E passes on an isolated ChemCheck server: `PLAYWRIGHT_PORT=5174 npm run test:e2e -- --project=chromium` exits green with no skipped authenticated specs (under `CI=true` those specs fail instead of skipping when the auth bypass is unavailable).
 - [x] Capacitor sync passes: `npm run ios:sync`.
 - [x] Native plist syntax passes: `plutil -lint ios/App/App/Info.plist ios/App/App/PrivacyInfo.xcprivacy`.
 - [x] Native iOS pricing route does not expose Stripe checkout actions.

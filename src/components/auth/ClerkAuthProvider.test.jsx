@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   bootstrapFromConvex: vi.fn(),
   convexSetAuth: vi.fn(),
   convexQuery: vi.fn(),
+  resetForAccountChange: vi.fn(),
+  setUserContext: vi.fn(),
 }));
 
 vi.mock('@clerk/clerk-react', () => ({
@@ -44,7 +46,10 @@ vi.mock('../../../convex/_generated/api', () => ({
   api: { businesses: { getCurrent: 'businesses:getCurrent' } },
 }));
 vi.mock('@/lib/auditLog', () => ({ logLogin: vi.fn(), logLogout: vi.fn() }));
-vi.mock('@/lib/sentry', () => ({ clearUserContext: vi.fn(), setUserContext: vi.fn() }));
+vi.mock('@/lib/sentry', () => ({ clearUserContext: vi.fn(), setUserContext: mocks.setUserContext }));
+vi.mock('@/lib/sync/SyncService', () => ({
+  syncService: { resetForAccountChange: mocks.resetForAccountChange },
+}));
 vi.mock('@/lib/platformPolicy', () => ({
   getAuthBypassReason: () => null,
   shouldUseDevelopmentAuthBypass: () => false,
@@ -55,7 +60,10 @@ describe('ClerkAuthProvider session isolation', () => {
     vi.resetModules();
     vi.stubEnv('VITE_CLERK_PUBLISHABLE_KEY', 'pk_test_session_isolation');
     vi.stubEnv('VITE_CONVEX_URL', 'https://test-deployment.convex.cloud');
+    localStorage.clear();
+    sessionStorage.clear();
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    mocks.resetForAccountChange.mockResolvedValue(undefined);
     mocks.loginUser.mockResolvedValue({ email: 'second@example.com', businessId: 'business_2' });
     mocks.getToken.mockResolvedValue('convex-token');
     mocks.convexQuery.mockResolvedValue(null);
@@ -112,7 +120,67 @@ describe('ClerkAuthProvider session isolation', () => {
     render(<ClerkAuthProvider><div>child</div></ClerkAuthProvider>);
 
     await waitFor(() => expect(mocks.loginUser).toHaveBeenCalledWith('second@example.com'));
+    expect(mocks.resetForAccountChange).toHaveBeenCalledBefore(mocks.clearSession);
     expect(mocks.clearSession).toHaveBeenCalledBefore(mocks.loginUser);
+    expect(localStorage.getItem('chemcheck_last_signed_in_user')).toBe('second@example.com');
+  });
+
+  it('wipes local data when a different account signs in after a logout that left no local user', async () => {
+    localStorage.setItem('chemcheck_last_signed_in_user', 'first@example.com');
+    mocks.getCurrentUser.mockReturnValue(null);
+    const { ClerkAuthProvider } = await import('./ClerkAuthProvider');
+
+    render(<ClerkAuthProvider><div>child</div></ClerkAuthProvider>);
+
+    await waitFor(() => expect(mocks.loginUser).toHaveBeenCalledWith('second@example.com'));
+    expect(mocks.clearSession).toHaveBeenCalledTimes(1);
+    expect(mocks.clearSession).toHaveBeenCalledBefore(mocks.loginUser);
+    expect(localStorage.getItem('chemcheck_last_signed_in_user')).toBe('second@example.com');
+  });
+
+  it('does not wipe local data when the same account signs back in', async () => {
+    localStorage.setItem('chemcheck_last_signed_in_user', 'second@example.com');
+    mocks.getCurrentUser.mockReturnValue(null);
+    const { ClerkAuthProvider } = await import('./ClerkAuthProvider');
+
+    render(<ClerkAuthProvider><div>child</div></ClerkAuthProvider>);
+
+    await waitFor(() => expect(mocks.loginUser).toHaveBeenCalledWith('second@example.com'));
+    expect(mocks.clearSession).not.toHaveBeenCalled();
+  });
+
+  it('sends only a hashed id to Sentry, never the email or name', async () => {
+    mocks.getCurrentUser.mockReturnValue({ email: 'second@example.com', businessId: 'business_2' });
+    const { ClerkAuthProvider } = await import('./ClerkAuthProvider');
+
+    render(<ClerkAuthProvider><div>child</div></ClerkAuthProvider>);
+
+    await waitFor(() => expect(mocks.setUserContext).toHaveBeenCalled());
+    const context = mocks.setUserContext.mock.calls[0][0];
+    expect(Object.keys(context)).toEqual(['id']);
+    expect(context.id).toMatch(/^[0-9a-f]{16}$/);
+    expect(JSON.stringify(context)).not.toContain('second@example.com');
+    expect(JSON.stringify(context)).not.toContain('Second User');
+  });
+
+  it('resets the sync service and clears local data before signing out of Clerk', async () => {
+    mocks.getCurrentUser.mockReturnValue({ email: 'second@example.com', businessId: 'business_2' });
+    mocks.clearSession.mockResolvedValue(undefined);
+    mocks.signOut.mockResolvedValue(undefined);
+    const { ClerkAuthProvider, useAuthContext } = await import('./ClerkAuthProvider');
+    function LogoutControl() {
+      const { logout } = useAuthContext();
+      return <button onClick={() => void logout()}>Sign out</button>;
+    }
+
+    render(<ClerkAuthProvider><LogoutControl /></ClerkAuthProvider>);
+    await screen.findByText('Sign out');
+    screen.getByRole('button', { name: 'Sign out' }).click();
+
+    await waitFor(() => expect(mocks.signOut).toHaveBeenCalled());
+    expect(mocks.resetForAccountChange).toHaveBeenCalledBefore(mocks.clearSession);
+    expect(mocks.clearSession).toHaveBeenCalledBefore(mocks.logoutUser);
+    expect(mocks.logoutUser).toHaveBeenCalledBefore(mocks.signOut);
   });
 
   it('keeps Clerk signed in when local cleanup fails during logout', async () => {

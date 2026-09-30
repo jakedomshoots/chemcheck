@@ -14,6 +14,9 @@ import {
   flattenRecommendations,
   getPriorityLevels,
   calculateDosage,
+  applyChemicalSafety,
+  GENERAL_CHEMICAL_SAFETY_NOTE,
+  ACID_LAST_SAFETY_NOTE,
   getPriorityForReading,
 } from './recommendationEngine';
 import type { ServiceLog, ChemicalReading, CategorizedRecommendations } from './types';
@@ -424,6 +427,97 @@ describe('Recommendation Engine - Property Tests', () => {
         ),
         { numRuns: 100 }
       );
+    });
+  });
+
+  describe('Dosage safety caps', () => {
+    it('never recommends more than the per-addition cap in a single step', () => {
+      // pH critical resolves to sodium carbonate at 2 lbs/10k gal; the cap is 1 lb/10k gal per addition.
+      const dosage = calculateDosage('ph', 'critical', 150000);
+      expect(dosage).not.toBeNull();
+      expect(dosage).toMatch(/30 lbs sodium carbonate total for 150000 gallons/);
+      expect(dosage).toMatch(/Do not add all at once/);
+      expect(dosage).toMatch(/max 15 lbs sodium carbonate per addition/);
+      expect(dosage).toMatch(/circulate/i);
+      expect(dosage).toMatch(/retest/i);
+      expect(dosage).toMatch(/repeat/i);
+    });
+
+    it('caps calcium hypochlorite at 1 lb per 10k gallons per addition', () => {
+      const dosage = calculateDosage('chlorine', 'critical', 20000);
+      expect(dosage).toMatch(/4 lbs calcium hypochlorite \(shock\) total for 20000 gallons/);
+      expect(dosage).toMatch(/max 2 lbs calcium hypochlorite \(shock\) per addition/);
+      expect(dosage).toMatch(/repeat up to 2 times/);
+    });
+
+    it('keeps small corrections as a single addition', () => {
+      expect(calculateDosage('ph', 'high', 20000)).toBe('2 quarts muriatic acid for 20000 gallons');
+      expect(calculateDosage('chlorine', 'low', 10000)).toBe('1 lbs calcium hypochlorite for 10000 gallons');
+    });
+
+    it('is bounded for any pool size', () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom('ph', 'chlorine', 'alkalinity'),
+          fc.constantFrom<ChemicalReading>('low', 'high', 'critical'),
+          fc.integer({ min: 1000, max: 1000000 }),
+          (chemical, reading, gallons) => {
+            const dosage = calculateDosage(chemical, reading, gallons);
+            if (dosage === null) return;
+            const perAddition = dosage.match(/max ([\d.]+) /);
+            if (perAddition) {
+              const cap = parseFloat(perAddition[1]);
+              expect(cap).toBeLessThanOrEqual(gallons / 10000 * 2.5 + 0.01);
+            }
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+  });
+
+  describe('Chemical handling safety notes', () => {
+    it('attaches the never-mix note to every set that includes a chemical addition', () => {
+      const recommendations = generateRecommendations({
+        serviceLogs: [{ id: 1, service_date: '2026-01-01', ph: 'good', chlorine: 'low', alkalinity: 'good', stabilizer: 'good' }],
+        poolGallons: 15000,
+      });
+      expect(recommendations.safetyNotes).toContain(GENERAL_CHEMICAL_SAFETY_NOTE);
+      expect(recommendations.safetyNotes).not.toContain(ACID_LAST_SAFETY_NOTE);
+    });
+
+    it('orders acid after the chlorine product with an explicit wait when both are recommended', () => {
+      const recommendations = generateRecommendations({
+        serviceLogs: [{ id: 1, service_date: '2026-01-01', ph: 'high', chlorine: 'low', alkalinity: 'good', stabilizer: 'good' }],
+        poolGallons: 15000,
+      });
+      expect(recommendations.safetyNotes).toContain(ACID_LAST_SAFETY_NOTE);
+      const visit = recommendations.thisVisit;
+      const chlorineIndex = visit.findIndex((rec) => rec.chemical === 'chlorine');
+      const acidIndex = visit.findIndex((rec) => rec.chemical === 'ph');
+      expect(chlorineIndex).toBeGreaterThanOrEqual(0);
+      expect(acidIndex).toBeGreaterThan(chlorineIndex);
+      expect(visit[acidIndex].action).toMatch(/Add LAST/);
+      expect(visit[acidIndex].action).toMatch(/30 minutes/);
+    });
+
+    it('moves an immediate acid correction after a same-visit chlorine addition', () => {
+      const recommendations = applyChemicalSafety({
+        immediate: [{ id: 'a', priority: 1, action: 'Immediate pH correction required', reason: '', chemical: 'ph', dosage: '2 quarts muriatic acid for 10000 gallons', equipmentCheck: null, addressesIssue: 'ph critical', preventsFuture: false }],
+        thisVisit: [{ id: 'c', priority: 3, action: 'Add chlorine to restore sanitizer levels', reason: '', chemical: 'chlorine', dosage: '1 lbs calcium hypochlorite for 10000 gallons', equipmentCheck: null, addressesIssue: 'chlorine low', preventsFuture: false }],
+        nextVisit: [],
+        longTerm: [],
+      });
+      expect(recommendations.immediate).toHaveLength(0);
+      expect(recommendations.thisVisit.map((rec) => rec.chemical)).toEqual(['chlorine', 'ph']);
+    });
+
+    it('leaves the notes empty when nothing is being dosed', () => {
+      const recommendations = generateRecommendations({
+        serviceLogs: [{ id: 1, service_date: '2026-01-01', ph: 'good', chlorine: 'good', alkalinity: 'good', stabilizer: 'good' }],
+        poolGallons: 15000,
+      });
+      expect(recommendations.safetyNotes).toEqual([]);
     });
   });
 });

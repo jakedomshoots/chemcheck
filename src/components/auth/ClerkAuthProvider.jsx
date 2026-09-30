@@ -5,7 +5,7 @@ import { setUserContext, clearUserContext } from '@/lib/sentry';
 import { warnAuthBypassOnce } from '@/lib/authBypassWarning';
 import { normalizeConvexUrl } from '@/lib/convexUrl';
 import { clearChemCheckSessionData } from '@/lib/sessionCleanup';
-import { isAccountChange } from '@/lib/sessionIdentity';
+import { hashIdentity, isAccountChange, recordSignedInUser } from '@/lib/sessionIdentity';
 import {
   getAuthBypassReason,
   shouldUseDevelopmentAuthBypass,
@@ -36,6 +36,35 @@ async function getUserManager() {
   }
   const { userManager } = await userManagerModulePromise;
   return userManager;
+}
+
+let syncServiceModulePromise = null;
+/**
+ * Clear the in-memory sync queue, in-flight state and pull watermark so a
+ * different account never inherits another account's pending pushes. The
+ * sync module is loaded lazily and the reset is optional-chained because the
+ * method may be absent in older builds.
+ */
+async function resetSyncForAccountChange() {
+  try {
+    if (!syncServiceModulePromise) {
+      syncServiceModulePromise = import('@/lib/sync/SyncService');
+    }
+    const syncModule = await syncServiceModulePromise;
+    await syncModule?.syncService?.resetForAccountChange?.();
+  } catch (error) {
+    console.warn('Sync reset for account change skipped:', error);
+  }
+}
+
+/**
+ * Wipe every account-scoped artifact on this device. Cleanup failures are
+ * re-thrown (after the retry inside clearChemCheckSessionData) so the caller
+ * never proceeds with another account's data still on disk.
+ */
+async function wipeLocalAccountData() {
+  await resetSyncForAccountChange();
+  await clearChemCheckSessionData();
 }
 
 let apiModulePromise = null;
@@ -111,7 +140,6 @@ function AuthContextProvider({ children }) {
         if (isSignedIn && user) {
           const userManager = await getUserManager();
           const email = user.primaryEmailAddress?.emailAddress || '';
-          const name = user.fullName || user.firstName || 'User';
 
           if (!email) {
             setAuthError('No email address found. Please ensure your account has a verified email.');
@@ -122,11 +150,17 @@ function AuthContextProvider({ children }) {
           // Try to find existing user in localStorage
           let existingUser = userManager.getCurrentUser();
 
-          // Do not let a newly authenticated account restore another account's offline state.
+          // Do not let a newly authenticated account restore another account's
+          // offline state. This also covers a device where the previous account
+          // was logged out without the cleanup wrapper: the persistent
+          // last-signed-in marker still identifies the earlier account.
           if (isAccountChange(existingUser, email)) {
-            await clearChemCheckSessionData();
+            await wipeLocalAccountData();
             existingUser = null;
           }
+
+          // Replace (never merely clear) the marker before any hydration.
+          recordSignedInUser(email);
 
           if (!existingUser || existingUser.email !== email) {
             existingUser = await userManager.loginUser(email);
@@ -162,12 +196,8 @@ function AuthContextProvider({ children }) {
           if (existingUser) {
             logLogin(true);
 
-            // Set Sentry user context
-            setUserContext({
-              id: userId,
-              email: email,
-              username: name
-            });
+            // Set Sentry user context with a stable, non-identifying id only.
+            setUserContext({ id: hashIdentity(email || userId) });
           }
 
           setAuthError(null);
@@ -189,7 +219,10 @@ function AuthContextProvider({ children }) {
 
   const logout = async () => {
     try {
-      await clearChemCheckSessionData();
+      // Local data must be gone before the current-user marker is cleared so a
+      // failed wipe keeps the session (and the visible error) instead of
+      // silently leaving another account's data behind.
+      await wipeLocalAccountData();
       const userManager = await getUserManager();
       userManager.logoutUser();
       setLocalUser(null);

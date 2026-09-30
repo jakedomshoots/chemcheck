@@ -1,38 +1,25 @@
-import { mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { internalMutation } from "./_generated/server";
+import { resolveBusinessForEmail } from "./entitlements";
 
 /**
  * One-time backfill: sets `business_id` on all customers that belong to the
- * authenticated user's business but were synced from Dexie without it.
+ * given user's business but were synced from Dexie without it.
  *
- * Run from the Convex Dashboard → Functions → backfillCustomerBusinessId:run
+ * SECURITY: internal-only. A public version let any signed-in user claim every
+ * orphaned customer. Run from the Convex Dashboard → Functions →
+ * backfillCustomerBusinessId:run with `{ "userEmail": "<owner email>" }`.
  */
-export const run = mutation({
-    args: {},
-    handler: async (ctx) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity?.email) {
-            throw new Error("Not authenticated or email missing from token");
+export const run = internalMutation({
+    args: { userEmail: v.string() },
+    handler: async (ctx, args) => {
+        const userEmail = args.userEmail.trim();
+        if (!userEmail) {
+            throw new Error("userEmail is required");
         }
 
-        const userEmail = identity.email;
-
-        // 1. Find the user's business (as owner or team member)
-        const teamMember = await ctx.db
-            .query("team_members")
-            .withIndex("by_user_email", (q: any) => q.eq("user_email", userEmail))
-            .filter((q: any) => q.eq(q.field("is_active"), true))
-            .first();
-
-        let business: any = null;
-        if (teamMember) {
-            business = await ctx.db.get(teamMember.business_id);
-        }
-        if (!business) {
-            business = await ctx.db
-                .query("businesses")
-                .withIndex("by_owner_email", (q: any) => q.eq("owner_email", userEmail))
-                .first();
-        }
+        // 1. Find the user's business (owner first, then active team member)
+        const business: any = await resolveBusinessForEmail(ctx, userEmail);
 
         if (!business) {
             return { patched: 0, message: "No business found for this user." };
