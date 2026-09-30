@@ -33,18 +33,18 @@ function SummaryCard({ summary }) {
     <section
       aria-label="Money summary"
       aria-busy={loading ? "true" : undefined}
-      className="mx-4 mt-2 flex flex-col gap-1 rounded-[20px] bg-ink p-5 text-surface-1 sm:mx-5"
+      className="mx-4 mt-2 flex flex-col gap-1 rounded-[20px] bg-[#111418] p-5 text-white ring-1 ring-transparent dark:ring-line sm:mx-5"
     >
-      <p className="text-[13px] font-semibold tracking-[0.02em] text-surface-1/75">Waiting to be paid</p>
+      <p className="text-[13px] font-semibold tracking-[0.02em] text-[#B8C0C7]">Waiting to be paid</p>
       <p className="tnum text-[40px] font-extrabold leading-tight tracking-[-0.03em]">
-        {loading ? <span className="inline-block h-10 w-40 animate-pulse rounded-lg bg-surface-1/15" /> : money(summary.outstanding)}
+        {loading ? <span className="inline-block h-10 w-40 animate-pulse rounded-lg bg-white/15" /> : money(summary.outstanding)}
       </p>
-      <div className="flex justify-between gap-3 text-sm text-surface-1/85">
+      <div className="flex justify-between gap-3 text-sm text-[#D6DBDF]">
         <span>{loading ? " " : `${openCount} open request${openCount === 1 ? "" : "s"}`}</span>
         <span className="tnum">{loading ? "" : `Paid this week ${money(summary.paid_this_week)}`}</span>
       </div>
-      <div className="mt-2.5 flex items-center gap-2 border-t border-surface-1/15 pt-2.5 text-[13px] text-surface-1/75">
-        <RecurringGlyph className="h-4 w-4 shrink-0 text-cyan-300 dark:text-cyan-700" />
+      <div className="mt-2.5 flex items-center gap-2 border-t border-[#2A3036] pt-2.5 text-[13px] text-[#B8C0C7]">
+        <RecurringGlyph className="h-4 w-4 shrink-0 text-[#5EC4D9]" />
         <span>{loading ? " " : recurringLine}</span>
       </div>
     </section>

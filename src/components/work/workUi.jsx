@@ -35,7 +35,7 @@ export function Pill({ selected, children, className, ...props }) {
       type="button"
       aria-pressed={selected ? "true" : "false"}
       className={cn(
-        "inline-flex h-11 shrink-0 items-center justify-center rounded-full border px-3.5 text-sm font-semibold transition-colors",
+        "inline-flex h-11 shrink-0 items-center justify-center rounded-full border px-3 text-sm font-semibold transition-colors",
         focusRing,
         selected
           ? "border-ink bg-ink text-surface-1"

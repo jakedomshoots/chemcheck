@@ -76,8 +76,11 @@ export function submitLabel(draft, total) {
 
 function Row({ label, children, as: Tag = "div", ...props }) {
   return (
-    <Tag className="flex min-h-[52px] items-center gap-3 border-b border-line px-1" {...props}>
-      <span className="w-14 shrink-0 text-sm font-bold text-ink-secondary">{label}</span>
+    <Tag
+      className="flex min-h-[52px] w-full items-center gap-2.5 border-b border-line px-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0E7490]"
+      {...props}
+    >
+      <span className="w-[52px] shrink-0 text-sm font-bold text-ink-secondary">{label}</span>
       {children}
     </Tag>
   );
