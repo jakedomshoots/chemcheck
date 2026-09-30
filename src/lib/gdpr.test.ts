@@ -32,12 +32,20 @@ const convexActionMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/convexClient', () => ({
   getSharedConvexClient: () => ({ action: convexActionMock }),
 }));
+vi.mock('@/lib/proof-of-service/offlinePhotoStorage', () => ({
+  clearAllPhotos: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/lib/serviceWorker', () => ({
+  serviceWorkerManager: { clearCaches: vi.fn().mockResolvedValue(undefined) },
+}));
 vi.mock('../../convex/_generated/api', () => ({
   api: { account: { deleteMyAccount: 'account:deleteMyAccount', exportUserData: 'account:exportUserData' } },
 }));
 
 // Import the mocked db
 import { db } from '@/db/chemcheck-db';
+import { clearAllPhotos } from '@/lib/proof-of-service/offlinePhotoStorage';
+import { serviceWorkerManager } from '@/lib/serviceWorker';
 
 describe('GDPR Utilities', () => {
   beforeEach(() => {
@@ -138,6 +146,8 @@ describe('GDPR Utilities', () => {
       expect(result.cloud).toEqual({ customers: 3 });
       expect(result.local.success).toBe(true);
       expect(order).toEqual(['cloud', 'local']);
+      expect(clearAllPhotos).toHaveBeenCalled();
+      expect(serviceWorkerManager.clearCaches).toHaveBeenCalled();
     });
 
     it('does not touch local data when the cloud deletion fails', async () => {

@@ -28,6 +28,7 @@ const DEFAULT_RATE_LIMITS: Record<string, { maxRequests: number; windowMs: numbe
   'query.get': { maxRequests: 500, windowMs: 60000 },         // 500 per minute
 
   // Outbound SMS/email (per user). Both buckets are consumed together.
+  'communications.enqueue': { maxRequests: 100, windowMs: 3600000 }, // 100 queued messages per hour
   'communications': { maxRequests: 30, windowMs: 3600000 },        // 30 per hour
   'communications.daily': { maxRequests: 200, windowMs: 86400000 }, // 200 per day
 
@@ -464,6 +465,11 @@ export async function enforceRateLimit(
 export async function enforceCommunicationRateLimit(ctx: any, userId: string): Promise<void> {
   await enforceRateLimitInMutation(ctx, userId, 'communications');
   await enforceRateLimitInMutation(ctx, userId, 'communications.daily');
+}
+
+/** Limit queue writes separately from provider sends; sends consume the outbound quota. */
+export async function enforceCommunicationEnqueueRateLimit(ctx: any, userId: string): Promise<void> {
+  await enforceRateLimitInMutation(ctx, userId, 'communications.enqueue');
 }
 
 /**

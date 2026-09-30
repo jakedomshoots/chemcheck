@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import { NOT_DELETED_FILTER } from "./sync";
+import { canAccessCustomerRecord, resolveBusinessForEmail } from "./entitlements";
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
@@ -11,6 +12,11 @@ function boundedLimit(limit: number | undefined): number {
     if (limit > MAX_PAGE_LIMIT) return MAX_PAGE_LIMIT;
     if (limit < 1) return 1;
     return Math.floor(limit);
+}
+
+async function recordsOwnerEmail(ctx: any, email: string): Promise<string> {
+    const business = await resolveBusinessForEmail(ctx, email);
+    return business?.owner_email || email;
 }
 
 // List all chemical usage records created by the current user, paginated.
@@ -25,10 +31,11 @@ export const list = query({
         if (!identity) throw new Error("Not authenticated");
 
         const sortOrder = args.order === "-created_date" ? "desc" : "asc";
+        const ownerEmail = await recordsOwnerEmail(ctx, identity.email!);
         const usageQuery = ctx.db
             .query("chemicalUsage")
             .withIndex("by_created_by_and_created_date", (q) =>
-                q.eq("created_by", identity.email!)
+                q.eq("created_by", ownerEmail)
             )
             .filter(NOT_DELETED_FILTER)
             .order(sortOrder);
@@ -55,7 +62,7 @@ export const filter = query({
         if (args.customer_id) {
             // Verify ownership first
             const customer = await ctx.db.get(args.customer_id);
-            if (!customer || customer.created_by !== identity.email) {
+            if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
                 throw new Error("Customer not found or access denied");
             }
         }
@@ -65,9 +72,10 @@ export const filter = query({
             if (!pool || (args.customer_id && pool.customer_id !== args.customer_id)) throw new Error("Pool not found or does not belong to customer");
         }
 
+        const ownerEmail = await recordsOwnerEmail(ctx, identity.email!);
         let usageQuery = ctx.db
             .query("chemicalUsage")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+            .withIndex("by_created_by", (q) => q.eq("created_by", ownerEmail))
             .filter(NOT_DELETED_FILTER);
 
         if (args.customer_id) {
@@ -98,7 +106,7 @@ export const getByCustomer = query({
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Customer not found or access denied");
         }
 
@@ -137,7 +145,7 @@ export const create = mutation({
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Customer not found or access denied");
         }
 
@@ -148,11 +156,12 @@ export const create = mutation({
 
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const ownerEmail = customer.created_by;
 
         const recordId = await ctx.db.insert("chemicalUsage", {
             ...args,
             created_date: today,
-            created_by: identity.email!,
+            created_by: ownerEmail,
         });
 
         return recordId;
@@ -181,7 +190,7 @@ export const update = mutation({
         if (!record || record.deleted_at !== undefined) throw new Error("Chemical usage record not found");
 
         const customer = await ctx.db.get(record.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
 
@@ -212,7 +221,7 @@ export const remove = mutation({
         if (!record) throw new Error("Chemical usage record not found");
 
         const customer = await ctx.db.get(record.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
 

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { enforceRateLimit } from "./rateLimit";
+import { canAccessCustomerRecord } from "./entitlements";
 
 // The Convex runtime exposes process.env without Node typings in this tsconfig.
 const env: Record<string, string | undefined> = (globalThis as any).process?.env ?? {};
@@ -34,7 +35,7 @@ async function verifyServiceLogOwnership(
   }
 
   const customer = await ctx.db.get(serviceLog.customer_id);
-  if (!customer || customer.created_by !== userEmail) {
+  if (!customer || !(await canAccessCustomerRecord(ctx, customer, userEmail))) {
     throw new Error("Access denied");
   }
 
@@ -71,7 +72,7 @@ async function verifyCustomerOwnership(
   userEmail: string
 ): Promise<any> {
   const customer = await ctx.db.get(customerId);
-  if (!customer || customer.deleted_at !== undefined || customer.created_by !== userEmail) {
+  if (!customer || customer.deleted_at !== undefined || !(await canAccessCustomerRecord(ctx, customer, userEmail))) {
     throw new Error("Customer not found or access denied");
   }
   return customer;

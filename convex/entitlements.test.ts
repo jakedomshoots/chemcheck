@@ -27,6 +27,13 @@ describe("evaluateWriteEntitlement", () => {
     expect(evaluateWriteEntitlement({ status: "incomplete_expired", current_period_end: NOW + 1 }, NOW).allowed).toBe(false);
   });
 
+  it("fails closed for an unrecognized subscription status", () => {
+    expect(evaluateWriteEntitlement({ status: "paused", current_period_end: NOW + 1 }, NOW)).toEqual({
+      allowed: false,
+      reason: "subscription status is unrecognized",
+    });
+  });
+
   it("blocks canceled subscriptions only after the paid period has ended", () => {
     expect(evaluateWriteEntitlement({ status: "canceled", current_period_end: NOW + 1000 }, NOW).allowed).toBe(true);
     expect(evaluateWriteEntitlement({ status: "canceled", current_period_end: NOW - 1 }, NOW).allowed).toBe(false);

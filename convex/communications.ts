@@ -3,7 +3,7 @@ import { action, internalMutation, internalQuery, mutation, query } from "./_gen
 import { internal } from "./_generated/api";
 import { validateEmail, validatePhone } from "./validation";
 import { fetchProvider, requireMailersendConfig, requireTwilioConfig } from "./providerConfig";
-import { enforceCommunicationRateLimit } from "./rateLimit";
+import { enforceCommunicationEnqueueRateLimit } from "./rateLimit";
 import { canAccessCustomerRecord, resolveBusinessForEmail } from "./entitlements";
 
 const VALID_STATUSES = ["queued", "sent", "delivered", "failed"] as const;
@@ -380,7 +380,7 @@ export const queueServiceText = mutation({
     }
 
     // SECURITY: quota + recipient lock + message cap.
-    await enforceCommunicationRateLimit(ctx, identity.email);
+    await enforceCommunicationEnqueueRateLimit(ctx, identity.email);
     assertRecipientMatchesCustomer("sms", args.recipient, customer);
     const message = enforceMessageLength(args.message);
     const recipient = validatePhone(args.recipient);

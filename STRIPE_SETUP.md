@@ -142,7 +142,7 @@ STRIPE_BUSINESS_YEARLY_PRICE_ID=price_xxxxx
 
 ## Subscription Migration
 
-Deploy the optional `subscriptions.business_id` schema change first. Then run `subscriptions:backfillBusinessId` repeatedly as a business owner, beginning with `dry_run: true`. It links each legacy subscription to the business currently owned by `user_email`, skips already-linked rows, and reports rows with no owned business as `unlinked`; it never creates businesses.
+Deploy the optional `subscriptions.business_id` schema change first. Then run the internal `subscriptions:backfillBusinessId` function from the Convex dashboard (or an authenticated internal migration runner) repeatedly, beginning with `dry_run: true`. It links each legacy subscription to the business currently owned by `user_email`, skips already-linked rows, and reports rows with no owned business as `unlinked`; it never creates businesses. It is intentionally internal-only because it touches every tenant's subscription rows.
 
 ## Troubleshooting
 

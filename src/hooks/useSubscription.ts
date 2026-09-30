@@ -47,6 +47,7 @@ export function isSubscriptionLocked(
   now: number = Date.now()
 ): boolean {
   if (!subscription) return false;
+  if (subscription.status === UNKNOWN_SUBSCRIPTION_STATUS) return true;
   if (LOCKED_SUBSCRIPTION_STATUSES.has(subscription.status)) return true;
   if (subscription.status === 'canceled') {
     const periodEnd = subscription.currentPeriodEnd?.getTime?.();

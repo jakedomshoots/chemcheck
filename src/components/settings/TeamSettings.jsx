@@ -16,7 +16,7 @@ function errorMessage(error) {
  * until accepted here, so an owner cannot pull another account into their
  * business without consent.
  */
-export function PendingInvites() {
+export function PendingInvites({ onAccepted }) {
   const invites = useQuery(api.businesses.getPendingInvites);
   const acceptInvite = useMutation(api.businesses.acceptInvite);
   const declineInvite = useMutation(api.businesses.declineInvite);
@@ -30,6 +30,9 @@ export function PendingInvites() {
     setStatus('');
     try {
       await action({ inviteId: invite._id });
+      if (label === 'Accepted') {
+        await onAccepted?.();
+      }
       setStatus(`${label} invite from ${invite.business_name}.`);
     } catch (error) {
       setStatus(errorMessage(error));

@@ -124,6 +124,15 @@ export async function canAccessCustomerRecord(
 
 /** Statuses that block writes. `canceled` only blocks once the paid period has ended. */
 export const BLOCKING_SUBSCRIPTION_STATUSES = new Set(["canceled", "unpaid", "incomplete_expired"]);
+const KNOWN_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "canceled",
+  "incomplete",
+  "incomplete_expired",
+  "past_due",
+  "trialing",
+  "unpaid",
+]);
 
 export type EntitlementSubscription = Pick<Doc<"subscriptions">, "status" | "current_period_end">;
 
@@ -137,6 +146,9 @@ export function evaluateWriteEntitlement(
 ): { allowed: true } | { allowed: false; reason: string } {
   if (!subscription) return { allowed: true };
   const status = String(subscription.status || "").toLowerCase();
+  if (!KNOWN_SUBSCRIPTION_STATUSES.has(status)) {
+    return { allowed: false, reason: "subscription status is unrecognized" };
+  }
   if (!BLOCKING_SUBSCRIPTION_STATUSES.has(status)) return { allowed: true };
   if (status === "canceled") {
     const periodEnd = Number(subscription.current_period_end);

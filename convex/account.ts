@@ -879,11 +879,15 @@ export const deleteMyAccount = action({
     const warnings: string[] = [];
 
     // Cancel Stripe billing BEFORE the local subscription rows are deleted.
-    // Failures are recorded but never abort local deletion.
+    // Do not erase the account while provider teardown failed: the user needs
+    // a retryable error instead of an orphaned live subscription.
     const stripe = await cancelStripeBilling(
       (queryArgs) => ctx.runQuery(internal.account.listBillingForDeletion, queryArgs),
       userEmail
     );
+    if (stripe.failures.length > 0) {
+      throw new Error(`Account deletion paused: Stripe billing cleanup failed. ${stripe.failures.join(" ")}`);
+    }
     for (const failure of stripe.failures) {
       warnings.push(`Stripe: ${failure}`);
     }

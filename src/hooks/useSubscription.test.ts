@@ -19,7 +19,7 @@ describe('useSubscription helpers', () => {
     expect(isSubscriptionLocked({ status: 'active', currentPeriodEnd: future }, now)).toBe(false);
     expect(isSubscriptionLocked({ status: 'trialing', currentPeriodEnd: future }, now)).toBe(false);
     expect(isSubscriptionLocked({ status: 'past_due', currentPeriodEnd: past }, now)).toBe(false);
-    expect(isSubscriptionLocked({ status: 'unknown', currentPeriodEnd: past }, now)).toBe(false);
+    expect(isSubscriptionLocked({ status: 'unknown', currentPeriodEnd: past }, now)).toBe(true);
     expect(isSubscriptionLocked({ status: 'unpaid', currentPeriodEnd: future }, now)).toBe(true);
     expect(isSubscriptionLocked({ status: 'incomplete_expired', currentPeriodEnd: future }, now)).toBe(true);
     expect(isSubscriptionLocked({ status: 'canceled', currentPeriodEnd: future }, now)).toBe(false);

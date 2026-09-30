@@ -4,6 +4,7 @@ import { useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { useAuthContext } from './ClerkAuthProvider';
 import { userManager } from '@/lib/userManager';
+import { PendingInvites } from '@/components/settings/TeamSettings';
 import {
   Droplets,
   Building2,
@@ -331,6 +332,9 @@ export function SetupWizardPage() {
           <p className="mt-2 text-sm font-medium leading-6 text-ink-secondary">
             Let's set up your business profile.
           </p>
+        </div>
+        <div className="mb-5 w-full">
+          <PendingInvites onAccepted={auth.refreshUser} />
         </div>
         <Card className="w-full rounded-sheet border border-line bg-surface-1 p-5 shadow-card sm:p-6">
           {/* Progress Indicator */}

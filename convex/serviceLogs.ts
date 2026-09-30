@@ -4,6 +4,7 @@ import { enforceRateLimit } from "./rateLimit";
 import { validateLsiFields, validateLsiUpdate } from "./validation";
 import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
 import { NOT_DELETED_FILTER } from "./sync";
+import { canAccessCustomerRecord, resolveBusinessForEmail } from "./entitlements";
 
 /**
  * Validates that a string is a valid ISO 8601 date format
@@ -63,6 +64,11 @@ function clampLimit(limit: number | undefined): number {
     return Math.max(1, Math.min(limit || 100, 500));
 }
 
+async function recordsOwnerEmail(ctx: any, email: string): Promise<string> {
+    const business = await resolveBusinessForEmail(ctx, email);
+    return business?.owner_email || email;
+}
+
 // List all service logs for the current user using cursor-based pagination.
 export const list = query({
     args: {
@@ -76,11 +82,12 @@ export const list = query({
 
         const descending = args.order === "-service_date";
         const numItems = clampLimit(args.limit);
+        const ownerEmail = await recordsOwnerEmail(ctx, identity.email!);
 
         return await ctx.db
             .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!)
+                q.eq("created_by", ownerEmail)
             )
             .filter(NOT_DELETED_FILTER)
             .order(descending ? "desc" : "asc")
@@ -112,12 +119,19 @@ export const filter = query({
         if (args.status) {
             validateStatus(args.status);
         }
+        if (args.customer_id) {
+            const customer = await ctx.db.get(args.customer_id);
+            if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
+                throw new Error("Customer not found or access denied");
+            }
+        }
 
         const numItems = clampLimit(args.limit);
+        const ownerEmail = await recordsOwnerEmail(ctx, identity.email!);
         const result = await ctx.db
             .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!)
+                q.eq("created_by", ownerEmail)
             )
             .filter(NOT_DELETED_FILTER)
             .order("desc")
@@ -156,7 +170,7 @@ export const getByCustomer = query({
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Customer not found or access denied");
         }
 
@@ -192,10 +206,11 @@ export const getByDate = query({
         if (!identity) throw new Error("Not authenticated");
 
         const numItems = clampLimit(args.limit);
+        const ownerEmail = await recordsOwnerEmail(ctx, identity.email!);
         return await ctx.db
             .query("serviceLogs")
             .withIndex("by_created_by_and_service_date", (q: any) =>
-                q.eq("created_by", identity.email!).eq("service_date", args.service_date)
+                q.eq("created_by", ownerEmail).eq("service_date", args.service_date)
             )
             .filter(NOT_DELETED_FILTER)
             .paginate({ cursor: args.cursor ?? null, numItems });
@@ -253,7 +268,7 @@ export const create = mutation({
 
         // Verify customer belongs to current user (tenant isolation)
         const customer = await ctx.db.get(args.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Customer not found or access denied");
         }
 
@@ -365,7 +380,7 @@ export const update = mutation({
         if (!log || log.deleted_at !== undefined) throw new Error("Service log not found");
 
         const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
 
@@ -413,7 +428,7 @@ export const remove = mutation({
         if (!log) throw new Error("Service log not found");
 
         const customer = await ctx.db.get(log.customer_id);
-        if (!customer || customer.created_by !== identity.email) {
+        if (!customer || !(await canAccessCustomerRecord(ctx, customer, identity.email!))) {
             throw new Error("Access denied");
         }
 
