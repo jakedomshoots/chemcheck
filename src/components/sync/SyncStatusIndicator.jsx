@@ -8,6 +8,7 @@ import {
   getStatusText, 
   getStatusColor, 
   isSyncButtonDisabled,
+  getFieldReadiness,
   getRecordStatusText,
   getRecordStatusColor
 } from './syncStatusUtils';
@@ -23,6 +24,7 @@ export function SyncStatusIndicator({
 }) {
   const { status, pendingCount, lastSyncAt, error, syncNow } = useSyncState();
   const statusText = getStatusText(status, pendingCount);
+  const fieldReadiness = getFieldReadiness(status, pendingCount, lastSyncAt);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -58,7 +60,6 @@ export function SyncStatusIndicator({
           <Button
             variant="outline"
             size="sm"
-            disabled={isSyncButtonDisabled(status)}
             aria-label={statusText}
             title={statusText}
             className="h-8 rounded-full border-line bg-surface-1 px-3 text-ink-secondary hover:bg-surface-2"
@@ -76,6 +77,10 @@ export function SyncStatusIndicator({
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Sync Status</p>
               <p className="text-sm font-medium text-ink">{statusText}</p>
+            </div>
+            <div className={cn('rounded-md border p-2.5', fieldReadiness.tone)} aria-live="polite">
+              <p className="text-sm font-semibold text-ink">{fieldReadiness.title}</p>
+              <p className="mt-1 text-xs leading-5 text-ink-secondary">{fieldReadiness.message}</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-md border border-line bg-surface-2 p-2">

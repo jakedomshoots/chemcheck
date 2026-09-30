@@ -64,7 +64,9 @@ export class SyncService {
   private readonly AUTO_SYNC_INTERVAL_MS = 30_000;
   private readonly PULL_PAGE_SIZE = 100;
   private readonly PULL_STATE_KEY = 'chemcheck_sync_pull_state_v1';
+  private readonly COMPLETED_SYNC_KEY = 'chemcheck_completed_sync_v1';
   private pullScope = 'anonymous';
+  private lastCompletedSyncAt: number | null = null;
   private lastPullCount = 0;
   private lastConflictCount = 0;
   /** Error message from the most recent failed syncSingleRecord call. */
@@ -101,6 +103,7 @@ export class SyncService {
 
     this.convexClient = convexClient;
     this.pullScope = nextScope;
+    this.lastCompletedSyncAt = this.readCompletedSyncAt();
     this.isInitialized = true;
     this.setStatus('idle');
     this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -123,6 +126,15 @@ export class SyncService {
    */
   isOnlineStatus(): boolean {
     return this.isOnline;
+  }
+
+  /**
+   * A completed sync means local writes were pushed and the cursor-based cloud
+   * pull finished for the currently authenticated account. It intentionally
+   * does not infer readiness from an empty local queue.
+   */
+  getLastCompletedSyncAt(): number | null {
+    return this.lastCompletedSyncAt;
   }
 
   /**
@@ -345,6 +357,26 @@ export class SyncService {
     } catch {
       // Storage can be unavailable in private browsing; pull remains correct
       // for the current process and will simply restart next launch.
+    }
+  }
+
+  private readCompletedSyncAt(): number | null {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const value = Number(localStorage.getItem(`${this.COMPLETED_SYNC_KEY}:${this.pullScope}`));
+      return Number.isFinite(value) && value > 0 ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeCompletedSyncAt(timestamp: number): void {
+    this.lastCompletedSyncAt = timestamp;
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(`${this.COMPLETED_SYNC_KEY}:${this.pullScope}`, String(timestamp));
+    } catch {
+      // The in-memory proof remains useful for this session if storage is unavailable.
     }
   }
 
@@ -1078,6 +1110,7 @@ export class SyncService {
         });
         this.setStatus('error');
       } else {
+        this.writeCompletedSyncAt(Date.now());
         this.setStatus('idle');
       }
 

@@ -186,7 +186,7 @@ describe('SyncStatusIndicator', () => {
       );
     });
 
-    it('button is disabled when status is syncing or offline', () => {
+    it('keeps status details available when syncing or offline', () => {
       fc.assert(
         fc.property(
           syncStateArb.filter(state => state.status === 'syncing' || state.status === 'offline'),
@@ -196,7 +196,7 @@ describe('SyncStatusIndicator', () => {
             renderWithCleanup(<SyncStatusIndicator />);
 
             const button = screen.getByRole('button');
-            expect(button).toBeDisabled();
+            expect(button).not.toBeDisabled();
           }
         ),
         { numRuns: 100 }
@@ -235,6 +235,66 @@ describe('SyncStatusIndicator', () => {
       renderWithCleanup(<SyncStatusIndicator showLabel={false} showPendingCount={false} />);
 
       expect(screen.getByRole('button', { name: 'All synced' })).toBeInTheDocument();
+    });
+
+    it('tells a technician when the phone is ready to work without coverage', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      (useSyncState as any).mockReturnValue({
+        status: 'idle',
+        pendingCount: 0,
+        lastSyncAt: Date.now(),
+        error: null,
+        syncNow: vi.fn(),
+        isRecordSynced: vi.fn(),
+        getRecordSyncStatus: vi.fn(),
+        refreshPendingCount: vi.fn(),
+      });
+
+      renderWithCleanup(<SyncStatusIndicator />);
+      await user.click(screen.getByRole('button', { name: 'All synced' }));
+
+      expect(screen.getByText('Ready for offline work')).toBeInTheDocument();
+      expect(screen.getByText(/This phone has the latest saved route data/i)).toBeInTheDocument();
+    });
+
+    it('does not mark a phone ready when it has never completed a route sync', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      (useSyncState as any).mockReturnValue({
+        status: 'idle',
+        pendingCount: 0,
+        lastSyncAt: null,
+        error: null,
+        syncNow: vi.fn(),
+        isRecordSynced: vi.fn(),
+        getRecordSyncStatus: vi.fn(),
+        refreshPendingCount: vi.fn(),
+      });
+
+      renderWithCleanup(<SyncStatusIndicator />);
+      await user.click(screen.getByRole('button', { name: 'All synced' }));
+
+      expect(screen.getByText('Sync this phone before leaving coverage')).toBeInTheDocument();
+      expect(screen.queryByText('Ready for offline work')).not.toBeInTheDocument();
+    });
+
+    it('explains that offline changes stay on the phone until coverage returns', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      (useSyncState as any).mockReturnValue({
+        status: 'offline',
+        pendingCount: 2,
+        lastSyncAt: Date.now(),
+        error: null,
+        syncNow: vi.fn(),
+        isRecordSynced: vi.fn(),
+        getRecordSyncStatus: vi.fn(),
+        refreshPendingCount: vi.fn(),
+      });
+
+      renderWithCleanup(<SyncStatusIndicator />);
+      await user.click(screen.getByRole('button', { name: 'Offline' }));
+
+      expect(screen.getByText('Working offline')).toBeInTheDocument();
+      expect(screen.getByText(/2 saved changes will sync automatically/i)).toBeInTheDocument();
     });
 
     it('displays status text only when showLabel is true', () => {

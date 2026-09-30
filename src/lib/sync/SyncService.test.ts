@@ -100,6 +100,7 @@ describe('SyncService', () => {
   let mockConvexClient: any;
 
   beforeEach(() => {
+    localStorage.clear();
     syncService = new SyncService();
     mockConvexClient = {
       mutation: vi.fn(),
@@ -115,6 +116,15 @@ describe('SyncService', () => {
   describe('initialization', () => {
     it('should initialize with Convex client', () => {
       expect(() => syncService.initialize(mockConvexClient)).not.toThrow();
+    });
+
+    it('restores a completed sync marker only for the signed-in account scope', () => {
+      const marker = 1_728_000_000_000;
+      localStorage.setItem('chemcheck_completed_sync_v1:tech@example.com', String(marker));
+
+      syncService.initialize(mockConvexClient, 'tech@example.com');
+
+      expect(syncService.getLastCompletedSyncAt()).toBe(marker);
     });
 
     it('should start and stop auto sync', () => {

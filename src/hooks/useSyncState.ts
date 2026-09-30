@@ -34,13 +34,18 @@ export interface UseSyncStateReturn {
 export function useSyncState(): UseSyncStateReturn {
   const [status, setStatus] = useState<SyncStatus>(syncService.getSyncStatus());
   const [pendingCount, setPendingCount] = useState<number>(0);
-  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(
+    (syncService as any).getLastCompletedSyncAt?.() ?? null
+  );
   const [error, setError] = useState<string | null>(null);
 
   // Subscribe to sync status changes
   useEffect(() => {
     const unsubscribe = syncService.onSyncStatusChange((newStatus) => {
       setStatus(newStatus);
+      if (newStatus === 'idle') {
+        setLastSyncAt((syncService as any).getLastCompletedSyncAt?.() ?? null);
+      }
       
       // Clear error when status changes to non-error state
       if (newStatus !== 'error') {
@@ -122,7 +127,7 @@ export function useSyncState(): UseSyncStateReturn {
       const result = await syncService.syncNow();
       
       if (result.success) {
-        setLastSyncAt(Date.now());
+        setLastSyncAt((syncService as any).getLastCompletedSyncAt?.() ?? Date.now());
         await refreshPendingCount();
       } else {
         setError(result.error || 'Sync failed');
