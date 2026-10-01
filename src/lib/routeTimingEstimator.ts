@@ -180,3 +180,166 @@ export function parseWorkingHoursCapacity(
 
   return Math.floor((endMinutes - startMinutes) / minutesPerPool);
 }
+
+// ============================================
+// Observed drive time (fed by src/lib/native/location.ts)
+// ============================================
+
+/** Observations needed before an observed average overrides the estimate. */
+export const MIN_DRIVE_OBSERVATIONS = 3;
+/** Used when no override and no routing estimate exists for a leg. */
+export const DEFAULT_DRIVE_MINUTES = 12;
+const MAX_OBSERVED_DRIVE_MINUTES = 4 * 60;
+
+export interface DriveObservation {
+  averageMinutes: number;
+  observations: number;
+  /** null when no observation carried a position fix */
+  averageDistanceKm: number | null;
+}
+
+export type DriveTimeProfile = Map<string, DriveObservation>;
+
+export interface DriveSegmentLike {
+  fromCustomerId: string | number;
+  toCustomerId: string | number;
+  durationMinutes: number;
+  distanceKm?: number | null;
+}
+
+export function driveKey(fromCustomerId: string | number, toCustomerId: string | number): string {
+  return `${String(fromCustomerId)}->${String(toCustomerId)}`;
+}
+
+/**
+ * Average observed drive minutes per (from, to) pair. Direction matters:
+ * A->B and B->A are separate keys, because one-way streets and left turns
+ * make them different drives.
+ */
+export function buildDriveTimeProfile(segments: DriveSegmentLike[] | null | undefined): DriveTimeProfile {
+  const totals = new Map<string, { minutes: number; count: number; km: number; kmCount: number }>();
+
+  for (const segment of segments || []) {
+    if (!segment || segment.fromCustomerId === undefined || segment.toCustomerId === undefined) continue;
+    const minutes = toFiniteNumber(segment.durationMinutes);
+    if (minutes === null || minutes <= 0 || minutes > MAX_OBSERVED_DRIVE_MINUTES) continue;
+
+    const key = driveKey(segment.fromCustomerId, segment.toCustomerId);
+    const entry = totals.get(key) ?? { minutes: 0, count: 0, km: 0, kmCount: 0 };
+    entry.minutes += minutes;
+    entry.count += 1;
+    const km = segment.distanceKm === null || segment.distanceKm === undefined ? null : toFiniteNumber(segment.distanceKm);
+    if (km !== null && km >= 0) {
+      entry.km += km;
+      entry.kmCount += 1;
+    }
+    totals.set(key, entry);
+  }
+
+  const profile: DriveTimeProfile = new Map();
+  for (const [key, entry] of totals.entries()) {
+    profile.set(key, {
+      averageMinutes: Math.round((entry.minutes / entry.count) * 10) / 10,
+      observations: entry.count,
+      averageDistanceKm: entry.kmCount > 0 ? Math.round((entry.km / entry.kmCount) * 100) / 100 : null,
+    });
+  }
+  return profile;
+}
+
+/**
+ * Drive minutes for one leg: the observed average when there are enough
+ * observations, otherwise the caller's estimate (routing engine or default).
+ */
+export function resolveDriveMinutes(
+  fromCustomerId: string | number | null | undefined,
+  toCustomerId: string | number | null | undefined,
+  options: {
+    estimate?: number | null;
+    profile?: DriveTimeProfile | null;
+    minObservations?: number;
+    fallback?: number;
+  } = {}
+): { minutes: number; source: 'observed' | 'estimate' | 'fallback'; observations: number } {
+  const minObservations = options.minObservations ?? MIN_DRIVE_OBSERVATIONS;
+  const fallback = toFiniteNumber(options.fallback) ?? DEFAULT_DRIVE_MINUTES;
+
+  if (fromCustomerId !== null && fromCustomerId !== undefined && toCustomerId !== null && toCustomerId !== undefined) {
+    const observed = options.profile?.get(driveKey(fromCustomerId, toCustomerId));
+    if (observed && observed.observations >= minObservations && observed.averageMinutes > 0) {
+      return { minutes: Math.round(observed.averageMinutes), source: 'observed', observations: observed.observations };
+    }
+  }
+
+  const estimate = options.estimate === null || options.estimate === undefined ? null : toFiniteNumber(options.estimate);
+  if (estimate !== null && estimate >= 0) {
+    return { minutes: Math.round(estimate), source: 'estimate', observations: 0 };
+  }
+
+  return { minutes: Math.round(Math.max(0, fallback)), source: 'fallback', observations: 0 };
+}
+
+export interface RouteFinishEstimate {
+  /** null when nothing is pending */
+  finishAt: Date | null;
+  remainingServiceMinutes: number;
+  remainingDriveMinutes: number;
+  remainingMinutes: number;
+  pendingStops: number;
+}
+
+/**
+ * Estimated finish time for the rest of the day: service time for each
+ * pending stop (customer history aware) plus a drive leg into each stop.
+ * The first leg starts from `fromCustomerId` (the last completed stop) when
+ * given, so an observed drive average can apply to it too.
+ */
+export function estimateRouteFinishTime(
+  pendingCustomers: CustomerLike[] | null | undefined,
+  options: {
+    now?: Date;
+    customerMedianById?: Map<number, number>;
+    serviceFallback?: number;
+    driveProfile?: DriveTimeProfile | null;
+    driveFallback?: number;
+    fromCustomerId?: string | number | null;
+  } = {}
+): RouteFinishEstimate {
+  const now = options.now ?? new Date();
+  const pending = (pendingCustomers || []).filter((customer) => customer && typeof customer === 'object');
+  const customerMedianById = options.customerMedianById ?? new Map<number, number>();
+  const driveFallback = toFiniteNumber(options.driveFallback) ?? DEFAULT_DRIVE_MINUTES;
+
+  if (pending.length === 0) {
+    return { finishAt: null, remainingServiceMinutes: 0, remainingDriveMinutes: 0, remainingMinutes: 0, pendingStops: 0 };
+  }
+
+  let serviceMinutes = 0;
+  let driveMinutes = 0;
+  let previousId: string | number | null | undefined = options.fromCustomerId;
+
+  for (const customer of pending) {
+    const numericId = getCustomerNumericId(customer);
+    const customerMedian = numericId === null ? null : customerMedianById.get(numericId) ?? null;
+    serviceMinutes += resolveServiceDurationMinutes(customer, {
+      customerMedian,
+      fallback: options.serviceFallback ?? DEFAULT_FALLBACK_DURATION_MINUTES,
+    });
+
+    const currentId = (customer._id ?? customer.id ?? null) as string | number | null;
+    driveMinutes += resolveDriveMinutes(previousId, currentId, {
+      profile: options.driveProfile,
+      fallback: driveFallback,
+    }).minutes;
+    previousId = currentId;
+  }
+
+  const remainingMinutes = Math.round(serviceMinutes + driveMinutes);
+  return {
+    finishAt: new Date(now.getTime() + remainingMinutes * 60000),
+    remainingServiceMinutes: Math.round(serviceMinutes),
+    remainingDriveMinutes: Math.round(driveMinutes),
+    remainingMinutes,
+    pendingStops: pending.length,
+  };
+}

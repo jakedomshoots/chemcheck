@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useReturnFocus } from "@/components/ui/use-return-focus";
 
 export default function OffDayServicePickerDialog({
   open,
@@ -17,9 +18,16 @@ export default function OffDayServicePickerDialog({
   clients,
   onStartClient,
 }) {
+  // Opened from Home's "Service another day" button (no DialogTrigger), so
+  // hand focus back to that button when the sheet closes.
+  const restoreFocus = useReturnFocus(open);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1rem)] max-w-xl overflow-hidden rounded-sheet border border-line bg-surface-1 p-0 shadow-card ">
+      <DialogContent
+        onCloseAutoFocus={restoreFocus}
+        className="w-[calc(100vw-1rem)] max-w-xl overflow-hidden rounded-sheet border border-line bg-surface-1 p-0 shadow-card "
+      >
         <DialogHeader className="border-b border-line bg-gradient-to-br from-surface-1 via-brand-softer to-surface-1 px-5 pb-4 pt-5 pr-12 text-left">
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-softer text-brand-ink shadow-inner">
             <CalendarDays className="h-5 w-5" aria-hidden="true" />
@@ -61,32 +69,48 @@ export default function OffDayServicePickerDialog({
                 <Input
                   value={searchQuery}
                   onChange={(e) => onSearchQueryChange(e.target.value)}
+                  aria-label={`Search ${selectedDay || "selected day"} clients`}
                   placeholder={`Search ${selectedDay || "selected day"} clients...`}
                   className="h-11 rounded-card border border-line bg-surface-2 pl-10 text-sm font-medium text-ink-secondary shadow-inner focus:border-[var(--status-info-line)] focus:bg-white"
                 />
               </div>
 
-              <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
+              <div
+                className="max-h-[320px] overflow-y-auto pr-1"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span className="sr-only">
+                  {clients.length} {clients.length === 1 ? "client" : "clients"} available for {selectedDay || "this day"}
+                </span>
+              </div>
+              <div className="max-h-[320px] overflow-y-auto pr-1">
                 {clients.length > 0 ? (
-                  clients.map((client) => (
-                    <Card key={client._id} className="rounded-raised border border-line bg-surface-1 p-3 shadow-card">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-ink truncate">{client.full_name}</p>
-                          <p className="text-xs text-ink-muted truncate">{client.address}</p>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="shrink-0 rounded-full bg-brand text-white shadow-cta hover:bg-brand-strong"
-                          onClick={() => onStartClient(client)}
-                        >
-                          <UserRoundCheck className="w-3.5 h-3.5 mr-1.5" />
-                          Start
-                        </Button>
-                      </div>
-                    </Card>
-                  ))
+                  <ul className="space-y-2" aria-label={`${selectedDay || "Selected day"} clients`}>
+                    {clients.map((client) => (
+                      <li key={client._id}>
+                        <Card className="rounded-raised border border-line bg-surface-1 p-3 shadow-card">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-ink truncate">{client.full_name}</p>
+                              <p className="text-xs text-ink-muted truncate">{client.address}</p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-11 shrink-0 rounded-full bg-brand px-4 text-white shadow-cta hover:bg-brand-strong"
+                              aria-label={`Start service for ${client.full_name}`}
+                              onClick={() => onStartClient(client)}
+                            >
+                              <UserRoundCheck className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                              Start
+                            </Button>
+                          </div>
+                        </Card>
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
                   <Card className="rounded-raised border border-dashed border-[var(--status-info-line)] bg-brand-softer p-6">
                     <p className="text-center text-sm font-semibold text-ink">

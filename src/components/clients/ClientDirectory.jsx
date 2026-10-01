@@ -159,7 +159,7 @@ export default function ClientDirectory({ customers, searchQuery, onOpen }) {
   }
 
   return (
-    <section data-testid="client-directory" aria-label="Client directory" className="relative grid grid-cols-[minmax(0,1fr)_1.75rem] gap-1">
+    <section data-testid="client-directory" aria-label="Client directory" className="relative grid grid-cols-[minmax(0,1fr)_2.75rem] gap-1">
       <div className="min-w-0 space-y-3">
         {groups.map((group) => (
           <section
@@ -194,6 +194,8 @@ export default function ClientDirectory({ customers, searchQuery, onOpen }) {
       </div>
 
       <nav aria-label="Client alphabet" className="sticky top-20 self-start py-7">
+        {/* 27 letters cannot each be 44px tall without exceeding the viewport, so the
+            rail uses the WCAG 2.5.8 minimum (24px) with full-width 44px hit areas. */}
         <div className="flex flex-col items-center">
           {CLIENT_DIRECTORY_ALPHABET.map((letter) => {
             const isAvailable = availableLetters.has(letter);
@@ -204,7 +206,7 @@ export default function ClientDirectory({ customers, searchQuery, onOpen }) {
                 disabled={!isAvailable}
                 aria-label={isAvailable ? `Jump to ${letter}` : `No clients under ${letter}`}
                 onClick={() => scrollToLetter(letter)}
-                className="flex h-5 w-7 items-center justify-center rounded-chip text-[10px] font-semibold leading-none text-brand-ink transition-colors hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:text-ink-muted disabled:opacity-65"
+                className="flex h-6 w-11 items-center justify-center rounded-chip text-[11px] font-semibold leading-none text-brand-ink transition-colors hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:text-ink-muted disabled:opacity-65"
               >
                 {letter}
               </button>

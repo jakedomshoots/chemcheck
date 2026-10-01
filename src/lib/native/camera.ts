@@ -79,3 +79,63 @@ export async function pickNativePhoto(): Promise<NativePhotoResult> {
         format: photo.format === 'png' ? 'png' : 'jpeg',
     };
 }
+
+/**
+ * Whether the native gallery multi-select is available. `pickImages` has
+ * shipped since @capacitor/camera 1.2, but we feature-detect so an older
+ * shell degrades to single picks instead of throwing.
+ */
+export function isNativeMultiPickAvailable(): boolean {
+    return isNativeCameraAvailable() && typeof (Camera as { pickImages?: unknown }).pickImages === 'function';
+}
+
+/**
+ * Pick several photos from the device gallery in one sheet (the native
+ * stand-in for a web burst: sequential `getPhoto` calls are far too slow).
+ * Returns data URLs ready for the same compression pipeline as a capture.
+ *
+ * @param limit - Maximum number of photos to accept (extra picks are dropped)
+ */
+export async function pickNativePhotos(limit: number = 5): Promise<NativePhotoResult[]> {
+    const result = await Camera.pickImages({
+        quality: 85,
+        correctOrientation: true,
+        width: 1920,
+        height: 1920,
+        limit,
+    });
+
+    const picked = (result?.photos ?? []).slice(0, Math.max(1, limit));
+    const results: NativePhotoResult[] = [];
+
+    for (const photo of picked) {
+        const dataUrl = await galleryPhotoToDataUrl(photo);
+        if (!dataUrl) continue;
+        results.push({ dataUrl, format: photo.format === 'png' ? 'png' : 'jpeg' });
+    }
+
+    return results;
+}
+
+/**
+ * `pickImages` hands back a webPath (blob:/capacitor:// URL), not a data URL.
+ * Fetch it into a data URL so it can flow through `compressImage`.
+ */
+async function galleryPhotoToDataUrl(photo: { webPath: string; path?: string }): Promise<string | null> {
+    const source = photo.webPath || photo.path;
+    if (!source) return null;
+    if (source.startsWith('data:')) return source;
+
+    try {
+        const response = await fetch(source);
+        const blob = await response.blob();
+        return await new Promise<string | null>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+        });
+    } catch {
+        return null;
+    }
+}

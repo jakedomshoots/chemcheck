@@ -10,6 +10,8 @@ import { format, subWeeks, startOfWeek, endOfWeek } from "date-fns";
 import CustomerCard from "../components/home/CustomerCard";
 import OffDayServicePickerDialog from "@/components/home/OffDayServicePickerDialog";
 import QuickStats from "../components/home/QuickStats";
+import TodayGlance from "@/components/route/TodayGlance";
+import SkipToContent from "@/components/navigation/SkipToContent";
 import { CustomerCardSkeleton, QuickStatsSkeleton } from "@/components/ui/skeleton";
 import { RouteCompleteCelebration } from "@/components/home/RouteCompleteCelebration";
 import { navigateWithTransition, transitionName } from "@/lib/viewTransitions";
@@ -17,7 +19,14 @@ import confetti from "canvas-confetti";
 import { toast } from "sonner";
 import { trackUxEvent } from "@/lib/uxAnalytics";
 import { getEffectiveWorkingDays } from "@/lib/workingDays";
-import { buildDurationProfile, calculateServiceTimingSummary } from "@/lib/routeTimingEstimator";
+import {
+  buildDurationProfile,
+  calculateServiceTimingSummary,
+  estimateRouteFinishTime,
+} from "@/lib/routeTimingEstimator";
+import { getObservedDriveProfile, startDriveTimeCapture } from "@/lib/native/location";
+import { buildTodayGlancePayload, publishTodayGlance } from "@/lib/native/platform";
+import { buildNavigationUrl } from "@/lib/mapNavigation";
 
 const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -440,6 +449,64 @@ export default function Home() {
     };
   }, [customers, durationProfile]);
 
+  // Drive-time capture: observe proof-of-service time tracking for the rest of
+  // the session so drives between stops become route estimates. Silent on
+  // the web without location permission.
+  useEffect(() => {
+    try {
+      startDriveTimeCapture();
+    } catch {
+      /* no location provider — the route works without drive data */
+    }
+  }, []);
+
+  const driveProfile = useMemo(() => {
+    try {
+      return getObservedDriveProfile();
+    } catch {
+      return new Map();
+    }
+  }, [todayLogs]);
+
+  const lastCompletedCustomerId = useMemo(() => {
+    const latest = [...todayLogs]
+      .filter((log) => log?.end_time)
+      .sort((a, b) => String(b.end_time).localeCompare(String(a.end_time)))[0];
+    return latest?.customer_id ?? null;
+  }, [todayLogs]);
+
+  const finishEstimate = useMemo(() => {
+    const pendingCustomers = customers.filter((c) => !isCompleted(c._id) && !isSkipped(c._id));
+    return estimateRouteFinishTime(pendingCustomers, {
+      customerMedianById: durationProfile.customerMedianById,
+      serviceFallback: 15,
+      driveProfile,
+      fromCustomerId: lastCompletedCustomerId,
+    });
+  }, [customers, completedCustomerIds, skippedCustomerIds, durationProfile, driveProfile, lastCompletedCustomerId]);
+
+  // Mirror the glance into a native widget when a shell provides one
+  // (documented no-op otherwise — see src/lib/native/platform.ts).
+  useEffect(() => {
+    if (loading || stats.total === 0) return;
+    const payload = buildTodayGlancePayload({
+      date: today,
+      totalStops: stats.total,
+      completedStops: stats.completed,
+      skippedStops: stats.skipped,
+      nextStop: nextPendingCustomer
+        ? {
+            customerId: nextPendingCustomer._id,
+            name: nextPendingCustomer.full_name,
+            address: nextPendingCustomer.address,
+            mapsUrl: nextPendingCustomer.address ? buildNavigationUrl(nextPendingCustomer.address) : "",
+          }
+        : null,
+      estimatedFinishAt: finishEstimate.finishAt,
+    });
+    void publishTodayGlance(payload);
+  }, [loading, today, stats.total, stats.completed, stats.skipped, nextPendingCustomer, finishEstimate.finishAt]);
+
   const handlePrimaryHomeAction = () => {
     trackUxEvent('ux_task_started', { flow: 'home_primary_action', action: homePrimaryAction });
 
@@ -513,7 +580,8 @@ export default function Home() {
 
   if (loading) {
     return (
-      <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
+      <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
+        <SkipToContent />
         <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <div>
             <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Today's Route</h2>
@@ -534,7 +602,8 @@ export default function Home() {
   }
 
   return (
-    <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
+    <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
+      <SkipToContent />
       <div
         data-testid="route-header"
         className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card"
@@ -573,11 +642,24 @@ export default function Home() {
 
         {stats.total > 0 && (
           <div className="mt-4">
-            <div className="flex items-center justify-between gap-3 text-xs font-medium text-ink-muted">
+            <div
+              className="flex items-center justify-between gap-3 text-xs font-medium text-ink-muted"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <span>{stats.completed} of {stats.total} stops logged</span>
               {stats.skipped > 0 && <span>{stats.skipped} skipped</span>}
             </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+            <div
+              className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
+              role="progressbar"
+              aria-label="Stops logged"
+              aria-valuemin={0}
+              aria-valuemax={stats.total}
+              aria-valuenow={stats.completed}
+              aria-valuetext={`${stats.completed} of ${stats.total} stops logged`}
+            >
               <div
                 className="route-progress-bar h-full rounded-full bg-brand"
                 style={{ '--route-progress': stats.total ? (stats.completed / stats.total) * 100 : 0 }}
@@ -598,31 +680,38 @@ export default function Home() {
             </div>
             {missedServices.length > 2 && (
               <button
+                type="button"
                 onClick={() => setMissedExpanded(!missedExpanded)}
-                className="rounded-full px-3 py-1.5 text-xs font-semibold text-watch transition-colors hover:bg-[var(--status-watch-line)]"
+                aria-expanded={missedExpanded}
+                aria-controls="missed-services-list"
+                className="min-h-11 rounded-full px-3 py-1.5 text-xs font-semibold text-watch transition-colors hover:bg-[var(--status-watch-line)]"
               >
                 {missedExpanded ? 'Show less' : `+${missedServices.length - 2} more`}
               </button>
             )}
           </div>
-          <div className="divide-y divide-[var(--status-watch-line)]">
+          <ul id="missed-services-list" className="divide-y divide-[var(--status-watch-line)]" aria-label="Missed services">
             {(missedExpanded ? missedServices : missedServices.slice(0, 2)).map(customer => (
-              <div
+              <li
                 key={customer._id}
-                className="flex items-center justify-between gap-3 px-4 py-3"
+                className="flex items-center justify-between gap-3 px-4 py-2"
               >
-                <div
-                  className="min-w-0 flex-1 cursor-pointer"
+                <button
+                  type="button"
+                  className="min-h-11 min-w-0 flex-1 rounded-control text-left transition-colors hover:bg-surface-1/60"
                   onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}
+                  aria-label={`Open service log for ${customer.full_name || 'Customer'}, missed ${customer.scheduledDay}`}
                 >
                   <p className="truncate text-sm font-semibold text-ink">{customer.full_name || 'Customer'}</p>
                   <p className="truncate text-xs text-ink-muted">
                     {customer.scheduledDay} · {customer.address}
                   </p>
-                </div>
+                </button>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
-                    className="rounded-full px-3 py-1 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-1 hover:text-ink-secondary"
+                    type="button"
+                    className="min-h-11 rounded-full px-3 py-1 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-1 hover:text-ink-secondary"
+                    aria-label={`Skip ${customer.full_name || 'Customer'} this week`}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleSkipCustomer(customer);
@@ -632,7 +721,8 @@ export default function Home() {
                   </button>
                   <Button
                     size="sm"
-                    className="h-9 rounded-full bg-ink px-3 text-xs font-semibold text-surface-0 hover:bg-ink-secondary"
+                    className="h-11 rounded-full bg-ink px-3 text-xs font-semibold text-surface-0 hover:bg-ink-secondary"
+                    aria-label={`Service ${customer.full_name || 'Customer'} now`}
                     onClick={(e) => {
                       e.stopPropagation();
                       navigateWithTransition(navigate, createPageUrl("NewServiceLog") + `?customerId=${customer._id}`);
@@ -641,9 +731,9 @@ export default function Home() {
                     Service Now
                   </Button>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
 
@@ -660,7 +750,7 @@ export default function Home() {
           type="button"
           variant="ghost"
           onClick={handleOpenOffDayPicker}
-          className="mt-2 h-auto w-full rounded-card px-4 py-2.5 text-sm font-semibold text-brand-ink shadow-none hover:bg-brand-soft hover:text-brand-ink focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="mt-2 h-auto min-h-11 w-full rounded-card px-4 py-2.5 text-sm font-semibold text-brand-ink shadow-none hover:bg-brand-soft hover:text-brand-ink focus-visible:ring-2 focus-visible:ring-ring/40"
         >
           <PoolIcon name="serviceDay" className="h-4 w-4" />
           <span>Service another day</span>
@@ -672,6 +762,15 @@ export default function Home() {
         completed={stats.completed}
         skipped={stats.skipped}
         pending={stats.pending}
+      />
+
+      <TodayGlance
+        total={stats.total}
+        completed={stats.completed}
+        skipped={stats.skipped}
+        nextStop={nextPendingCustomer}
+        finishAt={finishEstimate.finishAt}
+        remainingMinutes={finishEstimate.remainingMinutes}
       />
 
       {customers.length === 0 ? (

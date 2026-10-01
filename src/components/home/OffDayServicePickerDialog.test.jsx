@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import React from "react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeAll, afterAll } from "vitest";
 import OffDayServicePickerDialog from "./OffDayServicePickerDialog";
@@ -99,5 +100,43 @@ describe("OffDayServicePickerDialog", () => {
     );
 
     expect(screen.getByText("No pending clients found for Tuesday.")).toBeInTheDocument();
+  });
+
+  it("restores focus to the opener when the sheet closes", async () => {
+    function Harness() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>Service another day</button>
+          <OffDayServicePickerDialog
+            open={open}
+            onOpenChange={setOpen}
+            todayDay="Monday"
+            availableDays={["Tuesday"]}
+            selectedDay="Tuesday"
+            onSelectedDayChange={vi.fn()}
+            searchQuery=""
+            onSearchQueryChange={vi.fn()}
+            clients={[{ _id: 1, full_name: "Pending Client", address: "1 Pending St" }]}
+            onStartClient={vi.fn()}
+          />
+        </div>
+      );
+    }
+
+    render(<Harness />);
+    const opener = screen.getByRole("button", { name: "Service another day" });
+    opener.focus();
+    fireEvent.click(opener);
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    expect(screen.getByRole("textbox", { name: "Search Tuesday clients" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start service for Pending Client" })).toHaveClass("h-11");
+    expect(screen.getByRole("list", { name: "Tuesday clients" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(opener).toHaveFocus());
   });
 });

@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import ClientListItem from "../components/clients/ClientListItem";
 import ClientDirectory from "../components/clients/ClientDirectory";
+import SkipToContent from "@/components/navigation/SkipToContent";
+import { useReturnFocus } from "@/components/ui/use-return-focus";
 import { toast } from "sonner";
 import { DAY_ORDER, getEffectiveWorkingDays } from "@/lib/workingDays";
 import { getPreferredScrollBehavior } from "@/lib/scrollMotion";
@@ -72,6 +74,9 @@ export default function Clients() {
   const [activeDay, setActiveDay] = useState("Monday");
   const [viewMode, setViewMode] = useState("schedule");
   const [deleteCustomer, setDeleteCustomer] = useState(null);
+  // The delete dialog is opened from state, so Radix cannot find a trigger to
+  // return focus to; remember the row button that opened it.
+  const restoreDeleteFocus = useReturnFocus(Boolean(deleteCustomer));
   const [searchQuery, setSearchQuery] = useState("");
   const [reorderMode, setReorderMode] = useState(false);
   const [movingCustomerId, setMovingCustomerId] = useState(null);
@@ -423,20 +428,22 @@ export default function Clients() {
   }, [activePoolCustomers, daysOfWeek]);
   if (loading) {
     return (
-      <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
+      <main id="main-content" className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
+        <SkipToContent />
         <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Clients</h2>
-          <p className="mt-1 text-sm font-medium text-ink-muted">Loading your client list…</p>
+          <p className="mt-1 text-sm font-medium text-ink-muted" role="status" aria-live="polite">Loading your client list…</p>
         </div>
         <div className="flex items-center justify-center py-16">
-          <div className="h-10 w-10 rounded-full border-4 border-[var(--status-info-line)] border-t-cyan-600 animate-spin" aria-hidden="true" />
+          <div className="h-10 w-10 rounded-full border-4 border-[var(--status-info-line)] border-t-cyan-600 animate-spin motion-reduce:animate-none" aria-hidden="true" />
         </div>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
+    <main id="main-content" className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
+      <SkipToContent />
       <div
         data-testid="clients-header"
         className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-3 shadow-card sm:p-4"
@@ -461,7 +468,7 @@ export default function Clients() {
             data-testid="client-view-toggle"
             role="tablist"
             aria-label="Client view"
-            className="grid h-12 w-full grid-cols-2 gap-1 rounded-control border border-line bg-surface-2 p-1 sm:max-w-sm"
+            className="grid h-[3.25rem] w-full grid-cols-2 gap-1 rounded-control border border-line bg-surface-2 p-1 sm:max-w-sm"
           >
             {CLIENT_VIEW_OPTIONS.map((option, index) => {
               const isActive = viewMode === option.value;
@@ -477,7 +484,9 @@ export default function Clients() {
                   }}
                   onClick={() => handleViewModeChange(option.value)}
                   onKeyDown={(event) => handleViewModeKeyDown(event, index)}
-                  className={`h-10 rounded-chip text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                  id={`client-view-tab-${option.value}`}
+                  aria-controls={`client-view-panel-${option.value}`}
+                  className={`h-11 rounded-chip text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                     isActive
                       ? "bg-brand text-white shadow-sm"
                       : "text-ink-secondary hover:bg-surface-1 hover:text-ink"
@@ -524,7 +533,7 @@ export default function Clients() {
       </div>
 
       {viewMode === "schedule" && reorderMode && (
-        <div className="mb-4 rounded-raised border border-[var(--status-info-line)] bg-brand-softer px-4 py-3 shadow-sm">
+        <div className="mb-4 rounded-raised border border-[var(--status-info-line)] bg-brand-softer px-4 py-3 shadow-sm" role="status" aria-live="polite">
           <p className="text-sm font-semibold text-brand-ink">
             Reorder Mode active. Use the arrows on each client to move them up or down for the selected day.
           </p>
@@ -534,7 +543,7 @@ export default function Clients() {
       {viewMode === "schedule" && orphanedCustomers.length > 0 && (
         <div className="mb-4 overflow-hidden rounded-raised border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] shadow-sm">
           <div className="flex items-start gap-3 px-4 py-3">
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--status-watch-soft)]0 text-white">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--status-watch)] text-white" aria-hidden="true">
               <PoolIcon name="clients" className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -566,12 +575,19 @@ export default function Clients() {
       </div>
 
       {viewMode === "schedule" ? (
-      <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
+      <Tabs
+        value={activeDay}
+        onValueChange={setActiveDay}
+        className="w-full"
+        id="client-view-panel-schedule"
+        role="tabpanel"
+        aria-labelledby="client-view-tab-schedule"
+      >
         <div className="native-scroll mb-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <TabsList
             data-testid="service-day-tabs"
             aria-label="Service day"
-            className="grid h-12 w-max min-w-full grid-flow-col auto-cols-[minmax(4rem,1fr)] gap-1 rounded-control border border-line bg-surface-2 p-1"
+            className="grid h-[3.25rem] w-max min-w-full grid-flow-col auto-cols-[minmax(4rem,1fr)] gap-1 rounded-control border border-line bg-surface-2 p-1"
           >
             {validWorkingDays.map((day) => {
               const count = customerCounts[day] || 0;
@@ -582,11 +598,12 @@ export default function Clients() {
                   ref={(el) => {
                     if (el) dayTabRefs.current[day] = el;
                   }}
-                  className="group inline-flex h-10 min-w-16 snap-start items-center justify-center !rounded-chip px-2 text-sm font-semibold text-ink-muted transition-colors duration-150 hover:bg-surface-1 hover:text-ink-secondary active:scale-[0.98] data-[state=active]:bg-brand data-[state=active]:text-white data-[state=active]:shadow-sm"
+                  aria-label={`${day}, ${count} ${count === 1 ? "client" : "clients"}`}
+                  className="group inline-flex h-11 min-w-16 snap-start items-center justify-center !rounded-chip px-2 text-sm font-semibold text-ink-muted transition-colors duration-150 hover:bg-surface-1 hover:text-ink-secondary active:scale-[0.98] motion-reduce:transform-none data-[state=active]:bg-brand data-[state=active]:text-white data-[state=active]:shadow-sm"
                 >
-                  <span>{day.substring(0, 3)}</span>
+                  <span aria-hidden="true">{day.substring(0, 3)}</span>
                   {count > 0 && (
-                    <span className="ml-1.5 min-w-3 text-center font-data text-xs font-semibold tabular-nums text-ink-secondary opacity-75 group-data-[state=active]:text-white group-data-[state=active]:opacity-90">
+                    <span aria-hidden="true" className="ml-1.5 min-w-3 text-center font-data text-xs font-semibold tabular-nums text-ink-secondary opacity-75 group-data-[state=active]:text-white group-data-[state=active]:opacity-90">
                       {count}
                     </span>
                   )}
@@ -639,15 +656,17 @@ export default function Clients() {
         })}
       </Tabs>
       ) : (
-        <ClientDirectory
-          customers={activePoolCustomers}
-          searchQuery={searchQuery}
-          onOpen={handleOpenCustomer}
-        />
+        <div id="client-view-panel-directory" role="tabpanel" aria-labelledby="client-view-tab-directory">
+          <ClientDirectory
+            customers={activePoolCustomers}
+            searchQuery={searchQuery}
+            onOpen={handleOpenCustomer}
+          />
+        </div>
       )}
 
       <AlertDialog open={!!deleteCustomer} onOpenChange={() => setDeleteCustomer(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent onCloseAutoFocus={restoreDeleteFocus}>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Client?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -655,10 +674,10 @@ export default function Clients() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="h-11">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive hover:bg-destructive text-white"
+              className="h-11 bg-destructive hover:bg-destructive text-white"
             >
               Delete
             </AlertDialogAction>

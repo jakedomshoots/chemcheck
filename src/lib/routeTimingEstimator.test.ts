@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDriveTimeProfile,
   buildDurationProfile,
   calculateServiceTimingSummary,
+  driveKey,
+  estimateRouteFinishTime,
   parseWorkingHoursCapacity,
+  resolveDriveMinutes,
   resolveServiceDurationMinutes,
 } from "./routeTimingEstimator";
 
@@ -55,5 +59,63 @@ describe("routeTimingEstimator", () => {
 
   it("calculates capacity from working-hours and time-per-pool", () => {
     expect(parseWorkingHoursCapacity("08:00", "17:00", 15)).toBe(36);
+  });
+
+  describe("observed drive time", () => {
+    const segments = [
+      { fromCustomerId: 1, toCustomerId: 2, durationMinutes: 10, distanceKm: 4 },
+      { fromCustomerId: "1", toCustomerId: "2", durationMinutes: 14, distanceKm: null },
+      { fromCustomerId: 1, toCustomerId: 2, durationMinutes: 12, distanceKm: 5 },
+      { fromCustomerId: 2, toCustomerId: 1, durationMinutes: 30 },
+      { fromCustomerId: 2, toCustomerId: 3, durationMinutes: 0 },
+      { fromCustomerId: 3, toCustomerId: 4, durationMinutes: 9 * 60 },
+    ];
+
+    it("averages per directed pair and ignores implausible durations", () => {
+      const profile = buildDriveTimeProfile(segments);
+      expect(profile.get(driveKey(1, 2))).toEqual({ averageMinutes: 12, observations: 3, averageDistanceKm: 4.5 });
+      expect(profile.get(driveKey(2, 1))).toEqual({ averageMinutes: 30, observations: 1, averageDistanceKm: null });
+      expect(profile.has(driveKey(2, 3))).toBe(false);
+      expect(profile.has(driveKey(3, 4))).toBe(false);
+    });
+
+    it("overrides the estimate only with at least three observations", () => {
+      const profile = buildDriveTimeProfile(segments);
+      expect(resolveDriveMinutes(1, 2, { estimate: 25, profile })).toEqual({ minutes: 12, source: "observed", observations: 3 });
+      expect(resolveDriveMinutes(2, 1, { estimate: 25, profile })).toEqual({ minutes: 25, source: "estimate", observations: 0 });
+      expect(resolveDriveMinutes(2, 1, { estimate: 25, profile, minObservations: 1 }).source).toBe("observed");
+      expect(resolveDriveMinutes(7, 8, { profile })).toEqual({ minutes: 12, source: "fallback", observations: 0 });
+      expect(resolveDriveMinutes(null, 8, { estimate: 6, profile })).toEqual({ minutes: 6, source: "estimate", observations: 0 });
+      expect(resolveDriveMinutes(7, 8, { fallback: 9 })).toMatchObject({ minutes: 9, source: "fallback" });
+    });
+
+    it("estimates a finish time from service and drive legs", () => {
+      const now = new Date("2026-06-08T15:00:00.000Z");
+      const profile = buildDriveTimeProfile(segments);
+      const estimate = estimateRouteFinishTime(
+        [{ _id: 2, estimatedDuration: 20 }, { _id: 5 }],
+        { now, driveProfile: profile, fromCustomerId: 1, driveFallback: 10, serviceFallback: 15 }
+      );
+
+      // service 20 + 15, drive 12 (observed 1->2) + 10 (fallback 2->5)
+      expect(estimate).toMatchObject({
+        pendingStops: 2,
+        remainingServiceMinutes: 35,
+        remainingDriveMinutes: 22,
+        remainingMinutes: 57,
+      });
+      expect(estimate.finishAt?.toISOString()).toBe("2026-06-08T15:57:00.000Z");
+    });
+
+    it("returns no finish time when nothing is pending", () => {
+      expect(estimateRouteFinishTime([])).toEqual({
+        finishAt: null,
+        remainingServiceMinutes: 0,
+        remainingDriveMinutes: 0,
+        remainingMinutes: 0,
+        pendingStops: 0,
+      });
+      expect(estimateRouteFinishTime(null).finishAt).toBeNull();
+    });
   });
 });

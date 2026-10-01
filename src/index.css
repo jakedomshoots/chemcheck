@@ -386,3 +386,69 @@ html, body {
     border-color: var(--ink-muted) !important;
   }
 }
+
+/* ============================================
+   Accessibility baseline (additive)
+   ============================================ */
+
+/* One visible focus ring for every interactive element, keyboard only.
+   Components may layer their own ring on top; this guarantees a floor. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: max(var(--r-chip), 4px);
+}
+
+/* Skip link: off-canvas until focused, then pinned top-left above all chrome. */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  z-index: 100;
+  transform: translateY(-200%);
+  padding: 0.625rem 1rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--r-control);
+  background-color: var(--ink);
+  color: var(--surface-0);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-raised);
+  transition: transform var(--dur-fast) var(--motion-standard);
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* The main landmark is focus target for the skip link; no ring needed there. */
+#main-content:focus {
+  outline: none;
+}
+
+/* Minimum touch target for things that are visually small (index rails,
+   inline chips): keep the visual size, grow the hit area. */
+.touch-target {
+  position: relative;
+}
+
+.touch-target::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: max(100%, 2.75rem);
+  height: max(100%, 2.75rem);
+  transform: translate(-50%, -50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
+}

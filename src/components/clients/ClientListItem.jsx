@@ -102,7 +102,7 @@ export default function ClientListItem({
         )}
 
         {isMoving && (
-          <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-info border-t-transparent" aria-label="Updating order" />
+          <span className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none rounded-full border-2 border-info border-t-transparent" role="status" aria-label="Updating order" />
         )}
       </div>
 

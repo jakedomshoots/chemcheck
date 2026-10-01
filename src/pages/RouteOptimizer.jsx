@@ -30,8 +30,11 @@ import {
   buildDurationProfile,
   calculateServiceTimingSummary,
   parseClockToMinutes,
+  resolveDriveMinutes,
   resolveServiceDurationMinutes,
 } from "@/lib/routeTimingEstimator";
+import { getObservedDriveProfile } from "@/lib/native/location";
+import SkipToContent from "@/components/navigation/SkipToContent";
 
 const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -221,6 +224,16 @@ export default function RouteOptimizer() {
     [recentServiceLogs]
   );
 
+  // Observed drive times (from src/lib/native/location.ts). Empty on the web
+  // without location permission; the routing estimate is used instead.
+  const driveProfile = useMemo(() => {
+    try {
+      return getObservedDriveProfile();
+    } catch {
+      return new Map();
+    }
+  }, [recentServiceLogs]);
+
   const optimizationContextKey = useMemo(() => JSON.stringify({
     selectedDay,
     workingHoursStart,
@@ -314,15 +327,22 @@ export default function RouteOptimizer() {
       const optimizedStops = route.stops.map((stop, idx) => {
         const originalCustomer = customerById.get(String(stop.customer.id));
         const gateCodeText = originalCustomer?.gate_code ? `Gate code: ${originalCustomer.gate_code}` : null;
+        const previousStop = idx > 0 ? route.stops[idx - 1] : null;
+        const travel = resolveDriveMinutes(previousStop?.customer?.id ?? null, stop.customer.id, {
+          estimate: stop.travelTime,
+          profile: driveProfile,
+        });
+        const observedSuffix = travel.source === "observed" ? " (your average)" : "";
         const travelLabel = idx === 0
-          ? (startLocation ? `~${Math.round(stop.travelTime)} min from business` : "Start here")
-          : `~${Math.round(stop.travelTime)} min`;
+          ? (startLocation ? `~${travel.minutes} min from business` : "Start here")
+          : `~${travel.minutes} min${observedSuffix}`;
         return {
           position: idx + 1,
           customer_name: stop.customer.name || "Unnamed customer",
           customer_address: stop.customer.address || "No address on file",
           estimated_travel_time_from_previous: travelLabel,
-          raw_travel_time_minutes: Math.round(stop.travelTime),
+          raw_travel_time_minutes: travel.minutes,
+          travel_time_source: travel.source,
           notes: gateCodeText,
           customer_location: stop.customer.location,
           customer: originalCustomer || stop.customer,
@@ -375,6 +395,7 @@ export default function RouteOptimizer() {
   }, [
     businessAddress,
     dayCustomers,
+    driveProfile,
     durationProfile,
     missingAddressCount,
     optimizedRoute,
@@ -439,18 +460,20 @@ export default function RouteOptimizer() {
 
   if (loading) {
     return (
-      <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
+      <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
+        <SkipToContent />
         <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <div>
             <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Route Planner</h2>
-            <p className="mt-1 text-sm font-medium text-ink-muted">Loading your customers...</p>
+            <p className="mt-1 text-sm font-medium text-ink-muted" role="status" aria-live="polite">Loading your customers...</p>
           </div>
         </div>
       </main>
     );
   }
   return (
-    <main className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
+    <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
+      <SkipToContent />
       <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">
@@ -464,9 +487,10 @@ export default function RouteOptimizer() {
       <div className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-end">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-ink">Select Service Day</label>
+            <label htmlFor="route-service-day" className="mb-2 block text-sm font-semibold text-ink">Select Service Day</label>
             <Select value={selectedDay} onValueChange={setSelectedDay} disabled={optimizing}>
               <SelectTrigger
+                id="route-service-day"
                 aria-label="Select Service Day"
                 className="h-11 rounded-2xl border border-line bg-white text-ink focus:border-ring"
               >
@@ -489,8 +513,8 @@ export default function RouteOptimizer() {
             >
               {optimizing ? (
                 <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-ink-muted border-t-transparent" aria-hidden="true" />
-                  Building plan…
+                  <div className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none rounded-full border-2 border-ink-muted border-t-transparent" aria-hidden="true" />
+                  <span role="status" aria-live="polite">Building plan…</span>
                 </>
               ) : (
                 <>
@@ -519,25 +543,29 @@ export default function RouteOptimizer() {
         </div>
 
         {dayCustomers.length > 0 && (
-          <div
+          <dl
             data-testid="route-readiness"
+            aria-label="Route readiness"
             className="mt-4 grid grid-cols-3 divide-x divide-line overflow-hidden rounded-control border border-line bg-surface-2"
           >
             <div className="px-2 py-3 text-center">
-              <div className="font-data text-lg font-semibold tabular-nums text-ink">{dayCustomers.length}</div>
-              <div className="text-[11px] font-semibold text-ink-muted">Stops</div>
+              <dd className="font-data text-lg font-semibold tabular-nums text-ink">{dayCustomers.length}</dd>
+              <dt className="text-[11px] font-semibold text-ink-muted">Stops</dt>
             </div>
             <div className="px-2 py-3 text-center">
-              <div className={`font-data text-lg font-semibold tabular-nums ${missingAddressCount > 0 ? "text-watch" : "text-ok"}`}>
+              <dd className={`font-data text-lg font-semibold tabular-nums ${missingAddressCount > 0 ? "text-watch" : "text-ok"}`}>
                 {dayCustomers.length - missingAddressCount}/{dayCustomers.length}
-              </div>
-              <div className="text-[11px] font-semibold text-ink-muted">Addresses</div>
+                {missingAddressCount > 0 && (
+                  <AlertTriangle className="ml-1 inline h-3.5 w-3.5 align-[-2px]" aria-label="missing" />
+                )}
+              </dd>
+              <dt className="text-[11px] font-semibold text-ink-muted">Addresses</dt>
             </div>
             <div className="px-2 py-3 text-center">
-              <div className="font-data text-sm font-semibold tabular-nums text-ink">{workingHoursStart}</div>
-              <div className="text-[11px] font-semibold text-ink-muted">Start time</div>
+              <dd className="font-data text-sm font-semibold tabular-nums text-ink">{workingHoursStart}</dd>
+              <dt className="text-[11px] font-semibold text-ink-muted">Start time</dt>
             </div>
-          </div>
+          </dl>
         )}
       </div>
 
@@ -623,23 +651,24 @@ export default function RouteOptimizer() {
               </div>
               <span className="text-xs font-medium text-ink-muted">{optimizedRoute.optimization_summary}</span>
             </div>
-            <div
+            <dl
               data-testid="route-summary-metrics"
+              aria-label="Route summary"
               className="grid grid-cols-3 divide-x divide-line overflow-hidden rounded-raised border border-line bg-surface-2"
             >
               <div className="px-2 py-4 text-center">
-                <div className="font-data text-2xl font-semibold tabular-nums tracking-[-0.04em] text-brand-ink">{optimizedRoute.optimized_order.length}</div>
-                <div className="mt-1 text-[11px] font-semibold text-ink-muted">Stops</div>
+                <dd className="font-data text-2xl font-semibold tabular-nums tracking-[-0.04em] text-brand-ink">{optimizedRoute.optimized_order.length}</dd>
+                <dt className="mt-1 text-[11px] font-semibold text-ink-muted">Stops</dt>
               </div>
               <div className="px-2 py-4 text-center">
-                <div className="font-data text-2xl font-semibold tabular-nums tracking-[-0.04em] text-ink">{optimizedRoute.total_estimated_time || "N/A"}</div>
-                <div className="mt-1 text-[11px] font-semibold text-ink-muted">Service</div>
+                <dd className="font-data text-2xl font-semibold tabular-nums tracking-[-0.04em] text-ink">{optimizedRoute.total_estimated_time || "N/A"}</dd>
+                <dt className="mt-1 text-[11px] font-semibold text-ink-muted">Service</dt>
               </div>
               <div className="px-2 py-4 text-center">
-                <div className="font-data text-2xl font-semibold tabular-nums tracking-[-0.04em] text-ink">{optimizedRoute.average_service_minutes || 0}</div>
-                <div className="mt-1 text-[11px] font-semibold text-ink-muted">Min / stop</div>
+                <dd className="font-data text-2xl font-semibold tabular-nums tracking-[-0.04em] text-ink">{optimizedRoute.average_service_minutes || 0}</dd>
+                <dt className="mt-1 text-[11px] font-semibold text-ink-muted">Min / stop</dt>
               </div>
-            </div>
+            </dl>
 
             <div className="mt-4 grid grid-cols-1 gap-2 text-sm">
               <div className="flex items-center gap-2 rounded-2xl border border-line bg-surface-1 px-3 py-2 text-ink-secondary">
@@ -656,14 +685,18 @@ export default function RouteOptimizer() {
             </div>
 
             {exceedsWorkingHours && (
-              <div className="mt-3 rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-3 py-2 text-sm text-watch">
-                Estimated route time exceeds configured working hours. Consider splitting stops or extending working hours.
+              <div className="mt-3 flex items-start gap-2 rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-3 py-2 text-sm text-watch" role="status">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Estimated route time exceeds configured working hours. Consider splitting stops or extending working hours.</span>
               </div>
             )}
 
             {routeWarnings.length > 0 && (
               <div className="mt-3 rounded-2xl border border-[var(--status-watch-line)] bg-[var(--status-watch-soft)] px-3 py-2 text-sm text-watch" role="status">
-                <div className="font-medium">Route readiness</div>
+                <div className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Route readiness
+                </div>
                 <ul className="mt-1 list-disc pl-5">
                   {routeWarnings.slice(0, 2).map((warning) => <li key={warning}>{warning}</li>)}
                 </ul>
@@ -730,6 +763,7 @@ export default function RouteOptimizer() {
                         <div
                           className="w-7 shrink-0 text-center font-data text-sm font-semibold tabular-nums text-brand-ink"
                           aria-label={`Stop ${stop.position}`}
+                          role="img"
                         >
                           {String(stop.position).padStart(2, "0")}
                         </div>
@@ -756,6 +790,9 @@ export default function RouteOptimizer() {
                           size="sm"
                           onClick={() => handleNavigateToStop(stop.customer_address, stop.customer_location)}
                           disabled={!hasNavigableAddress(stop.customer_address)}
+                          aria-label={hasNavigableAddress(stop.customer_address)
+                            ? `Navigate to ${stop.customer_name}`
+                            : `Address needed for ${stop.customer_name}`}
                           className="h-11 shrink-0 rounded-control px-2.5 text-xs font-semibold text-brand-ink hover:bg-brand-softer disabled:text-ink-muted"
                         >
                           <Navigation className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
@@ -765,6 +802,7 @@ export default function RouteOptimizer() {
 
                       <div
                         className="ml-10 mt-1.5 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-[0.6875rem] font-semibold leading-4 text-ink-muted"
+                        role="group"
                         aria-label={`Stop ${stop.position} details`}
                       >
                         {stop.estimated_travel_time_from_previous && (
@@ -818,11 +856,11 @@ function RouteRunnerView({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-ink">Route in Progress</h3>
-          <p className="text-sm text-ink-secondary">
-            Stop {currentIndex + 1} of {stops.length}
+          <p className="text-sm text-ink-secondary" role="status" aria-live="polite" aria-atomic="true">
+            Stop {currentIndex + 1} of {stops.length}: {currentStop.customer_name}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onExit} className="h-11 text-ink-secondary">
+        <Button variant="ghost" size="sm" onClick={onExit} className="h-11 text-ink-secondary" aria-label="Exit route runner">
           <X className="mr-1 h-4 w-4" aria-hidden="true" />
           Exit
         </Button>
@@ -847,7 +885,7 @@ function RouteRunnerView({
         <div className="bg-ink p-6 text-surface-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold">
+              <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold" role="img" aria-label={`Stop ${currentStop.position}`}>
                 {currentStop.position}
               </div>
               <div>
@@ -909,7 +947,7 @@ function RouteRunnerView({
               size="lg"
               onClick={() => onNavigate(currentStop.customer_address, currentStop.customer_location)}
               disabled={!hasNavigableAddress(currentStop.customer_address)}
-              className="rounded-full bg-brand text-white shadow-cta hover:bg-brand-strong disabled:bg-surface-2 disabled:text-ink-muted disabled:shadow-none"
+              className="h-12 rounded-full bg-brand text-white shadow-cta hover:bg-brand-strong disabled:bg-surface-2 disabled:text-ink-muted disabled:shadow-none"
             >
               <PoolIcon name="route" className="mr-2 h-5 w-5" />
               {hasNavigableAddress(currentStop.customer_address) ? "Navigate" : "Address Needed"}
@@ -917,7 +955,7 @@ function RouteRunnerView({
             <Button
               size="lg"
               onClick={onMarkArrived}
-              className="rounded-full bg-[var(--status-ok)] text-white shadow-card hover:bg-[var(--status-ok-ink)]"
+              className="h-12 rounded-full bg-[var(--status-ok)] text-white shadow-card hover:bg-[var(--status-ok-ink)]"
             >
               {isLastStop ? (
                 <>
@@ -940,7 +978,7 @@ function RouteRunnerView({
           variant="outline"
           onClick={onPrevious}
           disabled={isFirstStop}
-          className="flex-1"
+          className="h-11 flex-1"
         >
           Previous Stop
         </Button>
@@ -948,7 +986,7 @@ function RouteRunnerView({
           variant="outline"
           onClick={onNext}
           disabled={isLastStop}
-          className="flex-1"
+          className="h-11 flex-1"
         >
           Next Stop
           <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />

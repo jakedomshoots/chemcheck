@@ -109,11 +109,13 @@ describe('Clients Page', () => {
         render(<BrowserRouter><Clients /></BrowserRouter>);
 
         const dayRail = screen.getByTestId('service-day-tabs');
-        const mondayTab = within(dayRail).getByRole('button', { name: 'Mon1' });
+        const mondayTab = within(dayRail).getByRole('button', { name: 'Monday, 1 client' });
 
-        expect(dayRail).toHaveClass('grid', 'h-12', 'rounded-control', 'bg-surface-2');
-        expect(mondayTab).toHaveClass('h-10', '!rounded-chip', 'min-w-16');
+        expect(dayRail).toHaveClass('grid', 'h-[3.25rem]', 'rounded-control', 'bg-surface-2');
+        // 44px tab inside a 52px rail: the rail's padding no longer shrinks the touch target.
+        expect(mondayTab).toHaveClass('h-11', '!rounded-chip', 'min-w-16');
         expect(within(mondayTab).getByText('1')).not.toHaveClass('rounded-full');
+        expect(within(mondayTab).getByText('Mon')).toHaveAttribute('aria-hidden', 'true');
     });
 
     it('keeps Schedule as the default and switches to the alphabetical Directory view', () => {
@@ -121,6 +123,8 @@ describe('Clients Page', () => {
 
         const viewToggle = screen.getByTestId('client-view-toggle');
         expect(within(viewToggle).getByRole('tab', { name: 'Schedule' })).toHaveAttribute('aria-selected', 'true');
+        expect(within(viewToggle).getByRole('tab', { name: 'Schedule' })).toHaveClass('h-11');
+        expect(within(viewToggle).getByRole('tab', { name: 'Schedule' })).toHaveAttribute('aria-controls', 'client-view-panel-schedule');
         expect(screen.getByTestId('service-day-tabs')).toBeInTheDocument();
 
         fireEvent.keyDown(within(viewToggle).getByRole('tab', { name: 'Schedule' }), { key: 'ArrowRight' });
@@ -329,5 +333,15 @@ describe('Clients Page', () => {
         expect(mockUpdateCustomer).toHaveBeenNthCalledWith(2, { id: 'c2', sort_order: 0 });
 
         resolvers.forEach((resolve) => resolve());
+    });
+
+    it('renders a skip link and announces reorder mode', () => {
+        render(<BrowserRouter><Clients /></BrowserRouter>);
+
+        expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content');
+        expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
+
+        fireEvent.click(screen.getByRole('button', { name: /Reorder/i }));
+        expect(screen.getByRole('status')).toHaveTextContent('Reorder Mode active');
     });
 });

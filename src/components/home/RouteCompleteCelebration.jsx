@@ -57,12 +57,49 @@ export function RouteCompleteCelebration({ completed, total, duration, onClose }
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Focus management: this is a modal dialog, so focus moves into it on open,
+  // Tab cycles inside it, and focus returns to the opener on close.
+  const dialogRef = useRef(null);
+  const primaryRef = useRef(null);
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    const dialog = dialogRef.current;
+    primaryRef.current?.focus();
+
+    const onTrapKey = (e) => {
+      if (e.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.disabled);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    dialog?.addEventListener('keydown', onTrapKey);
+
+    return () => {
+      dialog?.removeEventListener('keydown', onTrapKey);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function' && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
+  }, []);
+
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center"
       role="dialog"
       aria-modal="true"
-      aria-label="Route complete"
+      aria-labelledby="route-complete-title"
+      aria-describedby="route-complete-summary"
     >
       <button
         type="button"
@@ -72,7 +109,7 @@ export function RouteCompleteCelebration({ completed, total, duration, onClose }
       />
       <div className="relative w-full max-w-md overflow-hidden rounded-t-sheet bg-surface-1 shadow-raised sm:mx-4 sm:rounded-sheet">
         {/* the light at the bottom of the pool */}
-        <div className="absolute inset-0">
+        <div className="absolute inset-0" aria-hidden="true">
           <CausticsCanvas className="h-full w-full" />
         </div>
 
@@ -80,10 +117,10 @@ export function RouteCompleteCelebration({ completed, total, duration, onClose }
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-info">
             Route complete
           </p>
-          <h2 className="text-3xl font-semibold tracking-[-0.045em] text-ink">
+          <h2 id="route-complete-title" className="text-3xl font-semibold tracking-[-0.045em] text-ink">
             Every pool is done.
           </h2>
-          <p className="mx-auto mt-2 max-w-xs text-sm font-medium leading-6 text-ink-secondary">
+          <p id="route-complete-summary" className="mx-auto mt-2 max-w-xs text-sm font-medium leading-6 text-ink-secondary">
             {completed} of {total} stops logged{duration ? ` · about ${duration} on site` : ''}.
             The record is already waiting for the office.
           </p>
@@ -94,6 +131,7 @@ export function RouteCompleteCelebration({ completed, total, duration, onClose }
           </div>
 
           <Button
+            ref={primaryRef}
             onClick={onClose}
             className="mt-6 h-12 w-full rounded-card bg-brand text-sm font-semibold text-white shadow-cta transition-colors hover:bg-brand-strong"
           >

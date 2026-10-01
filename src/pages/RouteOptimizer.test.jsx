@@ -11,6 +11,7 @@ const geocodeAddressMock = vi.fn();
 const toastInfoMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastSuccessMock = vi.fn();
+let mockDriveProfile = new Map();
 
 let mockCustomers = [];
 let mockBusiness;
@@ -50,6 +51,10 @@ vi.mock("@/lib/routeOptimizer", () => ({
 
 vi.mock("@/lib/mapNavigation", () => ({
   openNavigation: vi.fn(),
+}));
+
+vi.mock("@/lib/native/location", () => ({
+  getObservedDriveProfile: () => mockDriveProfile,
 }));
 
 vi.mock("sonner", () => ({
@@ -95,6 +100,7 @@ describe("Route Planner", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCustomers = [];
+    mockDriveProfile = new Map();
     mockBusiness = {
       address: "",
       settings: {
@@ -192,7 +198,8 @@ describe("Route Planner", () => {
     expect(list).toHaveClass("divide-y", "border-y");
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
     expect(within(list).getByLabelText("Stop 1")).toHaveTextContent("01");
-    expect(within(list).getAllByRole("button", { name: "Navigate" })).toHaveLength(2);
+    expect(within(list).getAllByRole("button", { name: /^Navigate to / })).toHaveLength(2);
+    expect(within(list).getByRole("button", { name: "Navigate to Cypress Landing" })).toBeInTheDocument();
 
     const firstStop = within(list).getByTestId("optimized-stop-1");
     expect(firstStop).not.toHaveClass("rounded-raised", "shadow-card");
@@ -230,8 +237,68 @@ describe("Route Planner", () => {
     const generateButton = screen.getByRole("button", { name: "Generate Route Plan" });
     await user.click(generateButton);
 
-    const addressButton = await screen.findByRole("button", { name: "Address Needed" });
+    const addressButton = await screen.findByRole("button", { name: "Address needed for Addressless Pool" });
     expect(addressButton).toBeDisabled();
     expect(screen.getByText(/1 stop has no service address/i)).toBeInTheDocument();
+  });
+
+  it("prefers the observed drive average over the routing estimate once three drives exist", async () => {
+    const user = userEvent.setup();
+    mockCustomers = [
+      { _id: "a", full_name: "Alpha Pool", address: "1 Alpha Way", service_day: todayName },
+      { _id: "b", full_name: "Bravo Pool", address: "2 Bravo Way", service_day: todayName },
+    ];
+    mockDriveProfile = new Map([
+      ["a->b", { averageMinutes: 23, observations: 3, averageDistanceKm: 6.1 }],
+    ]);
+    renderPlanner();
+
+    const generateButton = await screen.findByRole("button", { name: "Generate Route Plan" });
+    await waitFor(() => expect(generateButton).toBeEnabled());
+    await user.click(generateButton);
+
+    const secondStop = await screen.findByTestId("optimized-stop-2");
+    expect(within(secondStop).getByText(/~23 min \(your average\) from previous/)).toBeInTheDocument();
+    expect(within(secondStop).queryByText(/~8 min/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the routing estimate with fewer than three observations", async () => {
+    const user = userEvent.setup();
+    mockCustomers = [
+      { _id: "a", full_name: "Alpha Pool", address: "1 Alpha Way", service_day: todayName },
+      { _id: "b", full_name: "Bravo Pool", address: "2 Bravo Way", service_day: todayName },
+    ];
+    mockDriveProfile = new Map([
+      ["a->b", { averageMinutes: 23, observations: 2, averageDistanceKm: null }],
+    ]);
+    renderPlanner();
+
+    const generateButton = await screen.findByRole("button", { name: "Generate Route Plan" });
+    await waitFor(() => expect(generateButton).toBeEnabled());
+    await user.click(generateButton);
+
+    const secondStop = await screen.findByTestId("optimized-stop-2");
+    expect(within(secondStop).getByText(/~8 min from previous/)).toBeInTheDocument();
+  });
+
+  it("renders a skip link, a labelled day select and a live stop announcement in the runner", async () => {
+    const user = userEvent.setup();
+    mockCustomers = [
+      { _id: "a", full_name: "Alpha Pool", address: "1 Alpha Way", service_day: todayName },
+    ];
+    renderPlanner();
+
+    expect(await screen.findByRole("link", { name: "Skip to content" })).toHaveAttribute("href", "#main-content");
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
+    expect(screen.getByLabelText("Select Service Day")).toHaveAttribute("id", "route-service-day");
+
+    const generateButton = screen.getByRole("button", { name: "Generate Route Plan" });
+    await waitFor(() => expect(generateButton).toBeEnabled());
+    await user.click(generateButton);
+    await user.click(await screen.findByRole("button", { name: "Start Route" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Stop 1 of 1: Alpha Pool");
+    expect(screen.getByRole("button", { name: "Exit route runner" })).toHaveClass("h-11");
+    expect(screen.getByRole("button", { name: "Previous Stop" })).toHaveClass("h-11");
   });
 });

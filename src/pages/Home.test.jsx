@@ -5,6 +5,7 @@ import {
   renderWithProviders, 
   screen, 
   userEvent,
+  waitFor,
   mockCustomers,
   mockServiceLogs,
   performanceTest,
@@ -16,7 +17,21 @@ import * as convexHooks from '@/api/convexHooks';
 
 const FIXED_WEEKDAY_DATE = new Date('2026-06-08T12:00:00.000-04:00');
 
-const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+const { navigateMock, startDriveTimeCaptureMock, publishTodayGlanceMock } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+  startDriveTimeCaptureMock: vi.fn(() => () => undefined),
+  publishTodayGlanceMock: vi.fn(async () => false),
+}));
+
+vi.mock('@/lib/native/location', () => ({
+  startDriveTimeCapture: startDriveTimeCaptureMock,
+  getObservedDriveProfile: () => new Map(),
+}));
+
+vi.mock('@/lib/native/platform', async () => {
+  const actual = await vi.importActual('@/lib/native/platform');
+  return { ...actual, publishTodayGlance: publishTodayGlanceMock };
+});
 
 // Mock hooks - must be defined inline due to vi.mock hoisting
 vi.mock('@/api/convexHooks', () => {
@@ -155,7 +170,46 @@ describe('Home Page - Comprehensive Tests', () => {
     it('displays customers scheduled for today', () => {
       renderWithProviders(<Home />);
       expect(screen.getByText('John Smith')).toBeInTheDocument();
-      expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+      // Jane is pending, so she is also the glance card's next stop.
+      expect(screen.getAllByText('Jane Doe').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByTestId('customer-card-2')).toHaveTextContent('Jane Doe');
+    });
+
+    it('mounts the glance card above the stop list with the next pending stop', () => {
+      renderWithProviders(<Home />);
+      const glance = screen.getByTestId('today-glance');
+      expect(glance).toHaveTextContent('1/2');
+      expect(screen.getByTestId('today-glance-next-name')).toHaveTextContent('Jane Doe');
+      expect(screen.getByRole('link', { name: 'Open Jane Doe in Maps' })).toHaveAttribute(
+        'href',
+        expect.stringContaining('456%20Oak%20Ave')
+      );
+      expect(screen.getByRole('progressbar', { name: 'Route progress' })).toHaveAttribute('aria-valuenow', '1');
+
+      const list = screen.getByRole('region', { name: "Today's customers" });
+      expect(glance.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('starts drive-time capture and publishes the widget glance payload', async () => {
+      renderWithProviders(<Home />);
+      expect(startDriveTimeCaptureMock).toHaveBeenCalled();
+      await waitFor(() => expect(publishTodayGlanceMock).toHaveBeenCalled());
+      const payload = publishTodayGlanceMock.mock.calls.at(-1)[0];
+      expect(payload).toMatchObject({
+        version: 1,
+        totalStops: 2,
+        completedStops: 1,
+        remainingStops: 1,
+        nextStop: expect.objectContaining({ customerId: '2', name: 'Jane Doe' }),
+      });
+      expect(payload.estimatedFinishAt).toEqual(expect.any(String));
+    });
+
+    it('renders a skip link targeting the main landmark', () => {
+      renderWithProviders(<Home />);
+      const skip = screen.getByRole('link', { name: 'Skip to content' });
+      expect(skip).toHaveAttribute('href', '#main-content');
+      expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
     });
 
     it('shows quick statistics', () => {

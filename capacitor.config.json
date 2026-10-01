@@ -39,11 +39,22 @@
       "style": "DARK"
     },
     "PushNotifications": {
-      "presentationOptions": ["badge", "sound", "alert"]
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
     },
     "LocalNotifications": {
       "smallIcon": "ic_stat_icon_config_sample",
       "iconColor": "#0ea5e9"
+    },
+    "TodayGlanceWidget": {
+      "enabled": false,
+      "appGroup": "group.com.chemcheck.app",
+      "widgetKind": "TodayGlanceWidget",
+      "storageKey": "todayGlance.v1",
+      "_docs": "Hook for a future WidgetKit widget / Live Activity. The web app publishes the glance payload through publishTodayGlance() in src/lib/native/platform.ts, which is a no-op until a native plugin named TodayGlanceWidget is registered. The Swift plan is documented in that file."
     }
   },
   "cordova": {

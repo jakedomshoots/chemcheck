@@ -8,6 +8,9 @@ import {
   MapPin,
   ShieldCheck,
   Lock,
+  CheckCircle2,
+  CircleDashed,
+  SkipForward,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { readingToStatus, statusToTone } from "@/lib/chemStatus";
@@ -61,15 +64,15 @@ const rowStateClassName = {
 
 const statusToneClassName = {
   done: {
-    dot: "bg-[var(--status-ok)]",
+    icon: CheckCircle2,
     label: "text-ok",
   },
   skipped: {
-    dot: "bg-[var(--status-watch)]",
+    icon: SkipForward,
     label: "text-watch",
   },
   pending: {
-    dot: "bg-[var(--status-info)]",
+    icon: CircleDashed,
     label: "text-info",
   },
 };
@@ -97,6 +100,7 @@ const CustomerCard = memo(function CustomerCard({
   const chemicalReadings = getChemicalReadings(lastWeekLog);
   const displayStopNumber = String(stopNumber ?? 1).padStart(2, "0");
   const detailsId = `customer-details-${customer._id}`;
+  const StatusIcon = statusToneClassName[cardState].icon;
 
   const handleRowAction = () => {
     if (isCompleted) {
@@ -139,10 +143,7 @@ const CustomerCard = memo(function CustomerCard({
                 className={`inline-flex shrink-0 items-center gap-1.5 text-[0.6875rem] font-semibold ${statusToneClassName[cardState].label}`}
                 aria-label={`Service status: ${statusLabel}`}
               >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${statusToneClassName[cardState].dot}`}
-                  aria-hidden="true"
-                />
+                <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" data-testid={`status-icon-${cardState}`} />
                 {statusLabel}
               </span>
             </span>
