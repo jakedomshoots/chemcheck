@@ -169,7 +169,7 @@ export default function LsiReadingFields({ formData, setFormData }) {
               onChange={(value) => update('water_temperature', value, 'water_temperature_source')}
               unit="°F"
               min={32}
-              max={140}
+              max={120}
               hint="Measured at this visit"
             />
             <ReadingInput

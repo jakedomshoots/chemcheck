@@ -2,7 +2,12 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import { validateLsiFields, validateLsiUpdate } from "./validation";
-import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
+import {
+    assertReadingSanity,
+    stripScanAnalysisVersionValidator,
+    stripScanPadConfidenceValidator,
+    stripScanQualityValidator,
+} from "./lsiValidators";
 import { NOT_DELETED_FILTER } from "./sync";
 
 /**
@@ -247,6 +252,8 @@ export const create = mutation({
         if (!identity) throw new Error("Not authenticated");
 
         validateLsiFields(args, true);
+        // Reject readings that cannot be real before touching the database.
+        assertReadingSanity(args);
 
         // Enforce rate limiting (database-backed for distributed rate limiting)
         await enforceRateLimit(ctx, identity.email!, 'serviceLog.create');
@@ -370,6 +377,8 @@ export const update = mutation({
         }
 
         validateLsiUpdate(log, args);
+        // Only the readings included in this update are checked.
+        assertReadingSanity(args);
 
         if (args.pool_id) {
             const pool = await ctx.db.get(args.pool_id);

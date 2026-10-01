@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useCustomers, useServiceLogCreate, useServiceLogsByCustomerDateRange } from "@/api/convexHooks";
+import {
+  useCustomers,
+  useServiceLogCreate,
+  useServiceLogsByCustomer,
+  useServiceLogsByCustomerDateRange,
+  useChemicalUsageCreate,
+} from "@/api/convexHooks";
+import { useActivePoolEquipment } from "@/api/equipmentHooks";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { endOfWeek, format, startOfWeek, subWeeks } from "date-fns";
@@ -17,10 +24,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import SimplifiedChemicalInput from "../components/servicelog/SimplifiedChemicalInput";
 import LastWeekChemistry from "@/components/servicelog/LastWeekChemistry";
 import LsiReadingFields from "@/components/servicelog/LsiReadingFields";
+import DosingRecommendations from "@/components/servicelog/DosingRecommendations";
+import EquipmentStrip from "@/components/servicelog/EquipmentStrip";
+import ReadingSanityPrompt from "@/components/servicelog/ReadingSanityPrompt";
 import { ChemicalBeakerLoader } from "@/components/ui/loader";
 import { hapticSuccess } from "@/lib/haptics";
 import { CHEMICAL_CONFIGS } from "@/lib/chemStatus";
 import { calculateServiceLogLsi, LSI_CALCULATION_VERSION } from "@/lib/lsi";
+import { checkReadingSanity } from "@/lib/validation";
 import { transitionName } from "@/lib/viewTransitions";
 import { deleteUnlinkedPhotos, linkPhotosToServiceLog, getPhotos } from "@/lib/proof-of-service";
 import { useBusinessSettings } from "@/hooks/useBusinessSettings";
@@ -80,6 +91,9 @@ export default function NewServiceLog() {
 
   const customers = useCustomers();
   const createServiceLog = useServiceLogCreate();
+  const createChemicalUsage = useChemicalUsageCreate();
+  const customerLogs = useServiceLogsByCustomer(customerId || undefined);
+  const { pool, classification: equipmentClassification } = useActivePoolEquipment(customerId || undefined);
   const convexBusiness = useQuery(api.businesses.getCurrent);
   const lastWeekRange = useMemo(() => {
     const lastWeek = subWeeks(new Date(), 1);
@@ -95,6 +109,11 @@ export default function NewServiceLog() {
     1
   );
   const lastWeekLog = navigationLastWeekLog || lastWeekLogs[0] || null;
+  // Most recent earlier visit, used for the "double-check" jump warnings.
+  const previousLog = useMemo(() => {
+    const logs = Array.isArray(customerLogs) ? customerLogs : [];
+    return [...logs].sort((a, b) => String(b.service_date).localeCompare(String(a.service_date)))[0] || lastWeekLog || null;
+  }, [customerLogs, lastWeekLog]);
 
   const serviceTypes = useMemo(() => {
     const settingsTypes = convexBusiness?.settings?.service_types;
@@ -244,6 +263,9 @@ export default function NewServiceLog() {
   const [afterPhotos, setAfterPhotos] = useState([]);
 
   const [validationError, setValidationError] = useState(null);
+  const [sanityWarnings, setSanityWarnings] = useState([]);
+  const [sanityPromptOpen, setSanityPromptOpen] = useState(false);
+  const [loggingChemicals, setLoggingChemicals] = useState(false);
 
   const { proofOfServiceSettings, isLoading: settingsLoading } = useBusinessSettings();
 
@@ -286,6 +308,55 @@ export default function NewServiceLog() {
     return savedAtDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }, [draftSavedAt]);
 
+  // Pool facts: prefer the normalized pool record, fall back to the customer.
+  const poolGallons = pool?.pool_gallons ?? customer?.pool_gallons ?? null;
+  const poolType = pool?.pool_type ?? customer?.pool_type ?? null;
+  const surfaceType = pool?.surface_type ?? customer?.surface_type ?? null;
+  const showSaltField = String(poolType || "").toLowerCase() === "salt" || !!equipmentClassification?.saltCell;
+
+  const currentReadings = useMemo(() => ({
+    ph_value: optionalReading(formData.ph_value),
+    chlorine_value: optionalReading(formData.chlorine_value),
+    alkalinity_value: optionalReading(formData.alkalinity_value),
+    stabilizer_value: optionalReading(formData.stabilizer_value),
+    hardness_value: optionalReading(formData.hardness_value),
+    salt: showSaltField ? optionalReading(formData.salt) : undefined,
+    water_temperature: optionalReading(formData.water_temperature),
+    tds_value: optionalReading(formData.tds_value),
+  }), [
+    formData.ph_value, formData.chlorine_value, formData.alkalinity_value, formData.stabilizer_value,
+    formData.hardness_value, formData.salt, formData.water_temperature, formData.tds_value, showSaltField,
+  ]);
+
+  const liveLsi = useMemo(() => calculateServiceLogLsi({
+    ...currentReadings,
+    hardness_source: formData.hardness_source || undefined,
+    water_temperature_source: formData.water_temperature_source || undefined,
+    tds_source: formData.tds_source || undefined,
+  }).result?.value ?? null, [currentReadings, formData.hardness_source, formData.water_temperature_source, formData.tds_source]);
+
+  const handleLogChemicals = useCallback(async (entries) => {
+    if (!customerId || !entries?.length) return;
+    setLoggingChemicals(true);
+    try {
+      for (const entry of entries) {
+        await createChemicalUsage({
+          customer_id: customerId,
+          chemical_type: entry.chemical_type,
+          quantity: entry.quantity,
+          notes: entry.notes,
+        });
+      }
+      toast.success(`Logged ${entries.length} chemical${entries.length === 1 ? "" : "s"} for ${customer?.full_name || "this client"}.`);
+    } catch (error) {
+      console.error("[NewServiceLog] Failed to log recommended chemicals:", error);
+      toast.error("Could not log chemicals. Please add them from Chemical Usage.");
+      throw error;
+    } finally {
+      setLoggingChemicals(false);
+    }
+  }, [createChemicalUsage, customerId, customer?.full_name]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -308,6 +379,28 @@ export default function NewServiceLog() {
       return;
     }
 
+    // Reading sanity: hard-invalid values block; big jumps ask for a confirm.
+    const sanity = checkReadingSanity(currentReadings, previousLog);
+    if (!sanity.isValid) {
+      setValidationError(sanity.errors.map((issue) => issue.message).join(" "));
+      return;
+    }
+    if (sanity.warnings.length > 0) {
+      setSanityWarnings(sanity.warnings);
+      setSanityPromptOpen(true);
+      return;
+    }
+
+    await performSave();
+  };
+
+  const confirmSanityAndSave = async () => {
+    setSanityPromptOpen(false);
+    setSanityWarnings([]);
+    await performSave();
+  };
+
+  const performSave = async () => {
     setSaving(true);
 
     let actualBeforeCount = beforePhotos.length;
@@ -388,8 +481,11 @@ export default function NewServiceLog() {
       duration_ms: durationMs,
     };
 
-    if (customer?.pool_type === "Salt" && formData.salt) {
+    if (showSaltField && formData.salt) {
       logData.salt = parseFloat(formData.salt);
+    }
+    if (pool?.id) {
+      logData.pool_id = pool.id;
     }
 
     // Persist check-out time for crash resilience before submitting
@@ -572,6 +668,13 @@ export default function NewServiceLog() {
           </div>
         )}
 
+        <EquipmentStrip
+          customerId={customerIdParam}
+          pool={pool}
+          classification={equipmentClassification}
+          poolType={poolType}
+        />
+
         <Card className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
@@ -672,7 +775,7 @@ export default function NewServiceLog() {
               testId="stabilizer-numeric-input"
             />
 
-            {customer.pool_type === "Salt" && (
+            {showSaltField && (
               <div className="rounded-raised border border-line bg-surface-1 p-3">
                 <div className="flex items-center gap-2">
                   <PoolIcon name="waterLevel" className="h-4 w-4 text-brand-ink" />
@@ -680,9 +783,15 @@ export default function NewServiceLog() {
                 </div>
                 <Input
                   type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={20000}
+                  step={10}
                   value={formData.salt}
                   onChange={(e) => setFormData({ ...formData, salt: e.target.value })}
                   placeholder="3200"
+                  aria-label="Salt Level (PPM)"
+                  data-testid="salt-input"
                   className="mt-3 h-12 rounded-2xl border border-line bg-white focus:border-ring"
                 />
                 <p className="mt-2 text-xs font-medium text-ink-muted">Ideal range: 2700-3400 PPM</p>
@@ -690,6 +799,15 @@ export default function NewServiceLog() {
             )}
           </div>
           <LsiReadingFields formData={formData} setFormData={setFormData} />
+          <DosingRecommendations
+            readings={currentReadings}
+            poolGallons={poolGallons}
+            poolType={poolType}
+            surfaceType={surfaceType}
+            lsi={liveLsi}
+            onLogChemicals={handleLogChemicals}
+            logging={loggingChemicals}
+          />
         </Card>
 
         <Card className="mb-5 rounded-sheet border border-line bg-surface-1 p-5 shadow-card ">
@@ -756,6 +874,13 @@ export default function NewServiceLog() {
           />
         </div>
       </form>
+
+      <ReadingSanityPrompt
+        open={sanityPromptOpen}
+        warnings={sanityWarnings}
+        onConfirm={confirmSanityAndSave}
+        onCancel={() => { setSanityPromptOpen(false); setSanityWarnings([]); }}
+      />
     </div>
   );
 }

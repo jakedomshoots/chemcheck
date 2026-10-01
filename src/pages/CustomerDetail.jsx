@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useCustomers, useServiceLogsByCustomer, useServiceLogDelete, useCustomerUpdate } from "@/api/convexHooks";
+import { useCustomers, useServiceLogsByCustomer, useServiceLogDelete, useCustomerUpdate, useChemicalUsageFilter } from "@/api/convexHooks";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl, formatServiceDate, parseLocalDate } from "@/utils";
 import { MapPin, Phone, Mail, Droplets, Calendar, FileText, BarChart3, Settings } from "lucide-react";
@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/card";
 import { BackButton } from "@/components/navigation/BackButton";
 import ServiceLogCard from "../components/servicelog/ServiceLogCard";
 import PoolAnalysisPanel from "@/components/PoolAnalysisPanel";
+import ReadingsTrend from "@/components/history/ReadingsTrend";
+import CustomerEquipmentSection from "@/components/history/CustomerEquipmentSection";
 import { SendReportDialog } from "@/components/service-reports";
 import { ReportSettingsPanel } from "@/components/service-reports/ReportSettingsPanel";
 import { formatSmsMessage, buildReportUrl } from "@/lib/smsReport";
@@ -67,6 +69,8 @@ export default function CustomerDetail() {
 
   const customers = useCustomers();
   const logs = useServiceLogsByCustomer(customerId);
+  const chemicalUsageFilters = useMemo(() => (customerId ? { customer_id: customerId } : undefined), [customerId]);
+  const chemicalUsage = useChemicalUsageFilter(chemicalUsageFilters);
   const deleteServiceLog = useServiceLogDelete();
   const updateCustomer = useCustomerUpdate();
 
@@ -856,6 +860,20 @@ export default function CustomerDetail() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      <CustomerEquipmentSection customer={customer} />
+
+      {logs && logs.length > 0 && (
+        <div className="mb-4">
+          <ReadingsTrend
+            serviceLogs={logs}
+            chemicalUsage={chemicalUsage || []}
+            poolType={customer.pool_type}
+            surfaceType={customer.surface_type}
+            title="Readings trend"
+          />
         </div>
       )}
 

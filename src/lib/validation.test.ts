@@ -6,7 +6,8 @@ import {
   validateNote,
   checkRateLimit,
   sanitizeHtml,
-  sanitizeString
+  sanitizeString,
+  checkReadingSanity
 } from './validation';
 
 describe('Input Sanitization', () => {
@@ -496,5 +497,83 @@ describe('Rate Limiting', () => {
     
     // Restore original
     localStorage.setItem = originalSetItem;
+  });
+});
+
+describe('Reading sanity checks', () => {
+  it('accepts normal readings with no previous visit', () => {
+    const result = checkReadingSanity({
+      ph_value: 7.4, chlorine_value: 3, alkalinity_value: 100, stabilizer_value: 40, hardness_value: 300, salt: 3200, water_temperature: 82,
+    });
+    expect(result).toEqual({ errors: [], warnings: [], isValid: true });
+  });
+
+  it('rejects hard-invalid readings with field-specific messages', () => {
+    const result = checkReadingSanity({
+      ph_value: 14.5, chlorine_value: 51, alkalinity_value: 1001, stabilizer_value: 501, hardness_value: 2001, salt: 20001, water_temperature: 121,
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.map((issue) => issue.field)).toEqual([
+      'ph_value', 'chlorine_value', 'alkalinity_value', 'stabilizer_value', 'hardness_value', 'salt', 'water_temperature',
+    ]);
+    expect(result.errors[0].message).toMatch(/pH 14.5 is outside the possible range \(0 to 14\)/);
+    expect(result.errors[6].message).toMatch(/Water temperature 121 °F is outside/);
+    expect(checkReadingSanity({ water_temperature: 31 }).isValid).toBe(false);
+    expect(checkReadingSanity({ ph_value: -0.1 }).isValid).toBe(false);
+  });
+
+  it('treats boundary values as valid', () => {
+    expect(checkReadingSanity({ ph_value: 14, chlorine_value: 50, water_temperature: 32, salt: 20000 }).isValid).toBe(true);
+  });
+
+  it('ignores blanks and string values that are not numbers', () => {
+    const result = checkReadingSanity({ ph_value: '' as unknown as number, chlorine_value: 'abc' as unknown as number });
+    expect(result.isValid).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('warns about big jumps versus the previous visit without blocking', () => {
+    const previous = { ph_value: 7.4, chlorine_value: 3, alkalinity_value: 100, hardness_value: 300, salt: 3200 };
+    const result = checkReadingSanity(
+      { ph_value: 8.5, chlorine_value: 12, alkalinity_value: 181, hardness_value: 501, salt: 1600 },
+      previous,
+    );
+    expect(result.isValid).toBe(true);
+    expect(result.warnings.map((issue) => issue.field)).toEqual(['ph_value', 'chlorine_value', 'alkalinity_value', 'hardness_value', 'salt']);
+    expect(result.warnings[0].message).toMatch(/pH moved up from 7.4 last visit to 8.5/);
+    expect(result.warnings[4].message).toMatch(/Salt moved down from 3200 ppm last visit to 1600 ppm/);
+  });
+
+  it('does not warn when the change is within the jump limit', () => {
+    const result = checkReadingSanity(
+      { ph_value: 8.4, chlorine_value: 11, alkalinity_value: 180, hardness_value: 500, salt: 4700 },
+      { ph_value: 7.4, chlorine_value: 3, alkalinity_value: 100, hardness_value: 300, salt: 3200 },
+    );
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('does not double-report a hard-invalid reading as a jump', () => {
+    const result = checkReadingSanity({ ph_value: 15 }, { ph_value: 7.4 });
+    expect(result.errors).toHaveLength(1);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('flags FC 0 with CYA above 100 as physically unlikely', () => {
+    const result = checkReadingSanity({ chlorine_value: 0, stabilizer_value: 120 });
+    expect(result.isValid).toBe(true);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].message).toMatch(/physically unlikely/);
+    expect(checkReadingSanity({ chlorine_value: 0, stabilizer_value: 60 }).warnings).toEqual([]);
+    expect(checkReadingSanity({ chlorine_value: 1, stabilizer_value: 120 }).warnings).toEqual([]);
+  });
+
+  it('keeps the service log schema aligned with the hard limits', () => {
+    const base = { customer_id: 1, service_date: '2024-01-01', status: 'completed', ph: 'good', chlorine: 'good', alkalinity: 'good', stabilizer: 'good' };
+    expect(validateServiceLog({ ...base, chlorine_value: 51 }).success).toBe(false);
+    expect(validateServiceLog({ ...base, stabilizer_value: 501 }).success).toBe(false);
+    expect(validateServiceLog({ ...base, salt: 20001 }).success).toBe(false);
+    expect(validateServiceLog({ ...base, salt: 15000 }).success).toBe(true);
+    expect(validateServiceLog({ ...base, water_temperature: 121, water_temperature_source: 'measured' }).success).toBe(false);
+    expect(validateServiceLog({ ...base, water_temperature: 120, water_temperature_source: 'measured' }).success).toBe(true);
   });
 });

@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ArrowLeft, ChevronRight, Search } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useCustomers, useServiceLogs } from '@/api/convexHooks';
+import { useCustomers, useServiceLogs, useChemicalUsageFilter } from '@/api/convexHooks';
+import ReadingsTrend from '@/components/history/ReadingsTrend';
+import { groupLogsByPool } from '@/lib/readings/trends';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -137,9 +139,10 @@ function CustomerOverview({ customers, logs, onSelect }) {
   );
 }
 
-function VisitHistory({ customer, logs, onBack }) {
+function VisitHistory({ customer, logs, chemicalUsage, onBack }) {
   const rows = logs.filter((log) => log.customer_id === customer._id);
   const latestScored = rows.map((log) => ({ log, output: calculateServiceLogLsi(log) })).find((row) => row.output.result);
+  const poolGroups = useMemo(() => groupLogsByPool(rows), [rows]);
 
   return (
     <>
@@ -169,6 +172,24 @@ function VisitHistory({ customer, logs, onBack }) {
           <p className="text-sm font-semibold text-ink">No calculable visits yet</p>
           <p className="mt-1 text-xs leading-5 text-ink-muted">Log numeric pH, alkalinity, CYA, hardness and water temperature on the next service visit.</p>
         </Card>
+      )}
+
+      {rows.length > 0 && (
+        <div className="mt-5 space-y-4">
+          {poolGroups.map((group) => (
+            <ReadingsTrend
+              key={group.poolId === null ? 'all' : String(group.poolId)}
+              serviceLogs={group.logs}
+              chemicalUsage={chemicalUsage}
+              poolId={poolGroups.length > 1 ? group.poolId : undefined}
+              poolType={customer.pool_type}
+              surfaceType={customer.surface_type}
+              title={poolGroups.length > 1
+                ? (group.poolId === null ? 'Readings trend · unassigned pool' : `Readings trend · pool ${group.poolId}`)
+                : 'Readings trend'}
+            />
+          ))}
+        </div>
       )}
 
       <div className="mt-5">
@@ -223,6 +244,8 @@ export default function LsiDashboard() {
   const [searchParams] = useSearchParams();
   const customerId = Number(searchParams.get('customerId'));
   const customer = customers.find((item) => item._id === customerId);
+  const chemicalUsageFilters = useMemo(() => (customer ? { customer_id: customer._id } : undefined), [customer]);
+  const chemicalUsage = useChemicalUsageFilter(chemicalUsageFilters) || [];
 
   const selectCustomer = (id) => navigate(`${APP_ROUTES.LSI}?customerId=${encodeURIComponent(id)}`);
   const showOverview = () => navigate(APP_ROUTES.LSI);
@@ -243,7 +266,7 @@ export default function LsiDashboard() {
       </section>
 
       {customer
-        ? <VisitHistory customer={customer} logs={logs} onBack={showOverview} />
+        ? <VisitHistory customer={customer} logs={logs} chemicalUsage={chemicalUsage} onBack={showOverview} />
         : <CustomerOverview customers={customers} logs={logs} onSelect={selectCustomer} />}
 
       <p className="mx-auto mt-5 max-w-xl text-center text-[0.6875rem] leading-5 text-ink-muted">

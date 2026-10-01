@@ -28,9 +28,14 @@ const logs = [{
   tds_source: 'measured',
 }];
 
+const chemicalUsage = [
+  { _id: 21, customer_id: 1, created_date: '2026-09-15', chemical_type: 'Muriatic Acid', quantity: '16 fl oz' },
+];
+
 vi.mock('@/api/convexHooks', () => ({
   useCustomers: vi.fn(() => customers),
   useServiceLogs: vi.fn(() => logs),
+  useChemicalUsageFilter: vi.fn(() => chemicalUsage),
 }));
 
 describe('LSI dashboard', () => {
@@ -50,6 +55,14 @@ describe('LSI dashboard', () => {
     expect(screen.getByText('Latest calculated visit')).toBeInTheDocument();
     expect(screen.getByText('Measured')).toBeInTheDocument();
     expect(screen.getByText('Sep 15, 2026')).toBeInTheDocument();
+  });
+
+  it('mounts the readings trend with dose markers for the selected customer', () => {
+    render(<MemoryRouter initialEntries={['/LSI?customerId=1']}><LsiDashboard /></MemoryRouter>);
+    const trend = screen.getByTestId('readings-trend');
+    expect(trend).toHaveTextContent('Readings trend');
+    expect(trend.querySelectorAll('[data-testid="dose-marker"]').length).toBeGreaterThan(0);
+    expect(screen.getByRole('tablist', { name: 'Trend range' })).toBeInTheDocument();
   });
 
   it('keeps incomplete visits visible without assigning a score', () => {

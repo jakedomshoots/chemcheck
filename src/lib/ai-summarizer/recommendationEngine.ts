@@ -33,6 +33,28 @@ import {
 } from './validation';
 
 /**
+ * Product caps, waits and safety notes are shared with the at-the-stop dosing
+ * calculator (src/lib/dosing) so both paths agree on what a safe addition is.
+ */
+import {
+  DOSAGE_PRODUCTS,
+  buildCappedDosage,
+  GENERAL_CHEMICAL_SAFETY_NOTE,
+  ACID_LAST_SAFETY_NOTE,
+  type DosageProduct,
+  type DosageProductSpec,
+} from '../dosing/products';
+
+export {
+  DOSAGE_PRODUCTS,
+  buildCappedDosage,
+  GENERAL_CHEMICAL_SAFETY_NOTE,
+  ACID_LAST_SAFETY_NOTE,
+  type DosageProduct,
+  type DosageProductSpec,
+};
+
+/**
  * Priority levels for different issue severities
  * Lower number = higher priority (more urgent)
  */
@@ -43,31 +65,6 @@ const PRIORITY_LEVELS = {
   low: 4,
   preventive: 5,
 } as const;
-
-/**
- * Chemical products the engine can recommend. Each carries the maximum amount
- * that may be added in a single step (scaled linearly by pool size from
- * `perGallons`) so a large pool never produces a single unsafe dose.
- */
-type DosageProduct = 'sodium_carbonate' | 'muriatic_acid' | 'calcium_hypochlorite' | 'sodium_bicarbonate' | 'cyanuric_acid';
-
-interface DosageProductSpec {
-  unit: string;
-  /** Maximum amount for one addition, per `perGallons` gallons of pool water. */
-  maxPerAddition: number;
-  perGallons: number;
-  /** Minutes to circulate before retesting after an addition. */
-  circulateMinutes: number;
-}
-
-const DOSAGE_PRODUCTS: Record<DosageProduct, DosageProductSpec> = {
-  sodium_carbonate: { unit: 'lbs sodium carbonate', maxPerAddition: 1, perGallons: 10000, circulateMinutes: 60 },
-  // 1 gal = 4 quarts; dosages below are expressed in quarts.
-  muriatic_acid: { unit: 'quarts muriatic acid', maxPerAddition: 4, perGallons: 20000, circulateMinutes: 60 },
-  calcium_hypochlorite: { unit: 'lbs calcium hypochlorite', maxPerAddition: 1, perGallons: 10000, circulateMinutes: 60 },
-  sodium_bicarbonate: { unit: 'lbs sodium bicarbonate', maxPerAddition: 2.5, perGallons: 10000, circulateMinutes: 360 },
-  cyanuric_acid: { unit: 'lbs cyanuric acid', maxPerAddition: 2, perGallons: 10000, circulateMinutes: 1440 },
-};
 
 /**
  * Chemical dosage rates per 10,000 gallons
@@ -95,42 +92,6 @@ const DOSAGE_RATES: Record<ValidChemical, Record<string, { amount: string; unit:
   },
 };
 
-/** Safety guidance attached to every set that includes a chemical addition. */
-export const GENERAL_CHEMICAL_SAFETY_NOTE =
-  'Never mix chemicals. Add acid and chlorine products at separate times, at least 30 minutes apart, with the pump running.';
-
-export const ACID_LAST_SAFETY_NOTE =
-  'Both a pH-down (acid) product and a chlorine product are recommended for this visit: add the chlorine product first, keep the pump running, wait at least 30 minutes, then add the acid last. Never combine them.';
-
-function formatAmount(amount: number): string {
-  return Number.isInteger(amount) ? String(amount) : amount.toFixed(1);
-}
-
-/**
- * Builds a dosage instruction that never exceeds the product's per-addition
- * cap. Larger corrections are split into repeated add / circulate / retest
- * steps instead of one oversized dose.
- */
-export function buildCappedDosage(
-  totalAmount: number,
-  spec: DosageProductSpec,
-  gallons: number,
-  unitLabel: string = spec.unit
-): string {
-  const cap = spec.maxPerAddition * (gallons / spec.perGallons);
-  if (!(cap > 0) || totalAmount <= cap) {
-    return `${formatAmount(totalAmount)} ${unitLabel} for ${gallons} gallons`;
-  }
-
-  const steps = Math.ceil(totalAmount / cap);
-  const perStep = totalAmount / steps;
-  const wait = spec.circulateMinutes >= 60
-    ? `${Math.round(spec.circulateMinutes / 60)} hour${spec.circulateMinutes >= 120 ? 's' : ''}`
-    : `${spec.circulateMinutes} minutes`;
-  return `${formatAmount(totalAmount)} ${unitLabel} total for ${gallons} gallons. ` +
-    `Do not add all at once: add ${formatAmount(perStep)} ${unitLabel} (max ${formatAmount(cap)} ${unitLabel} per addition), ` +
-    `circulate for ${wait}, retest, and repeat up to ${steps} times until in range.`;
-}
 /**
  * Recommended actions for each chemical and reading combination
  * SECURITY: Only accessed via validated chemical names

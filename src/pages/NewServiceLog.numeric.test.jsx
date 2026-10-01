@@ -9,13 +9,30 @@ import { validateServiceLog } from '@/lib/validation';
 const mockUser = { email: 'test@example.com' };
 const mockCustomers = [{ _id: 1, full_name: 'Alice Smith', address: '123 St', pool_type: 'chlorine' }];
 const mockCreateServiceLog = vi.fn();
+const mockCreateChemicalUsage = vi.fn();
+const mockActivePoolEquipment = {
+    pool: null,
+    pools: [],
+    equipment: [],
+    classification: { filter: null, filterKind: null, saltCell: null, heater: null, pump: null, other: [], hasAny: false },
+};
 
 vi.mock('@/api/convexHooks', () => ({
     useCurrentUser: () => mockUser,
     useCustomers: () => mockCustomers,
     useServiceLogsByCustomerDateRange: () => [],
-    useServiceLogCreate: () => mockCreateServiceLog
+    useServiceLogCreate: () => mockCreateServiceLog,
+    useServiceLogsByCustomer: () => [],
+    useChemicalUsageCreate: () => mockCreateChemicalUsage,
 }));
+
+vi.mock('@/api/equipmentHooks', async () => {
+    const actual = await vi.importActual('@/api/equipmentHooks');
+    return {
+        ...actual,
+        useActivePoolEquipment: () => mockActivePoolEquipment,
+    };
+});
 
 vi.mock('@/utils', () => ({
     createPageUrl: (page) => `/page/${page}`,

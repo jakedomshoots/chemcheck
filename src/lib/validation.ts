@@ -83,6 +83,7 @@ export const customerSchema = z.object({
 
 export const serviceLogSchema = z.object({
   customer_id: z.number().min(1, 'Customer ID is required'),
+  pool_id: z.number().min(1, 'Invalid pool ID').optional(),
 
   service_date: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Service date must be in YYYY-MM-DD format')
@@ -111,7 +112,7 @@ export const serviceLogSchema = z.object({
     .optional(),
   chlorine_value: z.number()
     .min(0, 'Chlorine value must be positive')
-    .max(100, 'Chlorine value seems unrealistic (max 100 ppm)')
+    .max(50, 'Chlorine value seems unrealistic (max 50 ppm)')
     .optional(),
   total_chlorine_value: z.number().min(0).max(10).optional(),
   total_bromine_value: z.number().min(0).max(20).optional(),
@@ -127,7 +128,7 @@ export const serviceLogSchema = z.object({
     .optional(),
   stabilizer_value: z.number()
     .min(0, 'Stabilizer value must be positive')
-    .max(1000, 'Stabilizer value seems unrealistic (max 1000 ppm)')
+    .max(500, 'Stabilizer value seems unrealistic (max 500 ppm)')
     .optional(),
 
   hardness_value: z.number()
@@ -137,7 +138,7 @@ export const serviceLogSchema = z.object({
   hardness_source: z.enum(['aquachek_total', 'calcium']).optional(),
   water_temperature: z.number()
     .min(32, 'Water temperature must be at least 32°F')
-    .max(140, 'Water temperature must be at most 140°F')
+    .max(120, 'Water temperature must be at most 120°F')
     .optional(),
   water_temperature_source: z.enum(['measured', 'assumed']).optional(),
   tds_value: z.number()
@@ -148,7 +149,7 @@ export const serviceLogSchema = z.object({
 
   salt: z.number()
     .min(0, 'Salt level must be positive')
-    .max(10000, 'Salt level seems unrealistic (max 10,000 ppm)')
+    .max(20000, 'Salt level seems unrealistic (max 20,000 ppm)')
     .optional(),
 
   start_time: z.string().optional(),
@@ -379,4 +380,139 @@ export function checkRateLimit(table: keyof typeof RATE_LIMITS): { allowed: bool
     console.error('Rate limit check failed:', error);
     return { allowed: true };
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reading sanity checks                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Numeric readings a service log can carry. Values are plain numbers; strings
+ * and blanks are treated as "not entered" by {@link checkReadingSanity}.
+ */
+export interface SanityReadings {
+  ph_value?: number | null;
+  chlorine_value?: number | null;
+  alkalinity_value?: number | null;
+  stabilizer_value?: number | null;
+  hardness_value?: number | null;
+  salt?: number | null;
+  water_temperature?: number | null;
+}
+
+export type SanityReadingKey = keyof SanityReadings;
+
+export interface ReadingLimit {
+  min: number;
+  max: number;
+  label: string;
+  unit: string;
+}
+
+/**
+ * Hard limits: a reading outside these bounds cannot be a real measurement
+ * (or the kit cannot produce it) and is rejected outright. Mirrored server
+ * side in convex/lsiValidators.ts.
+ */
+export const READING_HARD_LIMITS: Record<SanityReadingKey, ReadingLimit> = {
+  ph_value: { min: 0, max: 14, label: 'pH', unit: '' },
+  chlorine_value: { min: 0, max: 50, label: 'Free chlorine', unit: 'ppm' },
+  alkalinity_value: { min: 0, max: 1000, label: 'Total alkalinity', unit: 'ppm' },
+  stabilizer_value: { min: 0, max: 500, label: 'Stabilizer (CYA)', unit: 'ppm' },
+  hardness_value: { min: 0, max: 2000, label: 'Calcium hardness', unit: 'ppm' },
+  salt: { min: 0, max: 20000, label: 'Salt', unit: 'ppm' },
+  water_temperature: { min: 32, max: 120, label: 'Water temperature', unit: '°F' },
+};
+
+/**
+ * Soft limits: the largest change versus the previous visit that does not
+ * deserve a second look. Bigger jumps are usually a typo or a wrong kit.
+ */
+export const READING_JUMP_LIMITS: Partial<Record<SanityReadingKey, number>> = {
+  ph_value: 1.0,
+  chlorine_value: 8,
+  alkalinity_value: 80,
+  hardness_value: 200,
+  salt: 1500,
+};
+
+export interface ReadingSanityIssue {
+  field: SanityReadingKey;
+  message: string;
+}
+
+export interface ReadingSanityResult {
+  /** Hard-invalid readings. Saving must be blocked while this is non-empty. */
+  errors: ReadingSanityIssue[];
+  /** Double-check prompts. Saving may proceed once the technician confirms. */
+  warnings: ReadingSanityIssue[];
+  isValid: boolean;
+}
+
+const SANITY_KEYS: SanityReadingKey[] = [
+  'ph_value', 'chlorine_value', 'alkalinity_value', 'stabilizer_value', 'hardness_value', 'salt', 'water_temperature',
+];
+
+function sanityNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function withUnit(value: number, limit: ReadingLimit): string {
+  return limit.unit ? `${value} ${limit.unit}` : String(value);
+}
+
+/**
+ * Checks this visit's readings for values that cannot be real (errors) and
+ * values that deserve a second look before saving (warnings).
+ *
+ * @param readings  This visit's numeric readings.
+ * @param previous  The most recent earlier visit for the same pool, if any.
+ */
+export function checkReadingSanity(
+  readings: SanityReadings | Record<string, unknown>,
+  previous?: SanityReadings | Record<string, unknown> | null,
+): ReadingSanityResult {
+  const errors: ReadingSanityIssue[] = [];
+  const warnings: ReadingSanityIssue[] = [];
+  const current = readings as Record<string, unknown>;
+  const prior = (previous || {}) as Record<string, unknown>;
+
+  for (const field of SANITY_KEYS) {
+    const value = sanityNumber(current[field]);
+    if (value === undefined) continue;
+    const limit = READING_HARD_LIMITS[field];
+    if (value < limit.min || value > limit.max) {
+      errors.push({
+        field,
+        message: `${limit.label} ${withUnit(value, limit)} is outside the possible range (${withUnit(limit.min, limit)} to ${withUnit(limit.max, limit)}). Re-enter the reading.`,
+      });
+      continue;
+    }
+
+    const jump = READING_JUMP_LIMITS[field];
+    const before = sanityNumber(prior[field]);
+    if (jump !== undefined && before !== undefined) {
+      const delta = Math.abs(value - before);
+      if (delta > jump) {
+        const direction = value > before ? 'up' : 'down';
+        warnings.push({
+          field,
+          message: `${limit.label} moved ${direction} from ${withUnit(before, limit)} last visit to ${withUnit(value, limit)} (change of ${withUnit(Number(delta.toFixed(2)), limit)}). Double-check the reading before saving.`,
+        });
+      }
+    }
+  }
+
+  const fc = sanityNumber(current.chlorine_value);
+  const cya = sanityNumber(current.stabilizer_value);
+  if (fc === 0 && cya !== undefined && cya > 100 && !errors.some((issue) => issue.field === 'stabilizer_value')) {
+    warnings.push({
+      field: 'chlorine_value',
+      message: `Free chlorine 0 ppm with CYA ${cya} ppm is physically unlikely — high CYA usually bleaches the test. Confirm with a FAS-DPD test.`,
+    });
+  }
+
+  return { errors, warnings, isValid: errors.length === 0 };
 }

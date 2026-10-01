@@ -22,6 +22,9 @@ const mockCustomer = {
 const mockLogs = [
     { _id: 'l1', service_date: '2023-01-01', ph: '7.4', chlorine: '3.0' }
 ];
+const mockChemicalUsage = [
+    { _id: 'c1', customer_id: 1, created_date: '2023-01-01', chemical_type: 'Muriatic Acid', quantity: '12 fl oz' }
+];
 const mockRemoveServiceLog = vi.fn();
 const mockUpdateCustomer = vi.fn();
 
@@ -32,7 +35,16 @@ vi.mock('@/api/convexHooks', () => ({
     useCustomer: () => mockCustomer,
     useServiceLogsByCustomer: () => mockLogs,
     useServiceLogDelete: () => mockRemoveServiceLog,
-    useCustomerUpdate: () => mockUpdateCustomer
+    useCustomerUpdate: () => mockUpdateCustomer,
+    useChemicalUsageFilter: () => mockChemicalUsage,
+}));
+
+vi.mock('@/api/normalizedHooks', () => ({
+    usePoolsByCustomer: () => [],
+    useEquipmentByPool: () => [],
+    usePoolCreate: () => vi.fn(),
+    useEquipmentCreate: () => vi.fn(),
+    useEquipmentUpdate: () => vi.fn(),
 }));
 
 // Mock Convex react hooks
@@ -72,6 +84,22 @@ describe('Customer Detail Page', () => {
         render(<BrowserRouter><CustomerDetail /></BrowserRouter>);
         expect(screen.getByText('Alice Smith')).toBeInTheDocument();
         expect(screen.getByText('123 St')).toBeInTheDocument();
+    });
+
+    it('mounts the equipment section with a deep-link anchor', () => {
+        window.history.pushState({}, 'Test Page', '/?id=1');
+        render(<BrowserRouter><CustomerDetail /></BrowserRouter>);
+        const section = screen.getByTestId('customer-equipment');
+        expect(section).toHaveAttribute('id', 'equipment');
+        expect(screen.getByRole('button', { name: 'Add equipment' })).toBeInTheDocument();
+    });
+
+    it('mounts the readings trend for the customer', () => {
+        window.history.pushState({}, 'Test Page', '/?id=1');
+        render(<BrowserRouter><CustomerDetail /></BrowserRouter>);
+        const trend = screen.getByTestId('readings-trend');
+        expect(trend).toHaveTextContent('Readings trend');
+        expect(screen.getByRole('tablist', { name: 'Trend range' })).toBeInTheDocument();
     });
 
     it('renders service history', () => {

@@ -34,6 +34,16 @@ describe('chemStatus thresholds match the displayed hints', () => {
     expect(CHEMICAL_CONFIGS.alkalinity.max).toBeGreaterThan(141);
   });
 
+  it('matches the hard-invalid limits so real readings are never blocked by the browser', () => {
+    expect([CHEMICAL_CONFIGS.ph.min, CHEMICAL_CONFIGS.ph.max]).toEqual([0, 14]);
+    expect([CHEMICAL_CONFIGS.chlorine.min, CHEMICAL_CONFIGS.chlorine.max]).toEqual([0, 50]);
+    expect([CHEMICAL_CONFIGS.alkalinity.min, CHEMICAL_CONFIGS.alkalinity.max]).toEqual([0, 1000]);
+    expect([CHEMICAL_CONFIGS.stabilizer.min, CHEMICAL_CONFIGS.stabilizer.max]).toEqual([0, 500]);
+    // Ideal ranges stay in the hint copy, not the input bounds.
+    expect(CHEMICAL_CONFIGS.ph.hint).toMatch(/7\.2-7\.8/);
+    expect(CHEMICAL_CONFIGS.stabilizer.hint).toMatch(/30-50/);
+  });
+
   it('every configured chemical has contiguous ranges covering the whole number line', () => {
     for (const [key, config] of Object.entries(CHEMICAL_CONFIGS)) {
       const ranges = config.ranges;

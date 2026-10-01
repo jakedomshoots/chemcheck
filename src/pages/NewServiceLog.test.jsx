@@ -7,6 +7,13 @@ import { BrowserRouter } from 'react-router-dom';
 const mockUser = { email: 'test@example.com' };
 const mockCustomers = [{ _id: 1, full_name: 'Alice Smith', address: '123 St', pool_type: 'chlorine' }];
 const mockCreateServiceLog = vi.fn();
+const mockCreateChemicalUsage = vi.fn();
+const mockActivePoolEquipment = {
+    pool: null,
+    pools: [],
+    equipment: [],
+    classification: { filter: null, filterKind: null, saltCell: null, heater: null, pump: null, other: [], hasAny: false },
+};
 
 // Mock hooks - returns mock data immediately (no loading state simulation)
 vi.mock('@/api/convexHooks', () => ({
@@ -21,8 +28,18 @@ vi.mock('@/api/convexHooks', () => ({
         alkalinity_value: 100,
         stabilizer: 'high',
     }],
-    useServiceLogCreate: () => mockCreateServiceLog
+    useServiceLogCreate: () => mockCreateServiceLog,
+    useServiceLogsByCustomer: () => [],
+    useChemicalUsageCreate: () => mockCreateChemicalUsage,
 }));
+
+vi.mock('@/api/equipmentHooks', async () => {
+    const actual = await vi.importActual('@/api/equipmentHooks');
+    return {
+        ...actual,
+        useActivePoolEquipment: () => mockActivePoolEquipment,
+    };
+});
 
 // Mock utils
 vi.mock('@/utils', () => ({

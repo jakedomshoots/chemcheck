@@ -12,10 +12,12 @@
 
 export const CHEMICAL_CONFIGS = {
   ph: {
-    // Input bounds are wider than the ideal range so an out-of-range reading
-    // can actually be recorded (and flagged) instead of being clamped.
-    min: 6.0,
-    max: 9.0,
+    // Input bounds match the hard-invalid limits in checkReadingSanity
+    // (src/lib/validation.ts) so a real out-of-range reading can be recorded
+    // and flagged instead of being blocked by the browser. The ideal range is
+    // conveyed by the hint text and the status ranges below.
+    min: 0,
+    max: 14,
     step: 0.1,
     unit: '',
     hint: 'Ideal range: 7.2-7.8',
@@ -29,7 +31,7 @@ export const CHEMICAL_CONFIGS = {
   },
   chlorine: {
     min: 0,
-    max: 10,
+    max: 50,
     step: 0.5,
     unit: 'ppm',
     hint: 'Ideal range: 1-3 ppm (max 10 ppm)',
@@ -43,7 +45,7 @@ export const CHEMICAL_CONFIGS = {
   },
   alkalinity: {
     min: 0,
-    max: 300,
+    max: 1000,
     step: 1,
     unit: 'ppm',
     hint: 'Ideal range: 80-120 ppm',
@@ -56,8 +58,8 @@ export const CHEMICAL_CONFIGS = {
     ],
   },
   stabilizer: {
-    min: 30,
-    max: 100,
+    min: 0,
+    max: 500,
     step: 1,
     unit: 'ppm',
     hint: 'Ideal range: 30-50 ppm (max 100 ppm)',
