@@ -1,27 +1,40 @@
+import { useState } from 'react';
 import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer';
 import { useSyncState } from '@/hooks/useSyncState';
 import { cn } from '@/lib/utils';
-import { 
-  getStatusText, 
-  getStatusColor, 
-  isSyncButtonDisabled,
+import {
+  getStatusText,
+  getStatusColor,
   getRecordStatusText,
   getRecordStatusColor
 } from './syncStatusUtils';
 
+// Imported statically on purpose: the health panel is most useful while
+// offline, and a lazy chunk cannot be fetched then.
+import { SyncHealthPanel } from './SyncHealthPanel';
+
 /**
  * Global sync status indicator component
- * Shows current sync status, pending count, and provides manual sync trigger
+ * Shows current sync status and pending count. Tapping it opens the sync
+ * health drawer (manual sync, dead-letter recovery, force re-sync).
  */
 export function SyncStatusIndicator({ 
   className, 
   showLabel = false, 
   showPendingCount = true 
 }) {
-  const { status, pendingCount, lastSyncAt, error, syncNow } = useSyncState();
+  const { status, pendingCount } = useSyncState();
+  const [open, setOpen] = useState(false);
   const statusText = getStatusText(status, pendingCount);
 
   const getStatusIcon = () => {
@@ -41,26 +54,16 @@ export function SyncStatusIndicator({
     }
   };
 
-  const handleSyncNow = async () => {
-    if (isSyncButtonDisabled(status)) return;
-    
-    try {
-      await syncNow();
-    } catch (err) {
-      console.error('Manual sync failed:', err);
-    }
-  };
-
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <Popover>
-        <PopoverTrigger asChild>
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerTrigger asChild>
           <Button
             variant="outline"
             size="sm"
-            disabled={isSyncButtonDisabled(status)}
             aria-label={statusText}
-            title={statusText}
+            title={`${statusText} – open sync health`}
+            data-testid="sync-status-trigger"
             className="h-8 rounded-full border-line bg-surface-1 px-3 text-ink-secondary hover:bg-surface-2"
           >
             {getStatusIcon()}
@@ -70,52 +73,24 @@ export function SyncStatusIndicator({
               </span>
             )}
           </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-72 p-3">
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Sync Status</p>
-              <p className="text-sm font-medium text-ink">{statusText}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-line bg-surface-2 p-2">
-                <p className="text-xs uppercase tracking-wide text-ink-muted">Pending</p>
-                <p className="text-sm font-semibold text-ink">{pendingCount}</p>
-              </div>
-              <div className="rounded-md border border-line bg-surface-2 p-2">
-                <p className="text-xs uppercase tracking-wide text-ink-muted">Last Sync</p>
-                <p className="text-xs font-medium text-ink">
-                  {lastSyncAt
-                    ? new Date(lastSyncAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-                    : 'Not yet'}
-                </p>
-              </div>
-            </div>
-            {error && (
-              <p className="text-xs text-critical bg-[var(--status-critical-soft)] border border-[var(--status-critical-line)] rounded-md px-2 py-1">
-                {error}
-              </p>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 w-full"
-              onClick={handleSyncNow}
-              disabled={isSyncButtonDisabled(status)}
-            >
-              <RefreshCw className={cn('mr-2 h-3.5 w-3.5', status === 'syncing' && 'animate-spin')} />
-              Sync Now
-            </Button>
+        </DrawerTrigger>
+        <DrawerContent data-testid="sync-health-drawer">
+          <DrawerHeader className="pb-2">
+            <DrawerTitle>Sync health</DrawerTitle>
+            <DrawerDescription>{statusText}</DrawerDescription>
+          </DrawerHeader>
+          <div className="overflow-y-auto px-4 pb-6">
+            {open && <SyncHealthPanel />}
           </div>
-        </PopoverContent>
-      </Popover>
+        </DrawerContent>
+      </Drawer>
 
       {showPendingCount && pendingCount > 0 && (
         <Badge variant="secondary" className={cn('text-xs font-medium', getStatusColor(status, pendingCount))}>
           {pendingCount}
         </Badge>
       )}
-        </div>
+    </div>
   );
 }
 

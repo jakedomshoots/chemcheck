@@ -73,6 +73,8 @@ export function getRecordStatusText(status) {
       return 'Pending';
     case 'error':
       return 'Error';
+    case 'local_only':
+      return 'Local only';
     default:
       return 'Unknown';
   }
@@ -92,6 +94,8 @@ export function getRecordStatusColor(status) {
       return 'bg-yellow-100 text-watch border-[var(--status-watch-line)]';
     case 'error':
       return 'bg-[var(--status-critical-soft)] text-critical border-[var(--status-critical-line)]';
+    case 'local_only':
+      return 'bg-surface-2 text-ink-secondary border-line';
     default:
       return 'bg-surface-2 text-gray-800 border-line';
   }

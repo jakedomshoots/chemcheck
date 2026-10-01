@@ -4,13 +4,19 @@ import {
   queryServiceLogsByCustomerDateRange,
   filterCustomersForLocalAccount,
   filterRecordsForLocalAccount,
+  filterNotesForLocalAccount,
+  isNoteVisibleToAccount,
   useCustomerCreate,
   useCurrentUser,
+  useNoteCreate,
 } from './dexieHooks';
 
 const mockCustomersToArray = vi.hoisted(() => vi.fn());
 const mockCustomersAdd = vi.hoisted(() => vi.fn());
+const mockCustomersGet = vi.hoisted(() => vi.fn());
+const mockNotesAdd = vi.hoisted(() => vi.fn());
 const mockValidateCustomer = vi.hoisted(() => vi.fn());
+const mockValidateNote = vi.hoisted(() => vi.fn());
 const mockCheckRateLimit = vi.hoisted(() => vi.fn());
 const mockServiceLogsWhere = vi.hoisted(() => vi.fn());
 const mockServiceLogsBetween = vi.hoisted(() => vi.fn());
@@ -23,9 +29,13 @@ vi.mock('@/db/chemcheck-db', () => ({
     customers: {
       toArray: mockCustomersToArray,
       add: mockCustomersAdd,
+      get: mockCustomersGet,
     },
     serviceLogs: {
       where: mockServiceLogsWhere,
+    },
+    notes: {
+      add: mockNotesAdd,
     },
   },
   getTimestamp: vi.fn(() => '2026-03-24T09:00:00.000Z'),
@@ -37,7 +47,7 @@ vi.mock('@/lib/validation', () => ({
   validateCustomer: mockValidateCustomer,
   validateServiceLog: vi.fn(() => ({ success: false, errors: ['not mocked'] })),
   validateChemicalUsage: vi.fn(() => ({ success: false, errors: ['not mocked'] })),
-  validateNote: vi.fn(() => ({ success: false, errors: ['not mocked'] })),
+  validateNote: mockValidateNote,
   checkRateLimit: mockCheckRateLimit,
 }));
 
@@ -228,6 +238,87 @@ describe('child record account visibility', () => {
     ];
     expect(filterRecordsForLocalAccount(notes, owned).map((note) => note.id)).toEqual([1]);
     expect(filterRecordsForLocalAccount(notes, owned, { allowUnassigned: true }).map((note) => note.id)).toEqual([1, 2]);
+  });
+});
+
+describe('general note account visibility', () => {
+  const owned = new Set([1]);
+
+  it('scopes customer-linked notes through the customer and general notes through created_by', () => {
+    const notes = [
+      { id: 1, customer_id: 1, created_by: 'other@example.com', title: 'owned customer' },
+      { id: 2, customer_id: 9, created_by: 'me@example.com', title: 'foreign customer' },
+      { id: 3, created_by: 'ME@Example.com', title: 'my general' },
+      { id: 4, created_by: 'other@example.com', title: 'their general' },
+      { id: 5, created_by: 'local', title: 'legacy local' },
+      { id: 6, title: 'legacy ownerless' },
+    ] as any[];
+
+    expect(filterNotesForLocalAccount(notes, 'me@example.com', owned).map((note) => note.id)).toEqual([1, 3, 5, 6]);
+    expect(isNoteVisibleToAccount(notes[3], 'me@example.com', owned)).toBe(false);
+    expect(isNoteVisibleToAccount(notes[3], 'other@example.com', owned)).toBe(true);
+  });
+
+  it('shows legacy local notes to the legacy local account too', () => {
+    const notes = [
+      { id: 1, created_by: 'local' },
+      { id: 2, created_by: 'someone@example.com' },
+    ] as any[];
+    expect(filterNotesForLocalAccount(notes, '', owned).map((note) => note.id)).toEqual([1]);
+  });
+});
+
+describe('useNoteCreate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    mockCheckRateLimit.mockReturnValue({ allowed: true });
+    mockValidateNote.mockImplementation((data: any) => ({ success: true, data }));
+    mockNotesAdd.mockResolvedValue(77);
+  });
+
+  it('stamps created_by with the signed-in account', async () => {
+    localStorage.setItem('chemcheck_current_user', JSON.stringify({ email: 'Tech@Example.com' }));
+    const { result } = renderHook(() => useNoteCreate());
+
+    let id: number | undefined;
+    await act(async () => {
+      id = await result.current({ title: 'Gate code', content: '1234', category: 'General', priority: 'low' });
+    });
+
+    expect(id).toBe(77);
+    expect(mockNotesAdd).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Gate code',
+      created_by: 'tech@example.com',
+      completed: false,
+      created_date: '2026-03-24',
+      sync_status: 'pending',
+    }));
+  });
+
+  it('falls back to the legacy local owner when nobody is signed in', async () => {
+    const { result } = renderHook(() => useNoteCreate());
+    await act(async () => {
+      await result.current({ title: 'x', content: 'y', category: 'General', priority: 'low' });
+    });
+    expect(mockNotesAdd).toHaveBeenCalledWith(expect.objectContaining({ created_by: 'local' }));
+  });
+
+  it('refuses to link a note to a customer that belongs to another account', async () => {
+    localStorage.setItem('chemcheck_current_user', JSON.stringify({ email: 'tech@example.com' }));
+    mockCustomersGet.mockResolvedValue({ id: 5, created_by: 'other@example.com' });
+    const { result } = renderHook(() => useNoteCreate());
+
+    await expect(result.current({ title: 'x', content: 'y', category: 'Customer', priority: 'low', customer_id: 5 }))
+      .rejects.toThrow('Customer not found for this account');
+    expect(mockNotesAdd).not.toHaveBeenCalled();
+
+    mockCustomersGet.mockResolvedValue({ id: 5, created_by: 'tech@example.com' });
+    await act(async () => {
+      await result.current({ title: 'x', content: 'y', category: 'Customer', priority: 'low', customer_id: 5 });
+    });
+    expect(mockNotesAdd).toHaveBeenCalledWith(expect.objectContaining({ customer_id: 5, created_by: 'tech@example.com' }));
   });
 });
 

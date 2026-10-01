@@ -26,4 +26,10 @@ crons.daily(
   {}
 );
 
+// Intentionally NOT scheduled: the legacy backfills in convex/migrations.ts
+// (backfillCreatedByBatch, backfillDeletedAtBatch, countMissingCreatedBy).
+// They touch every tenant's rows and must be run by hand, dry_run first, from
+// the Convex dashboard or `npx convex run migrations:<name> '<json args>'`.
+// See the comment block above those functions for the exact sequence.
+
 export default crons;

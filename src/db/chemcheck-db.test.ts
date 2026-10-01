@@ -142,8 +142,8 @@ describe('ChemCheckDB Schema and Sync Fields', () => {
   it('should have latest database version with sync field indexes', () => {
     const db = new ChemCheckDB();
     
-    // Schema includes v4 normalized pools/equipment tables.
-    expect(db.verno).toBe(4);
+    // Schema includes v4 normalized pools/equipment tables and v5 note ownership.
+    expect(db.verno).toBe(5);
   });
 
   it('registers blocked/versionchange handlers and reports open failures instead of hanging', async () => {
@@ -182,7 +182,7 @@ describe('ChemCheckDB v4 upgrade', () => {
     const db = new ChemCheckDB();
     try {
       await expect(db.ensureOpen()).resolves.toBe(true);
-      expect(db.verno).toBe(4);
+      expect(db.verno).toBe(5);
       const pools = await db.pools.toArray();
       expect(pools).toHaveLength(2);
       expect(pools.map((pool) => pool.customer_id).sort()).toEqual([1, 2]);
@@ -191,5 +191,57 @@ describe('ChemCheckDB v4 upgrade', () => {
       db.close();
       await Dexie.delete('chemcheck');
     }
+  });
+});
+
+describe('ChemCheckDB v5 note ownership upgrade', () => {
+  it('backfills created_by on customer-linked notes and leaves general notes untouched', async () => {
+    await Dexie.delete('chemcheck');
+
+    // Simulate a device still on the v4 schema with legacy, ownerless notes.
+    const legacy = new Dexie('chemcheck');
+    legacy.version(4).stores({
+      customers: '++id, created_by, service_day, sort_order, sync_status, convex_id, [created_by+service_day]',
+      pools: '++id, customer_id, service_day, active, sync_status, convex_id, convex_customer_id, [customer_id+active]',
+      equipment: '++id, customer_id, pool_id, status, next_service_due, sync_status, convex_id, convex_pool_id, [pool_id+status]',
+      serviceLogs: '++id, customer_id, pool_id, service_date, [customer_id+service_date], [pool_id+service_date], sync_status, convex_id, convex_customer_id',
+      chemicalUsage: '++id, customer_id, pool_id, created_date, sync_status, convex_id, convex_customer_id',
+      notes: '++id, customer_id, pool_id, completed, created_date, category, sync_status, convex_id, convex_customer_id',
+      saltCellLogs: '++id, customer_id, pool_id, cleaning_date, sync_status, convex_id, convex_customer_id',
+    });
+    await legacy.open();
+    const customerId = await legacy.table('customers').add({
+      full_name: 'Alice', address: '1 St', service_day: 'Monday', pool_type: 'Salt', surface_type: 'Tile',
+      created_by: 'alice@example.com', sync_status: 'synced', local_updated_at: 1,
+    });
+    await legacy.table('notes').bulkAdd([
+      { title: 'linked', content: 'c', category: 'Customer', priority: 'low', customer_id: customerId, sync_status: 'synced', local_updated_at: 1 },
+      { title: 'general', content: 'c', category: 'General', priority: 'low', sync_status: 'synced', local_updated_at: 1 },
+      { title: 'already owned', content: 'c', category: 'General', priority: 'low', created_by: 'bob@example.com', sync_status: 'synced', local_updated_at: 1 },
+    ]);
+    legacy.close();
+
+    const upgraded = new ChemCheckDB();
+    await upgraded.open();
+    expect(upgraded.verno).toBe(5);
+
+    const notes = await upgraded.notes.orderBy('id').toArray();
+    expect(notes.map((note) => note.created_by)).toEqual(['alice@example.com', undefined, 'bob@example.com']);
+
+    // The new index is usable for owner-scoped queries.
+    expect(await upgraded.notes.where('created_by').equals('alice@example.com').count()).toBe(1);
+
+    upgraded.close();
+    await Dexie.delete('chemcheck');
+  });
+
+  it('accepts local_only as a sync status on syncable rows', () => {
+    const note: Note = {
+      title: 't', content: 'c', category: 'General', priority: 'low',
+      created_by: 'me@example.com',
+      sync_status: 'local_only',
+      local_updated_at: 1,
+    };
+    expect(note.sync_status).toBe('local_only');
   });
 });

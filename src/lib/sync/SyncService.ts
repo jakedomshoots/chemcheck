@@ -36,7 +36,7 @@ interface RemotePullPage {
 }
 
 export interface RecordSyncStatus {
-  status: 'synced' | 'pending' | 'error';
+  status: 'synced' | 'pending' | 'error' | 'local_only';
   error?: string;
   lastSyncAt?: number;
 }
@@ -69,6 +69,9 @@ export class SyncService {
   private lastConflictCount = 0;
   /** Error message from the most recent failed syncSingleRecord call. */
   private lastSyncFailure: string | undefined;
+  private readonly LAST_SUCCESS_KEY = 'chemcheck_sync_last_success_v1';
+  /** Wall-clock time of the last fully successful sync cycle (push + pull). */
+  private lastSuccessfulSyncAt: number | null = null;
   /**
    * Bumped by resetForAccountChange(). In-flight work captured under an older
    * generation must not write results for the new account.
@@ -102,6 +105,7 @@ export class SyncService {
     this.convexClient = convexClient;
     this.pullScope = nextScope;
     this.isInitialized = true;
+    this.lastSuccessfulSyncAt = this.readLastSuccessfulSyncAt();
     this.setStatus('idle');
     this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
@@ -222,12 +226,141 @@ export class SyncService {
     }
 
     this.clearPullState();
+    this.lastSuccessfulSyncAt = null;
+    this.writeLastSuccessfulSyncAt(null);
 
     if (this.currentStatus !== 'offline') {
       this.setStatus('idle');
     }
     monitoring.recordMetric('sync_account_reset', 1, { scope: this.pullScope });
     console.log('SyncService state reset for account change');
+  }
+
+  /**
+   * Forget the pull watermark/cursor for the CURRENT account only, so the next
+   * cycle replays the whole account from the server ("force full re-sync").
+   * The outbound queue and local rows are untouched.
+   */
+  resetPullState(): void {
+    this.clearPullState();
+    monitoring.recordMetric('sync_pull_state_reset', 1, { scope: this.pullScope });
+    console.log('SyncService pull watermark reset; next sync pulls the full account');
+  }
+
+  /** Persisted pull watermark/cursor for the current account. */
+  getPullState(): PullState {
+    return this.readPullState();
+  }
+
+  /**
+   * One snapshot for diagnostics UI (sync health panel). Everything here is
+   * synchronous and cheap; local-row lookups are left to the caller.
+   */
+  getHealthSnapshot(): {
+    online: boolean;
+    status: SyncStatus;
+    scope: string;
+    initialized: boolean;
+    lastSuccessfulSyncAt: number | null;
+    lastSyncFailure: string | undefined;
+    pending: number;
+    deadLetter: SyncQueueItem[];
+    pullState: PullState;
+  } {
+    return {
+      online: this.isOnline,
+      status: this.currentStatus,
+      scope: this.pullScope,
+      initialized: this.isInitialized,
+      lastSuccessfulSyncAt: this.lastSuccessfulSyncAt,
+      lastSyncFailure: this.lastSyncFailure,
+      pending: this.syncQueue.getPendingCount(),
+      deadLetter: typeof this.syncQueue.getDeadLetterItems === 'function' ? this.syncQueue.getDeadLetterItems() : [],
+      pullState: this.readPullState(),
+    };
+  }
+
+  /**
+   * Put one dead-letter item back into the retryable pool and, when online,
+   * kick a sync cycle right away. Resolves to whether the item was found.
+   */
+  async retryDeadLetter(table: SyncQueueItem['table'], localId: number): Promise<boolean> {
+    const requeued = typeof this.syncQueue.requeueDeadLetter === 'function'
+      ? this.syncQueue.requeueDeadLetter(table, localId)
+      : false;
+    if (!requeued) return false;
+    monitoring.recordMetric('sync_dead_letter_retry', 1, { table, localId });
+    await this.syncAfterQueueChange();
+    return true;
+  }
+
+  /** Requeue every dead-letter item and run one sync cycle. */
+  async retryAllDeadLetters(): Promise<number> {
+    const dead = typeof this.syncQueue.getDeadLetterItems === 'function' ? this.syncQueue.getDeadLetterItems() : [];
+    let requeued = 0;
+    for (const item of dead) {
+      if (this.syncQueue.requeueDeadLetter(item.table, item.localId)) requeued += 1;
+    }
+    if (requeued > 0) {
+      monitoring.recordMetric('sync_dead_letter_retry_all', requeued);
+      await this.syncAfterQueueChange();
+    }
+    return requeued;
+  }
+
+  /**
+   * Give up on a dead-letter item: drop it from the queue and mark the local
+   * row 'local_only' so it is neither re-enqueued nor shown as pending. The
+   * row itself is kept; editing it again re-enters the normal sync path.
+   */
+  async discardDeadLetter(table: SyncQueueItem['table'], localId: number): Promise<boolean> {
+    const removed = this.syncQueue.clearForItem(table, localId);
+    const localTable = this.getTable(table);
+    if (localTable && typeof localTable.update === 'function') {
+      try {
+        await this.withoutSyncHooks(async () => {
+          await localTable.update(localId, {
+            sync_status: 'local_only',
+            sync_error: 'Kept on this device only (sync discarded)',
+          });
+        });
+      } catch (error) {
+        console.error(`Failed to mark ${table}[${localId}] as local_only:`, error);
+      }
+    }
+    monitoring.recordMetric('sync_dead_letter_discarded', 1, { table, localId });
+    return removed;
+  }
+
+  private async syncAfterQueueChange(): Promise<void> {
+    if (!this.convexClient || !this.isOnline) return;
+    try {
+      await this.syncPendingRecords('manual');
+    } catch (error) {
+      console.error('Sync after queue change failed:', error);
+    }
+  }
+
+  private readLastSuccessfulSyncAt(): number | null {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(`${this.LAST_SUCCESS_KEY}:${this.pullScope}`);
+      const value = Number(raw);
+      return raw && Number.isFinite(value) && value > 0 ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeLastSuccessfulSyncAt(value: number | null): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const key = `${this.LAST_SUCCESS_KEY}:${this.pullScope}`;
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, String(value));
+    } catch {
+      // Storage unavailable; the in-memory value still drives the UI.
+    }
   }
 
   private clearPullState(): void {
@@ -831,12 +964,19 @@ export class SyncService {
     pending: number;
     items: SyncQueueItem[];
     deadLetter: SyncQueueItem[];
+    deadLetterCount: number;
+    lastSyncFailure: string | undefined;
+    lastSuccessfulSyncAt: number | null;
     capacity: { current: number; max: number; warningThreshold: number; usagePercent: number; dead?: number };
   } {
+    const deadLetter = typeof this.syncQueue.getDeadLetterItems === 'function' ? this.syncQueue.getDeadLetterItems() : [];
     return {
       pending: this.syncQueue.getPendingCount(),
       items: this.syncQueue.getPending(),
-      deadLetter: typeof this.syncQueue.getDeadLetterItems === 'function' ? this.syncQueue.getDeadLetterItems() : [],
+      deadLetter,
+      deadLetterCount: deadLetter.length,
+      lastSyncFailure: this.lastSyncFailure,
+      lastSuccessfulSyncAt: this.lastSuccessfulSyncAt,
       capacity: this.syncQueue.getCapacityStatus(),
     };
   }
@@ -846,6 +986,7 @@ export class SyncService {
     if (record.sync_status === 'pending') return true;
     if (record.sync_status === 'synced') return false;
     if (record.sync_status === 'error') return false;
+    if (record.sync_status === 'local_only') return false;
     // Legacy rows may predate sync metadata.
     return !record.convex_id;
   }
@@ -1078,6 +1219,8 @@ export class SyncService {
         });
         this.setStatus('error');
       } else {
+        this.lastSuccessfulSyncAt = Date.now();
+        this.writeLastSuccessfulSyncAt(this.lastSuccessfulSyncAt);
         this.setStatus('idle');
       }
 

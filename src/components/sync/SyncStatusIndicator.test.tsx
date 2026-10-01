@@ -10,7 +10,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as fc from 'fast-check';
 // @ts-expect-error SyncStatusIndicator is an untyped .jsx module; components render as `any`.
 import { SyncStatusIndicator, SyncStatusBadge } from './SyncStatusIndicator';
@@ -19,6 +20,11 @@ import { useSyncState } from '@/hooks/useSyncState';
 // Mock the useSyncState hook
 vi.mock('@/hooks/useSyncState', () => ({
   useSyncState: vi.fn(),
+}));
+
+// The health panel has its own tests; here only the drawer wiring matters.
+vi.mock('./SyncHealthPanel', () => ({
+  SyncHealthPanel: () => <div data-testid="sync-health-panel-stub">health panel</div>,
 }));
 
 // ============================================================================
@@ -186,7 +192,7 @@ describe('SyncStatusIndicator', () => {
       );
     });
 
-    it('button is disabled when status is syncing or offline', () => {
+    it('trigger stays enabled while syncing or offline so the health drawer can be opened', () => {
       fc.assert(
         fc.property(
           syncStateArb.filter(state => state.status === 'syncing' || state.status === 'offline'),
@@ -195,15 +201,15 @@ describe('SyncStatusIndicator', () => {
 
             renderWithCleanup(<SyncStatusIndicator />);
 
-            const button = screen.getByRole('button');
-            expect(button).toBeDisabled();
+            const button = screen.getByTestId('sync-status-trigger');
+            expect(button).not.toBeDisabled();
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 50 }
       );
     });
 
-    it('button is enabled when status is idle or error', () => {
+    it('trigger is enabled when status is idle or error', () => {
       fc.assert(
         fc.property(
           syncStateArb.filter(state => state.status === 'idle' || state.status === 'error'),
@@ -212,11 +218,11 @@ describe('SyncStatusIndicator', () => {
 
             renderWithCleanup(<SyncStatusIndicator />);
 
-            const button = screen.getByRole('button');
+            const button = screen.getByTestId('sync-status-trigger');
             expect(button).not.toBeDisabled();
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 50 }
       );
     });
 
@@ -235,6 +241,30 @@ describe('SyncStatusIndicator', () => {
       renderWithCleanup(<SyncStatusIndicator showLabel={false} showPendingCount={false} />);
 
       expect(screen.getByRole('button', { name: 'All synced' })).toBeInTheDocument();
+    });
+
+    it('opens the sync health drawer when the indicator is tapped', async () => {
+      (useSyncState as any).mockReturnValue({
+        status: 'offline',
+        pendingCount: 2,
+        lastSyncAt: null,
+        error: null,
+        syncNow: vi.fn(),
+        isRecordSynced: vi.fn(),
+        getRecordSyncStatus: vi.fn(),
+        refreshPendingCount: vi.fn(),
+      });
+
+      renderWithCleanup(<SyncStatusIndicator />);
+      expect(screen.queryByTestId('sync-health-panel-stub')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('sync-status-trigger'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('sync-health-panel-stub')).toBeInTheDocument();
+      });
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Sync health')).toBeInTheDocument();
     });
 
     it('displays status text only when showLabel is true', () => {

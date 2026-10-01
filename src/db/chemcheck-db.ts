@@ -24,7 +24,11 @@ function reportDbIssue(message: string, cause: unknown, severity: 'low' | 'mediu
 
 export interface SyncableRecord {
     convex_id?: string;
-    sync_status: 'synced' | 'pending' | 'error';
+    /**
+     * 'local_only' rows were deliberately kept off the server (a dead-letter
+     * queue item the user discarded). They are never re-enqueued until edited.
+     */
+    sync_status: 'synced' | 'pending' | 'error' | 'local_only';
     sync_error?: string;
     local_updated_at: number;
     remote_updated_at?: number;
@@ -169,6 +173,12 @@ export interface Note extends SyncableRecord {
     priority: string;
     completed?: boolean;
     created_date?: string;
+    /**
+     * Owner email. Set at creation so general notes (no customer) stay scoped
+     * to the account that wrote them on a shared device. Legacy rows may be
+     * missing it until the v5 upgrade backfills from the customer.
+     */
+    created_by?: string;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -294,6 +304,45 @@ export class ChemCheckDB extends Dexie {
             } catch (error) {
                 console.error('Database v4 pool backfill failed; continuing upgrade (pools are created lazily):', error);
                 reportDbIssue('Dexie v4 pool backfill failed', error, 'medium');
+            }
+        });
+
+        this.version(5).stores({
+            customers: '++id, created_by, service_day, sort_order, sync_status, convex_id, [created_by+service_day]',
+            pools: '++id, customer_id, service_day, active, sync_status, convex_id, convex_customer_id, [customer_id+active]',
+            equipment: '++id, customer_id, pool_id, status, next_service_due, sync_status, convex_id, convex_pool_id, [pool_id+status]',
+            serviceLogs: '++id, customer_id, pool_id, service_date, [customer_id+service_date], [pool_id+service_date], sync_status, convex_id, convex_customer_id',
+            chemicalUsage: '++id, customer_id, pool_id, created_date, sync_status, convex_id, convex_customer_id',
+            notes: '++id, customer_id, pool_id, completed, created_date, category, created_by, sync_status, convex_id, convex_customer_id',
+            saltCellLogs: '++id, customer_id, pool_id, cleaning_date, sync_status, convex_id, convex_customer_id',
+        }).upgrade(async (trans) => {
+            // Notes gain an owner. Customer-linked notes inherit the customer's
+            // owner; general notes have no reliable owner on a shared device,
+            // so they are left untouched and treated as legacy-local by the
+            // read hooks. Failure here must not abort the schema upgrade.
+            try {
+                const [customers, notes] = await Promise.all([
+                    trans.table('customers').toArray(),
+                    trans.table('notes').toArray(),
+                ]);
+                const ownerByCustomerId = new Map<number, string>();
+                for (const customer of customers as any[]) {
+                    if (customer.id !== undefined && typeof customer.created_by === 'string') {
+                        ownerByCustomerId.set(customer.id, customer.created_by);
+                    }
+                }
+                let updated = 0;
+                for (const note of notes as any[]) {
+                    if (note.created_by || note.id === undefined) continue;
+                    const owner = note.customer_id !== undefined ? ownerByCustomerId.get(note.customer_id) : undefined;
+                    if (!owner) continue;
+                    await trans.table('notes').update(note.id, { created_by: owner });
+                    updated += 1;
+                }
+                console.log(`Database v5 upgrade: backfilled created_by on ${updated} notes`);
+            } catch (error) {
+                console.error('Database v5 note owner backfill failed; continuing upgrade:', error);
+                reportDbIssue('Dexie v5 note owner backfill failed', error, 'medium');
             }
         });
 

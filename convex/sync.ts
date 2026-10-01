@@ -405,6 +405,24 @@ async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Pr
   return customerCreatedBy ? allowedEmails.has(customerCreatedBy) : false;
 }
 
+/**
+ * General (customer-less) notes are owned by their creator. The creator, the
+ * owner of the caller's business or an ACTIVE member of it may update them.
+ * A legacy note that has no owner yet is claimed by whoever syncs it first:
+ * the update path stamps `created_by` so the row stops being ownerless.
+ */
+async function canAccessGeneralNote(ctx: any, note: any, userEmail: string): Promise<boolean> {
+  const creator = normalizeEmail(note?.created_by);
+  if (!creator) return true;
+  const caller = normalizeEmail(userEmail);
+  if (creator === caller) return true;
+
+  const business = await resolveBusinessContext(ctx, userEmail);
+  if (!business) return false;
+  const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
+  return allowedEmails.has(creator);
+}
+
 async function ensureCustomerOwnedByUser(ctx: any, customerId: any, userEmail: string): Promise<void> {
   const customer = await ctx.db.get(customerId);
   const allowed = await canAccessCustomer(ctx, customer, userEmail);
@@ -1056,7 +1074,7 @@ export const syncNote = mutation({
       }
       if (existingNote.customer_id) {
         await ensureCustomerOwnedByUser(ctx, existingNote.customer_id, identity.email!);
-      } else if (existingNote.created_by && normalizeEmail(existingNote.created_by) !== normalizeEmail(identity.email)) {
+      } else if (!(await canAccessGeneralNote(ctx, existingNote, identity.email!))) {
         throw new Error("Access denied: cannot update another user's note");
       }
       if (isDeleted(existingNote)) {

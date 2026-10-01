@@ -666,6 +666,35 @@ export function useChemicalUsageDelete() {
     }, []);
 }
 
+/**
+ * Account visibility for a note. Customer-linked notes follow their customer
+ * (same rule as every other child record). General notes carry their own
+ * owner in `created_by`; a note stamped with another account's email is never
+ * shown, while legacy rows (no owner, or the pre-auth 'local' owner) stay
+ * visible exactly like legacy local customers do.
+ */
+export function isNoteVisibleToAccount(
+    note: Pick<Note, 'customer_id' | 'created_by'>,
+    ownerEmail: string,
+    ownedCustomerIds: Set<number>
+): boolean {
+    if (note.customer_id !== undefined && note.customer_id !== null) {
+        return ownedCustomerIds.has(note.customer_id);
+    }
+    const normalizedOwner = normalizeOwnerEmail(ownerEmail) || DEFAULT_USER;
+    const noteOwner = normalizeOwnerEmail(note.created_by);
+    if (!noteOwner || noteOwner === DEFAULT_USER) return true;
+    return noteOwner === normalizedOwner;
+}
+
+export function filterNotesForLocalAccount(
+    notes: Note[],
+    ownerEmail: string,
+    ownedCustomerIds: Set<number>
+): Note[] {
+    return notes.filter((note) => isNoteVisibleToAccount(note, ownerEmail, ownedCustomerIds));
+}
+
 export function useNotes(order = '-created_date') {
     const user = useCurrentUser();
     const data = useLiveQuery(
@@ -675,8 +704,7 @@ export function useNotes(order = '-created_date') {
                 collection = collection.reverse();
             }
             const ownedCustomerIds = await getOwnedCustomerIds(user.email);
-            // General notes carry no customer and therefore no owner; they stay visible.
-            return filterRecordsForLocalAccount(await collection.toArray(), ownedCustomerIds, { allowUnassigned: true });
+            return filterNotesForLocalAccount(await collection.toArray(), user.email, ownedCustomerIds);
         },
         [order, user.email],
         []
@@ -695,7 +723,7 @@ export function useNotesFilter(filters?: { customer_id?: number; completed?: boo
                 notes = await db.notes.where('customer_id').equals(filters.customer_id).toArray();
             } else {
                 const ownedCustomerIds = await getOwnedCustomerIds(user.email);
-                notes = filterRecordsForLocalAccount(await db.notes.toArray(), ownedCustomerIds, { allowUnassigned: true });
+                notes = filterNotesForLocalAccount(await db.notes.toArray(), user.email, ownedCustomerIds);
                 if (filters?.completed !== undefined) {
                     notes = notes.filter(n => n.completed === filters.completed);
                 }
@@ -713,7 +741,9 @@ export function useNotesFilter(filters?: { customer_id?: number; completed?: boo
 }
 
 export function useNoteCreate() {
-    return useCallback(async (data: Omit<Note, 'id' | 'completed' | 'created_date' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
+    const user = useCurrentUser();
+    const ownerEmail = normalizeOwnerEmail(user.email) || DEFAULT_USER;
+    return useCallback(async (data: Omit<Note, 'id' | 'completed' | 'created_date' | 'created_by' | 'createdAt' | 'updatedAt' | keyof SyncableRecord>) => {
         const rateCheck = checkRateLimit('notes');
         if (!rateCheck.allowed) {
             throw new Error(rateCheck.reason);
@@ -728,17 +758,28 @@ export function useNoteCreate() {
             throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
         }
 
+        // A customer-linked note must belong to one of this account's customers;
+        // otherwise it would be written under another tenant and rejected by
+        // the server on sync.
+        if (validation.data.customer_id !== undefined &&
+            !(await isCustomerOwnedByAccount(validation.data.customer_id, ownerEmail))) {
+            throw new Error('Customer not found for this account');
+        }
+
         const now = getTimestamp();
         const nowMs = Date.now();
         const id = await db.notes.add({
             ...validation.data,
+            // Owner is stamped at creation so general notes never leak to a
+            // different account that later signs in on this device.
+            created_by: ownerEmail,
             createdAt: now,
             updatedAt: now,
             sync_status: 'pending',
             local_updated_at: nowMs,
         });
         return id;
-    }, []);
+    }, [ownerEmail]);
 }
 
 export function useNoteUpdate() {
