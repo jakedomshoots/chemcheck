@@ -145,7 +145,7 @@ async function initializeApp() {
                     border-radius: 4px;
                 ">Error ID: ${errorId}</p>
                 
-                <button onclick="window.location.reload()" style="
+                <button id="chemcheck-fatal-reload" type="button" style="
                     background: #3b82f6;
                     color: white;
                     border: none;
@@ -155,7 +155,7 @@ async function initializeApp() {
                     font-weight: 500;
                     cursor: pointer;
                     transition: background-color 0.2s;
-                " onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                ">
                     Reload Application
                 </button>
                 
@@ -178,6 +178,14 @@ async function initializeApp() {
             </div>
         </div>
     `;
+        // Attach handlers programmatically: the enforced CSP blocks inline
+        // onclick/onmouseover attributes.
+        const reloadButton = document.getElementById('chemcheck-fatal-reload');
+        if (reloadButton) {
+            reloadButton.addEventListener('click', () => window.location.reload());
+            reloadButton.addEventListener('mouseover', () => { reloadButton.style.background = '#2563eb'; });
+            reloadButton.addEventListener('mouseout', () => { reloadButton.style.background = '#3b82f6'; });
+        }
     }
 }
 

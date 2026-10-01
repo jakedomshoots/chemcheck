@@ -90,11 +90,11 @@ test.describe('Daily service loop', () => {
     await expect(page.getByRole('heading', { name: /Service Log/i })).toBeVisible({ timeout: 10000 });
 
     // Toggle pH to numeric and enter a value
-    await page.getByRole('button', { name: /^Numeric$/i }).nth(0).click();
+    await page.getByRole('tab', { name: /^Numeric$/i }).nth(0).click();
     await page.getByTestId('ph-numeric-input').fill('7.4');
 
     // Toggle chlorine to numeric and enter a value
-    await page.getByRole('button', { name: /^Numeric$/i }).nth(1).click();
+    await page.getByRole('tab', { name: /^Numeric$/i }).nth(1).click();
     await page.getByTestId('chlorine-numeric-input').fill('3.0');
 
     await page.locator('#notes').fill('E2E automated service note');
