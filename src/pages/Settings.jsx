@@ -84,6 +84,8 @@ import {
 } from '@/lib/proof-of-service';
 import { BottomNavigationSettings } from '@/components/settings/BottomNavigationSettings';
 import { PendingInvites, TeamMembersPanel } from '@/components/settings/TeamSettings';
+import { ChemicalPricingSettings } from '@/components/settings/ChemicalPricingSettings';
+import { QuickBooksSettings } from '@/components/settings/QuickBooksSettings';
 
 function AppearanceSection() {
   const [theme, setThemeState] = useState(() => getTheme());
@@ -374,7 +376,9 @@ function ProviderStatusCard({ name, description, status, onTest, testing, result
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState(() => {
-    const requestedSection = typeof window === 'undefined' ? '' : window.location.hash.slice(1);
+    const requestedSection = typeof window === 'undefined'
+      ? ''
+      : (new URLSearchParams(window.location.search).get('section') || window.location.hash.slice(1));
     return [
       'business', 'account', 'preferences', 'navigation', 'appearance', 'notifications',
       'schedule', 'services', 'integrations', 'backup', 'privacy', 'support',
@@ -1159,6 +1163,8 @@ export default function Settings() {
                   <p className="text-sm text-ink-secondary">Configure service types, chemicals, and requirements</p>
                 </div>
 
+                <ChemicalPricingSettings />
+
                 <div className="space-y-6">
                   <div>
                     <Label className="block text-sm font-medium text-ink-secondary mb-3">
@@ -1330,6 +1336,8 @@ export default function Settings() {
                     Billing and customer messages use server-side Convex environment variables. Secrets are never stored in ChemCheck or sent to this device.
                   </p>
                 </div>
+
+                <QuickBooksSettings />
 
                 {!providerStatus ? (
                   <div className="rounded-lg border border-line p-4 text-sm text-ink-secondary">Loading provider status...</div>

@@ -3,10 +3,11 @@ import { Route, Routes } from 'react-router-dom';
 import { PublicConvexProvider } from '@/components/auth/PublicConvexProvider';
 import { ChemicalBeakerLoader as Loader } from '@/components/ui/loader';
 import { importWithRetry } from '@/lib/chunkErrorRecovery';
-import { HEALTH_ROUTE, PUBLIC_REPORT_PATH, READY_ROUTE } from '@/lib/routeConfig';
+import { HEALTH_ROUTE, PUBLIC_PORTAL_PATH, PUBLIC_REPORT_PATH, READY_ROUTE } from '@/lib/routeConfig';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 const ReportPage = lazy(() => importWithRetry(() => import('@/pages/ReportPage'), 'ReportPage'));
+const CustomerPortalPage = lazy(() => importWithRetry(() => import('@/pages/CustomerPortal'), 'CustomerPortal'));
 const HealthPage = lazy(() => importWithRetry(() => import('@/pages/HealthPage'), 'HealthPage'));
 const ReadyPage = lazy(() =>
   importWithRetry(() => import('@/pages/ReadyPage').then((m) => ({ default: m.ReadyPage })), 'ReadyPage')
@@ -26,6 +27,7 @@ export default function PublicReportRouter() {
       <Suspense fallback={<PublicPageLoader />}>
         <Routes>
           <Route path={PUBLIC_REPORT_PATH} element={<ReportPage />} />
+          <Route path={PUBLIC_PORTAL_PATH} element={<CustomerPortalPage />} />
           <Route path={HEALTH_ROUTE} element={<HealthPage />} />
           <Route path={READY_ROUTE} element={<ReadyPage />} />
           <Route path="*" element={<NotFoundPage />} />

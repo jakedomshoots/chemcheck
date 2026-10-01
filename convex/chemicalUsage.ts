@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { enforceRateLimit } from "./rateLimit";
 import { NOT_DELETED_FILTER } from "./sync";
+import { computeUsageCostFields } from "./chemicalPricing";
 
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
@@ -149,8 +150,12 @@ export const create = mutation({
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
+        // Cost the row now when the business has a price for this chemical.
+        const costFields = await computeUsageCostFields(ctx, identity.email!, args.chemical_type, args.quantity);
+
         const recordId = await ctx.db.insert("chemicalUsage", {
             ...args,
+            ...costFields,
             created_date: today,
             created_by: identity.email!,
         });
@@ -191,7 +196,19 @@ export const update = mutation({
         }
 
         const { id, ...updates } = args;
-        await ctx.db.patch(id, updates);
+
+        // Re-cost when the chemical or quantity changes (clears stale costs when no price exists).
+        const costFields =
+            args.chemical_type !== undefined || args.quantity !== undefined
+                ? await computeUsageCostFields(
+                    ctx,
+                    identity.email!,
+                    args.chemical_type ?? record.chemical_type,
+                    args.quantity ?? record.quantity,
+                )
+                : {};
+
+        await ctx.db.patch(id, { ...updates, ...costFields });
 
         return id;
     },

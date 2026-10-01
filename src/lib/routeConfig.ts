@@ -10,6 +10,7 @@ export const APP_ROUTES = {
   RouteOptimizer: createPageUrl('RouteOptimizer'),
   EditClient: createPageUrl('EditClient'),
   ChemicalUsage: createPageUrl('ChemicalUsage'),
+  ChemicalCosts: createPageUrl('ChemicalCosts'),
   LSI: createPageUrl('LSI'),
   NewChemicalUsage: createPageUrl('NewChemicalUsage'),
   Notes: createPageUrl('Notes'),
@@ -48,6 +49,12 @@ const PUBLIC_STATIC_ROUTES = new Set([
 const canonicalPaths = new Set(canonicalRoutes.map(([, path]) => path))
 export const PUBLIC_REPORT_PATH = '/report/:reportId/*';
 export const REPORT_ROUTE_PATTERN = /^\/report\/[A-Za-z0-9_-]{8,128}(?:\/.*)?$/;
+export const PUBLIC_PORTAL_PATH = '/portal/:token';
+export const PORTAL_ROUTE_PATTERN = /^\/portal\/[A-Za-z0-9_-]{8,128}\/?$/;
+
+export function isPortalPath(pathname = '/') {
+  return PORTAL_ROUTE_PATTERN.test(normalizeRoutePath(pathname).toLowerCase());
+}
 
 function normalizeRoutePath(pathname = '/') {
   const pathOnly = pathname.split(/[?#]/)[0] || '/';
@@ -123,6 +130,7 @@ export function isPublicRoute(pathname = '/') {
   const normalizedLower = normalizeRoutePath(pathname).toLowerCase();
 
   if (isReportPath(normalizedLower)) return true;
+  if (isPortalPath(normalizedLower)) return true;
   if (PUBLIC_STATIC_ROUTES.has(normalizedLower)) return true;
 
   if (normalizedLower.startsWith('/login/')) return true;

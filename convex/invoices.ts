@@ -5,6 +5,7 @@ import { validateEmail, validatePhone } from "./validation";
 import { normalizeTaxRate } from "./tax";
 import { assertWriteAllowed, canAccessCustomerRecord } from "./entitlements";
 import { assertRecipientMatchesCustomer } from "./communications";
+import { scheduleQuickBooksSync } from "./quickbooksSync";
 
 const VALID_STATUSES = ["draft", "sent", "paid", "cancelled"] as const;
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -351,6 +352,9 @@ export const createDraft = mutation({
       updated_at: now,
     });
 
+    // QuickBooks: push the new invoice when the business is connected.
+    await scheduleQuickBooksSync(ctx, invoiceId, args.customer_id, "created");
+
     return invoiceId;
   },
 });
@@ -587,6 +591,7 @@ export const batchCreateFromCompletedWorkOrders = mutation({
 
         createdInvoiceIds.push(invoiceId);
         created += 1;
+        await scheduleQuickBooksSync(ctx, invoiceId, workOrder.customer_id, "created");
       } catch {
         failed += 1;
       }
@@ -632,6 +637,8 @@ export const updateStatus = mutation({
       updated_at: now,
     });
 
+    await scheduleQuickBooksSync(ctx, args.id, invoice.customer_id, `status:${args.status}`);
+
     return args.id;
   },
 });
@@ -671,6 +678,7 @@ export const sendInvoice = mutation({
       payment_url: paymentUrl,
       updated_at: now,
     });
+    await scheduleQuickBooksSync(ctx, args.id, invoice.customer_id, "sent");
 
     const destination = resolveCommunicationDestination(customer, {
       channel: args.channel_override,
@@ -740,6 +748,7 @@ export const finalizeSend = internalMutation({
       stripe_checkout_session_id: args.stripe_checkout_session_id ?? invoice.stripe_checkout_session_id,
       updated_at: now,
     });
+    await scheduleQuickBooksSync(ctx, args.id, invoice.customer_id, "sent");
 
     const destination = resolveCommunicationDestination(customer, {
       channel: args.channel_override,
@@ -798,6 +807,8 @@ export const markPaid = mutation({
       updated_at: now,
     });
 
+    await scheduleQuickBooksSync(ctx, args.id, invoice.customer_id, "paid");
+
     return args.id;
   },
 });
@@ -820,6 +831,8 @@ export const markPaidFromStripe = internalMutation({
       stripe_payment_intent_id: args.stripe_payment_intent_id ?? invoice.stripe_payment_intent_id,
       updated_at: now,
     });
+
+    await scheduleQuickBooksSync(ctx, args.invoice_id, invoice.customer_id, "paid");
 
     return args.invoice_id;
   },

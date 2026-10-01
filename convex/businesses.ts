@@ -143,6 +143,11 @@ export const updateSettings = mutation({
     home_primary_action: v.optional(v.string()),
     show_ops_brief: v.optional(v.boolean()),
     proof_of_service: v.optional(proofOfServiceSettingsValidator),
+    customer_portal: v.optional(v.object({
+      enabled: v.boolean(),
+      allow_service_requests: v.boolean(),
+    })),
+    quickbooks_auto_sync: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -172,6 +177,8 @@ export const updateSettings = mutation({
       ...(args.home_primary_action !== undefined && { home_primary_action: args.home_primary_action }),
       ...(args.show_ops_brief !== undefined && { show_ops_brief: args.show_ops_brief }),
       ...(args.proof_of_service !== undefined && { proof_of_service: args.proof_of_service }),
+      ...(args.customer_portal !== undefined && { customer_portal: args.customer_portal }),
+      ...(args.quickbooks_auto_sync !== undefined && { quickbooks_auto_sync: args.quickbooks_auto_sync }),
     };
 
     await ctx.db.patch(business._id, {

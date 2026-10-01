@@ -50,6 +50,7 @@ vi.mock('@/api/normalizedHooks', () => ({
 // Mock Convex react hooks
 vi.mock('convex/react', () => ({
     useAction: () => vi.fn().mockResolvedValue({ success: true }),
+    useMutation: () => vi.fn().mockResolvedValue({ token: 'test-token' }),
     useQuery: () => null,
     useConvex: () => ({ query: vi.fn(), mutation: vi.fn(), action: vi.fn() })
 }));

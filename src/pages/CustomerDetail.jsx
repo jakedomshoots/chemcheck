@@ -30,6 +30,7 @@ import { syncService } from "@/lib/sync/SyncService";
 import { CustomerDetailSkeleton } from "@/components/ui/skeleton";
 import { userManager } from "@/lib/userManager";
 import { getEmailDeliveryValidationError } from "@/lib/emailValidation";
+import { PortalLinkButton } from "@/components/portal/PortalLinkButton";
 
 const isConvexAvailable = !!(import.meta.env.VITE_CONVEX_URL && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
@@ -764,6 +765,7 @@ export default function CustomerDetail() {
             <Settings className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
             Report Settings
           </Button>
+          <PortalLinkButton customerId={customer._id} />
           <Button
             size="sm"
             onClick={() => navigate(createPageUrl("NewServiceLog") + `?customerId=${customer._id}`)}

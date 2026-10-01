@@ -147,6 +147,12 @@ export default defineSchema({
     created_at: v.optional(v.number()), // Timestamp for sync
     updated_at: v.optional(v.number()), // Timestamp for sync
     deleted_at: v.optional(v.number()), // Soft-delete tombstone for sync
+    // Chemical cost tracking: filled at write time when the business has a
+    // price for the chemical. All optional so legacy rows stay valid.
+    unit_cost: v.optional(v.number()),        // USD per normalized unit
+    total_cost: v.optional(v.number()),       // USD for the row
+    normalized_amount: v.optional(v.number()),
+    normalized_unit: v.optional(v.string()),  // gal | lb | tabs | bags | each
   })
     .index("by_customer", ["customer_id"])
     .index("by_created_date", ["created_date"])
@@ -230,6 +236,13 @@ export default defineSchema({
       default_workorders_section: v.optional(v.string()),
       home_primary_action: v.optional(v.string()),
       show_ops_brief: v.optional(v.boolean()),
+      // Customer portal (public /portal/:token pages)
+      customer_portal: v.optional(v.object({
+        enabled: v.boolean(),
+        allow_service_requests: v.boolean(),
+      })),
+      // QuickBooks Online: push invoices/payments automatically when a connection exists
+      quickbooks_auto_sync: v.optional(v.boolean()),
       // Proof-of-service requirements - Requirements 5.1, 5.3
       proof_of_service: v.optional(v.object({
         require_before_photos: v.boolean(),
@@ -510,5 +523,80 @@ export default defineSchema({
   })
     .index("by_key", ["key"])
     .index("by_expires_at", ["expires_at"]),
+
+  // Per-business chemical prices used to cost chemicalUsage rows.
+  chemicalPrices: defineTable({
+    business_id: v.id("businesses"),
+    chemical_type: v.string(), // normalized key, e.g. "liquid_chlorine"
+    label: v.optional(v.string()), // display label, e.g. "Liquid Chlorine"
+    unit: v.string(), // gal | lb | tabs | bags | each
+    unit_price: v.number(), // USD per unit
+    package_size: v.optional(v.number()), // e.g. 40 (lb per bag)
+    package_price: v.optional(v.number()), // USD per package
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_business", ["business_id"])
+    .index("by_business_and_type", ["business_id", "chemical_type"]),
+
+  // QuickBooks Online OAuth connection, one per business. Tokens are sealed
+  // server-side (see quickbooks.ts) and never returned to clients.
+  quickbooksConnections: defineTable({
+    business_id: v.id("businesses"),
+    realm_id: v.string(),
+    access_token: v.string(), // sealed
+    refresh_token: v.string(), // sealed
+    access_expires_at: v.number(),
+    refresh_expires_at: v.number(),
+    environment: v.optional(v.string()), // sandbox | production
+    connected_by: v.string(),
+    connected_at: v.number(),
+    last_sync_at: v.optional(v.number()),
+    last_error: v.optional(v.string()),
+    default_item_id: v.optional(v.string()), // QBO service Item used for invoice lines
+  })
+    .index("by_business", ["business_id"])
+    .index("by_realm", ["realm_id"]),
+
+  // Local record <-> QBO entity links (idempotent sync).
+  quickbooksLinks: defineTable({
+    business_id: v.id("businesses"),
+    entity_type: v.string(), // customer | invoice | payment
+    local_id: v.string(), // Convex document id
+    qbo_id: v.string(),
+    synced_at: v.number(),
+    sync_token: v.optional(v.string()),
+    content_hash: v.optional(v.string()), // skip pushes when nothing changed
+  })
+    .index("by_business_and_entity", ["business_id", "entity_type"])
+    .index("by_local", ["business_id", "entity_type", "local_id"]),
+
+  // Sync audit log (bounded reads; cleaned by age).
+  quickbooksSyncLog: defineTable({
+    business_id: v.id("businesses"),
+    entity_type: v.string(),
+    local_id: v.string(),
+    qbo_id: v.optional(v.string()),
+    action: v.string(), // create | update | skip | void | payment
+    status: v.string(), // success | error | skipped
+    message: v.optional(v.string()),
+    attempts: v.number(),
+    created_at: v.number(),
+  })
+    .index("by_business", ["business_id", "created_at"]),
+
+  // Customer portal tokens (1 year, revocable). One active token per customer.
+  portalTokens: defineTable({
+    customer_id: v.id("customers"),
+    business_id: v.optional(v.id("businesses")),
+    token: v.string(),
+    created_by: v.optional(v.string()),
+    created_at: v.number(),
+    expires_at: v.optional(v.number()),
+    revoked_at: v.optional(v.number()),
+    last_access_at: v.optional(v.number()),
+  })
+    .index("by_token", ["token"])
+    .index("by_customer", ["customer_id"]),
 
 });
