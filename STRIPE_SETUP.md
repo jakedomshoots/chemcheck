@@ -131,7 +131,7 @@ stripe listen --forward-to localhost:3000/stripe-webhook
 # Backend (Convex)
 STRIPE_SECRET_KEY=sk_live_xxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxx
-APP_URL=https://app.chemcheck.app
+APP_URL=https://chemcheck.xyz
 STRIPE_STARTER_MONTHLY_PRICE_ID=price_xxxxx
 STRIPE_STARTER_YEARLY_PRICE_ID=price_xxxxx
 STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_xxxxx
