@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -13,6 +13,11 @@ import { Settings, TrendingUp, Users, Beaker } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { formatCurrency, isIsoDate, RANGE_PRESETS, resolveRange } from "@/lib/chemicalCosts";
 import { formatAmount } from "@/lib/quantityParser";
+import { buildLocalCostSummary } from "@/lib/chemicalCostsLocal";
+import { useCurrentUser } from "@/api/dexieHooks";
+
+/** How long to wait for the cloud before showing the device-side rollup. */
+const CLOUD_WAIT_MS = 2500;
 
 const TOP_N = 10;
 
@@ -172,7 +177,34 @@ export default function ChemicalCostsPage() {
       ? "Start date must be on or before the end date."
       : null;
 
-  const summary = useQuery(api.chemicalCosts.summary, rangeError ? "skip" : { start: range.start, end: range.end, top_n: TOP_N });
+  const cloudSummary = useQuery(api.chemicalCosts.summary, rangeError ? "skip" : { start: range.start, end: range.end, top_n: TOP_N });
+  const currentUser = useCurrentUser();
+  const [deviceSummary, setDeviceSummary] = useState(null);
+
+  // Offline-first: when the cloud has not answered (no signal, no deployment
+  // configured, or still loading after a grace period) roll the costs up from
+  // the rows already on this device so the page is never a blank spinner.
+  useEffect(() => {
+    if (rangeError) return undefined;
+    let cancelled = false;
+    setDeviceSummary(null);
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    const timer = setTimeout(async () => {
+      try {
+        const local = await buildLocalCostSummary({ start: range.start, end: range.end, topN: TOP_N, currentUser: currentUser?.email });
+        if (!cancelled) setDeviceSummary(local);
+      } catch (error) {
+        console.warn("Device cost summary failed", error);
+      }
+    }, offline ? 0 : CLOUD_WAIT_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [range.start, range.end, rangeError, currentUser?.email]);
+
+  const summary = cloudSummary ?? deviceSummary ?? undefined;
+  const usingDeviceData = !cloudSummary && !!deviceSummary;
   const loading = !rangeError && summary === undefined;
 
   return (
@@ -200,6 +232,12 @@ export default function ChemicalCostsPage() {
 
       {summary && (
         <div className="space-y-4">
+          {usingDeviceData && (
+            <p role="status" className="rounded-card border border-line bg-surface-2 px-4 py-2 text-xs text-ink-secondary" data-testid="device-data-notice">
+              Showing costs from this device. Cloud totals will replace them when you are back online.
+              {summary.price_cached_at ? "" : " No price list has been saved on this device yet, so entries are unpriced."}
+            </p>
+          )}
           <Card className="rounded-sheet border border-line bg-surface-1 p-2 shadow-card">
             <div className="grid grid-cols-2 divide-x divide-line sm:grid-cols-4">
               <StatBlock label="Total cost" value={formatCurrency(summary.totals.total_cost)} tone="brand" dataTestId="stat-total-cost" />

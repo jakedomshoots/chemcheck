@@ -143,7 +143,11 @@ export default function Home() {
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const dayOfWeek = useMemo(() => format(new Date(), "EEEE"), []);
   const homePrimaryAction = user?.preferences?.home_primary_action || 'start_next_pending';
-  const workingDays = useMemo(() => getEffectiveWorkingDays(convexBusiness), [convexBusiness]);
+  // Key the memo on the day list's content: the business query can hand back a
+  // fresh object each render, and a fresh array here would re-run every
+  // effect that depends on it.
+  const workingDaysKey = getEffectiveWorkingDays(convexBusiness).join('|');
+  const workingDays = useMemo(() => workingDaysKey.split('|'), [workingDaysKey]);
   const availableOffDays = useMemo(
     () => workingDays.filter((day) => day !== dayOfWeek),
     [workingDays, dayOfWeek]
@@ -193,7 +197,7 @@ export default function Home() {
         setAllCustomers(activeCustomersData);
 
         let todaysCustomers = [];
-        if (dayOfWeek !== "Sunday" && dayOfWeek !== "Saturday") {
+        if (workingDays.includes(dayOfWeek)) {
           todaysCustomers = activeCustomersData
             .filter((c) => c.service_day === dayOfWeek)
             .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
@@ -235,16 +239,17 @@ export default function Home() {
         setLoading(false);
       }
     }
-  }, [activeCustomersData, allLogsData, today, dayOfWeek]);
+  }, [activeCustomersData, allLogsData, today, dayOfWeek, workingDays]);
 
   const missedServices = useMemo(() => {
     const currentDayIndex = daysOrder.indexOf(dayOfWeek);
 
-    if (currentDayIndex === -1 || dayOfWeek === "Sunday" || dayOfWeek === "Saturday") {
+    if (currentDayIndex === -1 || !workingDays.includes(dayOfWeek)) {
       return [];
     }
 
-    const previousDays = daysOrder.slice(0, currentDayIndex);
+    // Only working days that came earlier this week can have been missed.
+    const previousDays = daysOrder.slice(0, currentDayIndex).filter((day) => workingDays.includes(day));
     const missedCustomers = [];
 
     previousDays.forEach(day => {
@@ -267,7 +272,7 @@ export default function Home() {
     });
 
     return missedCustomers;
-  }, [allCustomers, allThisWeekLogs, dayOfWeek, skippedCustomers]);
+  }, [allCustomers, allThisWeekLogs, dayOfWeek, skippedCustomers, workingDays]);
 
   const completedCustomerIds = useMemo(
     () => new Set(todayLogs.map((log) => log.customer_id)),

@@ -445,7 +445,29 @@ export async function seedDexie(db: ChemCheckDB, dataset: SeedDataset, options: 
     }
   }
 
+  ensureDemoBusinessWorksEveryDay();
+
   return summarizeDataset(dataset);
+}
+
+/**
+ * The demo dataset puts stops on every weekday including weekends, so the
+ * local business profile must treat all seven days as working days or the
+ * Home route hides weekend stops.
+ */
+function ensureDemoBusinessWorksEveryDay(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('chemcheck_current_business');
+    const business = raw ? JSON.parse(raw) : {};
+    const settings = { ...(business.settings || {}), working_days: [...DAYS] };
+    localStorage.setItem(
+      'chemcheck_current_business',
+      JSON.stringify({ name: 'ChemCheck Demo Pools', ...business, settings }),
+    );
+  } catch {
+    // Storage unavailable; Home falls back to Monday-Friday.
+  }
 }
 
 /**

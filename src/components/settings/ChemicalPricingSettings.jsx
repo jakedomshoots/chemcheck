@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cacheChemicalPrices } from "@/lib/chemicalCostsLocal";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -198,6 +199,10 @@ export function ChemicalPricingSettings() {
 
   const canManage = Boolean(data?.can_manage);
   const prices = data?.prices ?? [];
+
+  useEffect(() => {
+    if (data?.prices) cacheChemicalPrices(data.prices);
+  }, [data?.prices]);
 
   const seed = async () => {
     setSeeding(true);
