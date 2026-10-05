@@ -243,7 +243,9 @@ describe('Integration Tests: Data Sync', () => {
       expect(result.resolved.local_updated_at).toBe(3000);
     });
 
-    it('should resolve conflict using last-write-wins strategy - remote wins', () => {
+    it('keeps pending local edits and advances the base when the remote stamp is later', () => {
+      // local_updated_at (device clock) is older than the remote stamp (server
+      // clock); that must not make the remote version win.
       const localRecord: SyncableRecord = {
         sync_status: 'pending',
         local_updated_at: 1500,
@@ -260,7 +262,9 @@ describe('Integration Tests: Data Sync', () => {
       
       expect(result.hadConflict).toBe(true);
       expect(result.backupCreated).toBe(true);
-      expect(result.resolved.local_updated_at).toBe(3000);
+      expect(result.resolved.local_updated_at).toBe(1500);
+      expect(result.resolved.remote_updated_at).toBe(3000);
+      expect(result.resolved.sync_status).toBe('pending');
     });
 
     it('should create backup of local version before conflict resolution', () => {

@@ -19,6 +19,7 @@ import confetti from "canvas-confetti";
 import { toast } from "sonner";
 import { trackUxEvent } from "@/lib/uxAnalytics";
 import { getEffectiveWorkingDays } from "@/lib/workingDays";
+import { compareWithinDay } from "@/lib/customerOrdering";
 import {
   buildDurationProfile,
   calculateServiceTimingSummary,
@@ -200,7 +201,7 @@ export default function Home() {
         if (workingDays.includes(dayOfWeek)) {
           todaysCustomers = activeCustomersData
             .filter((c) => c.service_day === dayOfWeek)
-            .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+            .sort(compareWithinDay);
         }
         setCustomers(todaysCustomers);
 
@@ -289,7 +290,7 @@ export default function Home() {
         if (!query) return true;
         return customer.full_name.toLowerCase().includes(query) || customer.address.toLowerCase().includes(query);
       })
-      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      .sort(compareWithinDay);
   }, [allCustomers, selectedOffDay, offDaySearchQuery, completedCustomerIds]);
   const servicedCustomerIdsThisWeek = useMemo(
     () => new Set(allThisWeekLogs.map((log) => log.customer_id)),

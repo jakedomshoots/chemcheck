@@ -52,7 +52,7 @@ describe('ConflictResolver', () => {
   });
 
   describe('resolve', () => {
-    it('does not write raw Convex document fields into the resolved local record', () => {
+    it('acceptRemote does not write raw Convex document fields into the resolved local record', () => {
       const local = {
         id: 5,
         customer_id: 3,
@@ -75,10 +75,11 @@ describe('ConflictResolver', () => {
         remote_updated_at: 200,
       };
 
-      const result = resolver.resolve(local, remote as any);
+      const result = resolver.acceptRemote(local, remote as any);
       const resolved = result.resolved as any;
 
       expect(result.hadConflict).toBe(true);
+      expect(result.backupCreated).toBe(true);
       expect(resolved).toMatchObject({
         id: 5,
         customer_id: 3,
@@ -94,6 +95,35 @@ describe('ConflictResolver', () => {
       expect(resolved).not.toHaveProperty('_id');
       expect(resolved).not.toHaveProperty('_creationTime');
       expect(resolved).not.toHaveProperty('business_id');
+    });
+
+    it('resolve keeps local data by default and never pulls raw remote fields in', () => {
+      const local = {
+        id: 5,
+        customer_id: 3,
+        convex_id: 'log-1',
+        notes: 'local',
+        sync_status: 'pending' as const,
+        local_updated_at: 100,
+        remote_updated_at: 50,
+      };
+      const remote = {
+        _id: 'log-1',
+        business_id: 'biz-1',
+        customer_id: 'cust-1',
+        notes: 'remote',
+        sync_status: 'synced' as const,
+        local_updated_at: 200,
+        remote_updated_at: 200,
+      };
+
+      const result = resolver.resolve(local, remote as any);
+      expect(result.hadConflict).toBe(true);
+      expect(result.resolved).toMatchObject({
+        id: 5, customer_id: 3, notes: 'local', sync_status: 'pending', local_updated_at: 100, remote_updated_at: 200,
+      });
+      expect(result.resolved).not.toHaveProperty('_id');
+      expect(result.resolved).not.toHaveProperty('business_id');
     });
 
     it('should return local record when no conflict exists', () => {
@@ -113,7 +143,7 @@ describe('ConflictResolver', () => {
       expect(result.resolved).toEqual(local);
     });
 
-    it('should use last-write-wins when conflict exists - local wins', () => {
+    it('keeps local data and advances the base when local device stamp is newer', () => {
       const local: SyncableRecord = {
         sync_status: 'pending',
         local_updated_at: 2000,
@@ -131,9 +161,10 @@ describe('ConflictResolver', () => {
       expect(result.backupCreated).toBe(true);
       expect(result.resolved.local_updated_at).toBe(2000);
       expect(result.resolved.remote_updated_at).toBe(1800);
+      expect(result.resolved.sync_status).toBe('pending');
     });
 
-    it('should use last-write-wins when conflict exists - remote wins', () => {
+    it('keeps local data and advances the base even when the remote server stamp is later than the device stamp', () => {
       const local: SyncableRecord = {
         sync_status: 'pending',
         local_updated_at: 1500,
@@ -149,10 +180,29 @@ describe('ConflictResolver', () => {
 
       expect(result.hadConflict).toBe(true);
       expect(result.backupCreated).toBe(true);
-      expect(result.resolved.local_updated_at).toBe(2000); // Updated to match remote
-      expect(result.resolved.remote_updated_at).toBe(2000);
-      expect(result.resolved.sync_status).toBe('synced'); // Should be marked as synced
-      expect(result.resolved.sync_error).toBeUndefined(); // No error
+      expect(result.resolved.local_updated_at).toBe(1500); // local data untouched
+      expect(result.resolved.remote_updated_at).toBe(2000); // base advanced
+      expect(result.resolved.sync_status).toBe('pending'); // still needs pushing
+    });
+
+    it('reports no conflict when the remote stamp is not past the base this device last saw', () => {
+      // local_updated_at older than the server stamp (device clock behind, or
+      // network latency on the previous push) is not a conflict.
+      const local: SyncableRecord = {
+        sync_status: 'pending',
+        local_updated_at: 900,
+        remote_updated_at: 1000,
+      };
+      const remote: SyncableRecord = {
+        sync_status: 'synced',
+        local_updated_at: 1000,
+        remote_updated_at: 1000,
+      };
+
+      expect(resolver.detectConflict(local, remote)).toBe(false);
+      const result = resolver.resolve(local, remote);
+      expect(result.hadConflict).toBe(false);
+      expect(result.resolved).toBe(local);
     });
   });
 
@@ -215,14 +265,14 @@ describe('ConflictResolver', () => {
   describe('Property-Based Tests', () => {
     /**
      * Feature: data-sync, Property 7: Conflicts Detected and Backed Up
-     * For any record where local_updated_at differs from remote_updated_at and both have been modified since last sync,
-     * the Conflict_Resolver SHALL detect the conflict, create a backup in conflict_backup, and resolve using last-write-wins.
+     * For any pending record whose remote version moved past the base version the device last saw,
+     * the Conflict_Resolver SHALL detect the conflict, create a backup in conflict_backup, keep the
+     * local data and advance the base (remote_updated_at) to the remote version.
      * Validates: Requirements 7.1, 7.2, 7.3, 7.4
      */
     it('Property 7: Conflicts Detected and Backed Up', () => {
       fc.assert(
         fc.property(
-          // Generate local and remote records with different timestamps to create conflicts
           fc.record({
             local_updated_at: fc.integer({ min: 1000, max: 5000 }),
             remote_updated_at: fc.integer({ min: 500, max: 2000 }),
@@ -238,56 +288,42 @@ describe('ConflictResolver', () => {
             convex_id: fc.option(fc.string(), { nil: undefined }),
           }),
           (localData, remoteData) => {
-            // Ensure we have a conflict scenario by making sure both records have been modified
-            // and their timestamps differ
-            const local: SyncableRecord = {
-              ...localData,
-              // Ensure local has been modified since last remote sync
-              remote_updated_at: Math.min(localData.remote_updated_at, localData.local_updated_at - 100),
-            };
-            
-            const remote: SyncableRecord = {
-              ...remoteData,
-              // Ensure timestamps differ to create conflict
-              remote_updated_at: localData.local_updated_at !== remoteData.remote_updated_at 
-                ? remoteData.remote_updated_at 
-                : remoteData.remote_updated_at + 1,
-            };
+            const local: SyncableRecord = { ...localData };
+            const remote: SyncableRecord = { ...remoteData };
+            const base = local.remote_updated_at || 0;
+            const remoteTime = remote.remote_updated_at || 0;
 
-            // Only test when we actually have a conflict
-            if (!resolver.detectConflict(local, remote)) {
-              return true; // Skip this case
+            // Property: a conflict exists iff the local row carries a pending
+            // edit and the server moved past the base this device last saw.
+            // Device-clock stamps never decide it.
+            const expected = localData.sync_status !== 'synced' && remoteTime > base;
+            expect(resolver.detectConflict(local, remote)).toBe(expected);
+            if (!expected) {
+              const untouched = resolver.resolve(local, remote);
+              expect(untouched.hadConflict).toBe(false);
+              expect(untouched.resolved).toBe(local);
+              return true;
             }
 
-            // Property: Conflict should be detected
-            expect(resolver.detectConflict(local, remote)).toBe(true);
-
-            // Property: Resolution should create backup and resolve conflict
             const result = resolver.resolve(local, remote);
-            
+
             // Property: Conflict should be detected in resolution
             expect(result.hadConflict).toBe(true);
-            
+
             // Property: Backup should be created
             expect(result.backupCreated).toBe(true);
             expect(local.conflict_backup).toBeDefined();
-            
+
             // Property: Backup should be parseable and contain original data
             const backup = resolver.parseBackup(local.conflict_backup!);
             expect(backup).toBeDefined();
             expect(backup!.data.sync_status).toBe(localData.sync_status);
-            
-            // Property: Resolution should use last-write-wins
-            const localTime = local.local_updated_at || 0;
-            const remoteTime = remote.remote_updated_at || 0;
-            
-            if (localTime > remoteTime) {
-              // Local wins - should keep local timestamp
-              expect(result.resolved.local_updated_at).toBe(localTime);
-            } else {
-              // Remote wins - should update local timestamp to match remote
-              expect(result.resolved.local_updated_at).toBe(remoteTime);
-            }
+            expect(backup!.data.local_updated_at).toBe(localData.local_updated_at);
+
+            // Property: pending local edits win; only the base advances.
+            expect(result.resolved.local_updated_at).toBe(localData.local_updated_at);
+            expect(result.resolved.sync_status).toBe(localData.sync_status);
+            expect(result.resolved.remote_updated_at).toBe(Math.max(remoteTime, base));
 
             return true;
           }

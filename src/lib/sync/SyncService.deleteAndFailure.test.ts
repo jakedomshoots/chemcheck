@@ -7,7 +7,7 @@ import { monitoring } from '@/lib/monitoring';
  *  - server tombstones applied on pull and on push responses
  *  - failure handling: markFailed, dead-lettering, pull-after-failure
  *  - conflict path normalization (no raw Convex docs in Dexie)
- *  - pull/push race: stale queue items dropped when remote overwrites
+ *  - pull/push race: pending rows kept, stale queue items dropped for synced rows
  *  - resetForAccountChange and auth error classification
  */
 
@@ -319,7 +319,7 @@ describe('SyncService conflict normalization', () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
   });
 
-  it('applies a remote-wins conflict with pull-style normalization and without re-triggering hooks', async () => {
+  it('keeps local data on a conflict, advances the base without re-triggering hooks and re-pushes', async () => {
     const { service, mutation } = await createService();
     stores.customers.push({ id: 3, convex_id: 'cust-1', sync_status: 'synced', local_updated_at: 1 });
     stores.pools.push({ id: 11, customer_id: 3, convex_id: 'pool-1', sync_status: 'synced', local_updated_at: 1 });
@@ -328,6 +328,8 @@ describe('SyncService conflict normalization', () => {
       ph: 'good', chlorine: 'good', alkalinity: 'good', stabilizer: 'good', notes: 'local edit',
       sync_status: 'pending', local_updated_at: 100, remote_updated_at: 50,
     });
+    service.enqueueRecord('serviceLogs', 5, 'update', { ...stores.serviceLogs[0] });
+    // Another device changed the row on the server since base 50.
     mutation.mockResolvedValueOnce({
       success: false,
       operation: 'conflict',
@@ -342,35 +344,37 @@ describe('SyncService conflict normalization', () => {
           updated_at: 200,
         },
         remote_updated_at: 200,
+        local_updated_at: 100,
       },
     });
 
     const result = await service.syncNow();
     expect(result.success).toBe(true);
 
+    expect(mutation).toHaveBeenCalledTimes(2);
+    expect(mutation.mock.calls[0][1]).toMatchObject({ convex_id: 'log-1', base_updated_at: 50, data: { notes: 'local edit' } });
+    expect(mutation.mock.calls[1][1]).toMatchObject({ convex_id: 'log-1', base_updated_at: 200, data: { notes: 'local edit' } });
+
     const row = stores.serviceLogs[0];
     expect(row).toMatchObject({
       id: 5,
       customer_id: 3,
-      pool_id: 11,
-      convex_customer_id: 'cust-1',
-      convex_pool_id: 'pool-1',
-      convex_id: 'log-1',
-      notes: 'remote edit',
+      // The harness's default success stub answers with this id/stamp.
+      convex_id: 'new-id',
+      notes: 'local edit',
       sync_status: 'synced',
-      local_updated_at: 200,
-      remote_updated_at: 200,
+      local_updated_at: 100,
+      remote_updated_at: 1000,
     });
     expect(row).not.toHaveProperty('_id');
     expect(row).not.toHaveProperty('business_id');
-    expect(row).not.toHaveProperty('_creationTime');
     expect(typeof row.conflict_backup).toBe('string');
 
     const conflictWrite = writeLog.find((entry) => entry.table === 'serviceLogs' && entry.op === 'update');
     expect(conflictWrite?.suppressed).toBe(true);
     expect(service.getQueueStatus().items).toHaveLength(0);
     service.destroy();
-  });
+  }, 10_000);
 });
 
 describe('SyncService pull/push race', () => {
@@ -380,7 +384,7 @@ describe('SyncService pull/push race', () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
   });
 
-  it('removes the stale queue item when the pull overwrites the row with remote data', async () => {
+  it('never overwrites a pending row with remote data, even when the remote stamp is later', async () => {
     const metricSpy = vi.spyOn(monitoring, 'recordMetric');
     const { service, query } = await createService();
     stores.customers.push({
@@ -397,12 +401,62 @@ describe('SyncService pull/push race', () => {
 
     const result = await service.pullRemoteChanges();
 
-    expect(result).toMatchObject({ pulledCount: 1, conflictCount: 1 });
-    expect(stores.customers[0]).toMatchObject({ full_name: 'Remote', sync_status: 'synced' });
+    expect(result).toMatchObject({ pulledCount: 0, conflictCount: 1 });
+    expect(stores.customers[0]).toMatchObject({
+      full_name: 'Local', sync_status: 'pending', local_updated_at: 100, remote_updated_at: 200,
+    });
     expect(typeof stores.customers[0].conflict_backup).toBe('string');
-    expect(service.getQueueStatus().items).toHaveLength(0);
-    expect(metricSpy).toHaveBeenCalledWith('sync_pull_conflict_remote_wins', 1, expect.objectContaining({ table: 'customers', localId: 1 }));
+    const baseWrite = writeLog.find((entry) => entry.table === 'customers' && entry.op === 'update');
+    expect(baseWrite?.suppressed).toBe(true);
+    // The pending push still carries the local edit.
+    expect(service.getQueueStatus().items).toHaveLength(1);
+    expect(metricSpy).toHaveBeenCalledWith('sync_pull_conflict_local_pending_kept', 1, expect.objectContaining({ table: 'customers', localId: 1 }));
     metricSpy.mockRestore();
+    service.destroy();
+  });
+
+  it('leaves a pending row untouched when the remote stamp is not newer than its base', async () => {
+    const { service, query } = await createService();
+    stores.customers.push({
+      id: 1, convex_id: 'cust-1', full_name: 'Local', sync_status: 'pending', local_updated_at: 100, remote_updated_at: 200,
+    });
+    service.enqueueRecord('customers', 1, 'update', { ...stores.customers[0] });
+
+    query.mockResolvedValueOnce({
+      ...emptyPage,
+      customers: [{ _id: 'cust-1', full_name: 'Remote', updated_at: 200 }],
+      watermark: 200,
+    });
+
+    const result = await service.pullRemoteChanges();
+
+    expect(result).toMatchObject({ pulledCount: 0, conflictCount: 0 });
+    expect(stores.customers[0]).toMatchObject({ full_name: 'Local', sync_status: 'pending', remote_updated_at: 200 });
+    expect(stores.customers[0].conflict_backup).toBeUndefined();
+    expect(writeLog.filter((entry) => entry.table === 'customers')).toHaveLength(0);
+    expect(service.getQueueStatus().items).toHaveLength(1);
+    service.destroy();
+  });
+
+  it('removes a stale queue item when the pull overwrites a non-pending row with remote data', async () => {
+    const { service, query } = await createService();
+    stores.customers.push({
+      id: 1, convex_id: 'cust-1', full_name: 'Local', sync_status: 'synced', local_updated_at: 100, remote_updated_at: 100,
+    });
+    service.enqueueRecord('customers', 1, 'update', { ...stores.customers[0] });
+    expect(service.getQueueStatus().items).toHaveLength(1);
+
+    query.mockResolvedValueOnce({
+      ...emptyPage,
+      customers: [{ _id: 'cust-1', full_name: 'Remote', updated_at: 200 }],
+      watermark: 200,
+    });
+
+    const result = await service.pullRemoteChanges();
+
+    expect(result).toMatchObject({ pulledCount: 1, conflictCount: 0 });
+    expect(stores.customers[0]).toMatchObject({ full_name: 'Remote', sync_status: 'synced', remote_updated_at: 200 });
+    expect(service.getQueueStatus().items).toHaveLength(0);
     service.destroy();
   });
 

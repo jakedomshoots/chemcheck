@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { nextPositionForDay } from '@/lib/customerOrdering';
 import { useCallback, useMemo } from 'react';
 import { db, getTodayDate, getTimestamp, DEFAULT_USER } from '@/db/chemcheck-db';
 import type { Customer, ServiceLog, ChemicalUsage, Note, SyncableRecord } from '@/db/chemcheck-db';
@@ -341,14 +342,13 @@ export function useCustomerCreate() {
             throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
         }
 
-        const existingCustomers = await db.customers.toArray();
-        const sameDayCount = existingCustomers.filter(
-            (customer) =>
-                isCustomerInLocalAccount(customer, ownerEmail) &&
-                customer.service_day === validation.data.service_day
-        ).length;
-
-        const sortOrder = validation.data.sort_order ?? sameDayCount;
+        // Append to the end of the day's route: one past the highest position
+        // in use. Counting rows would collide with existing positions whenever
+        // the day has gaps or duplicates and make other clients jump.
+        const existingCustomers = (await db.customers.toArray())
+            .filter((customer) => isCustomerInLocalAccount(customer, ownerEmail));
+        const sortOrder = validation.data.sort_order
+            ?? nextPositionForDay(existingCustomers, validation.data.service_day);
 
         const now = getTimestamp();
         const nowMs = Date.now();
@@ -415,6 +415,19 @@ export function useCustomerUpdate() {
                     !['Plaster', 'Vinyl', 'Fiberglass', 'Tile'].includes(value)) {
                     throw new Error(`Validation failed: invalid surface_type`);
                 }
+            }
+        }
+
+        // A customer moved to another day joins the end of that day's route
+        // unless the caller chose a position; keeping the old position would
+        // collide with a customer already there.
+        if (updates.service_day && updates.sort_order === undefined) {
+            const current = await db.customers.get(id);
+            if (current && current.service_day !== updates.service_day) {
+                const ownerEmail = normalizeOwnerEmail(current.created_by) || DEFAULT_USER;
+                const existingCustomers = (await db.customers.toArray())
+                    .filter((customer) => isCustomerInLocalAccount(customer, ownerEmail));
+                updates.sort_order = nextPositionForDay(existingCustomers, updates.service_day);
             }
         }
 

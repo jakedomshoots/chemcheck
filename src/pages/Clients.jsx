@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { compareWithinDay, planReorder } from "@/lib/customerOrdering";
 import { useActivePoolCustomerIds, useCustomersFilter, useCurrentUser, useCustomerUpdate, useCustomerDelete } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -27,36 +28,14 @@ import { toast } from "sonner";
 import { DAY_ORDER, getEffectiveWorkingDays } from "@/lib/workingDays";
 import { getPreferredScrollBehavior } from "@/lib/scrollMotion";
 
-const FALLBACK_SORT_ORDER = Number.MAX_SAFE_INTEGER;
 const CLIENT_VIEW_OPTIONS = Object.freeze([
   { value: "schedule", label: "Schedule" },
   { value: "directory", label: "Directory" },
 ]);
 
-function getSortFallback(createdAt) {
-  if (!createdAt) return FALLBACK_SORT_ORDER;
-  const parsed = Date.parse(createdAt);
-  return Number.isFinite(parsed) ? parsed : FALLBACK_SORT_ORDER;
-}
-
-function compareByPotentialOrder(a, b) {
-  const aSort = typeof a.sort_order === "number" ? a.sort_order : FALLBACK_SORT_ORDER;
-  const bSort = typeof b.sort_order === "number" ? b.sort_order : FALLBACK_SORT_ORDER;
-
-  if (aSort !== bSort) return aSort - bSort;
-
-  const aCreatedAt = getSortFallback(a.createdAt);
-  const bCreatedAt = getSortFallback(b.createdAt);
-  if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt;
-
-  const aId = String(a._id ?? a.id ?? "");
-  const bId = String(b._id ?? b.id ?? "");
-  return aId.localeCompare(bId);
-}
-
-function getDisplaySortOrder(customer) {
-  return typeof customer.sort_order === "number" ? customer.sort_order : FALLBACK_SORT_ORDER;
-}
+// Ordering rules live in one shared module so Home, the off-day picker and
+// this page can never disagree about a day's stop order.
+const compareByPotentialOrder = compareWithinDay;
 
 export default function Clients() {
   const navigate = useNavigate();
@@ -125,18 +104,7 @@ export default function Clients() {
       return String(a.service_day).localeCompare(String(b.service_day));
     }
 
-    const aSortOrder = getDisplaySortOrder(a);
-    const bSortOrder = getDisplaySortOrder(b);
-
-    if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
-
-    const aCreatedAt = getSortFallback(a.createdAt);
-    const bCreatedAt = getSortFallback(b.createdAt);
-    if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt;
-
-    const aId = String(a._id ?? a.id ?? "");
-    const bId = String(b._id ?? b.id ?? "");
-    return aId.localeCompare(bId);
+    return compareWithinDay(a, b);
   }, [activeDayRankByName, dayRankByName]);
 
   useEffect(() => {
@@ -294,10 +262,13 @@ export default function Clients() {
   }, [navigate]);
 
   const applyReorder = useCallback(async (day, reorderedDayCustomers) => {
-    const nextOrderById = new Map();
-    reorderedDayCustomers.forEach((customer, index) => {
-      nextOrderById.set(customer._id, index);
-    });
+    // Plan positions for the WHOLE day, not just the rows on screen: customers
+    // hidden by the active-pool filter keep their relative order after the
+    // visible ones, so no two customers ever share a position.
+    const dayCustomers = customers.filter((customer) => customer.service_day === day);
+    const nextOrderById = new Map(
+      planReorder(dayCustomers, reorderedDayCustomers).map((change) => [String(change.id), change.sort_order])
+    );
 
     const updates = [];
     const nextCustomers = customers.map((customer) => {
@@ -305,21 +276,19 @@ export default function Clients() {
         return customer;
       }
 
-      const nextSortOrder = nextOrderById.get(customer._id);
+      const customerKey = String(customer._id);
+      const nextSortOrder = nextOrderById.get(customerKey);
       if (nextSortOrder === undefined) return customer;
 
-      if (customer.sort_order !== nextSortOrder) {
-        const customerKey = String(customer._id);
-        pendingReorderSortsRef.current.set(customerKey, nextSortOrder);
-        pendingReorderDaysByCustomerIdRef.current.set(customerKey, day);
-        updates.push(
-          updateCustomer({ id: customer._id, sort_order: nextSortOrder })
-            .finally(() => {
-              pendingReorderSortsRef.current.delete(customerKey);
-              pendingReorderDaysByCustomerIdRef.current.delete(customerKey);
-            })
-        );
-      }
+      pendingReorderSortsRef.current.set(customerKey, nextSortOrder);
+      pendingReorderDaysByCustomerIdRef.current.set(customerKey, day);
+      updates.push(
+        updateCustomer({ id: customer._id, sort_order: nextSortOrder })
+          .finally(() => {
+            pendingReorderSortsRef.current.delete(customerKey);
+            pendingReorderDaysByCustomerIdRef.current.delete(customerKey);
+          })
+      );
 
       return {
         ...customer,

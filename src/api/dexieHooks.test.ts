@@ -83,9 +83,9 @@ describe('useCustomerCreate', () => {
       name: 'Pool Owner',
     }));
     mockCustomersToArray.mockResolvedValue([
-      { id: 1, created_by: 'owner@example.com', service_day: 'Monday' },
-      { id: 2, created_by: 'local', service_day: 'Monday' },
-      { id: 3, created_by: 'other@example.com', service_day: 'Monday' },
+      { id: 1, created_by: 'owner@example.com', service_day: 'Monday', sort_order: 0 },
+      { id: 2, created_by: 'local', service_day: 'Monday', sort_order: 1 },
+      { id: 3, created_by: 'other@example.com', service_day: 'Monday', sort_order: 7 },
     ]);
     mockCustomersAdd.mockResolvedValue(18);
 
@@ -128,7 +128,7 @@ describe('useCustomerCreate', () => {
     );
   });
 
-  it('assigns the next position for subsequent customers on the same service day', async () => {
+  it('appends past the highest position on the day, ignoring gaps and other accounts', async () => {
     mockCustomersToArray.mockResolvedValue([
       { id: 1, created_by: 'local', service_day: 'Monday', sort_order: 0 },
       { id: 2, created_by: 'local', service_day: 'Monday', sort_order: 2 },
@@ -147,9 +147,11 @@ describe('useCustomerCreate', () => {
     });
 
     expect(mockCustomersAdd).toHaveBeenCalledTimes(1);
+    // Positions in use on Monday for this account are 0 and 2, so the new
+    // customer takes 3; a row count (2) would have collided with position 2.
     expect(mockCustomersAdd).toHaveBeenCalledWith(
       expect.objectContaining({
-        sort_order: 2,
+        sort_order: 3,
       })
     );
   });

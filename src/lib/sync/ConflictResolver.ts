@@ -1,6 +1,7 @@
 /**
  * ConflictResolver handles conflicts when the same record is modified both locally and remotely
- * Implements last-write-wins strategy with backup functionality
+ * Pending local edits win over a remote change made since the base version this
+ * device last saw; the local row is backed up and its base is advanced.
  */
 
 import { SyncableRecord } from '@/db/chemcheck-db';
@@ -19,42 +20,57 @@ export interface ConflictInfo {
 
 /**
  * ConflictResolver detects and resolves conflicts between local and remote records
- * Uses last-write-wins strategy by default
+ * Default strategy: local pending edits win, base (remote_updated_at) advanced
  */
 export class ConflictResolver {
   
   /**
-   * Detect if there's a conflict between local and remote records
-   * A conflict exists when both records have been modified since last sync
-   * and their timestamps differ
+   * Detect whether the remote version diverged from the version this device
+   * last saw. Both sides of the comparison are server timestamps: the remote
+   * row's `updated_at` (carried as `remote.remote_updated_at`) against the
+   * base the local row stored in `local.remote_updated_at`. Device clocks
+   * never enter the decision.
+   *
+   * Legacy rows without a stored base fall back to the old heuristic: a
+   * conflict exists when the local row changed and the stamps differ.
    */
   detectConflict(local: SyncableRecord, remote: SyncableRecord | undefined): boolean {
     // No conflict if remote doesn't exist
     if (!remote) {
       return false;
     }
-    
+
     // No conflict if either record doesn't have timestamps
     if (!local.local_updated_at || !remote.remote_updated_at) {
       return false;
     }
 
-    // No conflict if local record hasn't been modified since last remote sync
-    if (local.remote_updated_at && local.local_updated_at <= local.remote_updated_at) {
+    // No conflict if the local row carries no pending edit.
+    if (local.sync_status === 'synced' || local.sync_status === 'local_only') {
       return false;
     }
 
-    // Conflict exists if timestamps differ (both have been modified)
+    const base = local.remote_updated_at;
+    if (typeof base === 'number' && Number.isFinite(base) && base > 0) {
+      // Only a server-side change since our base counts as a conflict.
+      return remote.remote_updated_at > base;
+    }
+
+    // Legacy: no base recorded. Conflict exists if the stamps differ.
     return local.local_updated_at !== remote.remote_updated_at;
   }
 
   /**
-   * Resolve conflict using last-write-wins strategy
-   * Returns the record with the most recent timestamp
+   * Resolve a conflict. Default strategy: pending local edits win. The local
+   * data is kept as-is, a backup of the local row is written to
+   * `conflict_backup`, and `remote_updated_at` is advanced to the remote
+   * version so the next push is made against the new base.
+   *
+   * Callers that explicitly accept the remote version use `acceptRemote`.
    */
   resolve(local: SyncableRecord, remote: SyncableRecord | undefined): ConflictResolutionResult {
     const hadConflict = this.detectConflict(local, remote);
-    
+
     if (!hadConflict || !remote) {
       // No conflict - return local record as-is
       return {
@@ -66,40 +82,39 @@ export class ConflictResolver {
 
     // Create backup before resolving conflict
     const backupCreated = this.createBackup(local);
-    
-    // Last-write-wins: choose record with most recent timestamp
-    const localTime = local.local_updated_at || 0;
+
     const remoteTime = remote.remote_updated_at || 0;
-    
-    let resolved: SyncableRecord;
-    
-    if (localTime > remoteTime) {
-      // Local wins - keep local record but update remote timestamp
-      resolved = {
-        ...local,
-        remote_updated_at: remoteTime,
-      };
-    } else {
-      // Remote wins - use remote data and UPDATE local_updated_at to match remote
-      // This is critical to prevent sync loops - the local timestamp must be >= remote
-      // so the next sync attempt won't detect another conflict
-      resolved = {
-        ...this.normalizeRemoteForLocal(local, remote),
-        // Preserve local-only fields that aren't part of SyncableRecord
-        ...((local as any).id ? { id: (local as any).id } : {}),
-        sync_status: 'synced' as const, // Mark as synced since we're accepting remote
-        sync_error: undefined,
-        local_updated_at: remoteTime, // CRITICAL: Update local timestamp to match remote
-        remote_updated_at: remoteTime,
-        conflict_backup: local.conflict_backup, // Preserve existing backup
-      };
-    }
+    const resolved: SyncableRecord = {
+      ...local,
+      remote_updated_at: Math.max(remoteTime, local.remote_updated_at || 0),
+    };
 
     return {
       resolved,
       hadConflict: true,
       backupCreated,
     };
+  }
+
+  /**
+   * Explicitly accept the remote version over the local row. The local row is
+   * backed up first. `local_updated_at` is set to the remote stamp so the row
+   * does not look locally changed afterwards.
+   */
+  acceptRemote(local: SyncableRecord, remote: SyncableRecord): ConflictResolutionResult {
+    const backupCreated = this.createBackup(local);
+    const remoteTime = remote.remote_updated_at || 0;
+    const resolved: SyncableRecord = {
+      ...this.normalizeRemoteForLocal(local, remote),
+      // Preserve local-only fields that aren't part of SyncableRecord
+      ...((local as any).id ? { id: (local as any).id } : {}),
+      sync_status: 'synced' as const,
+      sync_error: undefined,
+      local_updated_at: remoteTime,
+      remote_updated_at: remoteTime,
+      conflict_backup: local.conflict_backup,
+    };
+    return { resolved, hadConflict: true, backupCreated };
   }
 
   /**
@@ -221,7 +236,7 @@ export class ConflictResolver {
       localTimestamp: new Date(conflictInfo.localTimestamp).toISOString(),
       remoteTimestamp: new Date(conflictInfo.remoteTimestamp).toISOString(),
       conflictedFields: conflictInfo.conflictedFields,
-      winner: conflictInfo.localTimestamp > conflictInfo.remoteTimestamp ? 'local' : 'remote',
+      winner: 'local',
     });
   }
 }

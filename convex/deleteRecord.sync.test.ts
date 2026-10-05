@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deleteRecord, pull, syncCustomer, syncServiceLog, batchSyncCustomers } from "./sync";
+import { deleteRecord, pull, syncCustomer, syncServiceLog, batchSyncCustomers, isRemoteNewerThanBase } from "./sync";
 import { remove as removeCustomer } from "./customers";
 
 /**
@@ -420,5 +420,69 @@ describe("batchSyncCustomers bounds", () => {
     }));
     await expect((batchSyncCustomers as any)._handler(ctx, { customers })).rejects.toThrow(/at most 100 customers/);
     expect(db.tables.get("customers") ?? []).toHaveLength(0);
+  });
+});
+
+describe("base-version conflict detection", () => {
+  it("isRemoteNewerThanBase compares server stamps when a base is supplied", () => {
+    const existing = { updated_at: 1000 };
+    expect(isRemoteNewerThanBase(existing, { base_updated_at: 1000, local_updated_at: 900 })).toBe(false);
+    expect(isRemoteNewerThanBase(existing, { base_updated_at: 1500, local_updated_at: 900 })).toBe(false);
+    expect(isRemoteNewerThanBase(existing, { base_updated_at: 999, local_updated_at: 5000 })).toBe(true);
+    expect(isRemoteNewerThanBase({ updated_at: undefined }, { base_updated_at: 0, local_updated_at: 0 })).toBe(false);
+  });
+
+  it("isRemoteNewerThanBase falls back to the legacy device-clock comparison without a base", () => {
+    const existing = { updated_at: 1000 };
+    expect(isRemoteNewerThanBase(existing, { local_updated_at: 900 })).toBe(true);
+    expect(isRemoteNewerThanBase(existing, { local_updated_at: 1000 })).toBe(false);
+    expect(isRemoteNewerThanBase(existing, { local_updated_at: 1001 })).toBe(false);
+    expect(isRemoteNewerThanBase(existing, { base_updated_at: undefined, local_updated_at: 900 })).toBe(true);
+    expect(isRemoteNewerThanBase(existing, { base_updated_at: Number.NaN, local_updated_at: 900 })).toBe(true);
+    expect(isRemoteNewerThanBase(existing, { base_updated_at: null, local_updated_at: 1001 })).toBe(false);
+    expect(isRemoteNewerThanBase(existing, { local_updated_at: Number.NaN })).toBe(true);
+  });
+
+  it("syncCustomer accepts an edit whose device stamp is older than the server stamp when the base matches", async () => {
+    const db = new FakeDb();
+    const ids = seedSoloTenant(db); // customer updated_at = 1000
+    const { ctx } = makeCtx(db, OWNER);
+    const data = { full_name: "Alice Edited", address: "1", service_day: "Monday", pool_type: "Salt", surface_type: "Plaster" };
+
+    const accepted = await (syncCustomer as any)._handler(ctx, {
+      local_id: 1, convex_id: ids.customer, local_updated_at: 900, base_updated_at: 1000, data,
+    });
+    expect(accepted).toMatchObject({ success: true, operation: "update", updated_at: expect.any(Number) });
+    expect((await db.get(ids.customer))!.full_name).toBe("Alice Edited");
+
+    // Same base again: the row moved on since, so this is a real conflict.
+    const stale = await (syncCustomer as any)._handler(ctx, {
+      local_id: 1, convex_id: ids.customer, local_updated_at: Date.now() + 60_000, base_updated_at: 1000,
+      data: { ...data, full_name: "Stale" }, idempotency_key: "stale",
+    });
+    expect(stale).toMatchObject({
+      success: false,
+      operation: "conflict",
+      conflict: { remote_updated_at: accepted.updated_at, remote_data: { _id: ids.customer, full_name: "Alice Edited" } },
+    });
+    expect((await db.get(ids.customer))!.full_name).toBe("Alice Edited");
+  });
+
+  it("syncCustomer keeps the legacy device-clock comparison for clients that send no base", async () => {
+    const db = new FakeDb();
+    const ids = seedSoloTenant(db);
+    const { ctx } = makeCtx(db, OWNER);
+    const data = { full_name: "Legacy", address: "1", service_day: "Monday", pool_type: "Salt", surface_type: "Plaster" };
+
+    const conflict = await (syncCustomer as any)._handler(ctx, {
+      local_id: 1, convex_id: ids.customer, local_updated_at: 900, data,
+    });
+    expect(conflict).toMatchObject({ success: false, operation: "conflict", conflict: { remote_updated_at: 1000, local_updated_at: 900 } });
+
+    const accepted = await (syncCustomer as any)._handler(ctx, {
+      local_id: 1, convex_id: ids.customer, local_updated_at: 1001, data, idempotency_key: "legacy-ok",
+    });
+    expect(accepted).toMatchObject({ success: true, operation: "update" });
+    expect((await db.get(ids.customer))!.full_name).toBe("Legacy");
   });
 });

@@ -633,33 +633,46 @@ export class SyncService {
         return;
       }
 
-      const localChanged = local.sync_status === 'pending' ||
-        Number(local.local_updated_at || 0) > Number(local.remote_updated_at || 0);
       const localTimestamp = Number(local.local_updated_at || 0);
-      if (localChanged && localTimestamp > remoteUpdatedAt) {
-        // Local wins; leave the pending record in the queue. We still count a
-        // conflict so the UI/telemetry can surface that it needs attention.
-        conflictCount += 1;
-        monitoring.recordMetric('sync_pull_conflict_local_wins', 1, { table, localId: local.id });
-        return;
-      }
+      const localBase = Number(local.remote_updated_at || 0);
+      // A row is locally changed when it is queued for push, or (for rows
+      // written before sync_status existed) when its device stamp moved past
+      // the last server stamp it saw. The latter is a legacy heuristic only;
+      // the decision below never compares device time against server time.
+      const localChanged = local.sync_status === 'pending' ||
+        (local.sync_status === undefined && localTimestamp > localBase);
 
       if (localChanged) {
-        conflictCount += 1;
-        try {
-          this.conflictResolver.createBackup(local);
-        } catch {
-          // A backup is best effort; never block accepting the authoritative
-          // remote version because local data remains in the audit trail.
+        if (remoteUpdatedAt <= localBase) {
+          // The server has nothing newer than the base we already pushed
+          // against. The pending push will carry the local edit; leave the
+          // row alone so we never overwrite it with its own stale echo.
+          return;
         }
-        // Surface the silent loss: local edits are being replaced by remote.
-        monitoring.recordMetric('sync_pull_conflict_remote_wins', 1, {
+
+        // Another device changed the row since our base. Pending local edits
+        // win: keep the local data, back it up for the audit trail and only
+        // advance the base so the next push is accepted by the server.
+        conflictCount += 1;
+        let backupCreated = false;
+        try {
+          backupCreated = this.conflictResolver.createBackup(local);
+        } catch {
+          // A backup is best effort; never block the merge over it.
+        }
+        const baseAdvance: Record<string, unknown> = { remote_updated_at: remoteUpdatedAt };
+        if (backupCreated && local.conflict_backup) baseAdvance.conflict_backup = local.conflict_backup;
+        await this.withoutSyncHooks(async () => {
+          await localTable.update(local.id, baseAdvance);
+        });
+        monitoring.recordMetric('sync_pull_conflict_local_pending_kept', 1, {
           table,
           localId: local.id,
-          localTimestamp: localTimestamp,
+          localTimestamp,
           remoteTimestamp: remoteUpdatedAt,
-          backupKept: !!local.conflict_backup,
+          backupKept: backupCreated,
         });
+        return;
       }
 
       // Capture the queued revision for this row *before* overwriting it. If
@@ -994,6 +1007,20 @@ export class SyncService {
   private normalizeLocalUpdatedAt(value: unknown): number {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : Date.now();
+  }
+
+  /**
+   * The server `updated_at` this device last saw for the row. The server
+   * compares it against the row's current `updated_at` (server clock vs server
+   * clock) to detect edits from other devices, instead of comparing the
+   * device clock against the server clock.
+   */
+  private baseUpdatedAtFor(record: any): number | undefined {
+    if (!record?.convex_id) return undefined;
+    const base = Number(record.remote_updated_at);
+    return Number.isFinite(base) && record.remote_updated_at !== undefined && record.remote_updated_at !== null
+      ? base
+      : undefined;
   }
 
 
@@ -1400,6 +1427,7 @@ export class SyncService {
                 report_settings: record.report_settings,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: this.baseUpdatedAtFor(record),
               convex_id: record.convex_id as Id<"customers"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1428,6 +1456,7 @@ export class SyncService {
                 active: record.active,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: this.baseUpdatedAtFor(record),
               convex_id: record.convex_id as Id<"pools"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1458,6 +1487,7 @@ export class SyncService {
                 notes: record.notes,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: this.baseUpdatedAtFor(record),
               convex_id: record.convex_id as Id<"equipment"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1535,6 +1565,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: this.baseUpdatedAtFor(record),
               convex_id: record.convex_id as Id<"serviceLogs"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1578,6 +1609,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: this.baseUpdatedAtFor(record),
               convex_id: record.convex_id as Id<"chemicalUsage"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1614,6 +1646,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: this.baseUpdatedAtFor(record),
               convex_id: record.convex_id as Id<"notes"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1657,6 +1690,7 @@ export class SyncService {
                 pool_id: convexPoolId as Id<"pools"> | undefined,
               },
               local_updated_at: localUpdatedAt,
+              base_updated_at: this.baseUpdatedAtFor(record),
               convex_id: record.convex_id as Id<"saltCellLogs"> | undefined,
               idempotency_key: idempotencyKey,
             });
@@ -1743,7 +1777,8 @@ export class SyncService {
 
           return true;
         } else if (result.operation === 'deleted' || this.isRemoteTombstone(result) ||
-          this.isRemoteTombstone(result.remote_data) || this.isRemoteTombstone(result.record)) {
+          this.isRemoteTombstone(result.remote_data) || this.isRemoteTombstone(result.record) ||
+          this.isRemoteTombstone(result.conflict?.remote_data)) {
           // The server tombstoned this row. Drop the local copy (and children)
           // without re-enqueueing, then ack the queued work.
           monitoring.recordMetric('sync_push_remote_deleted', 1, { table, localId: record.id });
@@ -1776,156 +1811,109 @@ export class SyncService {
             this.conflictResolver.logConflict(table, record.id!, conflictInfo);
           }
 
-          // Resolve conflict using last-write-wins strategy
+          // Optimistic concurrency: the server rejected this push because the
+          // row changed on the server since the base version this device last
+          // saw (another device edited it). Pending local edits win: keep the
+          // local data, back it up, advance our base to the remote version and
+          // push again. No device-clock vs server-clock comparison is involved.
+          const remoteTime = Number(result.conflict?.remote_updated_at || 0);
           const resolution = this.conflictResolver.resolve(record, remoteRecord);
-
-          if (resolution.backupCreated) {
+          let backupCreated = resolution.backupCreated;
+          if (!resolution.hadConflict) {
+            // The resolver could not see the remote version; still keep an
+            // audit copy before re-pushing over the server's newer row.
+            backupCreated = this.conflictResolver.createBackup(record);
+          }
+          if (backupCreated) {
             console.log(`Created conflict backup for ${table}[${record.id}]`);
           }
 
-          // Check if local or remote won
-          const localTime = record.local_updated_at || 0;
-          const remoteTime = result.conflict?.remote_updated_at || 0;
-          const localWins = localTime > remoteTime;
+          const baseAdvance: Record<string, unknown> = {};
+          if (remoteTime > Number(record.remote_updated_at || 0)) {
+            baseAdvance.remote_updated_at = remoteTime;
+          }
+          if (record.conflict_backup) {
+            baseAdvance.conflict_backup = record.conflict_backup;
+          }
 
           try {
-            if (localWins) {
-              // Local wins - update local record and retry sync to push local changes
-              // But first check if we've exceeded conflict retry limit
-              if (conflictRetryCount >= maxConflictRetries) {
-                console.error(`Max conflict retries (${maxConflictRetries}) exceeded for ${table}[${record.id}]. Marking as error.`);
-                monitoring.recordMetric('sync_conflict_exhausted', 1, {
-                  table,
-                  localId: record.id,
-                  conflictRetryCount,
-                  maxConflictRetries,
-                });
+            if (conflictRetryCount >= maxConflictRetries) {
+              console.error(`Max conflict retries (${maxConflictRetries}) exceeded for ${table}[${record.id}]. Marking as error.`);
+              monitoring.recordMetric('sync_conflict_exhausted', 1, {
+                table,
+                localId: record.id,
+                conflictRetryCount,
+                maxConflictRetries,
+              });
 
-                this.lastSyncFailure = `Conflict resolution failed after ${maxConflictRetries} attempts. Local changes preserved but not synced.`;
-                const errorData = {
-                  ...resolution.resolved,
-                  sync_status: 'error' as const,
-                  sync_error: this.lastSyncFailure,
-                };
-
-                switch (table) {
-                  case 'customers':
-                    await db.customers.update(record.id, errorData);
-                    break;
-                  case 'pools':
-                    await db.pools.update(record.id, errorData);
-                    break;
-                  case 'equipment':
-                    await db.equipment.update(record.id, errorData);
-                    break;
-                  case 'serviceLogs':
-                    await db.serviceLogs.update(record.id, errorData);
-                    break;
-                  case 'chemicalUsage':
-                    await db.chemicalUsage.update(record.id, errorData);
-                    break;
-                  case 'notes':
-                    await db.notes.update(record.id, errorData);
-                    break;
-                  case 'saltCellLogs':
-                    await db.saltCellLogs.update(record.id, errorData);
-                    break;
-                }
-
-                return false;
-              }
-
-              const resolvedData = {
-                ...resolution.resolved,
-                sync_status: 'pending' as const,
-                sync_error: `Conflict resolved: local version wins. ${resolution.backupCreated ? 'Remote data backed up.' : ''} Retrying sync (attempt ${conflictRetryCount + 1}/${maxConflictRetries})...`,
+              this.lastSyncFailure = `Conflict resolution failed after ${maxConflictRetries} attempts. Local changes preserved but not synced.`;
+              const errorData = {
+                ...baseAdvance,
+                sync_status: 'error' as const,
+                sync_error: this.lastSyncFailure,
               };
 
               switch (table) {
                 case 'customers':
-                  await db.customers.update(record.id, resolvedData);
+                  await db.customers.update(record.id, errorData);
                   break;
                 case 'pools':
-                  await db.pools.update(record.id, resolvedData);
+                  await db.pools.update(record.id, errorData);
                   break;
                 case 'equipment':
-                  await db.equipment.update(record.id, resolvedData);
+                  await db.equipment.update(record.id, errorData);
                   break;
                 case 'serviceLogs':
-                  await db.serviceLogs.update(record.id, resolvedData);
+                  await db.serviceLogs.update(record.id, errorData);
                   break;
                 case 'chemicalUsage':
-                  await db.chemicalUsage.update(record.id, resolvedData);
+                  await db.chemicalUsage.update(record.id, errorData);
                   break;
                 case 'notes':
-                  await db.notes.update(record.id, resolvedData);
+                  await db.notes.update(record.id, errorData);
                   break;
                 case 'saltCellLogs':
-                  await db.saltCellLogs.update(record.id, resolvedData);
+                  await db.saltCellLogs.update(record.id, errorData);
                   break;
               }
 
-              // Add exponential backoff delay before retry to give remote time to settle
-              const backoffMs = Math.pow(2, conflictRetryCount) * 500; // 500ms, 1s, 2s
-              monitoring.recordMetric('sync_conflict_retry', 1, {
-                table,
-                localId: record.id,
-                retryAttempt: conflictRetryCount + 1,
-                maxConflictRetries,
-                backoffMs,
-              });
-              if (backoffMs > 0) {
-                console.log(`Waiting ${backoffMs}ms before conflict retry for ${table}[${record.id}]`);
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
-              }
+              return false;
+            }
 
-              // Retry sync with resolved data and incremented conflict counter
-              const updatedRecord = { ...record, ...resolvedData };
-              return await this.syncSingleRecord(
-                table,
-                updatedRecord,
-                conflictRetryCount + 1,
-                expectedQueueRevision,
-              );
-            } else {
-              // Remote wins - apply the server document with the same
-              // normalization the pull path uses (Convex ids -> local ids,
-              // server-only fields stripped) and without re-triggering the
-              // Dexie hooks, which would mark the row pending and push the
-              // server's own data straight back.
-              const rawRemote = result.conflict?.remote_data;
-              const normalizedRemote = rawRemote
-                ? await this.normalizeRemoteRecord(table, {
-                  ...rawRemote,
-                  _id: rawRemote._id || rawRemote.convex_id || record.convex_id,
-                  updated_at: rawRemote.updated_at || remoteTime,
-                })
-                : {};
-              const resolvedData = {
-                ...resolution.resolved,
-                ...normalizedRemote,
-                id: record.id,
-                convex_id: normalizedRemote.convex_id || record.convex_id,
-                sync_status: 'synced' as const,
-                sync_error: undefined,
-                conflict_backup: (resolution.resolved as any).conflict_backup ?? record.conflict_backup,
-                local_updated_at: remoteTime || Number((resolution.resolved as any).local_updated_at || 0),
-                remote_updated_at: remoteTime || Number((resolution.resolved as any).remote_updated_at || 0),
-              };
-
+            // Advance the base without touching local_updated_at or
+            // sync_status, and without re-triggering the Dexie hooks (which
+            // would enqueue a new revision and invalidate this push).
+            if (Object.keys(baseAdvance).length > 0) {
               await this.withoutSyncHooks(async () => {
                 const targetTable = this.getTable(table);
-                if (targetTable?.update) await targetTable.update(record.id, resolvedData);
+                if (targetTable?.update) await targetTable.update(record.id, baseAdvance);
               });
-
-              console.log(`Conflict resolved for ${table}[${record.id}]: remote version accepted${resolution.backupCreated ? ', local changes backed up' : ''}`);
-              monitoring.recordMetric('sync_conflict_remote_wins', 1, {
-                table,
-                localId: record.id,
-                remoteTimestamp: remoteTime,
-              });
-              return true; // No retry needed - we accepted remote version
             }
+
+            // Add exponential backoff delay before retry to give remote time to settle
+            const backoffMs = Math.pow(2, conflictRetryCount) * 500; // 500ms, 1s, 2s
+            monitoring.recordMetric('sync_conflict_retry', 1, {
+              table,
+              localId: record.id,
+              retryAttempt: conflictRetryCount + 1,
+              maxConflictRetries,
+              backoffMs,
+              remoteTimestamp: remoteTime,
+              backupCreated,
+            });
+            if (backoffMs > 0) {
+              console.log(`Waiting ${backoffMs}ms before conflict retry for ${table}[${record.id}]`);
+              await new Promise(resolve => setTimeout(resolve, backoffMs));
+            }
+
+            // Retry with the same local data on top of the new base.
+            const updatedRecord = { ...record, ...baseAdvance };
+            return await this.syncSingleRecord(
+              table,
+              updatedRecord,
+              conflictRetryCount + 1,
+              expectedQueueRevision,
+            );
           } catch (updateError) {
             console.error(`Failed to update local record after conflict resolution for ${table}[${record.id}]:`, updateError);
             this.lastSyncFailure = updateError instanceof Error ? updateError.message : 'Failed to apply conflict resolution';

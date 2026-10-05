@@ -624,6 +624,33 @@ function deletedResponse(convexId: any, localId: number, existing: any) {
   };
 }
 
+/**
+ * Optimistic concurrency check on the base version the device last saw.
+ *
+ * `base_updated_at` is the server `updated_at` the client stored after its last
+ * successful push/pull of this row. Comparing server stamp against server stamp
+ * avoids cross-clock comparisons (device clock vs server clock), which falsely
+ * reported conflicts for quick successive edits and under clock skew.
+ *
+ * Legacy clients that do not send `base_updated_at` fall back to the old
+ * device-clock comparison so they keep working.
+ */
+export function isRemoteNewerThanBase(
+  existing: { updated_at?: number | null } | null | undefined,
+  args: { base_updated_at?: number | null; local_updated_at?: number | null },
+): boolean {
+  const remoteUpdatedAt = (existing && existing.updated_at) || 0;
+  const base = args.base_updated_at;
+  if (typeof base === 'number' && Number.isFinite(base)) {
+    return remoteUpdatedAt > base;
+  }
+  const safeLocalUpdatedAt =
+    typeof args.local_updated_at === 'number' && Number.isFinite(args.local_updated_at)
+      ? args.local_updated_at
+      : 0;
+  return remoteUpdatedAt > safeLocalUpdatedAt;
+}
+
 // ============================================
 // Customer Sync
 // ============================================
@@ -653,6 +680,7 @@ export const syncCustomer = mutation({
       })),
     }),
     local_updated_at: v.number(),
+    base_updated_at: v.optional(v.number()),
     convex_id: v.optional(v.id("customers")), // If updating existing record
     idempotency_key: v.optional(v.string()),
   },
@@ -704,7 +732,7 @@ export const syncCustomer = mutation({
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingCustomer.updated_at || 0;
-      if (remoteUpdatedAt > safeLocalUpdatedAt) {
+      if (isRemoteNewerThanBase(existingCustomer, args)) {
         console.log(`Conflict detected for customer ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -798,6 +826,7 @@ export const syncServiceLog = mutation({
       duration_ms: v.optional(v.number()),
     }),
     local_updated_at: v.number(),
+    base_updated_at: v.optional(v.number()),
     convex_id: v.optional(v.id("serviceLogs")), // If updating existing record
     idempotency_key: v.optional(v.string()),
   },
@@ -845,7 +874,7 @@ export const syncServiceLog = mutation({
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingServiceLog.updated_at || 0;
-      if (remoteUpdatedAt > safeLocalUpdatedAt) {
+      if (isRemoteNewerThanBase(existingServiceLog, args)) {
         console.log(`Conflict detected for service log ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -916,6 +945,7 @@ export const syncChemicalUsage = mutation({
       created_date: v.optional(v.string()),
     }),
     local_updated_at: v.number(),
+    base_updated_at: v.optional(v.number()),
     convex_id: v.optional(v.id("chemicalUsage")), // If updating existing record
     idempotency_key: v.optional(v.string()),
   },
@@ -961,7 +991,7 @@ export const syncChemicalUsage = mutation({
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingChemicalUsage.updated_at || 0;
-      if (remoteUpdatedAt > safeLocalUpdatedAt) {
+      if (isRemoteNewerThanBase(existingChemicalUsage, args)) {
         console.log(`Conflict detected for chemical usage ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -1034,6 +1064,7 @@ export const syncNote = mutation({
       created_date: v.optional(v.string()),
     }),
     local_updated_at: v.number(),
+    base_updated_at: v.optional(v.number()),
     convex_id: v.optional(v.id("notes")), // If updating existing record
     idempotency_key: v.optional(v.string()),
   },
@@ -1084,7 +1115,7 @@ export const syncNote = mutation({
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingNote.updated_at || 0;
-      if (remoteUpdatedAt > safeLocalUpdatedAt) {
+      if (isRemoteNewerThanBase(existingNote, args)) {
         console.log(`Conflict detected for note ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -1155,6 +1186,7 @@ export const syncSaltCellLog = mutation({
       next_cleaning_due: v.optional(v.string()),
     }),
     local_updated_at: v.number(),
+    base_updated_at: v.optional(v.number()),
     convex_id: v.optional(v.id("saltCellLogs")), // If updating existing record
     idempotency_key: v.optional(v.string()),
   },
@@ -1200,7 +1232,7 @@ export const syncSaltCellLog = mutation({
 
       // Conflict detection: check if remote record was modified after local timestamp
       const remoteUpdatedAt = existingSaltCellLog.updated_at || 0;
-      if (remoteUpdatedAt > safeLocalUpdatedAt) {
+      if (isRemoteNewerThanBase(existingSaltCellLog, args)) {
         console.log(`Conflict detected for salt cell log ${convex_id}: remote newer than local`);
 
         // Return conflict information for client-side resolution
@@ -1275,6 +1307,7 @@ export const syncPool = mutation({
       active: v.boolean(),
     }),
     local_updated_at: v.number(),
+    base_updated_at: v.optional(v.number()),
     convex_id: v.optional(v.id("pools")),
     idempotency_key: v.optional(v.string()),
   },
@@ -1295,7 +1328,7 @@ export const syncPool = mutation({
           deletedResponse(args.convex_id, args.local_id, existing));
       }
       const remoteUpdatedAt = existing.updated_at || 0;
-      if (remoteUpdatedAt > safeLocalUpdatedAt) {
+      if (isRemoteNewerThanBase(existing, args)) {
         return await saveSyncReceipt(ctx, args.idempotency_key, identity.email, "pools", {
           convex_id: args.convex_id, local_id: args.local_id, success: false,
           operation: "conflict" as const,
@@ -1342,6 +1375,7 @@ export const syncEquipment = mutation({
       notes: v.optional(v.string()),
     }),
     local_updated_at: v.number(),
+    base_updated_at: v.optional(v.number()),
     convex_id: v.optional(v.id("equipment")),
     idempotency_key: v.optional(v.string()),
   },
@@ -1364,7 +1398,7 @@ export const syncEquipment = mutation({
           deletedResponse(args.convex_id, args.local_id, existing));
       }
       const remoteUpdatedAt = existing.updated_at || 0;
-      if (remoteUpdatedAt > safeLocalUpdatedAt) {
+      if (isRemoteNewerThanBase(existing, args)) {
         return await saveSyncReceipt(ctx, args.idempotency_key, identity.email, "equipment", {
           convex_id: args.convex_id, local_id: args.local_id, success: false,
           operation: "conflict" as const,

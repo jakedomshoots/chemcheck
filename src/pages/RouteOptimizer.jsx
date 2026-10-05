@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { compareWithinDay } from "@/lib/customerOrdering";
 import { useActivePoolCustomerIds, useCustomersFilter, useCurrentUser, useServiceLogs } from "@/api/convexHooks";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -200,7 +201,9 @@ export default function RouteOptimizer() {
   }, [customers]);
 
   const dayCustomers = useMemo(
-    () => customers.filter((customer) => normalizeDayName(customer.service_day) === selectedDay),
+    () => customers
+      .filter((customer) => normalizeDayName(customer.service_day) === selectedDay)
+      .sort(compareWithinDay),
     [customers, selectedDay]
   );
 
