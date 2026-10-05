@@ -196,7 +196,7 @@ describe('SyncService delete sync', () => {
     service.destroy();
   });
 
-  it('applies pulled customer tombstones locally with cascade and clears queued work', async () => {
+  it('preserves a tombstoned parent and pending child locally for review', async () => {
     const { service, query } = await createService();
     stores.customers.push({ id: 1, convex_id: 'cust-1', full_name: 'Gone', sync_status: 'synced', local_updated_at: 1 });
     stores.customers.push({ id: 2, convex_id: 'cust-2', full_name: 'Stays', sync_status: 'synced', local_updated_at: 1 });
@@ -213,18 +213,17 @@ describe('SyncService delete sync', () => {
 
     const result = await service.pullRemoteChanges();
 
-    expect(result.pulledCount).toBeGreaterThan(0);
-    expect(stores.customers.map((row) => row.id)).toEqual([2]);
-    expect(stores.serviceLogs).toHaveLength(0);
-    expect(stores.pools).toHaveLength(0);
+    expect(result).toMatchObject({ pulledCount: 0, conflictCount: 2 });
+    expect(stores.customers.map((row) => row.id)).toEqual([1, 2]);
+    expect(stores.customers[0]).toMatchObject({ sync_status: 'error' });
+    expect(stores.serviceLogs[0]).toMatchObject({ sync_status: 'error' });
+    expect(stores.pools).toHaveLength(1);
     expect(stores.notes).toHaveLength(1);
     expect(service.getQueueStatus().items).toHaveLength(0);
-    // Local deletes must not be re-enqueued as outbound deletes.
-    expect(writeLog.filter((entry) => entry.op === 'delete').every((entry) => entry.suppressed)).toBe(true);
     service.destroy();
   });
 
-  it('drops the local row and acks when a push reports the server row was deleted', async () => {
+  it('preserves the local row when a push reports the server row was deleted', async () => {
     const { service, mutation } = await createService();
     stores.customers.push({
       id: 1, convex_id: 'cust-1', full_name: 'Edited offline', address: 'x', service_day: 'Monday',
@@ -238,10 +237,14 @@ describe('SyncService delete sync', () => {
     const result = await service.syncNow();
 
     expect(result.success).toBe(true);
-    expect(stores.customers).toHaveLength(0);
-    expect(stores.serviceLogs).toHaveLength(0);
+    expect(stores.customers[0]).toMatchObject({
+      full_name: 'Edited offline',
+      sync_status: 'error',
+      remote_updated_at: 500,
+    });
+    expect(typeof stores.customers[0].conflict_backup).toBe('string');
+    expect(stores.serviceLogs).toHaveLength(1);
     expect(service.getQueueStatus().items).toHaveLength(0);
-    expect(writeLog.filter((entry) => entry.op === 'delete').every((entry) => entry.suppressed)).toBe(true);
     service.destroy();
   });
 });

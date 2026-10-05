@@ -584,6 +584,59 @@ export class SyncService {
     return typeof remote?.deleted_at === 'number' && Number.isFinite(remote.deleted_at);
   }
 
+  private isRemoteDeletionConflict(local: any): boolean {
+    return local?.sync_status === 'error' && local?.sync_error === 'This record was deleted on another device; local changes were kept for review.';
+  }
+
+  /**
+   * A server deletion must not silently discard pending field work. Preserve
+   * the local row and audit backup, stop automatic retries (the server cannot
+   * accept this version), and surface an explicit recovery state instead.
+   */
+  private async retainLocalRecordAfterRemoteDeletion(table: string, local: any, remoteUpdatedAt: number): Promise<boolean> {
+    if (!local || local.id === undefined || this.isRemoteDeletionConflict(local)) return false;
+    const localTable = this.getTable(table);
+    if (!localTable || typeof localTable.update !== 'function') return false;
+
+    let backupCreated = false;
+    try {
+      backupCreated = this.conflictResolver.createBackup(local);
+    } catch {
+      // Keep the row even if the optional audit backup cannot be created.
+    }
+    await this.withoutSyncHooks(async () => {
+      await localTable.update(local.id, {
+        sync_status: 'error',
+        sync_error: 'This record was deleted on another device; local changes were kept for review.',
+        remote_updated_at: remoteUpdatedAt || local.remote_updated_at,
+        ...(backupCreated && local.conflict_backup ? { conflict_backup: local.conflict_backup } : {}),
+      });
+    });
+    this.syncQueue.clearForItem?.(table as SyncQueueItem['table'], local.id);
+    monitoring.recordMetric('sync_remote_deletion_local_preserved', 1, { table, localId: local.id, backupKept: backupCreated });
+    return true;
+  }
+
+  private async pendingCustomerChildren(local: any): Promise<Array<{ table: string; record: any }>> {
+    const pending: Array<{ table: string; record: any }> = [];
+    for (const childTable of SyncService.CHILD_TABLES_OF_CUSTOMER) {
+      const store = this.getTable(childTable);
+      if (!store || typeof store.where !== 'function') continue;
+      let children: any[] = [];
+      try {
+        children = await store.where('customer_id').equals(local.id).toArray();
+      } catch {
+        children = [];
+      }
+      for (const child of children) {
+        if (child?.sync_status === 'pending' || this.isRemoteDeletionConflict(child)) {
+          pending.push({ table: childTable, record: child });
+        }
+      }
+    }
+    return pending;
+  }
+
   /**
    * Delete a local row (and, for customers, its local children) without
    * re-enqueueing the deletes, and drop any queued work for those rows.
@@ -620,12 +673,30 @@ export class SyncService {
     return removed;
   }
 
-  private async applyRemoteDeletion(table: string, convexId: string): Promise<number> {
+  private async applyRemoteDeletion(table: string, convexId: string, remoteUpdatedAt: number): Promise<{ removed: number; preserved: number }> {
     const local = await this.findLocalByConvexId(table, convexId);
-    if (!local) return 0;
+    if (!local) return { removed: 0, preserved: 0 };
+    if (local.sync_status === 'pending' || this.isRemoteDeletionConflict(local)) {
+      const preserved = await this.retainLocalRecordAfterRemoteDeletion(table, local, remoteUpdatedAt);
+      return { removed: 0, preserved: preserved ? 1 : 0 };
+    }
+
+    // Never cascade a parent tombstone through a child that still has local
+    // work. Keep the affected records together for review rather than leaving
+    // an orphaned child or erasing its unsynced work.
+    if (table === 'customers') {
+      const children = await this.pendingCustomerChildren(local);
+      if (children.length > 0) {
+        let preserved = await this.retainLocalRecordAfterRemoteDeletion(table, local, remoteUpdatedAt) ? 1 : 0;
+        for (const child of children) {
+          if (await this.retainLocalRecordAfterRemoteDeletion(child.table, child.record, remoteUpdatedAt)) preserved += 1;
+        }
+        return { removed: 0, preserved };
+      }
+    }
     const removed = await this.deleteLocalRowWithChildren(table, local);
     monitoring.recordMetric('sync_pull_tombstone_applied', removed, { table, localId: local.id });
-    return removed;
+    return { removed, preserved: 0 };
   }
 
   private async applyRemotePullPage(page: RemotePullPage): Promise<{ pulledCount: number; conflictCount: number }> {
@@ -638,7 +709,9 @@ export class SyncService {
       if (!localTable) return;
 
       if (this.isRemoteTombstone(remote)) {
-        pulledCount += await this.applyRemoteDeletion(table, convexId);
+        const deletion = await this.applyRemoteDeletion(table, convexId, Number(remote.updated_at || remote.deleted_at || 0));
+        pulledCount += deletion.removed;
+        conflictCount += deletion.preserved;
         return;
       }
 
@@ -1812,13 +1885,15 @@ export class SyncService {
         } else if (result.operation === 'deleted' || this.isRemoteTombstone(result) ||
           this.isRemoteTombstone(result.remote_data) || this.isRemoteTombstone(result.record) ||
           this.isRemoteTombstone(result.conflict?.remote_data)) {
-          // The server tombstoned this row. Drop the local copy (and children)
-          // without re-enqueueing, then ack the queued work.
+          // The server tombstoned this row. Keep the pending local version for
+          // review instead of silently discarding field work.
           monitoring.recordMetric('sync_push_remote_deleted', 1, { table, localId: record.id });
           try {
-            await this.deleteLocalRowWithChildren(table, currentRecord || record);
-          } catch (deleteError) {
-            console.error(`Failed to drop locally deleted ${table}[${record.id}]:`, deleteError);
+            await this.retainLocalRecordAfterRemoteDeletion(table, currentRecord || record, Number(
+              result.deleted_at || result.updated_at || result.conflict?.remote_updated_at || 0,
+            ));
+          } catch (preserveError) {
+            console.error(`Failed to preserve locally deleted ${table}[${record.id}]:`, preserveError);
           }
           return true;
         } else if (result.operation === 'conflict') {

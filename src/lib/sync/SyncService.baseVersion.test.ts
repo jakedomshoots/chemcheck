@@ -180,7 +180,7 @@ describe('SyncService base-version concurrency', () => {
     service.destroy();
   }, 10_000);
 
-  it('drops the local row when the conflict payload carries a tombstone', async () => {
+  it('preserves the local row for review when the conflict payload carries a tombstone', async () => {
     const mutation = vi.fn(async () => ({
       success: false, operation: 'conflict',
       conflict: { remote_data: { _id: 'cust-1', deleted_at: 999, updated_at: 999 }, remote_updated_at: 999 },
@@ -196,7 +196,13 @@ describe('SyncService base-version concurrency', () => {
     await service.syncNow();
 
     expect(mutation).toHaveBeenCalledTimes(1);
-    expect(stores.customers).toHaveLength(0);
+    expect(stores.customers[0]).toMatchObject({
+      full_name: 'Alice',
+      sync_status: 'error',
+      sync_error: 'This record was deleted on another device; local changes were kept for review.',
+      remote_updated_at: 999,
+    });
+    expect(typeof stores.customers[0].conflict_backup).toBe('string');
     expect(service.getQueueStatus().items).toHaveLength(0);
     service.destroy();
   });
@@ -223,6 +229,34 @@ describe('SyncService base-version concurrency', () => {
     });
     expect(typeof stores.customers[0].conflict_backup).toBe('string');
     expect(service.getQueueStatus().items).toHaveLength(1);
+    service.destroy();
+  });
+
+  it('keeps a pending row and stops retrying when a remote pull carries a tombstone', async () => {
+    const { mutation } = fakeServer(200);
+    stores.customers.push({
+      id: 1, convex_id: 'cust-1', full_name: 'Local', sort_order: 0,
+      sync_status: 'pending', local_updated_at: 120, remote_updated_at: 150,
+    });
+    const { service, query } = await createService(mutation);
+    service.enqueueRecord('customers', 1, 'update', { ...stores.customers[0] });
+    query.mockResolvedValueOnce({
+      ...emptyPage,
+      customers: [{ _id: 'cust-1', deleted_at: 200, updated_at: 200 }],
+      watermark: 200,
+    });
+
+    const result = await service.pullRemoteChanges();
+
+    expect(result).toMatchObject({ pulledCount: 0, conflictCount: 1 });
+    expect(stores.customers[0]).toMatchObject({
+      full_name: 'Local',
+      sync_status: 'error',
+      remote_updated_at: 200,
+      sync_error: 'This record was deleted on another device; local changes were kept for review.',
+    });
+    expect(typeof stores.customers[0].conflict_backup).toBe('string');
+    expect(service.getQueueStatus().items).toHaveLength(0);
     service.destroy();
   });
 });
