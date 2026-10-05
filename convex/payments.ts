@@ -5,7 +5,7 @@ import { validateEmail, validatePhone } from "./validation";
 import { fetchProvider, requireStripeConfig } from "./providerConfig";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
-const FALLBACK_APP_BASE_URL = "https://app.chemcheck.app";
+const FALLBACK_APP_BASE_URL = "https://chemcheck.xyz";
 
 type StripeLinkResult = {
   success: boolean;

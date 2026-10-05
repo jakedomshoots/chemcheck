@@ -60,6 +60,66 @@ export function isSyncButtonDisabled(status) {
 }
 
 /**
+ * Human-friendly guidance for a technician about to lose coverage.
+ * This is deliberately based on the local queue: a clear queue means the
+ * phone has finished saving everything it already knows about, not that a
+ * future cloud change cannot exist.
+ */
+export function getFieldReadiness(status, pendingCount, lastCompletedSyncAt) {
+  if (status === 'offline') {
+    const savedChanges = pendingCount === 1 ? '1 saved change' : `${pendingCount} saved changes`;
+    return {
+      title: lastCompletedSyncAt ? 'Working offline' : 'Offline — route not verified',
+      message: !lastCompletedSyncAt
+        ? 'Reconnect and complete a sync before depending on this phone for route data.'
+        : pendingCount > 0
+        ? `${savedChanges} will sync automatically when coverage returns.`
+        : 'Your saved route data is available on this phone. New work will sync when coverage returns.',
+      tone: 'border-line bg-surface-2',
+    };
+  }
+
+  if (status === 'idle' && pendingCount === 0 && lastCompletedSyncAt) {
+    return {
+      title: 'Ready for offline work',
+      message: 'This phone has the latest saved route data. You can keep working without Wi-Fi or cell service.',
+      tone: 'border-[var(--status-ok-line)] bg-[var(--status-ok-soft)]',
+    };
+  }
+
+  if (status === 'idle' && pendingCount === 0) {
+    return {
+      title: 'Sync this phone before leaving coverage',
+      message: 'No completed route download is recorded for this signed-in phone yet.',
+      tone: 'border-[var(--status-watch-line)] bg-yellow-50',
+    };
+  }
+
+  if (status === 'syncing') {
+    return {
+      title: 'Preparing this phone',
+      message: 'Keep coverage on until the current sync finishes.',
+      tone: 'border-[var(--status-info-line)] bg-[var(--status-info-soft)]',
+    };
+  }
+
+  if (status === 'error') {
+    return {
+      title: 'Sync needs attention',
+      message: 'Reconnect and sync before depending on this phone offline.',
+      tone: 'border-[var(--status-critical-line)] bg-[var(--status-critical-soft)]',
+    };
+  }
+
+  const changes = pendingCount === 1 ? '1 change' : `${pendingCount} changes`;
+  return {
+    title: 'Not ready to leave coverage yet',
+    message: `${changes} still need to sync to the cloud.`,
+    tone: 'border-[var(--status-watch-line)] bg-yellow-50',
+  };
+}
+
+/**
  * Helper function to get record sync status text
  * 
  * @param {string} status - The record sync status ('synced', 'pending', 'error')

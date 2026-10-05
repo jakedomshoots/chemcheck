@@ -128,6 +128,17 @@ function AuthContextProvider({ children }) {
       existingUser = await userManager.loginUser(email);
     }
 
+    try {
+      const convexBusiness = await getCurrentBusinessFromConvex(getToken, tokenAudience);
+      if (convexBusiness) {
+        const { user: bootstrappedUser } = await userManager.bootstrapFromConvex(convexBusiness, email);
+        setLocalUser(bootstrappedUser);
+        return bootstrappedUser;
+      }
+    } catch (convexError) {
+      console.warn('Failed to refresh cloud business:', convexError);
+    }
+
     setLocalUser(existingUser);
     return existingUser;
   };

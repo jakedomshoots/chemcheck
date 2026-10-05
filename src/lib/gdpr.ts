@@ -11,6 +11,8 @@ import { db } from '@/db/chemcheck-db';
 import { downloadFile } from '@/utils/exportCsv';
 import { api } from '../../convex/_generated/api';
 import { getSharedConvexClient } from '@/lib/convexClient';
+import { clearAllPhotos } from '@/lib/proof-of-service/offlinePhotoStorage';
+import { serviceWorkerManager } from '@/lib/serviceWorker';
 
 export interface UserDataExport {
   exportDate: string;
@@ -198,6 +200,10 @@ export async function deleteAccountAndAllData(options: {
 
   const cloud = await deleteCloudAccount();
   const local = await clearLocalDeviceData();
+  await Promise.all([
+    clearAllPhotos(),
+    serviceWorkerManager.clearCaches(),
+  ]);
   return { cloud, local };
 }
 

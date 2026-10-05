@@ -267,6 +267,45 @@ describe('SyncStatusIndicator', () => {
       expect(screen.getByText('Sync health')).toBeInTheDocument();
     });
 
+    const readinessState = (overrides: Record<string, unknown>) => ({
+      status: 'idle',
+      pendingCount: 0,
+      lastSyncAt: Date.now(),
+      error: null,
+      syncNow: vi.fn(),
+      isRecordSynced: vi.fn(),
+      getRecordSyncStatus: vi.fn(),
+      refreshPendingCount: vi.fn(),
+      ...overrides,
+    });
+
+    it('tells a technician when the phone is ready to work without coverage', async () => {
+      (useSyncState as any).mockReturnValue(readinessState({}));
+      renderWithCleanup(<SyncStatusIndicator />);
+      await userEvent.click(screen.getByTestId('sync-status-trigger'));
+
+      expect(await screen.findByText('Ready for offline work')).toBeInTheDocument();
+      expect(screen.getByText(/This phone has the latest saved route data/i)).toBeInTheDocument();
+    });
+
+    it('does not mark a phone ready when it has never completed a route sync', async () => {
+      (useSyncState as any).mockReturnValue(readinessState({ lastSyncAt: null }));
+      renderWithCleanup(<SyncStatusIndicator />);
+      await userEvent.click(screen.getByTestId('sync-status-trigger'));
+
+      expect(await screen.findByText('Sync this phone before leaving coverage')).toBeInTheDocument();
+      expect(screen.queryByText('Ready for offline work')).not.toBeInTheDocument();
+    });
+
+    it('explains that offline changes stay on the phone until coverage returns', async () => {
+      (useSyncState as any).mockReturnValue(readinessState({ status: 'offline', pendingCount: 2 }));
+      renderWithCleanup(<SyncStatusIndicator />);
+      await userEvent.click(screen.getByTestId('sync-status-trigger'));
+
+      expect(await screen.findByText('Working offline')).toBeInTheDocument();
+      expect(screen.getByText(/2 saved changes will sync automatically/i)).toBeInTheDocument();
+    });
+
     it('displays status text only when showLabel is true', () => {
       fc.assert(
         fc.property(

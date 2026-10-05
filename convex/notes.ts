@@ -54,9 +54,9 @@ export async function canAccessNote(
     return canAccessOwnedRecord(ctx, note.created_by, email);
 }
 
-async function assertCustomerAccess(ctx: DbCtx, customerId: Id<"customers">, email: string): Promise<Doc<"customers">> {
+async function assertCustomerAccess(ctx: DbCtx, customerId: Id<"customers">, userEmail: string): Promise<Doc<"customers">> {
     const customer = await ctx.db.get(customerId);
-    if (!customer || customer.deleted_at !== undefined || !(await canAccessCustomerRecord(ctx, customer, email))) {
+    if (!customer || customer.deleted_at !== undefined || !(await canAccessCustomerRecord(ctx, customer, userEmail))) {
         throw new Error("Customer not found or access denied");
     }
     return customer;
@@ -70,6 +70,11 @@ function boundedLimit(limit: number | undefined): number {
     if (limit > MAX_PAGE_LIMIT) return MAX_PAGE_LIMIT;
     if (limit < 1) return 1;
     return Math.floor(limit);
+}
+
+async function recordsOwnerEmail(ctx: any, email: string): Promise<string> {
+    const business = await resolveBusinessForEmail(ctx, email);
+    return business?.owner_email || email;
 }
 
 // Valid category values for notes
@@ -104,9 +109,10 @@ export const list = query({
         if (!identity) throw new Error("Not authenticated");
 
         const sortOrder = args.order === "-created_date" ? "desc" : "asc";
+        const ownerEmail = await recordsOwnerEmail(ctx, identity.email!);
         const noteQuery = ctx.db
             .query("notes")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+            .withIndex("by_created_by", (q) => q.eq("created_by", ownerEmail))
             .filter(NOT_DELETED_FILTER)
             .order(sortOrder);
 
@@ -141,9 +147,10 @@ export const filter = query({
             if (!pool || (args.customer_id && pool.customer_id !== args.customer_id)) throw new Error("Pool not found or does not belong to customer");
         }
 
+        const ownerEmail = await recordsOwnerEmail(ctx, identity.email!);
         let noteQuery = ctx.db
             .query("notes")
-            .withIndex("by_created_by", (q) => q.eq("created_by", identity.email!))
+            .withIndex("by_created_by", (q) => q.eq("created_by", ownerEmail))
             .filter(NOT_DELETED_FILTER);
 
         if (args.customer_id !== undefined) {
@@ -238,14 +245,15 @@ export const create = mutation({
 
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const recordOwnerEmail = args.customer_id ? (await ctx.db.get(args.customer_id))?.created_by : identity.email!;
 
         const noteId = await ctx.db.insert("notes", {
             ...args,
             completed: false,
             created_date: today,
-            // Every note is stamped with its creator so general notes stay
-            // scoped to the account that wrote them.
-            created_by: identity.email!,
+            // Every note is stamped with an owner so general notes stay scoped to
+            // the account that wrote them; customer-linked notes follow the customer's owner.
+            created_by: recordOwnerEmail || identity.email!,
             created_at: now.getTime(),
             updated_at: now.getTime(),
         });

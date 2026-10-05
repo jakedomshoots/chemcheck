@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import {
   getStatusText,
   getStatusColor,
+  getFieldReadiness,
   getRecordStatusText,
   getRecordStatusColor
 } from './syncStatusUtils';
@@ -33,9 +34,10 @@ export function SyncStatusIndicator({
   showLabel = false, 
   showPendingCount = true 
 }) {
-  const { status, pendingCount } = useSyncState();
+  const { status, pendingCount, lastSyncAt } = useSyncState();
   const [open, setOpen] = useState(false);
   const statusText = getStatusText(status, pendingCount);
+  const fieldReadiness = getFieldReadiness(status, pendingCount, lastSyncAt);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -80,6 +82,10 @@ export function SyncStatusIndicator({
             <DrawerDescription>{statusText}</DrawerDescription>
           </DrawerHeader>
           <div className="overflow-y-auto px-4 pb-6">
+            <div className={cn('mb-3 rounded-md border p-2.5', fieldReadiness.tone)} aria-live="polite">
+              <p className="text-sm font-semibold text-ink">{fieldReadiness.title}</p>
+              <p className="mt-1 text-xs leading-5 text-ink-secondary">{fieldReadiness.message}</p>
+            </div>
             {open && <SyncHealthPanel />}
           </div>
         </DrawerContent>

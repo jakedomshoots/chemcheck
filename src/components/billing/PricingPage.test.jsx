@@ -52,4 +52,11 @@ describe('PricingPage', () => {
 
     expect(createCheckoutSession).toHaveBeenCalledWith('starter', false);
   });
+
+  it('routes enterprise inquiries through the in-app support page', () => {
+    render(<PricingPage />);
+
+    expect(screen.getByRole('link', { name: /contact our sales team/i }))
+      .toHaveAttribute('href', '/support');
+  });
 });

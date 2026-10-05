@@ -214,7 +214,7 @@ export function PricingPage() {
           <p className="text-sm font-medium text-ink-secondary">
             Need a custom plan for your enterprise?{' '}
             <a
-              href="mailto:sales@chemcheck.app"
+              href="/support"
               className="font-semibold text-brand-ink underline-offset-4 transition-colors hover:text-brand-ink hover:underline"
             >
               Contact our sales team

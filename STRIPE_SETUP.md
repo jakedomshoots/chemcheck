@@ -131,7 +131,7 @@ stripe listen --forward-to localhost:3000/stripe-webhook
 # Backend (Convex)
 STRIPE_SECRET_KEY=sk_live_xxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxx
-APP_URL=https://app.chemcheck.app
+APP_URL=https://chemcheck.xyz
 STRIPE_STARTER_MONTHLY_PRICE_ID=price_xxxxx
 STRIPE_STARTER_YEARLY_PRICE_ID=price_xxxxx
 STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID=price_xxxxx
@@ -142,7 +142,7 @@ STRIPE_BUSINESS_YEARLY_PRICE_ID=price_xxxxx
 
 ## Subscription Migration
 
-Deploy the optional `subscriptions.business_id` schema change first. Then run `subscriptions:backfillBusinessId` repeatedly as a business owner, beginning with `dry_run: true`. It links each legacy subscription to the business currently owned by `user_email`, skips already-linked rows, and reports rows with no owned business as `unlinked`; it never creates businesses.
+Deploy the optional `subscriptions.business_id` schema change first. Then run the internal `subscriptions:backfillBusinessId` function from the Convex dashboard (or an authenticated internal migration runner) repeatedly, beginning with `dry_run: true`. It links each legacy subscription to the business currently owned by `user_email`, skips already-linked rows, and reports rows with no owned business as `unlinked`; it never creates businesses. It is intentionally internal-only because it touches every tenant's subscription rows.
 
 ## Troubleshooting
 

@@ -2,22 +2,22 @@
 
 ## 1. Current App Summary
 - **Tech Stack**: React 18, Vite, Dexie.js (IndexedDB), Tailwind CSS, Shadcn UI.
-- **Architecture**: **Local-First PWA**. Completely offline-capable using Dexie for storage. No backend dependency (Convex removed).
+- **Architecture**: **Offline-first PWA**. Dexie/IndexedDB keeps the downloaded route and queued field work on the phone; Convex remains the shared cloud source of truth when connectivity returns.
 - **Entry Point**: `src/main.jsx` (standard React/Vite pattern).
 - **Key Features**: Client management, pool service logging (chemical readings, notes), route optimization, offline sync.
-- **Mobile State**: Responsive web app currently optimization for mobile browsers, but running as a pure web or PWA.
+- **Mobile State**: Responsive web app with a Capacitor iOS shell already checked into `ios/`. The remaining release work is physical-device verification, signing, and App Store/TestFlight preparation.
 
 ## 2. Mobile Strategy: Option A (Capacitor)
-**Recommendation**: **Wrap existing PWA with Capacitor**.
+**Recommendation**: **Continue with the existing Capacitor wrapper**.
 
 ### Why Capacitor?
-1. **Zero Logic Rewrite**: Your app is already a high-quality React SPA. Capacitor drops into your existing Vite project and wraps the `dist` folder in a native WebView.
-2. **Offline-First Alignment**: Your Dexie.js implementation works perfectly inside Capacitor's WebView without any changes.
+1. **Zero Logic Rewrite**: ChemCheck is already a React SPA. The checked-in Capacitor shell wraps the production `dist` folder in a native WebView.
+2. **Offline-First Alignment**: Dexie/IndexedDB and the queued sync service carry the downloaded route and newly saved field work while the device has no coverage. Cloud-only actions resume after reconnection.
 3. **Speed to Market**: Cheapest path to getting `.ipa` (iOS) and `.apk` (Android) files without rebuilding UI in React Native.
 4. **Native Access**: If you later need camera access (e.g., photo logs) or push notifications, Capacitor plugins bridge this easily.
 
 **Trade-offs**:
-- **Pros**: reuse 100% of code, fastest deploy, perfect offline persistence.
+- **Pros**: reuse the existing product UI, fast iteration, and durable on-device storage for downloaded data and queued field work.
 - **Cons**: UI is still web-based (scroll physics, tap delay handled well but not 100% native feel).
 - **Alternative**: React Native would offer better "feel" but requires a complete UI rewrite (weeks/months of work).
 
@@ -26,8 +26,8 @@
 | Feature | Current Behavior | Needs for Stores | Notes |
 |---------|------------------|------------------|-------|
 | **Navigation** | Browser history / URLs | Hardware Back Button (Android) | Need to handle Android back button to prevent app exit |
-| **Offline** | Works via IndexedDB | Native Offline UI / Handling | Current implementation is perfect; just verify "no network" doesn't crash |
-| **Data Safety** | Stored locally in browser | Privacy Policy URL | **Critical**: Stores require a URL to a privacy policy (even if "we collect nothing") |
+| **Offline** | Cached route + queued local changes in IndexedDB | Physical-device Airplane Mode verification | Service work must save, survive relaunch, and later synchronize; report delivery, payments, and cloud-only actions wait for coverage |
+| **Data Safety** | Stored on-device and synchronized with ChemCheck cloud services | Accurate Privacy Policy URL | **Critical**: store disclosures must describe local storage, account authentication, and cloud synchronization truthfully |
 | **Permissions** | None requested | Explicit usage descriptions | If future features use Camera/Bio, must declare in `Info.plist` / `AndroidManifest` |
 | **Assets** | Web favicons | Native App Icons & Splash | Need `1024x1024` icon + splash screen generator |
 | **Packaging** | `npm run build` | Xcode / Android Studio builds | Need Capacitor config + build environments |
@@ -40,16 +40,12 @@
 - [ ] **Safe Areas**: Verify padding/margins account for iPhone Notch/Dynamic Island (use `env(safe-area-inset-top)`).
 - [ ] **Input Types**: Ensure standard numeric inputs for chemicals use `inputmode="decimal"` for mobile keypads.
 
-### Phase 1: Capacitor Core Setup (1-2 hours)
-- [ ] Install Capacitor:
+### Phase 1: Capacitor Core Verification
+- [x] Capacitor iOS shell is present under `ios/`.
+- [x] Build and copy the current web bundle into iOS: `npm run ios:sync`.
+- [ ] Add Android only when Android distribution is in scope:
   ```bash
-  npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios
-  npx cap init ChemCheck com.jakedomshoots.chemcheck --web-dir=dist
-  ```
-- [ ] Build web assets: `npm run build`
-- [ ] Add platforms:
-  ```bash
-  npx cap add ios
+  npm install @capacitor/android
   npx cap add android
   ```
 - [ ] Disable text selection globally in CSS (feels more native):
@@ -71,7 +67,7 @@
   npx capacitor-assets generate
   ```
   (Requires source `assets/icon.png` and `assets/splash.png`).
-- [ ] **Privacy Policy**: Create a simple static page (e.g., GitHub Pages or Vercel) stating "ChemCheck stores data locally on your device. No personal data is transmitted to external servers."
+- [ ] **Privacy Policy**: Publish a static policy that accurately covers local device storage, authenticated accounts, cloud sync, and any enabled reports, notifications, or analytics.
 - [ ] **Support URL**: You need a URL where users can contact you (GitHub Issues page works fine).
 
 ### Phase 4: Build & Test (2-3 days)
@@ -85,11 +81,12 @@
 - [ ] **Smoke Test**: Install on physical devices. Test:
   - Cold launch (splash screen).
   - Backgrounding/Foregrounding app (ensure state persists).
-  - Airplane mode usage (core feature test).
+  - Sync until the app says **Ready for offline work**, then enable Airplane Mode.
+  - Open the cached route, save a service visit, confirm it is pending, force-quit/relaunch, then reconnect and confirm it synchronizes.
 
 ### Phase 5: Pre-Submission Checklist
 - [ ] **Permissons Audit**: Ensure you aren't requesting location/camera if not used (check `AndroidManifest.xml` and `Info.plist`).
-- [ ] **Data Safety Form**: For Google Play, declare "No data collected" (since it's offline/local-only).
+- [ ] **Data Safety Form**: Complete Google Play disclosures from the actual data flows; do not use a blanket "No data collected" statement.
 - [ ] **Screenshots**: Capture 3-4 key screens on iPhone 6.5" and 5.5" simulators + Android Pixel simulator.
 
 ## 5. Top Risks & Gotchas
@@ -98,8 +95,8 @@
     *   **Risk**: Apple rejects apps that look like simple websites repackaged.
     *   **Mitigation**: Ensure app feels native. Uses haptic feedback (easy to add), smooth transitions, proper safe-area spacing, and offline capability (which you already have!).
 2.  **App Store Reviewer "Login" Block**
-    *   **Risk**: Reviewer can't test because they don't know how to use it.
-    *   **Mitigation**: Since auth is removed, this is low risk. Provide a "Demo Data" button or clear instructions in Review Notes: "Just click 'Add Client' to test."
+    *   **Risk**: Reviewer cannot test because ChemCheck uses authenticated accounts.
+    *   **Mitigation**: Provide a functioning review account and precise testing steps in App Store Connect.
 3.  **Data Persistence on Update**
     *   **Risk**: OS clears WebView data on rare updates or storage pressure.
     *   **Mitigation**: Minimal risk with Capacitor, but for critical data, consider using `@capacitor-community/sqlite` later. For now, IndexedDB is persistent enough for V1.

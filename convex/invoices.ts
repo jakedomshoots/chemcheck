@@ -669,7 +669,7 @@ export const sendInvoice = mutation({
     const configuredBaseUrl = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
     const paymentUrl = configuredBaseUrl
       ? `${configuredBaseUrl}/workorders?invoice_id=${invoice._id}`
-      : `https://pay.chemcheck.app/invoice/${invoice._id}`;
+      : `https://chemcheck.xyz/workorders?invoice_id=${invoice._id}`;
 
     const now = Date.now();
     await ctx.db.patch(args.id, {

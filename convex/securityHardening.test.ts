@@ -19,6 +19,14 @@ function blockBetween(contents: string, start: string, end: string): string {
 }
 
 describe("review hardening regressions", () => {
+  it("customer-scoped operational records use the same business-aware access rule", () => {
+    for (const file of ["convex/serviceLogs.ts", "convex/chemicalUsage.ts", "convex/notes.ts", "convex/servicePhotos.ts"]) {
+      const contents = source(file);
+      expect(contents).toMatch(/import \{[^}]*canAccessCustomerRecord[^}]*\} from \"\.\/entitlements\";/);
+      expect(contents).toMatch(/canAccessCustomerRecord\(ctx, customer, (identity\.email!|userEmail)\)/);
+    }
+  });
+
   it("team invites are pending until accepted and resolvers check ownership first", () => {
     const businesses = source("convex/businesses.ts");
     const invite = blockBetween(businesses, "export async function createPendingInvite", "export async function acceptPendingInvite");
@@ -40,7 +48,7 @@ describe("review hardening regressions", () => {
   it("outbound communications are rate limited, recipient-locked and HTML-escaped", () => {
     const communications = source("convex/communications.ts");
     const queue = blockBetween(communications, "export const queueServiceText", "export const updateStatus");
-    expect(queue).toContain("enforceCommunicationRateLimit");
+    expect(queue).toContain("enforceCommunicationEnqueueRateLimit");
     expect(queue).toContain("assertRecipientMatchesCustomer");
     expect(queue).toContain("enforceMessageLength");
     expect(blockBetween(communications, "export const deliver = action", "export const deliverQueued")).toContain("consumeCommunicationQuota");
@@ -93,6 +101,7 @@ describe("review hardening regressions", () => {
     const checkLimit = blockBetween(source("convex/subscriptions.ts"), "export const checkLimit", "\n});");
     expect(checkLimit).not.toContain(".collect()");
     expect(checkLimit).toContain(".take(cap)");
+    expect(checkLimit).toContain("NOT_DELETED_FILTER");
   });
 
   it("entitlement gate is applied to work order, invoice and quote creation", () => {
@@ -110,6 +119,7 @@ describe("review hardening regressions", () => {
     // Stripe teardown runs before the local deletion phases.
     const deletion = blockBetween(account, "export const deleteMyAccount = action", "\n});");
     expect(deletion.indexOf("cancelStripeBilling")).toBeLessThan(deletion.indexOf("const phases ="));
+    expect(deletion).toContain("stripe.failures.length");
   });
 
   it("health probe is rate limited and only mints upload URLs with the probe token", () => {

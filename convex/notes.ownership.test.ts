@@ -43,13 +43,13 @@ describe("notes.create", () => {
     })).rejects.toThrow(/access denied/i);
   });
 
-  it("lets an active team member link a note to the business owner's customer", async () => {
+  it("stamps a team member's customer-linked note with the customer's owner so business listings include it", async () => {
     const db = new FakeDb();
     const { customer } = await seedTenants(db);
     const id = await (create as any)._handler(ctxFor(db, TECH), {
       title: "x", content: "y", category: "general", priority: "low", customer_id: customer,
     });
-    expect((await db.get(id))?.created_by).toBe(TECH);
+    expect((await db.get(id))?.created_by).toBe(OWNER);
   });
 });
 

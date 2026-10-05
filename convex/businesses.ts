@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   findOwnedBusiness,
+  findActiveMembership,
   isPendingInvite,
   normalizeEmail,
   resolveBusinessForEmail,
@@ -27,7 +28,14 @@ export const getCurrent = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity?.email) return null;
-    return await resolveBusinessForEmail(ctx, identity.email);
+    const business = await resolveBusinessForEmail(ctx, identity.email);
+    if (!business) return null;
+    const isOwner = normalizeEmail(business.owner_email) === normalizeEmail(identity.email);
+    const membership = isOwner ? null : await findActiveMembership(ctx, identity.email, business._id);
+    return {
+      ...business,
+      current_role: isOwner ? "owner" : (membership?.role || "technician"),
+    };
   },
 });
 
@@ -368,6 +376,10 @@ export async function acceptPendingInvite(
   const business = await ctx.db.get(invite.business_id);
   if (!business) {
     throw new Error("The business for this invite no longer exists");
+  }
+  const ownedBusiness = await findOwnedBusiness(ctx, identityEmail);
+  if (ownedBusiness && String(ownedBusiness._id) !== String(invite.business_id)) {
+    throw new Error("This account already owns a business. Tenant switching is not supported for this account.");
   }
   const now = Date.now();
   await ctx.db.patch(invite._id, {

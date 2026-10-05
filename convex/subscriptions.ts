@@ -4,6 +4,7 @@ import { action, internalMutation, internalQuery, query } from "./_generated/ser
 import { internal } from "./_generated/api";
 import { fetchProvider, requireStripeConfig } from "./providerConfig";
 import { findOwnedBusiness, resolveBusinessForEmail } from "./entitlements";
+import { NOT_DELETED_FILTER } from "./sync";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const DEFAULT_BATCH_SIZE = 100;
@@ -306,6 +307,7 @@ export const checkLimit = query({
       const byBusiness = await ctx.db
         .query("customers")
         .withIndex("by_business", (q) => q.eq("business_id", String(business._id)))
+        .filter(NOT_DELETED_FILTER)
         .take(cap);
       current = byBusiness.length;
       if (current < cap) {
@@ -313,6 +315,7 @@ export const checkLimit = query({
         const legacy = await ctx.db
           .query("customers")
           .withIndex("by_created_by", (q) => q.eq("created_by", business.owner_email))
+          .filter(NOT_DELETED_FILTER)
           .take(cap - current);
         current += legacy.filter((customer) => !customer.business_id).length;
       }

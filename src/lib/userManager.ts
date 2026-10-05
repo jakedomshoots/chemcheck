@@ -475,7 +475,7 @@ class UserManager {
         id: `user_${convexBusiness._id}_${emailHash}`,
         email: userEmail,
         name: convexBusiness.name ? `${convexBusiness.name} Owner` : 'Business Owner',
-        role: 'owner',
+        role: convexBusiness.current_role || 'owner',
         businessId: business.id,
         isActive: true,
         createdAt: business.createdAt,
