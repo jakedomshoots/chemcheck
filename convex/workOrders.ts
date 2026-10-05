@@ -12,32 +12,6 @@ async function resolveBusinessContext(ctx: any, userEmail: string) {
   return await resolveBusinessForEmail(ctx, userEmail);
 }
 
-async function getActiveBusinessMemberEmails(
-  ctx: any,
-  businessId: any,
-  ownerEmail: string
-): Promise<Set<string>> {
-  const members = await ctx.db
-    .query("team_members")
-    .withIndex("by_business", (q: any) => q.eq("business_id", businessId))
-    .filter((q: any) => q.eq(q.field("is_active"), true))
-    .collect();
-
-  const emails = new Set<string>([ownerEmail]);
-  for (const member of members) {
-    if (member.user_email) {
-      emails.add(member.user_email);
-    }
-  }
-  return emails;
-}
-
-async function getAllowedCreatedByEmails(ctx: any, userEmail: string): Promise<Set<string>> {
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return new Set([userEmail]);
-  return await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-}
-
 async function accessibleWorkOrdersQuery(
   ctx: any,
   userEmail: string,
@@ -74,18 +48,13 @@ function clampWorkOrderPageSize(numItems: number | undefined): number {
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-  if (!customer) return false;
-  if (customer.created_by === userEmail) return true;
-  // Same-business access: business_id match, or created by the owner / an
-  // active member of the caller's business.
   return await canAccessCustomerRecord(ctx, customer, userEmail);
 }
 
 async function canAccessWorkOrder(ctx: any, workOrder: any, userEmail: string): Promise<boolean> {
   if (!workOrder) return false;
-  if (workOrder.created_by === userEmail) return true;
-  const allowedEmails = await getAllowedCreatedByEmails(ctx, userEmail);
-  return allowedEmails.has(workOrder.created_by);
+  const customer = await ctx.db.get(workOrder.customer_id);
+  return await canAccessCustomerRecord(ctx, customer, userEmail);
 }
 
 async function getBusinessRole(ctx: any, business: any, userEmail: string): Promise<string | null> {

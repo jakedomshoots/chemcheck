@@ -1,7 +1,7 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { enforceRateLimit } from "./rateLimit";
-import { assertWriteAllowed } from "./entitlements";
+import { assertWriteAllowed, canAccessCustomerRecord } from "./entitlements";
 import { validateLsiFields } from "./validation";
 import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
 
@@ -383,26 +383,7 @@ async function getActiveBusinessMemberEmails(
 }
 
 async function canAccessCustomer(ctx: any, customer: any, userEmail: string): Promise<boolean> {
-  if (!customer) return false;
-
-  const normalizedUserEmail = normalizeEmail(userEmail);
-  const customerCreatedBy = normalizeEmail(customer.created_by);
-
-  if (customerCreatedBy && customerCreatedBy === normalizedUserEmail) {
-    return true;
-  }
-
-  const business = await resolveBusinessContext(ctx, userEmail);
-  if (!business) return false;
-
-  const businessId = String(business._id);
-  const customerBusinessId = customer.business_id ? String(customer.business_id) : "";
-  if (customerBusinessId && customerBusinessId === businessId) {
-    return true;
-  }
-
-  const allowedEmails = await getActiveBusinessMemberEmails(ctx, business._id, business.owner_email);
-  return customerCreatedBy ? allowedEmails.has(customerCreatedBy) : false;
+  return await canAccessCustomerRecord(ctx, customer, userEmail);
 }
 
 /**

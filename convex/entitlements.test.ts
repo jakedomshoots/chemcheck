@@ -157,7 +157,7 @@ describe("assertWriteAllowed", () => {
 });
 
 describe("canAccessCustomerRecord (same business only)", () => {
-  it("allows the creator", async () => {
+  it("allows the creator of a solo customer", async () => {
     const db = new FakeDb();
     const ctx = makeCtx(db);
     const customerId = await seedCustomer(db, "solo@example.com");
@@ -197,5 +197,24 @@ describe("canAccessCustomerRecord (same business only)", () => {
     expect(await canAccessCustomerRecord(ctx, customer as any, "other@example.com")).toBe(false);
     expect(await canAccessCustomerRecord(ctx, customer as any, "pending@example.com")).toBe(false);
     expect(await canAccessCustomerRecord(ctx, customer as any, "stranger@example.com")).toBe(false);
+  });
+
+  it("denies a former technician after they join a different business", async () => {
+    const db = new FakeDb();
+    const ctx = makeCtx(db);
+    const originalBusiness = await seedBusiness(db, "owner-a@example.com");
+    await seedMember(db, originalBusiness, "tech@example.com");
+    const customer = await db.get(await seedCustomer(db, "tech@example.com", { business_id: originalBusiness }));
+
+    const formerMembership = await db
+      .query("team_members")
+      .withIndex("by_user_email", (q: any) => q.eq("user_email", "tech@example.com"))
+      .first();
+    await db.patch(formerMembership!._id, { is_active: false });
+
+    const newBusiness = await seedBusiness(db, "owner-b@example.com");
+    await seedMember(db, newBusiness, "tech@example.com");
+
+    expect(await canAccessCustomerRecord(ctx, customer as any, "tech@example.com")).toBe(false);
   });
 });

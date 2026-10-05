@@ -90,8 +90,8 @@ export async function resolveBusinessForEmail(ctx: DbCtx, email: string): Promis
  * Team-collaboration access check for customer-scoped records.
  *
  * Allowed when:
- *  - the caller created the customer, or
- *  - the customer belongs to the caller's business (business_id match), or
+ *  - a solo caller created the customer, or
+ *  - the customer belongs to the caller's current business (business_id match), or
  *  - the customer was created by the business owner or by another ACTIVE
  *    member of the caller's business.
  * Same business only; nothing crosses tenants.
@@ -104,12 +104,17 @@ export async function canAccessCustomerRecord(
   if (!customer) return false;
   const callerEmail = normalizeEmail(email);
   const createdBy = normalizeEmail(customer.created_by);
-  if (createdBy && createdBy === callerEmail) return true;
 
   const business = await resolveBusinessForEmail(ctx, email);
-  if (!business) return false;
+  // A user with no business is a legacy/solo account. Once a user belongs to
+  // a business, their old creator email must not bypass the tenant boundary.
+  if (!business) return Boolean(createdBy && createdBy === callerEmail);
 
-  if (customer.business_id && String(customer.business_id) === String(business._id)) return true;
+  // An explicitly assigned business is authoritative. Do not fall through to
+  // legacy creator checks when it belongs to a different tenant.
+  if (customer.business_id !== undefined) {
+    return String(customer.business_id) === String(business._id);
+  }
   if (createdBy && createdBy === normalizeEmail(business.owner_email)) return true;
   if (createdBy) {
     const creatorMembership = await findActiveMembership(ctx, customer.created_by, business._id);

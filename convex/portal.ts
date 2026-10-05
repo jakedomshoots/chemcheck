@@ -45,9 +45,8 @@ export function firstNameOf(fullName: string | null | undefined): string {
   return String(fullName ?? "").trim().split(/\s+/)[0] || "there";
 }
 
-/** Creator of the customer, or an owner/admin of the business that can access the record. */
+/** An owner/admin of the customer's current business. */
 export async function canManagePortalLink(ctx: DbCtx, customer: Doc<"customers">, email: string): Promise<boolean> {
-  if (normalizeEmail(customer.created_by) === normalizeEmail(email)) return true;
   if (!(await canAccessCustomerRecord(ctx, customer, email))) return false;
   const business = await resolveBusinessForEmail(ctx, email);
   if (!business) return false;
@@ -59,7 +58,7 @@ export async function canManagePortalLink(ctx: DbCtx, customer: Doc<"customers">
 async function requireManagedCustomer(ctx: DbCtx, email: string, customerId: Id<"customers">): Promise<Doc<"customers">> {
   const customer = await ctx.db.get(customerId);
   if (!customer || customer.deleted_at !== undefined) throw new Error("Customer not found or access denied");
-  if (!(await canManagePortalLink(ctx, customer, email))) throw new Error("Only the account owner, an admin, or the customer's creator can manage portal links.");
+  if (!(await canManagePortalLink(ctx, customer, email))) throw new Error("Only the account owner or an admin can manage portal links.");
   return customer;
 }
 
