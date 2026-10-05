@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = path.resolve(__dirname, '..');
 const vercel = JSON.parse(readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
 const indexHtml = readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const serviceWorker = readFileSync(path.join(ROOT, 'public', 'sw.js'), 'utf8');
 
 type HeaderRule = { source: string; headers: Array<{ key: string; value: string }> };
 
@@ -112,6 +113,11 @@ describe('vercel.json Content-Security-Policy', () => {
     expect(scriptSrc).not.toContain("'unsafe-eval'");
     expect(scriptSrc).not.toContain('*');
     expect(scriptSrc).not.toContain('https:');
+  });
+
+  it('does not rely on inline event handlers outside the hashed theme bootstrap', () => {
+    expect(indexHtml).not.toMatch(/\son[a-z]+\s*=/i);
+    expect(serviceWorker).not.toMatch(/\son[a-z]+\s*=/i);
   });
 
   it('allows the inline theme bootstrap in index.html by hash and nothing else inline', () => {

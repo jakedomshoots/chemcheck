@@ -468,7 +468,8 @@ function createOfflineResponse() {
         .features li {
           margin-bottom: 5px;
         }
-        button {
+        .retry-link {
+          display: inline-block;
           background: #3b82f6;
           color: white;
           border: none;
@@ -476,10 +477,10 @@ function createOfflineResponse() {
           border-radius: 8px;
           font-size: 14px;
           font-weight: 500;
-          cursor: pointer;
+          text-decoration: none;
           transition: background-color 0.2s;
         }
-        button:hover {
+        .retry-link:hover {
           background: #2563eb;
         }
       </style>
@@ -503,9 +504,9 @@ function createOfflineResponse() {
         
         <p>All your data is stored locally and will sync when you're back online.</p>
         
-        <button onclick="window.location.reload()">
+        <a class="retry-link" href="/">
           Try Again
-        </button>
+        </a>
       </div>
     </body>
     </html>
