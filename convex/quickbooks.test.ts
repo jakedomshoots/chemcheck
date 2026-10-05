@@ -24,6 +24,7 @@ const ENV = {
   QBO_REDIRECT_URI: "https://deploy.convex.site/quickbooks/callback",
   QBO_ENVIRONMENT: "sandbox",
   SITE_URL: "https://app.chemcheck.test/",
+  QBO_TOKEN_ENCRYPTION_KEY: "a-long-encryption-key",
 };
 
 function config(overrides: Partial<QboConfig> = {}): QboConfig {
@@ -41,7 +42,7 @@ describe("configuration", () => {
     expect(ok.config).toMatchObject({ clientId: "client-id", environment: "sandbox", siteUrl: "https://app.chemcheck.test", stateSecret: "client-secret" });
     const bad = readQboConfig({ QBO_CLIENT_ID: "x", QBO_REDIRECT_URI: "http://example.com/cb", QBO_ENVIRONMENT: "prod" });
     expect(bad.config).toBeNull();
-    expect(bad.missing).toEqual(["QBO_CLIENT_SECRET", "QBO_REDIRECT_URI (must be https)", "QBO_ENVIRONMENT (sandbox|production)", "SITE_URL"]);
+    expect(bad.missing).toEqual(["QBO_CLIENT_SECRET", "QBO_REDIRECT_URI (must be https)", "QBO_TOKEN_ENCRYPTION_KEY", "QBO_ENVIRONMENT (sandbox|production)", "SITE_URL"]);
     expect(readQboConfig({ ...ENV, SITE_URL: "", APP_URL: "https://fallback.test" }).config?.siteUrl).toBe("https://fallback.test");
   });
 
@@ -87,17 +88,16 @@ describe("state signing", () => {
 });
 
 describe("token sealing", () => {
-  it("encrypts with a key and tags plaintext without one", async () => {
+  it("encrypts with a key and refuses plaintext storage", async () => {
     const sealed = await sealSecret("access-token", "a-long-encryption-key");
     expect(sealed.startsWith("v1:")).toBe(true);
     expect(sealed).not.toContain("access-token");
     expect(await openSecret(sealed, "a-long-encryption-key")).toBe("access-token");
     await expect(openSecret(sealed, "wrong-key")).rejects.toThrow();
-    await expect(openSecret(sealed)).rejects.toThrow(/QBO_TOKEN_ENCRYPTION_KEY/);
-    const plain = await sealSecret("refresh", undefined);
-    expect(plain).toBe("plain:refresh");
-    expect(await openSecret(plain)).toBe("refresh");
-    await expect(openSecret("??")).rejects.toThrow(/Unrecognized/);
+    await expect(openSecret(sealed, "")).rejects.toThrow(/QBO_TOKEN_ENCRYPTION_KEY/);
+    await expect(sealSecret("refresh", "")).rejects.toThrow(/QBO_TOKEN_ENCRYPTION_KEY/);
+    await expect(openSecret("plain:refresh", "a-long-encryption-key")).rejects.toThrow(/unencrypted/);
+    await expect(openSecret("??", "a-long-encryption-key")).rejects.toThrow(/Unrecognized/);
   });
 });
 

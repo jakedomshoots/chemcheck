@@ -4,8 +4,8 @@
  * Config comes only from Convex environment variables:
  *   QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI,
  *   QBO_ENVIRONMENT ('sandbox' | 'production'), SITE_URL (app origin for the
- *   post-callback redirect), and optionally QBO_TOKEN_ENCRYPTION_KEY (any
- *   long secret; tokens are sealed with AES-GCM when set) and
+ *   post-callback redirect), QBO_TOKEN_ENCRYPTION_KEY (a long secret used to
+ *   seal tokens with AES-GCM), and
  *   QBO_STATE_SECRET (HMAC key for the OAuth state; defaults to the client
  *   secret).
  *
@@ -30,7 +30,7 @@ export interface QboConfig {
   redirectUri: string;
   environment: QboEnvironment;
   stateSecret: string;
-  encryptionKey?: string;
+  encryptionKey: string;
   siteUrl: string;
 }
 
@@ -50,6 +50,7 @@ export function readQboConfig(source: Record<string, string | undefined> = proce
   const clientId = env("QBO_CLIENT_ID", source);
   const clientSecret = env("QBO_CLIENT_SECRET", source);
   const redirectUri = env("QBO_REDIRECT_URI", source);
+  const encryptionKey = env("QBO_TOKEN_ENCRYPTION_KEY", source);
   const environmentRaw = (env("QBO_ENVIRONMENT", source) || "sandbox").toLowerCase();
   const siteUrl = (env("SITE_URL", source) || env("APP_URL", source)).replace(/\/+$/, "");
   if (!clientId) missing.push("QBO_CLIENT_ID");
@@ -65,6 +66,7 @@ export function readQboConfig(source: Record<string, string | undefined> = proce
       missing.push("QBO_REDIRECT_URI (invalid URL)");
     }
   }
+  if (!encryptionKey) missing.push("QBO_TOKEN_ENCRYPTION_KEY");
   if (environmentRaw !== "sandbox" && environmentRaw !== "production") missing.push("QBO_ENVIRONMENT (sandbox|production)");
   if (!siteUrl) missing.push("SITE_URL");
   if (missing.length > 0) return { config: null, missing };
@@ -75,7 +77,7 @@ export function readQboConfig(source: Record<string, string | undefined> = proce
       redirectUri,
       environment: environmentRaw as QboEnvironment,
       stateSecret: env("QBO_STATE_SECRET", source) || clientSecret,
-      encryptionKey: env("QBO_TOKEN_ENCRYPTION_KEY", source) || undefined,
+      encryptionKey,
       siteUrl,
     },
     missing,
@@ -166,17 +168,17 @@ async function aesKey(secret: string): Promise<CryptoKey> {
   return await crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
-/** Seal a token for storage. Without an encryption key the value is tagged but stored as-is. */
-export async function sealSecret(plain: string, encryptionKey?: string): Promise<string> {
-  if (!encryptionKey) return `plain:${plain}`;
+/** Seal a token for storage. QuickBooks is disabled unless an encryption key is configured. */
+export async function sealSecret(plain: string, encryptionKey: string): Promise<string> {
+  if (!encryptionKey) throw new Error("QBO_TOKEN_ENCRYPTION_KEY is required to store QuickBooks tokens.");
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await aesKey(encryptionKey);
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoder.encode(plain)));
   return `v1:${toBase64Url(iv)}:${toBase64Url(ciphertext)}`;
 }
 
-export async function openSecret(sealed: string, encryptionKey?: string): Promise<string> {
-  if (sealed.startsWith("plain:")) return sealed.slice("plain:".length);
+export async function openSecret(sealed: string, encryptionKey: string): Promise<string> {
+  if (sealed.startsWith("plain:")) throw new Error("Refusing to read an unencrypted QuickBooks token.");
   if (!sealed.startsWith("v1:")) throw new Error("Unrecognized sealed token format.");
   if (!encryptionKey) throw new Error("QBO_TOKEN_ENCRYPTION_KEY is required to read the stored QuickBooks tokens.");
   const [, ivText, ctText] = sealed.split(":");
