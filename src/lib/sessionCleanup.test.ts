@@ -44,18 +44,21 @@ describe('clearChemCheckBrowserStorage', () => {
     localStorage.setItem('rateLimit_customers', '3');
     localStorage.setItem('serviceLogDraft_1', '{}');
     localStorage.setItem('optimized_routes', '[]');
+    localStorage.setItem('timeTracker_42', '{}');
+    localStorage.setItem('photo_error_log', '[]');
 
     clearChemCheckBrowserStorage();
 
     for (const key of [
       'emergencyBackup', 'emergencyBackup.abc123', 'chemcheck.reportSendQueue', 'chemcheck.reportSendQueue.abc123',
       'migration_state', 'lastAutoBackup', 'lastAutoBackup.abc123', 'rateLimit_customers', 'serviceLogDraft_1', 'optimized_routes',
+      'timeTracker_42', 'photo_error_log',
     ]) {
       expect(localStorage.getItem(key), key).toBeNull();
     }
   });
 
-  it('preserves analytics opt-out, ga-disable flags and the last-signed-in marker', () => {
+  it('preserves only analytics opt-out and theme preferences', () => {
     localStorage.setItem('analytics_opt_out', 'true');
     localStorage.setItem('ga-disable-G-123', 'true');
     localStorage.setItem('chemcheck_last_signed_in_user', 'first@example.com');
@@ -65,10 +68,10 @@ describe('clearChemCheckBrowserStorage', () => {
 
     expect(localStorage.getItem('analytics_opt_out')).toBe('true');
     expect(localStorage.getItem('ga-disable-G-123')).toBe('true');
-    expect(localStorage.getItem('chemcheck_last_signed_in_user')).toBe('first@example.com');
+    expect(localStorage.getItem('chemcheck_last_signed_in_user')).toBeNull();
     expect(localStorage.getItem('chemcheck-theme')).toBe('dark');
     expect(isPreservedStorageKey('analytics_opt_out')).toBe(true);
-    expect(isAppOwnedStorageKey('chemcheck_last_signed_in_user')).toBe(false);
+    expect(isAppOwnedStorageKey('chemcheck_last_signed_in_user')).toBe(true);
     expect(isAppOwnedStorageKey('chemcheck_users')).toBe(true);
   });
 });

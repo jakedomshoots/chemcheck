@@ -22,6 +22,7 @@ export const APP_STORAGE_KEY_PREFIXES: readonly string[] = [
   'emergencyBackup',
   'lastAutoBackup',
   'monitoring_',
+  'timeTracker_',
 ];
 
 export const APP_STORAGE_KEYS: readonly string[] = [
@@ -31,16 +32,17 @@ export const APP_STORAGE_KEYS: readonly string[] = [
   'optimized_routes',
   'scheduled_notifications',
   'notification_config',
+  'photo_error_log',
 ];
 
 /**
- * Device-level preferences that must survive logout. Analytics opt-out in
- * particular must never be reset by signing out.
+ * Device-level preferences that must survive logout. Analytics opt-out and
+ * theme preferences are not account data and must never be reset by signing
+ * out.
  */
 export const PRESERVED_STORAGE_KEYS: readonly string[] = [
   'analytics_opt_out',
   'chemcheck-theme',
-  'chemcheck_last_signed_in_user',
 ];
 
 export const PRESERVED_STORAGE_KEY_PREFIXES: readonly string[] = ['ga-disable-'];

@@ -1,10 +1,9 @@
 type LocalUser = { email?: string | null } | null | undefined;
 
 /**
- * Marker for the last account that signed in on this device. It is written on
- * login and deliberately NOT removed on logout, so that a later login by a
- * different account is still recognised as an account change even when the
- * current-user marker was already cleared.
+ * Marker for the account currently being hydrated on this device. It is
+ * written on login and cleared during logout with the rest of account-scoped
+ * storage; a completed logout has already wiped offline account data.
  */
 export const LAST_SIGNED_IN_USER_KEY = 'chemcheck_last_signed_in_user';
 
@@ -83,8 +82,8 @@ export function recordSignedInUser(email: string): void {
 /**
  * True when the account that just authenticated differs from the account whose
  * offline data may still be on this device. Both the current local user and the
- * persistent last-signed-in marker are consulted so that a logout that only
- * cleared the current-user marker cannot hand user A's IndexedDB to user B.
+ * marker are consulted so an incomplete account transition cannot hand user
+ * A's IndexedDB to user B.
  */
 export function isAccountChange(
   localUser: LocalUser,

@@ -44,7 +44,7 @@ describe('userManager cloud reconciliation', () => {
     expect(JSON.parse(localStorage.getItem('chemcheck_users') || '[]')).toHaveLength(1);
   });
 
-  it('records the signed-in account and keeps that marker across logout', async () => {
+  it('records the signed-in account and clears that marker across logout', async () => {
     const { userManager } = await import('./userManager');
     await userManager.bootstrapFromConvex({ _id: 'business-1', name: 'Biz' }, 'Owner@Example.com');
     expect(localStorage.getItem('chemcheck_last_signed_in_user')).toBe('owner@example.com');
@@ -55,7 +55,7 @@ describe('userManager cloud reconciliation', () => {
 
     expect(localStorage.getItem('chemcheck_current_user')).toBeNull();
     expect(localStorage.getItem('chemcheck.reportSendQueue.abc')).toBeNull();
-    expect(localStorage.getItem('chemcheck_last_signed_in_user')).toBe('owner@example.com');
+    expect(localStorage.getItem('chemcheck_last_signed_in_user')).toBeNull();
     expect(userManager.getCurrentUser()).toBeNull();
   });
 });

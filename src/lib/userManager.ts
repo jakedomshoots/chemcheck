@@ -1,5 +1,5 @@
 import { monitoring } from './monitoring';
-import { LAST_SIGNED_IN_USER_KEY, recordSignedInUser } from './sessionIdentity';
+import { recordSignedInUser } from './sessionIdentity';
 
 export interface User {
   id: string;
@@ -139,14 +139,12 @@ class UserManager {
 
     keysToRemove.forEach(key => localStorage.removeItem(key));
 
-    // Also clear any rate limit keys. The last-signed-in marker is deliberately
-    // kept so a later login by a different account is detected as an account
-    // change even though the current-user marker is gone.
+    // Also clear every account-scoped key that may have been written before
+    // the centralized cleanup wrapper was introduced.
     const allKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
       .filter((key): key is string => key !== null);
     allKeys.forEach(key => {
-      if (key === LAST_SIGNED_IN_USER_KEY) return;
-      if (key.startsWith('rateLimit_') || key.startsWith('chemcheck_') || key.startsWith('chemcheck.')) {
+      if (key.startsWith('rateLimit_') || key.startsWith('chemcheck_') || key.startsWith('chemcheck.') || key.startsWith('timeTracker_') || key === 'photo_error_log') {
         localStorage.removeItem(key);
       }
     });
