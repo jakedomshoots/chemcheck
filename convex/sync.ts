@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { enforceRateLimit } from "./rateLimit";
 import { assertWriteAllowed, canAccessCustomerRecord } from "./entitlements";
 import { validateLsiFields } from "./validation";
-import { stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
+import { assertReadingSanity, stripScanAnalysisVersionValidator, stripScanPadConfidenceValidator, stripScanQualityValidator } from "./lsiValidators";
 
 /**
  * Convex mutations for syncing data from Dexie (local IndexedDB) to Convex (cloud)
@@ -819,6 +819,7 @@ export const syncServiceLog = mutation({
     }
 
     validateLsiFields(args.data, true);
+    assertReadingSanity(args.data);
 
     const replay = await getSyncReceipt(ctx, args.idempotency_key, identity.email!);
     if (replay) return replay;

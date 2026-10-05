@@ -72,7 +72,7 @@ describe("serviceLogs.create reading sanity", () => {
       ...baseLog,
       customer_id: customer,
       chlorine_value: 51,
-    })).rejects.toThrow(/Invalid readings: Free chlorine 51 ppm is outside the possible range/);
+    })).rejects.toThrow(/Free chlorine value must not exceed 50/);
     expect(db.all("serviceLogs")).toHaveLength(0);
   });
 
@@ -89,7 +89,7 @@ describe("serviceLogs.create reading sanity", () => {
       customer_id: customer,
       water_temperature: 125,
       water_temperature_source: "measured",
-    })).rejects.toThrow(/Water temperature 125 °F/);
+    })).rejects.toThrow(/Water temperature must not exceed 120/);
   });
 
   it("stores a log whose readings are plausible", async () => {
@@ -125,7 +125,7 @@ describe("serviceLogs.update reading sanity", () => {
     const customer = await seedCustomer(db);
     const log = await seedLog(db, customer);
     await expect((update as any)._handler(makeCtx(db), { id: log, stabilizer_value: 900 }))
-      .rejects.toThrow(/Stabilizer \(CYA\) 900 ppm/);
+      .rejects.toThrow(/Stabilizer value must not exceed 500/);
     expect((await db.get(log))?.stabilizer_value).toBeUndefined();
   });
 

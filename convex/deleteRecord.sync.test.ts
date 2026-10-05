@@ -327,6 +327,26 @@ describe("deleteRecord customer cascade", () => {
   });
 });
 
+describe("syncServiceLog reading sanity", () => {
+  it("rejects impossible readings from the offline sync path", async () => {
+    const db = new FakeDb();
+    const ids = seedSoloTenant(db);
+    const { ctx } = makeCtx(db, OWNER);
+
+    await expect((syncServiceLog as any)._handler(ctx, {
+      local_id: 99,
+      convex_customer_id: ids.customer,
+      local_updated_at: Date.now(),
+      data: {
+        service_date: "2026-01-02", status: "completed", ph: "good", chlorine: "high",
+        alkalinity: "good", stabilizer: "good", chlorine_value: 51,
+      },
+    })).rejects.toThrow(/Free chlorine value must not exceed 50/);
+
+    expect(db.tables.get("serviceLogs")?.filter((row) => row._id !== ids.log)).toHaveLength(0);
+  });
+});
+
 async function drainPull(ctx: any, since: number) {
   const merged: Record<string, any[]> = {};
   let cursor: string | undefined;

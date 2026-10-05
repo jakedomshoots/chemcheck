@@ -395,6 +395,7 @@ export interface ValidatedServiceLogData {
  */
 export function validateLsiFields(data: {
     ph_value?: number;
+    chlorine_value?: number;
     total_chlorine_value?: number;
     total_bromine_value?: number;
     alkalinity_value?: number;
@@ -413,13 +414,14 @@ export function validateLsiFields(data: {
     lsi_calculation_version?: string;
 }, requireSourceValues = false): void {
     validatePositiveNumber(data.ph_value, 'pH value', false, 0, 14);
+    validatePositiveNumber(data.chlorine_value, 'Free chlorine value', false, 0, 50);
     validatePositiveNumber(data.total_chlorine_value, 'Total chlorine value', false, 0, 10);
     validatePositiveNumber(data.total_bromine_value, 'Total bromine value', false, 0, 20);
     validatePositiveNumber(data.alkalinity_value, 'Alkalinity value', false, 0, 1000);
-    validatePositiveNumber(data.stabilizer_value, 'Stabilizer value', false, 0, 1000);
+    validatePositiveNumber(data.stabilizer_value, 'Stabilizer value', false, 0, 500);
     validatePositiveNumber(data.hardness_value, 'Hardness value', false, 0, 2000);
     validateEnum(data.hardness_source, ['aquachek_total', 'calcium'] as const, 'Hardness source', false);
-    validatePositiveNumber(data.water_temperature, 'Water temperature', false, 32, 140);
+    validatePositiveNumber(data.water_temperature, 'Water temperature', false, 32, 120);
     validateEnum(data.water_temperature_source, ['measured', 'assumed'] as const, 'Water temperature source', false);
     validatePositiveNumber(data.tds_value, 'TDS value', false, 1, 20000);
     validateEnum(data.tds_source, ['measured', 'assumed'] as const, 'TDS source', false);
