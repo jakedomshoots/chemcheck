@@ -127,6 +127,20 @@ describe("notes.get / update / remove ownership", () => {
 });
 
 describe("sync.syncNote ownership", () => {
+  it("stamps a customer-linked offline note with the customer's owner", async () => {
+    const db = new FakeDb();
+    const { customer } = await seedTenants(db);
+
+    const created = await (syncNote as any)._handler(ctxFor(db, TECH), {
+      local_id: 1,
+      convex_customer_id: customer,
+      data: { title: "Filter pressure", content: "18 PSI", category: "Equipment", priority: "medium" },
+      local_updated_at: 10,
+    });
+
+    expect((await db.get(created.convex_id))?.created_by).toBe(OWNER);
+  });
+
   it("sets created_by on insert and refuses updates from another tenant", async () => {
     const db = new FakeDb();
     await seedTenants(db);

@@ -1066,8 +1066,9 @@ export const syncNote = mutation({
     const safeLocalUpdatedAt = Number.isFinite(local_updated_at) ? local_updated_at : 0;
 
     // Verify customer exists if customer_id provided AND belongs to user (tenant isolation)
+    let customer: any = null;
     if (convex_customer_id) {
-      const customer = await ctx.db.get(convex_customer_id);
+      customer = await ctx.db.get(convex_customer_id);
       if (!customer) {
         throw new Error(`Customer with id ${convex_customer_id} not found`);
       }
@@ -1115,10 +1116,11 @@ export const syncNote = mutation({
 
       // Update the existing note
       const now = Date.now();
+      const existingCustomer = existingNote.customer_id ? await ctx.db.get(existingNote.customer_id) : customer;
       await ctx.db.patch(convex_id, {
         ...data,
         customer_id: convex_customer_id,
-        created_by: existingNote.created_by || identity.email!,
+        created_by: existingNote.created_by || existingCustomer?.created_by || identity.email!,
         updated_at: now,
       });
 
@@ -1131,12 +1133,13 @@ export const syncNote = mutation({
       });
     }
 
-    // Create new note record with user's email for tenant isolation
+    // Customer-linked notes are listed under the customer's owner; general
+    // notes remain owned by the technician who created them.
     const now = Date.now();
     const newNoteId = await ctx.db.insert("notes", {
       ...data,
       customer_id: convex_customer_id,
-      created_by: identity.email, // SECURITY: Set created_by for general notes
+      created_by: customer?.created_by || identity.email,
       created_at: now,
       updated_at: now,
     });
