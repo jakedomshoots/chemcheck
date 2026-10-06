@@ -34,7 +34,7 @@ async function setup(customerOverrides: Record<string, any> = {}) {
 describe("portal links", () => {
   it("creates a one-year token, rotates it, and reports status", async () => {
     const { db, ctx, customer } = await setup();
-    const first = await createOrRotatePortalLinkForCustomer(ctx as any, TECH, customer as any, { now: NOW, token: TOKEN });
+    const first = await createOrRotatePortalLinkForCustomer(ctx as any, OWNER, customer as any, { now: NOW, token: TOKEN });
     expect(first).toEqual({ token: TOKEN, expires_at: NOW + PORTAL_TOKEN_TTL_MS });
     expect(await portalLinkStatusForCustomer(ctx, OWNER, customer as any, NOW)).toMatchObject({ token: TOKEN, last_access_at: null });
 
@@ -90,7 +90,7 @@ describe("loadPortalForToken", () => {
     const { db, ctx, biz, customer } = await setup({
       report_settings: { show_chemical_readings: false, show_photos: true, show_service_notes: false, show_technician_name: true, show_service_duration: false, show_overall_status: true },
     });
-    await createOrRotatePortalLinkForCustomer(ctx as any, TECH, customer as any, { now: NOW, token: TOKEN });
+    await createOrRotatePortalLinkForCustomer(ctx as any, OWNER, customer as any, { now: NOW, token: TOKEN });
     const log = await db.insert("serviceLogs", { customer_id: customer, created_by: TECH, service_date: "2026-03-02", status: "completed", service_type: "Regular Cleaning", notes: "secret notes", ph: "high", chlorine: "good", alkalinity: "good", stabilizer: "good", duration_ms: 1800000 });
     await db.insert("serviceLogs", { customer_id: customer, created_by: TECH, service_date: "2026-03-09", status: "completed", ph: "good", chlorine: "good", alkalinity: "good", stabilizer: "good" });
     await db.insert("serviceLogs", { customer_id: customer, created_by: TECH, service_date: "2026-03-16", status: "completed", ph: "good", chlorine: "good", alkalinity: "good", stabilizer: "good", deleted_at: 1 });
@@ -120,7 +120,7 @@ describe("loadPortalForToken", () => {
 
   it("shows readings and notes when allowed and never includes photos without storage", async () => {
     const { db, ctx, customer } = await setup();
-    await createOrRotatePortalLinkForCustomer(ctx as any, TECH, customer as any, { now: NOW, token: TOKEN });
+    await createOrRotatePortalLinkForCustomer(ctx as any, OWNER, customer as any, { now: NOW, token: TOKEN });
     await db.insert("serviceLogs", { customer_id: customer, created_by: TECH, service_date: "2026-03-02", status: "completed", notes: "Brushed walls", ph: "good", chlorine: "low", alkalinity: "good", stabilizer: "good", salt: 3200 });
     const result = await loadPortalForToken(ctx, TOKEN, NOW);
     expect(result.found).toBe(true);
@@ -132,7 +132,7 @@ describe("loadPortalForToken", () => {
     const { db, ctx, biz, customer } = await setup();
     const business = await db.get(biz);
     await db.patch(biz, { settings: { ...business!.settings, customer_portal: { enabled: false, allow_service_requests: true } } });
-    await createOrRotatePortalLinkForCustomer(ctx as any, TECH, customer as any, { now: NOW, token: TOKEN });
+    await createOrRotatePortalLinkForCustomer(ctx as any, OWNER, customer as any, { now: NOW, token: TOKEN });
     expect(await loadPortalForToken(ctx, TOKEN, NOW)).toMatchObject({ found: false, failure_reason: "disabled" });
   });
 });
@@ -149,7 +149,7 @@ describe("service requests", () => {
 
   it("creates a requested work order plus a note, attributed to the customer's creator", async () => {
     const { db, ctx, biz, customer } = await setup();
-    await createOrRotatePortalLinkForCustomer(ctx as any, TECH, customer as any, { now: NOW, token: TOKEN });
+    await createOrRotatePortalLinkForCustomer(ctx as any, OWNER, customer as any, { now: NOW, token: TOKEN });
     const result = await createServiceRequestForToken(ctx as any, TOKEN, { message: "The pump is grinding", preferred_date: "2026-03-14" }, NOW);
     expect(result.ok).toBe(true);
     const workOrder = db.all("workOrders")[0];
@@ -162,7 +162,7 @@ describe("service requests", () => {
   it("refuses invalid tokens, disabled requests and too many open requests", async () => {
     const { db, ctx, biz, customer } = await setup();
     expect(await createServiceRequestForToken(ctx as any, TOKEN, { message: "Hello there" }, NOW)).toMatchObject({ ok: false });
-    await createOrRotatePortalLinkForCustomer(ctx as any, TECH, customer as any, { now: NOW, token: TOKEN });
+    await createOrRotatePortalLinkForCustomer(ctx as any, OWNER, customer as any, { now: NOW, token: TOKEN });
     for (let i = 0; i < PORTAL_MAX_OPEN_REQUESTS; i++) {
       await db.insert("workOrders", { customer_id: customer, created_by: TECH, title: `r${i}`, status: "requested", scheduled_date: "2026-03-12", is_recurring: false, created_at: NOW, updated_at: NOW });
     }
