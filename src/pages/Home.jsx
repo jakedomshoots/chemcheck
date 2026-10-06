@@ -11,7 +11,6 @@ import CustomerCard from "../components/home/CustomerCard";
 import OffDayServicePickerDialog from "@/components/home/OffDayServicePickerDialog";
 import QuickStats from "../components/home/QuickStats";
 import TodayGlance from "@/components/route/TodayGlance";
-import SkipToContent from "@/components/navigation/SkipToContent";
 import { CustomerCardSkeleton, QuickStatsSkeleton } from "@/components/ui/skeleton";
 import { RouteCompleteCelebration } from "@/components/home/RouteCompleteCelebration";
 import { navigateWithTransition, transitionName } from "@/lib/viewTransitions";
@@ -587,7 +586,6 @@ export default function Home() {
   if (loading) {
     return (
       <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
-        <SkipToContent />
         <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <div>
             <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Today's Route</h2>
@@ -609,7 +607,6 @@ export default function Home() {
 
   return (
     <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Home">
-      <SkipToContent />
       <div
         data-testid="route-header"
         className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card"

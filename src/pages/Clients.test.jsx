@@ -335,10 +335,9 @@ describe('Clients Page', () => {
         resolvers.forEach((resolve) => resolve());
     });
 
-    it('renders a skip link and announces reorder mode', () => {
+    it('announces reorder mode', () => {
         render(<BrowserRouter><Clients /></BrowserRouter>);
 
-        expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content');
         expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
 
         fireEvent.click(screen.getByRole('button', { name: /Reorder/i }));

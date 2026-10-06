@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import ClientListItem from "../components/clients/ClientListItem";
 import ClientDirectory from "../components/clients/ClientDirectory";
-import SkipToContent from "@/components/navigation/SkipToContent";
 import { useReturnFocus } from "@/components/ui/use-return-focus";
 import { toast } from "sonner";
 import { DAY_ORDER, getEffectiveWorkingDays } from "@/lib/workingDays";
@@ -398,7 +397,6 @@ export default function Clients() {
   if (loading) {
     return (
       <main id="main-content" className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
-        <SkipToContent />
         <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Clients</h2>
           <p className="mt-1 text-sm font-medium text-ink-muted" role="status" aria-live="polite">Loading your client list…</p>
@@ -412,7 +410,6 @@ export default function Clients() {
 
   return (
     <main id="main-content" className="mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Clients">
-      <SkipToContent />
       <div
         data-testid="clients-header"
         className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-3 shadow-card sm:p-4"

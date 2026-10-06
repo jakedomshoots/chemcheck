@@ -308,11 +308,10 @@ describe('Accessibility Tests', () => {
       expect(results).toHaveNoViolations();
     });
 
-    it('Home exposes list semantics, a skip link, live status and non-color stop state', async () => {
+    it('Home exposes list semantics, live status and non-color stop state', async () => {
       renderPage(<Home />);
       await screen.findByTestId('today-glance');
 
-      expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content');
       const stopList = within(screen.getByRole('region', { name: "Today's customers" })).getByRole('list');
       expect(within(stopList).getAllByRole('listitem')).toHaveLength(3);
       expect(screen.getByRole('list', { name: 'Missed services' })).toBeInTheDocument();
@@ -418,10 +417,9 @@ describe('Accessibility Tests', () => {
       expect(contrastRatio(tokens.dark.inkMuted, tokens.dark.surface1)).toBeGreaterThanOrEqual(4.5);
     });
 
-    it('defines a global keyboard focus ring and a skip link style', () => {
+    it('defines a global keyboard focus ring', () => {
       const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8');
       expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid/);
-      expect(css).toMatch(/\.skip-link:focus/);
     });
   });
 

@@ -35,7 +35,6 @@ import {
   resolveServiceDurationMinutes,
 } from "@/lib/routeTimingEstimator";
 import { getObservedDriveProfile } from "@/lib/native/location";
-import SkipToContent from "@/components/navigation/SkipToContent";
 
 const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -464,7 +463,6 @@ export default function RouteOptimizer() {
   if (loading) {
     return (
       <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
-        <SkipToContent />
         <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
           <div>
             <h2 className="text-2xl font-semibold tracking-[-0.035em] text-ink">Route Planner</h2>
@@ -476,7 +474,6 @@ export default function RouteOptimizer() {
   }
   return (
     <main id="main-content" className="relative mx-auto max-w-7xl px-3 pb-36 pt-4 font-sans sm:px-4 lg:px-6" aria-label="Route Planner">
-      <SkipToContent />
       <div className="mb-4 overflow-hidden rounded-sheet border border-line bg-surface-1 p-4 shadow-card ">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-3xl font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-4xl">

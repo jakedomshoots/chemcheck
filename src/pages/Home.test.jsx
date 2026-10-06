@@ -205,10 +205,8 @@ describe('Home Page - Comprehensive Tests', () => {
       expect(payload.estimatedFinishAt).toEqual(expect.any(String));
     });
 
-    it('renders a skip link targeting the main landmark', () => {
+    it('renders the main landmark', () => {
       renderWithProviders(<Home />);
-      const skip = screen.getByRole('link', { name: 'Skip to content' });
-      expect(skip).toHaveAttribute('href', '#main-content');
       expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
     });
 

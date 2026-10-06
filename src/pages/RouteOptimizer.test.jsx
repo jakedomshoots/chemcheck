@@ -281,14 +281,13 @@ describe("Route Planner", () => {
     expect(within(secondStop).getByText(/~8 min from previous/)).toBeInTheDocument();
   });
 
-  it("renders a skip link, a labelled day select and a live stop announcement in the runner", async () => {
+  it("renders a labelled day select and a live stop announcement in the runner", async () => {
     const user = userEvent.setup();
     mockCustomers = [
       { _id: "a", full_name: "Alpha Pool", address: "1 Alpha Way", service_day: todayName },
     ];
     renderPlanner();
 
-    expect(await screen.findByRole("link", { name: "Skip to content" })).toHaveAttribute("href", "#main-content");
     expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
     expect(screen.getByLabelText("Select Service Day")).toHaveAttribute("id", "route-service-day");
 
