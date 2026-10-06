@@ -19,7 +19,15 @@ const PILL = "h-9 rounded-full border border-line bg-surface-1 px-3 text-xs font
  * Props: { customerId: Id<"customers">, className?: string }
  */
 export function PortalLinkButton({ customerId, className = "" }) {
-  const status = useQuery(api.portal.getPortalLinkStatus, customerId ? { customer_id: customerId } : "skip");
+  // Customer profiles are stored locally with numeric Dexie IDs, while Convex
+  // portal functions require the synced string document ID. Never send a
+  // local-only ID to Convex: doing so throws during render and takes down the
+  // entire customer-detail page before service history can load.
+  const hasConvexCustomerId = typeof customerId === "string" && customerId.length > 0;
+  const status = useQuery(
+    api.portal.getPortalLinkStatus,
+    hasConvexCustomerId ? { customer_id: customerId } : "skip",
+  );
   const createOrRotate = useMutation(api.portal.createOrRotatePortalLink);
   const revoke = useMutation(api.portal.revokePortalLink);
   const [busy, setBusy] = useState(false);
@@ -78,7 +86,7 @@ export function PortalLinkButton({ customerId, className = "" }) {
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      <Button type="button" size="sm" variant="outline" disabled={busy || status === undefined} onClick={handleCopy} className={PILL} title="Copy a private portal link for this customer">
+      <Button type="button" size="sm" variant="outline" disabled={busy || status === undefined || !hasConvexCustomerId} onClick={handleCopy} className={PILL} title="Copy a private portal link for this customer">
         {hasLink ? <Copy className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> : <Link2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />}
         {hasLink ? "Copy portal link" : "Create portal link"}
       </Button>

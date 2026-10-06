@@ -72,4 +72,13 @@ describe('PortalLinkButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create portal link' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Only the account owner can manage portal links.'));
   });
+
+  it('skips Convex when given a local numeric Dexie customer ID', () => {
+    mockUseQuery.mockReturnValue(undefined);
+
+    render(<PortalLinkButton customerId={42} />);
+
+    expect(mockUseQuery).toHaveBeenCalledWith(expect.anything(), 'skip');
+    expect(screen.getByRole('button', { name: 'Create portal link' })).toBeDisabled();
+  });
 });
